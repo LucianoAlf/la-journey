@@ -142,45 +142,47 @@ function loadBeatsFromData(data: any): Beat[] {
   }
 }
 
-// ─── Conversão beats → formato NotationRenderer (VexFlow) ───────────
-function beatsToNotationData(
-  beats: Beat[],
+// ─── Multi-line: quebrar beats em linhas ─────────────────────────────
+const NOTES_PER_LINE_OPTIONS = [4, 8, 12, 16] as const
+
+function splitBeatsIntoLines(beats: Beat[], notesPerLine: number): Beat[][] {
+  if (beats.length === 0) return [[]]
+  const lines: Beat[][] = []
+  for (let i = 0; i < beats.length; i += notesPerLine) {
+    lines.push(beats.slice(i, i + notesPerLine))
+  }
+  return lines
+}
+
+// Converter uma linha de beats para o formato NotationRenderer
+function lineBeatsToStaveData(
+  lineBeats: Beat[],
   clef: string,
-  keySig: string,
-  mode: EditorMode,
-  timeSig: string,
+  keySig: string | undefined,
+  timeSig: string | undefined,
 ) {
-  // Converter cada beat para o formato "note/octave:duration"
   const notes: string[] = []
   const accidentals: (string | null)[] = []
 
-  beats.forEach(beat => {
-    if (beat.pitches.length === 1) {
-      const p = beat.pitches[0]
+  lineBeats.forEach(beat => {
+    beat.pitches.forEach(p => {
       notes.push(`${p.pitch}:${beat.duration}`)
       accidentals.push(p.accidental)
-    } else if (beat.pitches.length > 1) {
-      // Acorde: VexFlow suporta múltiplas keys num StaveNote, mas o NotationRenderer espera 1 nota por entry.
-      // Para simplificar, colocar cada pitch como nota separada com mesma duração
-      beat.pitches.forEach(p => {
-        notes.push(`${p.pitch}:${beat.duration}`)
-        accidentals.push(p.accidental)
-      })
-    }
+    })
   })
 
   return {
     type: 'staff' as const,
     staves: [{
       clef: clef as 'treble' | 'bass',
-      key_signature: keySig !== 'C' ? keySig : undefined,
-      time_signature: mode === 'metered' ? timeSig : undefined,
+      key_signature: keySig,
+      time_signature: timeSig,
       notes,
       accidentals,
       label: '',
     }],
     width: 700,
-    height: 160,
+    height: 150,
   }
 }
 
@@ -188,6 +190,7 @@ function beatsToNotationData(
 const VEXFLOW_STAFF_TOP = 40    // Y do topo da pauta no SVG
 const VEXFLOW_LINE_SPACE = 10   // espaçamento entre linhas no VexFlow
 const VEXFLOW_STAFF_BOTTOM = VEXFLOW_STAFF_TOP + 4 * VEXFLOW_LINE_SPACE
+const LINE_RENDER_HEIGHT = 150  // altura de cada linha renderizada
 
 function vexflowYToPos(y: number, scaleArr: string[]): number {
   // Converter posição Y no SVG para índice na escala
@@ -214,6 +217,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const [selectedKey, setSelectedKey] = useState('C')
   const [selectedTime, setSelectedTime] = useState('4/4')
   const [labelText, setLabelText] = useState('')
+  const [notesPerLine, setNotesPerLine] = useState(8)
 
   // CRUD
   const [notationName, setNotationName] = useState('')
@@ -235,10 +239,17 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
   const scale = useMemo(() => getScaleForClef(selectedClef), [selectedClef])
 
-  // Dados VexFlow atualizados em tempo real
-  const notationData = useMemo(
-    () => beatsToNotationData(beats, selectedClef, selectedKey, editorMode, selectedTime),
-    [beats, selectedClef, selectedKey, editorMode, selectedTime],
+  // Multi-line: dividir beats em linhas e gerar dados VexFlow por linha
+  const beatLines = useMemo(() => splitBeatsIntoLines(beats, notesPerLine), [beats, notesPerLine])
+
+  const linedNotationData = useMemo(
+    () => beatLines.map((lineBeats, i) => lineBeatsToStaveData(
+      lineBeats,
+      selectedClef,
+      i === 0 && selectedKey !== 'C' ? selectedKey : undefined,
+      i === 0 && editorMode === 'metered' ? selectedTime : undefined,
+    )),
+    [beatLines, selectedClef, selectedKey, editorMode, selectedTime],
   )
 
   // Inicializar ao abrir
@@ -278,24 +289,29 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setCifraPopupVisible(false)
   }, [open, notation])
 
-  // Helper: mapear coordenada do mouse no overlay para posição Y no SVG do VexFlow
-  function getSvgY(clientY: number): number {
+  // Helper: encontrar qual SVG (linha) está sob o mouse e retornar Y local + índice da linha
+  function getSvgInfo(clientY: number): { svgY: number; lineIndex: number } {
     const wrap = wrapRef.current
-    if (!wrap) return 0
-    const svg = wrap.querySelector('svg')
-    if (!svg) return clientY
-    const svgRect = svg.getBoundingClientRect()
-    // VexFlow SVG tem viewBox implícito — coordenada proporcional
-    const svgHeight = parseFloat(svg.getAttribute('height') || '160')
-    const ratio = svgHeight / svgRect.height
-    return (clientY - svgRect.top) * ratio
+    if (!wrap) return { svgY: 0, lineIndex: 0 }
+    const svgs = wrap.querySelectorAll('svg')
+    for (let i = 0; i < svgs.length; i++) {
+      const svgRect = svgs[i].getBoundingClientRect()
+      if (clientY >= svgRect.top && clientY <= svgRect.bottom) {
+        const svgHeight = parseFloat(svgs[i].getAttribute('height') || '150')
+        const ratio = svgHeight / svgRect.height
+        return { svgY: (clientY - svgRect.top) * ratio, lineIndex: i }
+      }
+    }
+    // Fallback: última linha
+    const lastIdx = Math.max(0, svgs.length - 1)
+    return { svgY: VEXFLOW_STAFF_BOTTOM, lineIndex: lastIdx }
   }
 
   // Mouse move handler — overlay
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const wrap = wrapRef.current
     if (!wrap) return
-    const svgY = getSvgY(e.clientY)
+    const { svgY } = getSvgInfo(e.clientY)
     const pos = vexflowYToPos(svgY, scale)
     setHoverPos(pos)
     const r = wrap.getBoundingClientRect()
@@ -311,21 +327,25 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const handleOverlayClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const wrap = wrapRef.current
     if (!wrap) return
-    const svgY = getSvgY(e.clientY)
+    const { svgY, lineIndex } = getSvgInfo(e.clientY)
 
-    // Cifra mode — encontrar beat mais próximo pelo X
+    // Cifra mode — encontrar beat mais próximo pelo X (dentro da linha clicada)
     if (inputMode === 'cifra') {
       if (beats.length === 0) return
-      // Usar o beat mais próximo do click X (heurística simples baseada na proporção)
-      const svg = wrap.querySelector('svg')
+      const svgs = wrap.querySelectorAll('svg')
+      const svg = svgs[lineIndex]
       if (!svg) return
       const svgRect = svg.getBoundingClientRect()
       const relX = (e.clientX - svgRect.left) / svgRect.width
-      const bi = Math.min(beats.length - 1, Math.max(0, Math.round(relX * beats.length - 0.5)))
-      setCifraTarget(bi)
+      const lineBeats = beatLines[lineIndex] || []
+      const localBi = Math.min(lineBeats.length - 1, Math.max(0, Math.round(relX * lineBeats.length - 0.5)))
+      // Converter índice local para índice global
+      const globalBi = lineIndex * notesPerLine + localBi
+      if (globalBi >= beats.length) return
+      setCifraTarget(globalBi)
       const wr = wrap.getBoundingClientRect()
       setCifraPopupPos({ x: e.clientX - wr.left - 40, y: e.clientY - wr.top - 50 })
-      setCifraInput(beats[bi]?.cifra || '')
+      setCifraInput(beats[globalBi]?.cifra || '')
       setCifraPopupVisible(true)
       return
     }
@@ -361,7 +381,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
     setLastNote(displayNote(pitch, currentAccidental))
     setLastNoteInfo(inputMode === 'chord' ? 'Empilhado' : DURATION_NAMES[currentDuration])
-  }, [inputMode, currentAccidental, currentDuration, scale, beats])
+  }, [inputMode, currentAccidental, currentDuration, scale, beats, beatLines, notesPerLine])
 
   // Double click = remove last beat (simplificado — sem hit-test de nota individual no VexFlow)
   const handleOverlayDblClick = useCallback((_e: React.MouseEvent<HTMLDivElement>) => {
@@ -608,6 +628,16 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
             </TBtn>
           </div>
 
+          {/* Notas por linha */}
+          <div className="flex gap-[2px] items-center" style={{ paddingRight: 7, marginRight: 4, borderRight: '1px solid #334155' }}>
+            <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Notas/linha</span>
+            {NOTES_PER_LINE_OPTIONS.map(n => (
+              <TBtn key={n} active={notesPerLine === n} onClick={() => setNotesPerLine(n)}>
+                <span style={{ fontSize: 10, padding: '0 1px' }}>{n}</span>
+              </TBtn>
+            ))}
+          </div>
+
           {/* Ferramentas */}
           <div className="flex gap-[2px] items-center">
             <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Ferramentas</span>
@@ -619,11 +649,11 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
         {/* ── Linha 3: VexFlow Preview + Painel lateral ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 14, alignItems: 'start' }}>
-          {/* Área do editor: VexFlow + overlay */}
+          {/* Área do editor: VexFlow multi-line + overlay */}
           <div>
             <div
               ref={wrapRef}
-              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '12px 14px', position: 'relative', overflowX: 'auto', minHeight: 140 }}
+              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '12px 14px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', minHeight: 140, maxHeight: 420 }}
             >
               {/* Indicador de modo (canto superior direito) */}
               <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none' }}>
@@ -635,9 +665,11 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 </span>
               </div>
 
-              {/* Camada 1: VexFlow preview (bonito, profissional) */}
+              {/* Camada 1: VexFlow multi-line preview (uma pauta por linha) */}
               <div className="notation-editor-vexflow" style={{ pointerEvents: 'none' }}>
-                <NotationRenderer notation={notationData} />
+                {linedNotationData.map((lineData, i) => (
+                  <NotationRenderer key={i} notation={lineData} />
+                ))}
               </div>
 
               {/* Camada 2: Overlay de input invisível por cima */}
