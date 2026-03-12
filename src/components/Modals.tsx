@@ -1,6 +1,9 @@
 import { Modal } from './Modal';
 import { useAppContext } from '../AppContext';
-import { FloppyDisk, Sparkle } from '@phosphor-icons/react';
+import { 
+  FloppyDisk, Sparkle, Article, TextAa, Image as ImageIcon, Guitar, 
+  MusicNotesSimple, ListNumbers, Barbell, MusicNote, Lightbulb, Trophy, QrCode, Minus 
+} from '@phosphor-icons/react';
 
 export function Modals() {
   const { isModalOpen, closeModal, showToast } = useAppContext();
@@ -405,6 +408,159 @@ export function Modals() {
           <button className="btn btn-ghost" onClick={() => closeModal('modal-acorde')}>Cancelar</button>
           <button className="btn btn-primary" onClick={() => { closeModal('modal-acorde'); showToast('✅ Acorde salvo na biblioteca!'); }}>
             <FloppyDisk size={16} /> Salvar
+          </button>
+        </div>
+      </Modal>
+
+      {/* Modal Add Block */}
+      <Modal 
+        isOpen={isModalOpen('modal-add-block')} 
+        onClose={() => closeModal('modal-add-block')}
+        title={<>Adicionar <em className="not-italic text-accent">Bloco</em></>}
+      >
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px'}}>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Bloco de texto adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--azul-soft)', color:'var(--azul-claro)'}}><Article size={16} /></div>
+              <div><div className="font-bold text-xs">Texto</div><div className="text-[11px] text-text3">Parágrafo editável</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Título adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--foundation-soft)', color:'var(--foundation)'}}><TextAa size={16} /></div>
+              <div><div className="font-bold text-xs">Título de Seção</div><div className="text-[11px] text-text3">Cabeçalho colorido</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Imagem adicionada!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--accent-soft)', color:'var(--accent)'}}><ImageIcon size={16} /></div>
+              <div><div className="font-bold text-xs">Imagem</div><div className="text-[11px] text-text3">Upload ou Gemini IA</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Diagrama adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--grow-soft)', color:'var(--grow)'}}><Guitar size={16} /></div>
+              <div><div className="font-bold text-xs">Diagrama de Acorde</div><div className="text-[11px] text-text3">SVGuitar renderizado</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Notação adicionada!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--master-soft)', color:'var(--master)'}}><MusicNotesSimple size={16} /></div>
+              <div><div className="font-bold text-xs">Notação Musical</div><div className="text-[11px] text-text3">VexFlow na pauta</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Tablatura adicionada!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--azul-soft)', color:'var(--azul-claro)'}}><ListNumbers size={16} /></div>
+              <div><div className="font-bold text-xs">Tablatura</div><div className="text-[11px] text-text3">VexTab</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Exercício adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--advance-soft)', color:'var(--advance)'}}><Barbell size={16} /></div>
+              <div><div className="font-bold text-xs">Exercício</div><div className="text-[11px] text-text3">Prática dirigida</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Repertório adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--dourado-soft)', color:'var(--dourado)'}}><MusicNote size={16} /></div>
+              <div><div className="font-bold text-xs">Ficha de Repertório</div><div className="text-[11px] text-text3">Música + acordes</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Dica adicionada!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--dourado-soft)', color:'var(--dourado)'}}><Lightbulb size={16} /></div>
+              <div><div className="font-bold text-xs">Dica / Destaque</div><div className="text-[11px] text-text3">Box informativo</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Selo adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--verde-soft)', color:'var(--verde)'}}><Trophy size={16} /></div>
+              <div><div className="font-bold text-xs">Selo / Conquista</div><div className="text-[11px] text-text3">Badge gamificação</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ QR Code adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--azul-soft)', color:'var(--azul-claro)'}}><QrCode size={16} /></div>
+              <div><div className="font-bold text-xs">QR Code</div><div className="text-[11px] text-text3">Link externo</div></div>
+            </div>
+          </div>
+          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Separador adicionado!'); }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <div className="block-type-icon" style={{background:'var(--bg2)', color:'var(--text3)'}}><Minus size={16} /></div>
+              <div><div className="font-bold text-xs">Separador</div><div className="text-[11px] text-text3">Linha divisória</div></div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Trocar Imagem */}
+      <Modal 
+        isOpen={isModalOpen('modal-trocar-imagem')} 
+        onClose={() => closeModal('modal-trocar-imagem')}
+        title={<>Trocar <em className="not-italic text-accent">Imagem</em></>}
+      >
+        <div className="flex gap-2 mb-4">
+          <div className="px-3 py-1.5 bg-azul-soft text-azul-claro rounded-[var(--radius-sm)] text-xs font-medium cursor-pointer">Gerar com IA</div>
+          <div className="px-3 py-1.5 text-text2 hover:bg-bg2 rounded-[var(--radius-sm)] text-xs font-medium cursor-pointer transition-all">Upload</div>
+          <div className="px-3 py-1.5 text-text2 hover:bg-bg2 rounded-[var(--radius-sm)] text-xs font-medium cursor-pointer transition-all">Biblioteca</div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Descreva a imagem</label>
+          <textarea className="form-textarea" placeholder="Ex: Diagrama didático mostrando as partes do violão clássico com setas indicando: corpo, braço, mão, trastes, cordas, boca, cavalete. Estilo clean, fundo branco, para material didático."></textarea>
+        </div>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="form-group mb-0">
+            <label className="form-label">Estilo</label>
+            <select className="form-select">
+              <option>Diagrama didático</option><option>Foto realista</option><option>Ilustração</option><option>Artístico</option>
+            </select>
+          </div>
+          <div className="form-group mb-0">
+            <label className="form-label">Resolução</label>
+            <select className="form-select">
+              <option>512x512</option><option>1024x1024</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="btn btn-ghost" onClick={() => closeModal('modal-trocar-imagem')}>Cancelar</button>
+          <button className="btn btn-accent" onClick={() => { closeModal('modal-trocar-imagem'); showToast('✨ Imagem gerada e substituída!'); }}>
+            <Sparkle size={16} /> Gerar com Gemini
+          </button>
+        </div>
+      </Modal>
+
+      {/* Modal Trocar Acorde */}
+      <Modal 
+        isOpen={isModalOpen('modal-trocar-acorde')} 
+        onClose={() => closeModal('modal-trocar-acorde')}
+        title={<>Trocar <em className="not-italic text-accent">Acorde</em></>}
+      >
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="form-group mb-0">
+            <label className="form-label">Acorde</label>
+            <select className="form-select">
+              <option>G (Sol Maior)</option><option>C (Dó Maior)</option><option>D (Ré Maior)</option><option>E (Mi Maior)</option><option>A (Lá Maior)</option><option>Am (Lá menor)</option><option>Em (Mi menor)</option><option>F (Fá Maior)</option>
+            </select>
+          </div>
+          <div className="form-group mb-0">
+            <label className="form-label">Posição</label>
+            <select className="form-select">
+              <option>Aberta (padrão)</option><option>Pestana 3ª casa</option><option>Pestana 5ª casa</option>
+            </select>
+          </div>
+        </div>
+        <div style={{width:'120px', height:'150px', border:'1px solid var(--border)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)', margin:'0 auto 16px'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:'9px', color:'var(--text3)'}}>SVGuitar Preview</div>
+            <div style={{fontSize:'28px', margin:'4px 0'}}>G</div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn btn-ghost" onClick={() => closeModal('modal-trocar-acorde')}>Cancelar</button>
+          <button className="btn btn-primary" onClick={() => { closeModal('modal-trocar-acorde'); showToast('✅ Acorde atualizado!'); }}>
+            <FloppyDisk size={16} /> Aplicar
           </button>
         </div>
       </Modal>
