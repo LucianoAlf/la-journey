@@ -1,6 +1,6 @@
 import { 
   UsersThree, MapTrifold, Trophy, Chalkboard, 
-  SpinnerGap, Warning 
+  SpinnerGap, Warning, Sparkle 
 } from "@phosphor-icons/react";
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
@@ -94,7 +94,7 @@ export function Dashboard() {
             <MapTrifold size={16} /> Jornadas
           </button>
           <button className="btn btn-accent" onClick={() => navigate('/gerador')}>
-            <span className="text-base">✨</span> Gerar Material
+            <Sparkle size={16} /> Gerar Material
           </button>
         </div>
       </div>
