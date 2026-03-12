@@ -359,7 +359,7 @@ export function Modals() {
 
       {/* Modal Acorde — Editor Visual */}
       <Dialog open={isModalOpen('modal-acorde')} onOpenChange={() => { closeModal('modal-acorde'); resetChordEditor(); }}>
-        <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border">
+        <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="font-serif text-[22px]">{editingChordId ? 'Editar' : 'Novo'} <span className="text-accent">Acorde</span></DialogTitle>
           </DialogHeader>

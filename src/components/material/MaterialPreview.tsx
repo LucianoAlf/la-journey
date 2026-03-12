@@ -3,6 +3,7 @@ import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { StaffNotation } from '@/components/music/StaffNotation'
 import { RhythmNotation } from '@/components/music/RhythmNotation'
 import { Tablature } from '@/components/music/Tablature'
+import { NotationRenderer } from '@/components/music/NotationRenderer'
 
 export interface MaterialBlock {
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'qr_code' | 'badge'
@@ -74,6 +75,9 @@ function BlockText({ block }: { block: MaterialBlock }) {
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
       {renderMarkdownText(text)}
+      {block.render_data?.notation && (
+        <NotationRenderer notation={block.render_data.notation} />
+      )}
     </div>
   )
 }
@@ -156,7 +160,8 @@ function BlockRhythm({ block }: { block: MaterialBlock }) {
 function BlockExercise({ block }: { block: MaterialBlock }) {
   const text = block.content?.text ?? ''
   const rd = block.render_data ?? {}
-  const hasNotation = rd.notes && rd.notes.length > 0
+  const hasOldNotation = rd.notes && rd.notes.length > 0
+  const hasNewNotation = !!rd.notation
   const hasTab = rd.tab
 
   return (
@@ -166,7 +171,8 @@ function BlockExercise({ block }: { block: MaterialBlock }) {
         <h3 className="font-bold text-[14px] text-advance">{block.title ?? 'Exercício'}</h3>
       </div>
       {text && <div className="text-[13px] text-text2 mb-3">{renderMarkdownText(text)}</div>}
-      {hasNotation && (
+      {hasNewNotation && <NotationRenderer notation={rd.notation} />}
+      {hasOldNotation && !hasNewNotation && (
         <StaffNotation
           notes={rd.notes}
           clef={rd.clef ?? 'treble'}
@@ -190,6 +196,9 @@ function BlockTip({ block }: { block: MaterialBlock }) {
           <div className="text-[12px] text-text2">{renderMarkdownText(text)}</div>
         </div>
       </div>
+      {block.render_data?.notation && (
+        <NotationRenderer notation={block.render_data.notation} />
+      )}
     </div>
   )
 }

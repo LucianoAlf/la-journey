@@ -9,6 +9,7 @@ export async function getJourneys() {
   const { data, error } = await supabase
     .from('journeys')
     .select('*')
+    .eq('status', 'active')
     .order('name')
 
   if (error) handleError(error)
@@ -99,4 +100,45 @@ export async function getJourneyWithStages(journeyId: string) {
   const journey = await getJourneyById(journeyId)
   const stages = await getStages(journeyId)
   return { ...journey, stages: stages ?? [] }
+}
+
+// --- Estações e blocos (RPCs) ---
+
+export interface StageStation {
+  station_id: string
+  station_name: string
+  station_number: number
+  station_type: string
+  lesson_start: number
+  lesson_end: number
+  topic_count: number
+  block_count: number
+}
+
+export interface StationBlock {
+  topic_order: number
+  topic_title: string
+  topic_slug: string
+  block_id: string
+  block_order: number
+  block_type: string
+  block_title: string
+  block_content: any
+  block_render_data: any
+}
+
+export async function getStageStations(stageId: string): Promise<StageStation[]> {
+  const { data, error } = await (supabase.rpc as any)('get_stage_stations', {
+    p_stage_id: stageId,
+  })
+  if (error) handleError(error)
+  return (data ?? []) as StageStation[]
+}
+
+export async function getStationBlocks(stationId: string): Promise<StationBlock[]> {
+  const { data, error } = await (supabase.rpc as any)('get_station_blocks', {
+    p_station_id: stationId,
+  })
+  if (error) handleError(error)
+  return (data ?? []) as StationBlock[]
 }

@@ -34,6 +34,7 @@
     "react-router-dom": "^7.6.1",
     "recharts": "^3.8.0",
     "sonner": "^2.0.7",
+    "svg-piano": "^0.3.1",
     "svguitar": "^2.5.1",
     "tailwind-merge": "^3.5.0",
     "vexflow": "^5.0.0",

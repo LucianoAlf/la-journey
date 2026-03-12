@@ -4,6 +4,8 @@ import {
   getJourneyById,
   getJourneyWithStages,
   getStages,
+  getStageStations,
+  getStationBlocks,
 } from '@/services/journeyService'
 
 export function useJourneys() {
@@ -29,4 +31,18 @@ export function useStages(journeyId: string | undefined) {
     if (!journeyId) return Promise.resolve(null)
     return getStages(journeyId)
   }, [journeyId])
+}
+
+export function useStations(stageId: string | undefined) {
+  return useAsync(() => {
+    if (!stageId) return Promise.resolve(null)
+    return getStageStations(stageId)
+  }, [stageId])
+}
+
+export function useStationBlocks(stationId: string | undefined) {
+  return useAsync(() => {
+    if (!stationId) return Promise.resolve(null)
+    return getStationBlocks(stationId)
+  }, [stationId])
 }

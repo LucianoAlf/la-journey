@@ -25,7 +25,7 @@ export interface ChordEditorProps {
 
 const S = 6, F = 7
 const NAMES = ['E', 'A', 'D', 'G', 'B', 'e']
-const PT = 40, PB = 10, PL = 30, PR = 10, NUT_H = 5
+const PT = 40, PB = 10, PL = 30, PR = 20, NUT_H = 5
 const MARKERS = [3, 5, 7, 9, 12]
 const ACCENT = '#FF2D78'
 const NECK_W = 260, NECK_H = 440

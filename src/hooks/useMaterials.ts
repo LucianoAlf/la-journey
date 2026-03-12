@@ -1,20 +1,14 @@
 import { useAsync } from './useAsync'
-import { getMaterials, getMaterialById, getMaterialBlocks } from '@/services/materialService'
+import { listMaterials, getMaterialWithBlocks } from '@/services/materialService'
+import type { MaterialListItem, MaterialWithBlocks } from '@/services/materialService'
 
-export function useMaterials() {
-  return useAsync(() => getMaterials(), [])
+export function useMaterials(schoolId?: string) {
+  return useAsync<MaterialListItem[]>(() => listMaterials(schoolId), [schoolId])
 }
 
-export function useMaterial(id: string | undefined) {
-  return useAsync(() => {
-    if (!id) return Promise.resolve(null)
-    return getMaterialById(id)
-  }, [id])
-}
-
-export function useMaterialBlocks(materialId: string | undefined) {
-  return useAsync(() => {
+export function useMaterialWithBlocks(materialId: string | undefined) {
+  return useAsync<MaterialWithBlocks[] | null>(() => {
     if (!materialId) return Promise.resolve(null)
-    return getMaterialBlocks(materialId)
+    return getMaterialWithBlocks(materialId)
   }, [materialId])
 }

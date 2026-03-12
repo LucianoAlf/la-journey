@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect } from "react";
 import { useAppContext } from "../AppContext";
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,47 @@ const STAGE_BADGES: Record<string, 'foundation' | 'grow' | 'advance' | 'master'>
   foundation: 'foundation', grow: 'grow', advance: 'advance', master: 'master',
 }
 
+/** Placeholder visual para acordes de piano (até criarmos PianoKeyboard.tsx) */
+function PianoChordPlaceholder({ positions, name }: { positions: any; name: string }) {
+  const keys = (positions?.keys ?? []) as string[]
+  const fingeringRh = (positions?.fingering_rh ?? []) as number[]
+  const quality = positions?.quality as string | undefined
+
+  return (
+    <div className="h-[180px] flex flex-col items-center justify-center gap-2 w-full">
+      <PianoKeys size={32} className="text-foundation" weight="duotone" />
+      <div className="font-bold text-[15px]">{name}</div>
+      {quality && (
+        <Badge variant="foundation" className="text-[9px]">{quality}</Badge>
+      )}
+      {keys.length > 0 && (
+        <div className="text-[12px] font-mono text-text2">
+          {keys.join(' · ')}
+        </div>
+      )}
+      {fingeringRh.length > 0 && (
+        <div className="text-[10px] text-text3">
+          MD: {fingeringRh.join('-')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type InstrumentFilter = 'guitar' | 'piano' | 'bass' | 'ukulele'
+
+const INSTRUMENTS: { value: InstrumentFilter; label: string; icon: typeof Guitar }[] = [
+  { value: 'guitar', label: 'Violão', icon: Guitar },
+  { value: 'piano', label: 'Piano', icon: PianoKeys },
+  { value: 'bass', label: 'Baixo', icon: Guitar },
+  { value: 'ukulele', label: 'Ukulele', icon: Guitar },
+]
+
 export function Biblioteca() {
   const [activeTab, setActiveTab] = useState("acordes");
+  const [instrument, setInstrument] = useState<InstrumentFilter>('guitar');
   const { openModal } = useAppContext();
-  const { data: chords, loading: chordsLoading, refetch: refetchChords } = useChords();
+  const { data: chords, loading: chordsLoading, refetch: refetchChords } = useChords(instrument as any);
   const { data: scales, loading: scalesLoading } = useScales();
 
   // Refetch automático quando um novo acorde é salvo via modal
@@ -65,7 +102,7 @@ export function Biblioteca() {
             Biblioteca <em className="not-italic text-accent">Musical</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · SVGuitar · VexFlow
+            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {instrument === 'piano' ? 'Piano' : 'SVGuitar'} · VexFlow
           </p>
         </div>
         <Button onClick={() => openModal(activeTab === 'imagens' ? 'modal-imagem' : 'modal-acorde')}>
@@ -83,6 +120,28 @@ export function Biblioteca() {
 
         <TabsContent value="acordes">
           <div>
+            {/* Filtro de instrumento */}
+            <div className="flex gap-2 mb-4">
+              {INSTRUMENTS.map(inst => {
+                const Icon = inst.icon
+                const active = instrument === inst.value
+                return (
+                  <button
+                    key={inst.value}
+                    onClick={() => setInstrument(inst.value)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-all ${
+                      active
+                        ? 'bg-accent/15 text-accent border border-accent/30'
+                        : 'bg-surface border border-border text-text2 hover:text-text hover:border-text3'
+                    }`}
+                  >
+                    <Icon size={16} weight={active ? 'fill' : 'regular'} />
+                    {inst.label}
+                  </button>
+                )
+              })}
+            </div>
+
             <div className="card mb-4">
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
@@ -126,7 +185,7 @@ export function Biblioteca() {
               <div className="grid grid-cols-6 gap-3">
                 {filteredChords.map(chord => {
                   const tags = (chord.tags ?? []) as string[]
-                  const positions = (chord.positions ?? { fingers: [], barres: [], muted: [] }) as any
+                  const positions = (chord.positions ?? {}) as any
 
                   return (
                     <div
@@ -135,11 +194,15 @@ export function Biblioteca() {
                       onClick={() => openModal('modal-acorde', chord)}
                     >
                       <div className="flex justify-center mb-1">
-                        <ChordDiagram
-                          name={chord.name}
-                          positions={positions}
-                          size="full"
-                        />
+                        {instrument === 'piano' ? (
+                          <PianoChordPlaceholder positions={positions} name={chord.name} />
+                        ) : (
+                          <ChordDiagram
+                            name={chord.name}
+                            positions={positions}
+                            size="full"
+                          />
+                        )}
                       </div>
                       <div className="text-[11px] text-text3">
                         {tags.join(' · ')} · Nível {chord.difficulty}
@@ -162,6 +225,28 @@ export function Biblioteca() {
         </TabsContent>
 
         <TabsContent value="escalas">
+          {/* Filtro de instrumento (mesmos botões) */}
+          <div className="flex gap-2 mb-4">
+            {INSTRUMENTS.map(inst => {
+              const Icon = inst.icon
+              const active = instrument === inst.value
+              return (
+                <button
+                  key={inst.value}
+                  onClick={() => setInstrument(inst.value)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-all ${
+                    active
+                      ? 'bg-accent/15 text-accent border border-accent/30'
+                      : 'bg-surface border border-border text-text2 hover:text-text hover:border-text3'
+                  }`}
+                >
+                  <Icon size={16} weight={active ? 'fill' : 'regular'} />
+                  {inst.label}
+                </button>
+              )
+            })}
+          </div>
+
           {scalesLoading ? (
             <div className="flex items-center justify-center h-40 gap-2 text-text2">
               <SpinnerGap size={20} className="animate-spin" /> Carregando escalas...
@@ -173,6 +258,8 @@ export function Biblioteca() {
                 const intervals = (scale.intervals ?? []) as string[]
                 const vexNotes = scaleNotesToVexflow(notes)
                 const badgeVariant = STAGE_BADGES[scale.difficulty_level as string] ?? 'secondary'
+                const instPositions = (scale as any).instrument_positions as Record<string, any> | null
+                const pianoPos = instPositions?.piano as { keys_rh?: string[]; fingering_rh?: number[]; range?: string } | undefined
 
                 return (
                   <div key={scale.id} className="card">
@@ -185,12 +272,38 @@ export function Biblioteca() {
                       </div>
                       <Badge variant={badgeVariant as any} className="capitalize">{scale.difficulty_level}</Badge>
                     </div>
+
+                    {/* Notação na pauta (sempre visível) */}
                     <StaffNotation
                       notes={vexNotes}
                       clef="treble"
                       width={500}
                       height={130}
                     />
+
+                    {/* Dados de piano (quando selecionado e disponível) */}
+                    {instrument === 'piano' && pianoPos && (
+                      <div className="mt-3 p-3 rounded-lg bg-foundation-soft border border-foundation/20">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <PianoKeys size={14} className="text-foundation" />
+                          <span className="text-[11px] font-semibold text-foundation uppercase tracking-wider">Piano</span>
+                          {pianoPos.range && (
+                            <span className="text-[11px] text-text3 ml-auto font-mono">{pianoPos.range}</span>
+                          )}
+                        </div>
+                        {pianoPos.keys_rh && (
+                          <div className="text-[12px] font-mono text-text2">
+                            <span className="text-text3">MD:</span>{' '}
+                            {pianoPos.keys_rh.join(' · ')}
+                            {pianoPos.fingering_rh && (
+                              <span className="ml-3 text-text3">
+                                Ded: {pianoPos.fingering_rh.join('-')}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
