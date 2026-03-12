@@ -4,7 +4,7 @@ import { useAppContext } from '../AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   FloppyDisk, Sparkle, Article, TextAa, Image as ImageIcon, Guitar, 
-  MusicNotesSimple, ListNumbers, Barbell, MusicNote, Lightbulb, Trophy, QrCode, Minus 
+  MusicNotesSimple, ListNumbers, Barbell, MusicNote, Lightbulb, Trophy, QrCode, Minus, Trash 
 } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createTopic } from '@/services/contentService';
-import { createChord, updateChord } from '@/services/libraryService';
+import { createChord, updateChord, deleteChord } from '@/services/libraryService';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { createAchievement } from '@/services/achievementService';
 import { createTemplate } from '@/services/whatsappService';
 import { ChordEditor, createEmptyState, stateToPositions, positionsToState, type ChordEditorState } from '@/components/music/ChordEditor';
@@ -54,6 +55,7 @@ export function Modals() {
   const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState());
   const [chordStartFret, setChordStartFret] = useState(1);
   const [chordSaving, setChordSaving] = useState(false);
+  const [chordDeleting, setChordDeleting] = useState(false);
   const [editingChordId, setEditingChordId] = useState<string | null>(null);
 
   // Detectar modo edição: quando o modal abre com dados de um acorde existente
@@ -102,6 +104,22 @@ export function Modals() {
     } catch (e: any) { toast.error(e?.message || 'Erro ao salvar acorde'); }
     finally { setChordSaving(false); }
   };
+
+  const handleDeleteChord = async () => {
+    if (!editingChordId) return
+    setChordDeleting(true)
+    try {
+      await deleteChord(editingChordId)
+      toast.success('Acorde excluído', { description: `O acorde "${chordName}" foi removido da biblioteca.` })
+      closeModal('modal-acorde')
+      resetChordEditor()
+      window.dispatchEvent(new Event('chord-library-updated'))
+    } catch (e: any) {
+      toast.error('Erro ao excluir', { description: e?.message || 'Não foi possível excluir o acorde.' })
+    } finally {
+      setChordDeleting(false)
+    }
+  }
 
   const resetChordEditor = () => {
     setChordName('');
@@ -393,11 +411,40 @@ export function Modals() {
             startFret={chordStartFret}
           />
 
-          <div className="flex justify-end items-center gap-2 mt-4 pt-3 border-t border-border">
-            <Button variant="ghost" onClick={() => { closeModal('modal-acorde'); resetChordEditor(); }} disabled={chordSaving}>Cancelar</Button>
-            <Button onClick={handleSaveChord} disabled={chordSaving}>
-              <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : (editingChordId ? 'Atualizar' : 'Salvar')}
-            </Button>
+          <div className="flex justify-between items-center mt-4 pt-3 border-t border-border">
+            {editingChordId ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" disabled={chordDeleting} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                    <Trash size={16} /> Excluir
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-surface border-border">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir acorde?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      O acorde "{chordName}" será removido permanentemente da biblioteca. Essa ação não pode ser desfeita.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={chordDeleting}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      onClick={handleDeleteChord}
+                      disabled={chordDeleting}
+                    >
+                      {chordDeleting ? 'Excluindo...' : 'Sim, excluir'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : <div />}
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => { closeModal('modal-acorde'); resetChordEditor(); }} disabled={chordSaving || chordDeleting}>Cancelar</Button>
+              <Button onClick={handleSaveChord} disabled={chordSaving || chordDeleting}>
+                <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : (editingChordId ? 'Atualizar' : 'Salvar')}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

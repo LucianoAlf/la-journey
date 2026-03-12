@@ -52,6 +52,7 @@
   --color-card-shadcn: var(--card);
   --color-card-foreground: var(--text);
   --color-destructive: var(--vermelho);
+  --color-destructive-foreground: #FFFFFF;
   --color-input: var(--border);
   --color-ring: var(--azul-claro);
   --color-accent-foreground: #FFF;
