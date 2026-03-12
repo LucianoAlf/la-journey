@@ -1,16 +1,76 @@
-import { Plus, DeviceMobile, PaperPlaneTilt } from "@phosphor-icons/react";
-import { useAppContext } from "../AppContext";
+import { useState, useMemo } from "react";
+import { Plus, PencilSimple, Trash, SpinnerGap, Warning } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Progress } from "@/components/ui/progress";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
+import { useStudents } from "@/hooks/useStudents";
+import { deleteStudent } from "@/services/studentService";
+import { StudentModal } from "@/components/modals/StudentModal";
+import type { Tables } from "@/lib/database.types";
+
+type Student = Tables<'students'>
 
 export function Alunos() {
-  const { openModal } = useAppContext();
+  const { data: students, loading, error, refetch } = useStudents();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterInstrument, setFilterInstrument] = useState('todos');
+
+  const filtered = useMemo(() => {
+    if (!students) return [];
+    return students.filter(s => {
+      const name = s.responsible_name ?? '';
+      const matchesSearch = !search || name.toLowerCase().includes(search.toLowerCase());
+      const matchesInstrument = filterInstrument === 'todos' ||
+        (s.instruments ?? []).some(i => i.toLowerCase() === filterInstrument.toLowerCase());
+      return matchesSearch && matchesInstrument;
+    });
+  }, [students, search, filterInstrument]);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteStudent(id);
+      toast.success('Aluno excluído!');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir aluno');
+    }
+  };
+
+  const handleEdit = (student: Student) => {
+    setEditingStudent(student);
+    setModalOpen(true);
+  };
+
+  const handleNew = () => {
+    setEditingStudent(null);
+    setModalOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-text2">
+        <SpinnerGap size={20} className="animate-spin" /> Carregando alunos...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-red-400">
+        <Warning size={20} /> Erro ao carregar alunos: {error}
+      </div>
+    );
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -20,128 +80,134 @@ export function Alunos() {
             Monitoramento de <em className="not-italic text-accent">Alunos</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            Acompanhe o progresso na jornada e envie materiais complementares
+            {students?.length ?? 0} alunos cadastrados
           </p>
         </div>
-        <Button onClick={() => openModal('modal-aluno')}>
+        <Button onClick={handleNew}>
           <Plus size={16} /> Novo Aluno
         </Button>
       </div>
 
       <div className="card mb-4">
         <div className="grid grid-cols-4 gap-4">
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 col-span-2">
             <Label>Buscar aluno</Label>
-            <Input placeholder="Nome do aluno" />
+            <Input
+              placeholder="Nome do aluno ou responsável"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Instrumento</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
+            <Select value={filterInstrument} onValueChange={setFilterInstrument}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="canto">Canto</SelectItem>
-                <SelectItem value="bateria">Bateria</SelectItem>
+                <SelectItem value="Violão">Violão</SelectItem>
+                <SelectItem value="Guitarra">Guitarra</SelectItem>
+                <SelectItem value="Teclado">Teclado</SelectItem>
+                <SelectItem value="Piano">Piano</SelectItem>
+                <SelectItem value="Canto">Canto</SelectItem>
+                <SelectItem value="Bateria">Bateria</SelectItem>
+                <SelectItem value="Baixo">Baixo</SelectItem>
+                <SelectItem value="Ukulele">Ukulele</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>Stage</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="foundation">Foundation</SelectItem><SelectItem value="grow">Grow</SelectItem>
-                <SelectItem value="advance">Advance</SelectItem><SelectItem value="master">Master</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="ritmo">No ritmo</SelectItem><SelectItem value="adiantado">Adiantado</SelectItem>
-                <SelectItem value="atrasado">Atrasado</SelectItem><SelectItem value="estagnado">Estagnado</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex items-end">
+            <Badge variant="secondary" className="mb-1">
+              {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+            </Badge>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 py-3.5 px-5 bg-dourado-soft border border-[rgba(245,158,11,0.2)] rounded-[var(--radius)] mb-4">
-        <span className="text-lg">⚠️</span>
-        <div className="flex-1">
-          <div className="font-bold text-dourado">2 alunos precisam de atenção</div>
-          <div className="text-sm text-text2">Ana Oliveira atrasada (3 aulas) · João Ferreira estagnado há 2 semanas</div>
-        </div>
-        <Button size="sm" className="bg-accent hover:bg-accent/90">
-          <PaperPlaneTilt size={16} /> Enviar Material
-        </Button>
+      <div className="card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome / Responsável</TableHead>
+              <TableHead>Telefone</TableHead>
+              <TableHead>Instrumentos</TableHead>
+              <TableHead>Matrícula</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-text3">
+                  {search || filterInstrument !== 'todos'
+                    ? 'Nenhum aluno encontrado com esses filtros.'
+                    : 'Nenhum aluno cadastrado. Clique em "Novo Aluno" para começar.'}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map(student => (
+                <TableRow key={student.id}>
+                  <TableCell className="font-bold">{student.responsible_name ?? '—'}</TableCell>
+                  <TableCell className="text-text2 text-sm">{student.responsible_phone ?? '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1 flex-wrap">
+                      {(student.instruments ?? []).map(inst => (
+                        <Badge key={inst} variant="foundation">{inst}</Badge>
+                      ))}
+                      {(!student.instruments || student.instruments.length === 0) && (
+                        <span className="text-text3 text-xs">—</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-text2">
+                    {student.enrollment_date
+                      ? new Date(student.enrollment_date + 'T00:00:00').toLocaleDateString('pt-BR')
+                      : '—'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex gap-1 justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>
+                        <PencilSimple size={16} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300">
+                            <Trash size={16} />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-surface border-border">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir aluno?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tem certeza que deseja excluir <strong>{student.responsible_name}</strong>?
+                              Esta ação não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-red-600 hover:bg-red-700"
+                              onClick={() => handleDelete(student.id)}
+                            >
+                              Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       </div>
 
-      <Tabs defaultValue="todos" className="mb-6">
-        <TabsList>
-          <TabsTrigger value="todos">Todos (8)</TabsTrigger>
-          <TabsTrigger value="ritmo">No ritmo</TabsTrigger>
-          <TabsTrigger value="adiantados">Adiantados</TabsTrigger>
-          <TabsTrigger value="atrasados">Atrasados</TabsTrigger>
-          <TabsTrigger value="estagnados">Estagnados</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="todos">
-          <div className="card">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Aluno</TableHead>
-                  <TableHead>Instrumento</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead>Estação</TableHead>
-                  <TableHead>Aula</TableHead>
-                  <TableHead>Progresso</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="font-bold">Lucas Silva</TableCell>
-                  <TableCell>Violão</TableCell>
-                  <TableCell><Badge variant="foundation">Foundation</Badge></TableCell>
-                  <TableCell>Est. 3</TableCell>
-                  <TableCell className="font-mono">22/44</TableCell>
-                  <TableCell><Progress value={50} className="w-20 h-1" /></TableCell>
-                  <TableCell><Badge variant="advance">No ritmo</Badge></TableCell>
-                  <TableCell><Button variant="ghost" size="sm"><DeviceMobile size={16} /></Button></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-bold text-dourado">Ana Oliveira ⚠️</TableCell>
-                  <TableCell>Teclado</TableCell>
-                  <TableCell><Badge variant="foundation">Foundation</Badge></TableCell>
-                  <TableCell>Est. 1</TableCell>
-                  <TableCell className="font-mono">8/44</TableCell>
-                  <TableCell><Progress value={18} className="w-20 h-1" /></TableCell>
-                  <TableCell><Badge variant="gold">Atrasada</Badge></TableCell>
-                  <TableCell><Button size="sm" className="bg-accent hover:bg-accent/90">Enviar</Button></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="ritmo">
-          <div className="card p-8 text-center text-text3">Filtro: alunos no ritmo</div>
-        </TabsContent>
-        <TabsContent value="adiantados">
-          <div className="card p-8 text-center text-text3">Filtro: alunos adiantados</div>
-        </TabsContent>
-        <TabsContent value="atrasados">
-          <div className="card p-8 text-center text-text3">Filtro: alunos atrasados</div>
-        </TabsContent>
-        <TabsContent value="estagnados">
-          <div className="card p-8 text-center text-text3">Filtro: alunos estagnados</div>
-        </TabsContent>
-      </Tabs>
+      <StudentModal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setEditingStudent(null); }}
+        onSuccess={refetch}
+        student={editingStudent}
+      />
     </div>
   );
 }

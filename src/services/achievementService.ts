@@ -15,6 +15,17 @@ export async function getAchievements() {
   return data
 }
 
+export async function createAchievement(achievement: TablesInsert<'achievements'>) {
+  const { data, error } = await supabase
+    .from('achievements')
+    .insert(achievement)
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return data
+}
+
 export async function getStudentAchievements(studentId: string) {
   const { data, error } = await supabase
     .from('student_achievements')

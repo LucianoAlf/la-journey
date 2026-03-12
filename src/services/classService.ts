@@ -49,6 +49,15 @@ export async function updateClass(id: string, updates: TablesUpdate<'classes'>) 
   return data
 }
 
+export async function deleteClass(id: string) {
+  const { error } = await supabase
+    .from('classes')
+    .delete()
+    .eq('id', id)
+
+  if (error) handleError(error)
+}
+
 export async function getClassStudents(classId: string) {
   const { data, error } = await supabase
     .from('class_students')

@@ -25,6 +25,29 @@ export async function getTopics(filters?: {
   return data
 }
 
+export async function createTopic(topic: TablesInsert<'content_topics'>) {
+  const { data, error } = await supabase
+    .from('content_topics')
+    .insert(topic)
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return data
+}
+
+export async function updateTopic(id: string, updates: TablesUpdate<'content_topics'>) {
+  const { data, error } = await supabase
+    .from('content_topics')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return data
+}
+
 export async function getTopicById(id: string) {
   const { data, error } = await supabase
     .from('content_topics')

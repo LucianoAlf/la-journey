@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAppContext } from '../AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   FloppyDisk, Sparkle, Article, TextAa, Image as ImageIcon, Guitar, 
   MusicNotesSimple, ListNumbers, Barbell, MusicNote, Lightbulb, Trophy, QrCode, Minus 
@@ -9,176 +12,112 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { createTopic } from '@/services/contentService';
+import { createChord } from '@/services/libraryService';
+import { createAchievement } from '@/services/achievementService';
+import { createTemplate } from '@/services/whatsappService';
 
 export function Modals() {
-  const { isModalOpen, closeModal, showToast } = useAppContext();
+  const { isModalOpen, closeModal } = useAppContext();
+  const { user } = useAuth();
+
+  // Conteúdo form state
+  const [topicForm, setTopicForm] = useState({ title: '', instrument: '', pillar: '', difficulty_level: '', estimated_minutes: '15' });
+  const [topicSaving, setTopicSaving] = useState(false);
+
+  const handleCreateTopic = async () => {
+    if (!topicForm.title.trim()) { toast.error('Informe o título'); return; }
+    const slug = topicForm.title.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+    setTopicSaving(true);
+    try {
+      await createTopic({
+        title: topicForm.title,
+        slug,
+        instrument: topicForm.instrument || 'universal',
+        pillar: (topicForm.pillar || null) as any,
+        difficulty_level: (topicForm.difficulty_level || 'foundation') as any,
+        estimated_minutes: parseInt(topicForm.estimated_minutes) || 15,
+      });
+      toast.success('Tópico de conteúdo criado!');
+      closeModal('modal-conteudo');
+      setTopicForm({ title: '', instrument: '', pillar: '', difficulty_level: '', estimated_minutes: '15' });
+    } catch (e: any) { toast.error(e?.message || 'Erro ao criar tópico'); }
+    finally { setTopicSaving(false); }
+  };
+
+  // Acorde form state
+  const [chordForm, setChordForm] = useState({ name: '', instrument: 'guitar', difficulty: '1', positions: '' });
+  const [chordSaving, setChordSaving] = useState(false);
+
+  const handleCreateChord = async () => {
+    if (!chordForm.name.trim()) { toast.error('Informe o nome do acorde'); return; }
+    setChordSaving(true);
+    try {
+      let positionsJson: any = [];
+      if (chordForm.positions.trim()) {
+        try { positionsJson = JSON.parse(chordForm.positions); } catch { /* ignora JSON inválido */ }
+      }
+      await createChord({
+        name: chordForm.name,
+        instrument: chordForm.instrument as any,
+        difficulty: parseInt(chordForm.difficulty) || 1,
+        positions: positionsJson,
+      });
+      toast.success('Acorde salvo na biblioteca!');
+      closeModal('modal-acorde');
+      setChordForm({ name: '', instrument: 'guitar', difficulty: '1', positions: '' });
+    } catch (e: any) { toast.error(e?.message || 'Erro ao criar acorde'); }
+    finally { setChordSaving(false); }
+  };
+
+  // Conquista form state
+  const [achievForm, setAchievForm] = useState({ name: '', description: '', type: 'milestone', points: '100', icon: 'Trophy' });
+  const [achievSaving, setAchievSaving] = useState(false);
+
+  const handleCreateAchievement = async () => {
+    if (!achievForm.name.trim()) { toast.error('Informe o nome'); return; }
+    setAchievSaving(true);
+    try {
+      await createAchievement({
+        name: achievForm.name,
+        description: achievForm.description || null,
+        type: achievForm.type as any,
+        points: parseInt(achievForm.points) || 0,
+        icon: achievForm.icon || 'Trophy',
+      });
+      toast.success('Conquista criada!');
+      closeModal('modal-conquista');
+      setAchievForm({ name: '', description: '', type: 'milestone', points: '100', icon: 'Trophy' });
+    } catch (e: any) { toast.error(e?.message || 'Erro ao criar conquista'); }
+    finally { setAchievSaving(false); }
+  };
+
+  // Template WhatsApp form state
+  const [tplForm, setTplForm] = useState({ name: '', trigger_type: 'manual', message_body: '' });
+  const [tplSaving, setTplSaving] = useState(false);
+
+  const handleCreateTemplate = async () => {
+    if (!tplForm.name.trim()) { toast.error('Informe o nome'); return; }
+    const schoolId = user?.user_metadata?.school_id;
+    if (!schoolId) { toast.error('Escola não identificada'); return; }
+    setTplSaving(true);
+    try {
+      await createTemplate({
+        school_id: schoolId,
+        name: tplForm.name,
+        trigger_type: tplForm.trigger_type as any,
+        message_body: tplForm.message_body || '',
+      });
+      toast.success('Template salvo!');
+      closeModal('modal-template');
+      setTplForm({ name: '', trigger_type: 'manual', message_body: '' });
+    } catch (e: any) { toast.error(e?.message || 'Erro ao criar template'); }
+    finally { setTplSaving(false); }
+  };
 
   return (
     <>
-      {/* Modal Jornada */}
-      <Dialog open={isModalOpen('modal-jornada')} onOpenChange={() => closeModal('modal-jornada')}>
-        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Jornada</span></DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="space-y-1.5">
-              <Label>Nome</Label>
-              <Input placeholder="Jornada Violão Adulto" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Instrumento</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                  <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="piano">Piano</SelectItem>
-                  <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
-                  <SelectItem value="baixo">Baixo</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Público-alvo</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="adult">Adulto</SelectItem><SelectItem value="teen">Teen</SelectItem>
-                  <SelectItem value="kids">Kids</SelectItem><SelectItem value="baby">Baby</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Aulas por Stage</Label>
-              <Select defaultValue="40"><SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="40">40</SelectItem><SelectItem value="30">30</SelectItem><SelectItem value="20">20</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="p-4 bg-azul-soft rounded-[var(--radius-sm)] mb-4">
-            <div className="text-[11px] text-text3 mb-2">⚓ METODOLOGIA</div>
-            <div className="text-[13px] text-text2">Ancoragem de Fundamentos — cada conteúdo vivenciado, fixado e celebrado antes de avançar.</div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-jornada')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-jornada'); showToast('✅ Jornada criada!'); }}>
-              <FloppyDisk size={16} /> Criar Jornada
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Aluno */}
-      <Dialog open={isModalOpen('modal-aluno')} onOpenChange={() => closeModal('modal-aluno')}>
-        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Aluno</span></DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="space-y-1.5">
-              <Label>Nome completo</Label>
-              <Input placeholder="Nome do aluno" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>WhatsApp</Label>
-              <Input placeholder="(21) 99999-0000" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Instrumento</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                  <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="canto">Canto</SelectItem>
-                  <SelectItem value="bateria">Bateria</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Turma</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="t1">Violão Adulto — Seg/Qua</SelectItem>
-                  <SelectItem value="t2">Guitarra Rock — Ter/Qui</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Responsável</Label>
-              <Input placeholder="Nome do responsável" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>WhatsApp responsável</Label>
-              <Input placeholder="(21) 99999-0000" />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-aluno')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-aluno'); showToast('✅ Aluno cadastrado!'); }}>
-              <FloppyDisk size={16} /> Cadastrar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Música */}
-      <Dialog open={isModalOpen('modal-musica')} onOpenChange={() => closeModal('modal-musica')}>
-        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Música</span></DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="space-y-1.5">
-              <Label>Título</Label>
-              <Input placeholder="Nome da música" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Artista</Label>
-              <Input placeholder="Nome do artista" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tonalidade</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="C">C</SelectItem><SelectItem value="D">D</SelectItem>
-                  <SelectItem value="E">E</SelectItem><SelectItem value="G">G</SelectItem>
-                  <SelectItem value="A">A</SelectItem><SelectItem value="Am">Am</SelectItem><SelectItem value="Em">Em</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Gênero</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="rock">Rock</SelectItem><SelectItem value="mpb">MPB</SelectItem>
-                  <SelectItem value="pop">Pop</SelectItem><SelectItem value="reggae">Reggae</SelectItem>
-                  <SelectItem value="sertanejo">Sertanejo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Dificuldade</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 - Iniciante</SelectItem><SelectItem value="2">2 - Fácil</SelectItem>
-                  <SelectItem value="3">3 - Médio</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Acordes</Label>
-              <Input placeholder="C, G, Am, F" />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-musica')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-musica'); showToast('✅ Música adicionada!'); }}>
-              <FloppyDisk size={16} /> Salvar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Conquista */}
+      {/* Modal Conquista — CRUD real */}
       <Dialog open={isModalOpen('modal-conquista')} onOpenChange={() => closeModal('modal-conquista')}>
         <DialogContent className="sm:max-w-[640px] bg-surface border-border">
           <DialogHeader>
@@ -187,15 +126,16 @@ export function Modals() {
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="space-y-1.5">
               <Label>Nome</Label>
-              <Input placeholder="Primeiro Acorde" />
+              <Input placeholder="Primeiro Acorde" value={achievForm.name} onChange={e => setAchievForm(p => ({ ...p, name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Descrição</Label>
-              <Input placeholder="Tocou o primeiro acorde" />
+              <Input placeholder="Tocou o primeiro acorde" value={achievForm.description} onChange={e => setAchievForm(p => ({ ...p, description: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Tipo</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={achievForm.type} onValueChange={v => setAchievForm(p => ({ ...p, type: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="milestone">Milestone</SelectItem><SelectItem value="challenge">Challenge</SelectItem>
                   <SelectItem value="streak">Streak</SelectItem><SelectItem value="special">Special</SelectItem>
@@ -204,19 +144,19 @@ export function Modals() {
             </div>
             <div className="space-y-1.5">
               <Label>Pontos</Label>
-              <Input placeholder="100" type="number" />
+              <Input type="number" value={achievForm.points} onChange={e => setAchievForm(p => ({ ...p, points: e.target.value }))} />
             </div>
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-conquista')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-conquista'); showToast('✅ Conquista criada!'); }}>
-              <FloppyDisk size={16} /> Criar
+            <Button variant="ghost" onClick={() => closeModal('modal-conquista')} disabled={achievSaving}>Cancelar</Button>
+            <Button onClick={handleCreateAchievement} disabled={achievSaving}>
+              <FloppyDisk size={16} /> {achievSaving ? 'Salvando...' : 'Criar'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Template */}
+      {/* Modal Template — CRUD real */}
       <Dialog open={isModalOpen('modal-template')} onOpenChange={() => closeModal('modal-template')}>
         <DialogContent className="sm:max-w-[640px] bg-surface border-border">
           <DialogHeader>
@@ -225,11 +165,12 @@ export function Modals() {
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="space-y-1.5">
               <Label>Nome</Label>
-              <Input placeholder="Falta consecutiva" />
+              <Input placeholder="Falta consecutiva" value={tplForm.name} onChange={e => setTplForm(p => ({ ...p, name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Trigger</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={tplForm.trigger_type} onValueChange={v => setTplForm(p => ({ ...p, trigger_type: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="manual">Manual</SelectItem><SelectItem value="absence">Falta detectada</SelectItem>
                   <SelectItem value="checkpoint">Checkpoint completo</SelectItem><SelectItem value="scheduled">Agendado</SelectItem>
@@ -239,87 +180,12 @@ export function Modals() {
           </div>
           <div className="space-y-1.5 mb-4">
             <Label>Mensagem</Label>
-            <Textarea placeholder="Oi {aluno}! Preparei um material pra você não ficar pra trás 🎸" />
+            <Textarea placeholder="Oi {aluno}! Preparei um material pra você não ficar pra trás 🎸" value={tplForm.message_body} onChange={e => setTplForm(p => ({ ...p, message_body: e.target.value }))} />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-template')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-template'); showToast('✅ Template salvo!'); }}>
-              <FloppyDisk size={16} /> Salvar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Turma */}
-      <Dialog open={isModalOpen('modal-turma')} onOpenChange={() => closeModal('modal-turma')}>
-        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Turma</span></DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="space-y-1.5">
-              <Label>Nome da turma</Label>
-              <Input placeholder="Violão Adulto — Seg/Qua 19h" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Instrumento / Disciplina</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                  <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="piano">Piano</SelectItem>
-                  <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
-                  <SelectItem value="baixo">Baixo</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
-                  <SelectItem value="musicalizacao-baby">Musicalização (Baby)</SelectItem>
-                  <SelectItem value="musicalizacao-kids">Musicalização (Kids)</SelectItem>
-                  <SelectItem value="iniciacao-heart">Iniciação (Heart)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Professor</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="renan">Renan</SelectItem><SelectItem value="kinho">Kinho</SelectItem>
-                  <SelectItem value="peterson">Peterson</SelectItem><SelectItem value="jeyson">Jeyson</SelectItem>
-                  <SelectItem value="juliana">Juliana</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Jornada vinculada</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="violao-adulto">Violão Adulto Padrão</SelectItem>
-                  <SelectItem value="guitarra-rock">Guitarra Rock</SelectItem>
-                  <SelectItem value="canto-popular">Canto Popular</SelectItem>
-                  <SelectItem value="teclado-ini">Teclado Iniciante</SelectItem>
-                  <SelectItem value="baby-class">Baby Class</SelectItem>
-                  <SelectItem value="kids">Kids</SelectItem><SelectItem value="heart">Heart</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Horário</Label>
-              <Input placeholder="Seg/Qua 19:00" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Max. alunos</Label>
-              <Input placeholder="10" type="number" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Unidade</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="campo-grande">Campo Grande</SelectItem>
-                  <SelectItem value="recreio">Recreio</SelectItem><SelectItem value="barra">Barra</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-turma')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-turma'); showToast('✅ Turma criada!'); }}>
-              <FloppyDisk size={16} /> Criar Turma
+            <Button variant="ghost" onClick={() => closeModal('modal-template')} disabled={tplSaving}>Cancelar</Button>
+            <Button onClick={handleCreateTemplate} disabled={tplSaving}>
+              <FloppyDisk size={16} /> {tplSaving ? 'Salvando...' : 'Salvar'}
             </Button>
           </div>
         </DialogContent>
@@ -363,38 +229,40 @@ export function Modals() {
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => closeModal('modal-imagem')}>Cancelar</Button>
-            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-imagem'); showToast('✨ Imagem sendo gerada via Gemini API...'); }}>
+            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-imagem'); toast.info('Imagem sendo gerada via Gemini API...'); }}>
               <Sparkle size={16} /> Gerar com Gemini
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Conteúdo */}
+      {/* Modal Conteúdo — CRUD real */}
       <Dialog open={isModalOpen('modal-conteudo')} onOpenChange={() => closeModal('modal-conteudo')}>
         <DialogContent className="sm:max-w-[640px] bg-surface border-border">
           <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Bloco de Conteúdo</span></DialogTitle>
+            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Tópico de Conteúdo</span></DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="space-y-1.5">
               <Label>Título</Label>
-              <Input placeholder="Ex: Escala Pentatônica Menor" />
+              <Input placeholder="Ex: Escala Pentatônica Menor" value={topicForm.title} onChange={e => setTopicForm(p => ({ ...p, title: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Instrumento</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={topicForm.instrument} onValueChange={v => setTopicForm(p => ({ ...p, instrument: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="universal">Universal (Teoria)</SelectItem><SelectItem value="violao">Violão</SelectItem>
-                  <SelectItem value="guitarra">Guitarra</SelectItem><SelectItem value="teclado">Teclado</SelectItem>
-                  <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
-                  <SelectItem value="baixo">Baixo</SelectItem>
+                  <SelectItem value="universal">Universal (Teoria)</SelectItem><SelectItem value="Violão">Violão</SelectItem>
+                  <SelectItem value="Guitarra">Guitarra</SelectItem><SelectItem value="Teclado">Teclado</SelectItem>
+                  <SelectItem value="Canto">Canto</SelectItem><SelectItem value="Bateria">Bateria</SelectItem>
+                  <SelectItem value="Baixo">Baixo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Pilar</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={topicForm.pillar} onValueChange={v => setTopicForm(p => ({ ...p, pillar: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="theoretical_foundations">Fundamentos Teóricos</SelectItem>
                   <SelectItem value="instrument_practice">Prática do Instrumento</SelectItem>
@@ -407,7 +275,8 @@ export function Modals() {
             </div>
             <div className="space-y-1.5">
               <Label>Nível</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={topicForm.difficulty_level} onValueChange={v => setTopicForm(p => ({ ...p, difficulty_level: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="foundation">Foundation</SelectItem><SelectItem value="grow">Grow</SelectItem>
                   <SelectItem value="advance">Advance</SelectItem><SelectItem value="master">Master</SelectItem>
@@ -415,41 +284,20 @@ export function Modals() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Tipo de bloco</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text">Texto explicativo</SelectItem><SelectItem value="exercise">Exercício</SelectItem>
-                  <SelectItem value="chord_diagram">Diagrama de acorde (SVGuitar)</SelectItem>
-                  <SelectItem value="notation">Notação (VexFlow)</SelectItem>
-                  <SelectItem value="tablature">Tablatura (VexTab)</SelectItem>
-                  <SelectItem value="scale_diagram">Diagrama de escala</SelectItem>
-                  <SelectItem value="image">Imagem (IA)</SelectItem><SelectItem value="tip">Dica / Exemplo</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Tempo estimado (min)</Label>
+              <Input type="number" value={topicForm.estimated_minutes} onChange={e => setTopicForm(p => ({ ...p, estimated_minutes: e.target.value }))} />
             </div>
-            <div className="space-y-1.5">
-              <Label>Tempo estimado</Label>
-              <Input placeholder="15 min" />
-            </div>
-          </div>
-          <div className="space-y-1.5 mb-4">
-            <Label>Conteúdo</Label>
-            <Textarea placeholder="Conteúdo do bloco (texto, dados para renderização, etc.)" />
-          </div>
-          <div className="space-y-1.5 mb-4">
-            <Label>Tags</Label>
-            <Input placeholder="escala, pentatônica, guitarra, improvisação" />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-conteudo')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-conteudo'); showToast('✅ Bloco salvo como rascunho! Aguardando curadoria N4.'); }}>
-              <FloppyDisk size={16} /> Salvar rascunho
+            <Button variant="ghost" onClick={() => closeModal('modal-conteudo')} disabled={topicSaving}>Cancelar</Button>
+            <Button onClick={handleCreateTopic} disabled={topicSaving}>
+              <FloppyDisk size={16} /> {topicSaving ? 'Salvando...' : 'Criar Tópico'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Acorde */}
+      {/* Modal Acorde — CRUD real */}
       <Dialog open={isModalOpen('modal-acorde')} onOpenChange={() => closeModal('modal-acorde')}>
         <DialogContent className="sm:max-w-[640px] bg-surface border-border">
           <DialogHeader>
@@ -458,29 +306,21 @@ export function Modals() {
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="space-y-1.5">
               <Label>Nome do acorde</Label>
-              <Input placeholder="Ex: Am7, F#m, Bb" />
+              <Input placeholder="Ex: Am7, F#m, Bb" value={chordForm.name} onChange={e => setChordForm(p => ({ ...p, name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Instrumento</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={chordForm.instrument} onValueChange={v => setChordForm(p => ({ ...p, instrument: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="guitar">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                  <SelectItem value="ukulele">Ukulele</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tipo</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="aberto">Aberto</SelectItem><SelectItem value="pestana">Pestana</SelectItem>
-                  <SelectItem value="jazz">Jazz</SelectItem>
+                  <SelectItem value="guitar">Violão</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Dificuldade</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={chordForm.difficulty} onValueChange={v => setChordForm(p => ({ ...p, difficulty: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">1</SelectItem><SelectItem value="2">2</SelectItem>
                   <SelectItem value="3">3</SelectItem><SelectItem value="4">4</SelectItem><SelectItem value="5">5</SelectItem>
@@ -489,13 +329,13 @@ export function Modals() {
             </div>
           </div>
           <div className="space-y-1.5 mb-4">
-            <Label>Posição (JSON SVGuitar)</Label>
-            <Textarea className="font-mono text-xs min-h-[80px]" placeholder='{"fingers": [[1,2],[2,3,1],[3,2,2]], "barres": []}' />
+            <Label>Posições (JSON SVGuitar)</Label>
+            <Textarea className="font-mono text-xs min-h-[80px]" placeholder='{"fingers": [[1,2],[2,3,1],[3,2,2]], "barres": []}' value={chordForm.positions} onChange={e => setChordForm(p => ({ ...p, positions: e.target.value }))} />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-acorde')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-acorde'); showToast('✅ Acorde salvo na biblioteca!'); }}>
-              <FloppyDisk size={16} /> Salvar
+            <Button variant="ghost" onClick={() => closeModal('modal-acorde')} disabled={chordSaving}>Cancelar</Button>
+            <Button onClick={handleCreateChord} disabled={chordSaving}>
+              <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : 'Salvar'}
             </Button>
           </div>
         </DialogContent>
@@ -527,7 +367,7 @@ export function Modals() {
                 <div
                   key={block.label}
                   className="p-3.5 border border-border rounded-[var(--radius-sm)] cursor-pointer transition-all hover:bg-azul-soft hover:border-azul-claro/20"
-                  onClick={() => { closeModal('modal-add-block'); showToast(block.msg); }}
+                  onClick={() => { closeModal('modal-add-block'); toast.success(block.msg); }}
                 >
                   <div className="flex items-center gap-2.5">
                     <div className={`w-8 h-8 rounded-lg ${block.bg} ${block.color} flex items-center justify-center`}>
@@ -581,7 +421,7 @@ export function Modals() {
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => closeModal('modal-trocar-imagem')}>Cancelar</Button>
-            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-trocar-imagem'); showToast('✨ Imagem gerada e substituída!'); }}>
+            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-trocar-imagem'); toast.success('Imagem gerada e substituída!'); }}>
               <Sparkle size={16} /> Gerar com Gemini
             </Button>
           </div>
@@ -625,7 +465,7 @@ export function Modals() {
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => closeModal('modal-trocar-acorde')}>Cancelar</Button>
-            <Button onClick={() => { closeModal('modal-trocar-acorde'); showToast('✅ Acorde atualizado!'); }}>
+            <Button onClick={() => { closeModal('modal-trocar-acorde'); toast.success('Acorde atualizado!'); }}>
               <FloppyDisk size={16} /> Aplicar
             </Button>
           </div>

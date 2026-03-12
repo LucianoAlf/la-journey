@@ -1,12 +1,78 @@
-import { Copy, Plus, FloppyDisk } from "@phosphor-icons/react";
-import { useAppContext } from "../AppContext";
+import { useState } from "react";
+import { Plus, PencilSimple, Trash, SpinnerGap, Warning } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
+import { useJourneys } from "@/hooks/useJourneys";
+import { useStages } from "@/hooks/useJourneys";
+import { deleteJourney } from "@/services/journeyService";
+import { JourneyModal } from "@/components/modals/JourneyModal";
+import type { Tables } from "@/lib/database.types";
+
+type Journey = Tables<'journeys'>
+
+const STAGE_STYLES: Record<string, { gradient: string; emoji: string; desc: string }> = {
+  Foundation: { gradient: 'from-[#4F46E5] to-foundation', emoji: '🧱', desc: 'Base Técnica' },
+  Grow: { gradient: 'from-[#EA580C] to-grow', emoji: '📈', desc: 'Desenvolvimento' },
+  Advance: { gradient: 'from-[#16A34A] to-advance', emoji: '✅', desc: 'Fluidez e Expressão' },
+  Master: { gradient: 'from-[#DB2777] to-master', emoji: '🏆', desc: 'Identidade' },
+}
+
+const audienceLabel: Record<string, string> = {
+  adult: 'Adulto', teen: 'Teen', kids: 'Kids', baby: 'Baby',
+}
 
 export function Jornadas() {
-  const { openModal } = useAppContext();
+  const { data: journeys, loading, error, refetch } = useJourneys();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingJourney, setEditingJourney] = useState<Journey | null>(null);
+  const [selectedJourneyId, setSelectedJourneyId] = useState<string>('');
+
+  const selectedJourney = (journeys ?? []).find(j => j.id === selectedJourneyId) ?? (journeys ?? [])[0] ?? null;
+  const { data: stages } = useStages(selectedJourney?.id);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteJourney(id);
+      toast.success('Jornada excluída!');
+      if (selectedJourneyId === id) setSelectedJourneyId('');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir jornada');
+    }
+  };
+
+  const handleEdit = (j: Journey) => {
+    setEditingJourney(j);
+    setModalOpen(true);
+  };
+
+  const handleNew = () => {
+    setEditingJourney(null);
+    setModalOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-text2">
+        <SpinnerGap size={20} className="animate-spin" /> Carregando jornadas...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-red-400">
+        <Warning size={20} /> Erro ao carregar jornadas: {error}
+      </div>
+    );
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -16,243 +82,128 @@ export function Jornadas() {
             Construtor de <em className="not-italic text-accent">Jornada</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            Configure a trilha pedagógica da sua escola · Ancoragem de Fundamentos
+            {journeys?.length ?? 0} jornadas cadastradas · Ancoragem de Fundamentos
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm">
-            <Copy size={16} /> Duplicar
-          </Button>
-          <Button onClick={() => openModal('modal-jornada')}>
-            <Plus size={16} /> Nova Jornada
-          </Button>
-        </div>
+        <Button onClick={handleNew}>
+          <Plus size={16} /> Nova Jornada
+        </Button>
       </div>
 
-      <div className="card mb-4">
-        <div className="grid grid-cols-4 gap-4">
-          <div className="space-y-1.5">
-            <Label>Instrumento</Label>
-            <Select defaultValue="violao"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="piano">Piano</SelectItem>
-                <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
-                <SelectItem value="baixo">Baixo</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Público-alvo</Label>
-            <Select defaultValue="adult"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="adult">Adulto</SelectItem><SelectItem value="teen">Teen (12-17)</SelectItem>
-                <SelectItem value="kids">Kids (5-11)</SelectItem><SelectItem value="baby">Baby (0-5)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Aulas por Stage</Label>
-            <Select defaultValue="40"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="40">40 aulas</SelectItem><SelectItem value="30">30 aulas</SelectItem>
-                <SelectItem value="20">20 aulas</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Template</Label>
-            <Select defaultValue="violao-adulto"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="violao-adulto">Violão Adulto Padrão</SelectItem>
-                <SelectItem value="guitarra-rock">Guitarra Rock</SelectItem>
-                <SelectItem value="canto-popular">Canto Popular</SelectItem>
-                <SelectItem value="novo">Novo</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Seletor de jornada */}
+      {(journeys ?? []).length > 0 && (
+        <div className="card mb-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <Label>Jornada</Label>
+              <Select
+                value={selectedJourney?.id ?? ''}
+                onValueChange={val => setSelectedJourneyId(val)}
+              >
+                <SelectTrigger><SelectValue placeholder="Selecione uma jornada" /></SelectTrigger>
+                <SelectContent>
+                  {(journeys ?? []).map(j => (
+                    <SelectItem key={j.id} value={j.id}>
+                      {j.name} — {j.instrument}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedJourney && (
+              <>
+                <div className="flex items-end gap-2">
+                  <Badge variant="foundation">{selectedJourney.instrument}</Badge>
+                  {selectedJourney.target_audience && (
+                    <Badge variant="secondary">{audienceLabel[selectedJourney.target_audience] ?? selectedJourney.target_audience}</Badge>
+                  )}
+                  {selectedJourney.status && (
+                    <Badge variant={selectedJourney.status === 'active' ? 'advance' : 'secondary'}>
+                      {selectedJourney.status === 'active' ? 'Ativa' : selectedJourney.status}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-end gap-1 justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => handleEdit(selectedJourney)}>
+                    <PencilSimple size={16} /> Editar
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300">
+                        <Trash size={16} /> Excluir
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-surface border-border">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir jornada?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tem certeza que deseja excluir <strong>{selectedJourney.name}</strong>?
+                          Todos os stages serão removidos. Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={() => handleDelete(selectedJourney.id)}
+                        >
+                          Excluir
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-4 gap-3 mb-6">
-        <div className="rounded-[var(--radius)] p-5 text-center text-white relative overflow-hidden cursor-pointer transition-all border-2 border-[rgba(255,255,255,0.4)] bg-gradient-to-br from-[#4F46E5] to-foundation hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)]">
-          <div className="text-2xl mb-1.5">🧱</div>
-          <div className="font-bold">Foundation</div>
-          <div className="text-[11px] opacity-70">40 aulas · Base Técnica</div>
+      {/* Stages cards */}
+      {selectedJourney && (stages ?? []).length > 0 && (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {(stages ?? []).map(stage => {
+            const style = STAGE_STYLES[stage.name] ?? { gradient: 'from-gray-600 to-gray-500', emoji: '📚', desc: '' };
+            return (
+              <div
+                key={stage.id}
+                className={`rounded-[var(--radius)] p-5 text-center text-white relative overflow-hidden cursor-pointer transition-all border-2 border-transparent bg-gradient-to-br ${style.gradient} hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)]`}
+              >
+                <div className="text-2xl mb-1.5">{style.emoji}</div>
+                <div className="font-bold">{stage.name}</div>
+                <div className="text-[11px] opacity-70">{stage.total_lessons ?? 40} aulas · {style.desc}</div>
+              </div>
+            );
+          })}
         </div>
-        <div className="rounded-[var(--radius)] p-5 text-center text-white relative overflow-hidden cursor-pointer transition-all border-2 border-transparent bg-gradient-to-br from-[#EA580C] to-grow hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)]">
-          <div className="text-2xl mb-1.5">📈</div>
-          <div className="font-bold">Grow</div>
-          <div className="text-[11px] opacity-70">40 aulas · Desenvolvimento</div>
-        </div>
-        <div className="rounded-[var(--radius)] p-5 text-center text-white relative overflow-hidden cursor-pointer transition-all border-2 border-transparent bg-gradient-to-br from-[#16A34A] to-advance hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)]">
-          <div className="text-2xl mb-1.5">✅</div>
-          <div className="font-bold">Advance</div>
-          <div className="text-[11px] opacity-70">40 aulas · Fluidez e Expressão</div>
-        </div>
-        <div className="rounded-[var(--radius)] p-5 text-center text-white relative overflow-hidden cursor-pointer transition-all border-2 border-transparent bg-gradient-to-br from-[#DB2777] to-master hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)]">
-          <div className="text-2xl mb-1.5">🏆</div>
-          <div className="font-bold">Master</div>
-          <div className="text-[11px] opacity-70">40 aulas · Identidade</div>
-        </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-[280px_1fr] gap-5">
-        <div className="card p-4">
-          <div className="form-label mb-3 text-accent">Estações — Foundation</div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[rgba(255,45,120,0.25)] bg-accent-soft cursor-pointer transition-all">
-              <div className="w-7 h-7 rounded-md bg-accent-soft flex items-center justify-center text-xs text-accent font-bold shrink-0">1</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">Fundamentos 1</div>
-                <div className="text-[11px] text-text3">Aulas 1-10 · 10 aulas</div>
-              </div>
-              <Badge variant="accent" className="text-[9px] px-1.5 py-0.5">START</Badge>
-            </div>
-            
-            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
-              <div className="w-7 h-7 rounded-md bg-azul-soft flex items-center justify-center text-xs text-azul-claro font-bold shrink-0">2</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">Fundamentos 2</div>
-                <div className="text-[11px] text-text3">Aulas 11-20 · 10 aulas</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
-              <div className="w-7 h-7 rounded-md bg-foundation-soft flex items-center justify-center text-xs text-foundation font-bold shrink-0">3</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">Revisão 1+2</div>
-                <div className="text-[11px] text-text3">Aulas 21-22 · 2 aulas</div>
-              </div>
-              <Badge variant="foundation" className="text-[9px] px-1.5 py-0.5">CORE</Badge>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
-              <div className="w-7 h-7 rounded-md bg-azul-soft flex items-center justify-center text-xs text-azul-claro font-bold shrink-0">4</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">Desenvolvimento 1</div>
-                <div className="text-[11px] text-text3">Aulas 23-32 · 10 aulas</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
-              <div className="w-7 h-7 rounded-md bg-azul-soft flex items-center justify-center text-xs text-azul-claro font-bold shrink-0">5</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">Desenvolvimento 2</div>
-                <div className="text-[11px] text-text3">Aulas 33-42 · 10 aulas</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
-              <div className="w-7 h-7 rounded-md bg-verde-soft flex items-center justify-center text-xs text-verde font-bold shrink-0">6</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">Consolidação</div>
-                <div className="text-[11px] text-text3">Aulas 43-44 · 2 aulas</div>
-              </div>
-              <Badge variant="advance" className="text-[9px] px-1.5 py-0.5">CHECK</Badge>
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" className="w-full mt-3 justify-center">
-            <Plus size={16} /> Adicionar Estação
+      {/* Estado vazio */}
+      {(journeys ?? []).length === 0 && (
+        <div className="card p-12 text-center">
+          <div className="text-4xl mb-3">🗺️</div>
+          <div className="font-serif text-xl mb-2">Nenhuma jornada criada</div>
+          <div className="text-text2 text-sm mb-4">Crie sua primeira jornada pedagógica com 4 stages automáticos.</div>
+          <Button onClick={handleNew}>
+            <Plus size={16} /> Criar Primeira Jornada
           </Button>
         </div>
+      )}
 
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="form-label text-accent mb-1">Estação 1</div>
-              <div className="font-serif text-[20px]">Fundamentos 1</div>
-              <div className="text-[11px] text-text3 mt-2">Selecione e reordene os tópicos por dimensão</div>
-            </div>
-            <Button size="sm">
-              <FloppyDisk size={16} /> Salvar
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-5">
-            <div className="rounded-[var(--radius-sm)] border border-border p-4 bg-bg">
-              <div className="font-bold text-[13px] mb-3 text-[#818CF8]">📖 Teoria e Conceitos</div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Anatomia do instrumento</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Postura (indicação dedos, posição mãos)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Propriedades do som (Altura, Intensidade, Timbre, Duração)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Leitura — Tablatura</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-text3 flex items-center justify-center text-[9px] shrink-0 cursor-pointer"></div>
-                <span className="text-text3">Tom e semitom</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-            </div>
-
-            <div className="rounded-[var(--radius-sm)] border border-border p-4 bg-bg">
-              <div className="font-bold text-[13px] mb-3 text-grow">🎯 Técnica</div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Exercícios Psicomotor 1234 e variações</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Acordes G, C, E (1 dedo) · A (2 dedos) · D (3 dedos)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Coordenação na troca dos acordes</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-            </div>
-
-            <div className="rounded-[var(--radius-sm)] border border-border p-4 bg-bg">
-              <div className="font-bold text-[13px] mb-3 text-advance">🥁 Ritmo</div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Pulso e Andamento (metrônomo)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Exercícios Rítmicos motores</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Percepção Rítmica (auditiva → prática)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-            </div>
-
-            <div className="rounded-[var(--radius-sm)] border border-border p-4 bg-bg">
-              <div className="font-bold text-[13px] mb-3 text-master">🎵 Repertório</div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Músicas 1-2 dedos (W Brasil, Twist and Shout, Golden)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-border mb-1 bg-card text-xs text-text2">
-                <div className="w-4 h-4 rounded-[3px] border-2 border-verde bg-verde text-white flex items-center justify-center text-[9px] shrink-0 cursor-pointer">✓</div>
-                <span>Músicas 2-3 dedos (Love Me Do, Trem Bala, Viva La Vida)</span>
-                <span className="ml-auto cursor-grab text-text3">⠿</span>
-              </div>
-            </div>
-          </div>
+      {/* Placeholder para construtor de estações (futuro) */}
+      {selectedJourney && (
+        <div className="card p-8 text-center text-text3">
+          <div className="text-lg mb-2">🚧 Construtor de Estações</div>
+          <div className="text-sm">A edição de estações e tópicos por dimensão será conectada na próxima fase.</div>
         </div>
-      </div>
+      )}
+
+      <JourneyModal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setEditingJourney(null); }}
+        onSuccess={refetch}
+        journey={editingJourney}
+      />
     </div>
   );
 }

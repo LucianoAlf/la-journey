@@ -1,15 +1,78 @@
-import { FloppyDisk, Plus } from "@phosphor-icons/react";
-import { useAppContext } from "../AppContext";
+import { useState, useEffect } from "react";
+import { FloppyDisk, SpinnerGap, Warning } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { cn } from "../utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { useSchool } from "@/hooks/useSchool";
+import { useUsers } from "@/hooks/useUsers";
+import { updateSchool } from "@/services/schoolService";
+
+const ROLE_COLORS: Record<string, string> = {
+  owner: 'bg-gradient-to-br from-azul-escuro to-azul-claro',
+  coordinator: 'bg-foundation',
+  teacher: 'bg-grow',
+  staff: 'bg-advance',
+}
 
 export function Configuracoes() {
-  const { showToast } = useAppContext();
+  const { data: school, loading, error, refetch } = useSchool();
+  const { data: users } = useUsers();
+  const [form, setForm] = useState({ name: '', cnpj: '', city: '', state: '', primary_color: '', secondary_color: '' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (school) {
+      setForm({
+        name: school.name ?? '',
+        cnpj: school.cnpj ?? '',
+        city: school.city ?? '',
+        state: school.state ?? '',
+        primary_color: school.primary_color ?? '#1E3A5F',
+        secondary_color: school.secondary_color ?? '#FF2D78',
+      });
+    }
+  }, [school]);
+
+  const handleSave = async () => {
+    if (!school) return;
+    setSaving(true);
+    try {
+      await updateSchool(school.id, {
+        name: form.name,
+        cnpj: form.cnpj || null,
+        city: form.city || null,
+        state: form.state || null,
+        primary_color: form.primary_color || null,
+        secondary_color: form.secondary_color || null,
+      });
+      toast.success('Configurações salvas!');
+      refetch();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao salvar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-text2">
+        <SpinnerGap size={20} className="animate-spin" /> Carregando configurações...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-red-400">
+        <Warning size={20} /> Erro ao carregar: {error}
+      </div>
+    );
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -37,32 +100,24 @@ export function Configuracoes() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Nome da escola</Label>
-                <Input defaultValue="LA Music School" />
+                <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>CNPJ</Label>
-                <Input defaultValue="00.000.000/0001-00" />
+                <Input value={form.cnpj} onChange={e => setForm(p => ({ ...p, cnpj: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>Cidade</Label>
-                <Input defaultValue="Rio de Janeiro" />
+                <Input value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>Estado</Label>
-                <Input defaultValue="RJ" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>WhatsApp</Label>
-                <Input defaultValue="(21) 99999-0000" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>E-mail</Label>
-                <Input defaultValue="contato@lamusic.com.br" />
+                <Input value={form.state} onChange={e => setForm(p => ({ ...p, state: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end mt-4">
-              <Button onClick={() => showToast('Configurações salvas!')}>
-                <FloppyDisk size={16} /> Salvar
+              <Button onClick={handleSave} disabled={saving}>
+                <FloppyDisk size={16} /> {saving ? 'Salvando...' : 'Salvar'}
               </Button>
             </div>
           </div>
@@ -71,30 +126,28 @@ export function Configuracoes() {
         <TabsContent value="usuarios">
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <div className="font-serif text-[17px]">Equipe</div>
-              <Button size="sm">
-                <Plus size={16} /> Novo Usuário
-              </Button>
+              <div className="font-serif text-[17px]">Equipe ({(users ?? []).length} membros)</div>
             </div>
             <div className="flex flex-col gap-2">
-              {[
-                { name: 'Luciano Alf', role: 'Diretor (Owner)', email: 'alf@lamusic.com.br', initials: 'LA', color: 'bg-gradient-to-br from-azul-escuro to-azul-claro' },
-                { name: 'Renan Amorim', role: 'Coordenador (N4)', email: 'renan@lamusic.com.br', initials: 'R', color: 'bg-foundation' },
-                { name: 'Kinho', role: 'Professor (N4)', email: 'kinho@lamusic.com.br', initials: 'K', color: 'bg-grow' },
-                { name: 'Peterson', role: 'Professor (N4)', email: 'peterson@lamusic.com.br', initials: 'P', color: 'bg-advance' },
-                { name: 'Juliana Quintella', role: 'Coordenadora (N4)', email: 'juliana@lamusic.com.br', initials: 'J', color: 'bg-master' },
-              ].map((user, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 border border-border rounded-[var(--radius-sm)]">
-                  <div className={cn("w-[30px] h-[30px] rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0", user.color)}>
-                    {user.initials}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-[13px]">{user.name}</div>
-                    <div className="text-[11px] text-text3">{user.role} · {user.email}</div>
-                  </div>
-                  <div className="w-2 h-2 rounded-full bg-verde" />
-                </div>
-              ))}
+              {(users ?? []).length === 0 ? (
+                <div className="text-center py-6 text-text3">Nenhum usuário encontrado.</div>
+              ) : (
+                (users ?? []).map(u => {
+                  const initials = (u.name ?? '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+                  return (
+                    <div key={u.id} className="flex items-center gap-3 p-3 border border-border rounded-[var(--radius-sm)]">
+                      <div className={cn("w-[30px] h-[30px] rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0", ROLE_COLORS[u.role] ?? 'bg-azul-escuro')}>
+                        {initials}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-bold text-[13px]">{u.name}</div>
+                        <div className="text-[11px] text-text3">{u.role} · {u.email}</div>
+                      </div>
+                      <div className="w-2 h-2 rounded-full bg-verde" />
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </TabsContent>
@@ -104,36 +157,16 @@ export function Configuracoes() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Cor primária (hex)</Label>
-                <Input defaultValue="#1E3A5F" />
+                <Input value={form.primary_color} onChange={e => setForm(p => ({ ...p, primary_color: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>Cor secundária (hex)</Label>
-                <Input defaultValue="#FF2D78" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Template de capa</Label>
-                <Select defaultValue="padrao"><SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="padrao">Padrão LA Journey</SelectItem>
-                    <SelectItem value="minimalista">Minimalista</SelectItem>
-                    <SelectItem value="moderno">Moderno</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Tipografia</Label>
-                <Select defaultValue="playfair"><SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="playfair">Playfair Display + DM Sans</SelectItem>
-                    <SelectItem value="inter">Inter</SelectItem>
-                    <SelectItem value="poppins">Poppins</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input value={form.secondary_color} onChange={e => setForm(p => ({ ...p, secondary_color: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end mt-4">
-              <Button onClick={() => showToast('Configurações salvas!')}>
-                <FloppyDisk size={16} /> Salvar
+              <Button onClick={handleSave} disabled={saving}>
+                <FloppyDisk size={16} /> {saving ? 'Salvando...' : 'Salvar'}
               </Button>
             </div>
           </div>
@@ -143,7 +176,7 @@ export function Configuracoes() {
           <div className="grid grid-cols-2 gap-5">
             <div className="card">
               <Label>Plano atual</Label>
-              <div className="font-serif text-[28px] mt-2">Premium</div>
+              <div className="font-serif text-[28px] mt-2 capitalize">{school?.plan ?? 'Premium'}</div>
               <div className="text-[32px] font-bold text-accent my-2">
                 R$ 147<span className="text-sm font-normal text-text3">/mês</span>
               </div>
@@ -165,15 +198,9 @@ export function Configuracoes() {
               </div>
               <div className="mt-4">
                 <div className="flex justify-between text-[13px] mb-2">
-                  <span>Alunos ativos</span><span>1.297</span>
+                  <span>Alunos ativos</span><span>{(users ?? []).length}</span>
                 </div>
-                <Progress value={65} className="h-1" />
-              </div>
-              <div className="mt-4">
-                <div className="flex justify-between text-[13px] mb-2">
-                  <span>Mensagens WhatsApp</span><span>234 / 500</span>
-                </div>
-                <Progress value={47} className="h-1" />
+                <Progress value={Math.min(100, (users ?? []).length * 10)} className="h-1" />
               </div>
             </div>
           </div>

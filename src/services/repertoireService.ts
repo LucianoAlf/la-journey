@@ -43,3 +43,12 @@ export async function updateSong(id: string, updates: TablesUpdate<'repertoire'>
   if (error) handleError(error)
   return data
 }
+
+export async function deleteSong(id: string) {
+  const { error } = await supabase
+    .from('repertoire')
+    .delete()
+    .eq('id', id)
+
+  if (error) handleError(error)
+}
