@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  /* LA Journey custom colors */
   --color-azul-escuro: var(--azul-escuro);
   --color-azul: var(--azul);
   --color-azul-claro: var(--azul-claro);
@@ -37,9 +38,31 @@
   --color-dourado-soft: var(--dourado-soft);
   --color-input-bg: var(--input-bg);
 
+  /* shadcn/ui semantic tokens */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-primary: var(--azul-escuro);
+  --color-primary-foreground: #F1F5F9;
+  --color-secondary: var(--surface);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--bg2);
+  --color-muted-foreground: var(--text3);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-card-shadcn: var(--card);
+  --color-card-foreground: var(--text);
+  --color-destructive: var(--vermelho);
+  --color-input: var(--border);
+  --color-ring: var(--azul-claro);
+  --color-accent-foreground: #FFF;
+
   --font-sans: 'DM Sans', sans-serif;
   --font-serif: 'Playfair Display', serif;
   --font-mono: 'DM Mono', monospace;
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: 8px;
 }
 
 @layer base {

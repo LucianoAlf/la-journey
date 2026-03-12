@@ -1,5 +1,10 @@
 import { Sparkle, FilePdf, WhatsappLogo, Eye, Printer, DownloadSimple, Hourglass } from "@phosphor-icons/react";
 import { useAppContext } from "../AppContext";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function Gerador() {
   const { showToast } = useAppContext();
@@ -15,45 +20,51 @@ export function Gerador() {
             Gere apostilas profissionais com a identidade da sua escola
           </p>
         </div>
-        <button className="btn btn-accent" onClick={() => showToast('Iniciando geração de material...')}>
+        <Button className="bg-accent hover:bg-accent/90" onClick={() => showToast('Iniciando geração de material...')}>
           <Sparkle size={16} /> Gerar Material
-        </button>
+        </Button>
       </div>
 
       <div className="card mb-4">
         <div className="grid grid-cols-4 gap-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Jornada</label>
-            <select className="form-select">
-              <option>Violão Adulto</option>
-              <option>Guitarra Rock</option>
-              <option>Canto Popular</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Jornada</Label>
+            <Select defaultValue="violao-adulto"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="violao-adulto">Violão Adulto</SelectItem>
+                <SelectItem value="guitarra-rock">Guitarra Rock</SelectItem>
+                <SelectItem value="canto-popular">Canto Popular</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Stage</label>
-            <select className="form-select">
-              <option>Foundation</option>
-              <option>Grow</option>
-              <option>Advance</option>
-              <option>Master</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Stage</Label>
+            <Select defaultValue="foundation"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="foundation">Foundation</SelectItem><SelectItem value="grow">Grow</SelectItem>
+                <SelectItem value="advance">Advance</SelectItem><SelectItem value="master">Master</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Estação</label>
-            <select className="form-select">
-              <option>Fundamentos 1 (10 aulas)</option>
-              <option>Fundamentos 2 (10 aulas)</option>
-              <option>Revisão (2 aulas)</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Estação</Label>
+            <Select defaultValue="fund1"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fund1">Fundamentos 1 (10 aulas)</SelectItem>
+                <SelectItem value="fund2">Fundamentos 2 (10 aulas)</SelectItem>
+                <SelectItem value="revisao">Revisão (2 aulas)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Escopo</label>
-            <select className="form-select">
-              <option>Módulo completo</option>
-              <option>Aula individual</option>
-              <option>Ficha de repertório</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Escopo</Label>
+            <Select defaultValue="modulo"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="modulo">Módulo completo</SelectItem>
+                <SelectItem value="aula">Aula individual</SelectItem>
+                <SelectItem value="ficha">Ficha de repertório</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -118,10 +129,10 @@ export function Gerador() {
             </div>
           </div>
           <div className="flex gap-2 mt-4 justify-center">
-            <button className="btn btn-ghost btn-sm"><FilePdf size={16} /> PDF</button>
-            <button className="btn btn-ghost btn-sm"><WhatsappLogo size={16} /> WhatsApp</button>
-            <button className="btn btn-ghost btn-sm"><Eye size={16} /> HTML</button>
-            <button className="btn btn-ghost btn-sm"><Printer size={16} /> Imprimir</button>
+            <Button variant="ghost" size="sm"><FilePdf size={16} /> PDF</Button>
+            <Button variant="ghost" size="sm"><WhatsappLogo size={16} /> WhatsApp</Button>
+            <Button variant="ghost" size="sm"><Eye size={16} /> HTML</Button>
+            <Button variant="ghost" size="sm"><Printer size={16} /> Imprimir</Button>
           </div>
         </div>
       </div>
@@ -129,52 +140,50 @@ export function Gerador() {
       <div className="card mt-4">
         <div className="flex items-center justify-between mb-4">
           <div className="font-serif text-[17px]">Histórico de materiais</div>
-          <span className="badge badge-azul">6 materiais</span>
+          <Badge variant="secondary">6 materiais</Badge>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold">Material</th>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold">Tipo</th>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold">Páginas</th>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold">Data</th>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold">Downloads</th>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold">Status</th>
-                <th className="text-left px-3.5 py-2.5 text-[10px] tracking-[2px] uppercase text-text3 border-b-2 border-border font-semibold"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-border hover:bg-azul-soft transition-all">
-                <td className="px-3.5 py-3 text-[13.5px] text-text font-bold">Violão Foundation — Fund. 1</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2 text-xs">Módulo</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2">32</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2 font-mono text-xs">10/03</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2">45</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2"><span className="badge badge-verde">Pronto</span></td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2"><button className="btn btn-ghost btn-sm"><DownloadSimple size={16} /></button></td>
-              </tr>
-              <tr className="border-b border-border hover:bg-azul-soft transition-all">
-                <td className="px-3.5 py-3 text-[13.5px] text-text font-bold">Guitarra Foundation — Fund. 2</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2 text-xs">Módulo</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2">28</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2 font-mono text-xs">09/03</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2">23</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2"><span className="badge badge-verde">Pronto</span></td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2"><button className="btn btn-ghost btn-sm"><DownloadSimple size={16} /></button></td>
-              </tr>
-              <tr className="border-b border-border hover:bg-azul-soft transition-all">
-                <td className="px-3.5 py-3 text-[13.5px] text-text font-bold">Repertório Violão — Nível 1</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2 text-xs">Repertório</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2">12</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2 font-mono text-xs">11/03</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2">—</td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2"><span className="badge badge-dourado">Gerando</span></td>
-                <td className="px-3.5 py-3 text-[13.5px] text-text2"><button className="btn btn-ghost btn-sm"><Hourglass size={16} /></button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Material</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Páginas</TableHead>
+              <TableHead>Data</TableHead>
+              <TableHead>Downloads</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell className="font-bold">Violão Foundation — Fund. 1</TableCell>
+              <TableCell className="text-xs">Módulo</TableCell>
+              <TableCell>32</TableCell>
+              <TableCell className="font-mono text-xs">10/03</TableCell>
+              <TableCell>45</TableCell>
+              <TableCell><Badge variant="advance">Pronto</Badge></TableCell>
+              <TableCell><Button variant="ghost" size="sm"><DownloadSimple size={16} /></Button></TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="font-bold">Guitarra Foundation — Fund. 2</TableCell>
+              <TableCell className="text-xs">Módulo</TableCell>
+              <TableCell>28</TableCell>
+              <TableCell className="font-mono text-xs">09/03</TableCell>
+              <TableCell>23</TableCell>
+              <TableCell><Badge variant="advance">Pronto</Badge></TableCell>
+              <TableCell><Button variant="ghost" size="sm"><DownloadSimple size={16} /></Button></TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="font-bold">Repertório Violão — Nível 1</TableCell>
+              <TableCell className="text-xs">Repertório</TableCell>
+              <TableCell>12</TableCell>
+              <TableCell className="font-mono text-xs">11/03</TableCell>
+              <TableCell>—</TableCell>
+              <TableCell><Badge variant="gold">Gerando</Badge></TableCell>
+              <TableCell><Button variant="ghost" size="sm"><Hourglass size={16} /></Button></TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

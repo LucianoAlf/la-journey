@@ -1,5 +1,9 @@
 import { Copy, Plus, FloppyDisk } from "@phosphor-icons/react";
 import { useAppContext } from "../AppContext";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function Jornadas() {
   const { openModal } = useAppContext();
@@ -16,55 +20,56 @@ export function Jornadas() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm">
+          <Button variant="ghost" size="sm">
             <Copy size={16} /> Duplicar
-          </button>
-          <button className="btn btn-primary" onClick={() => openModal('modal-jornada')}>
+          </Button>
+          <Button onClick={() => openModal('modal-jornada')}>
             <Plus size={16} /> Nova Jornada
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="card mb-4">
         <div className="grid grid-cols-4 gap-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Instrumento</label>
-            <select className="form-select">
-              <option>Violão</option>
-              <option>Guitarra</option>
-              <option>Teclado</option>
-              <option>Piano</option>
-              <option>Canto</option>
-              <option>Bateria</option>
-              <option>Baixo</option>
-              <option>Ukulele</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Instrumento</Label>
+            <Select defaultValue="violao"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
+                <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="piano">Piano</SelectItem>
+                <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
+                <SelectItem value="baixo">Baixo</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Público-alvo</label>
-            <select className="form-select">
-              <option>Adulto</option>
-              <option>Teen (12-17)</option>
-              <option>Kids (5-11)</option>
-              <option>Baby (0-5)</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Público-alvo</Label>
+            <Select defaultValue="adult"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="adult">Adulto</SelectItem><SelectItem value="teen">Teen (12-17)</SelectItem>
+                <SelectItem value="kids">Kids (5-11)</SelectItem><SelectItem value="baby">Baby (0-5)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Aulas por Stage</label>
-            <select className="form-select">
-              <option>40 aulas</option>
-              <option>30 aulas</option>
-              <option>20 aulas</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Aulas por Stage</Label>
+            <Select defaultValue="40"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="40">40 aulas</SelectItem><SelectItem value="30">30 aulas</SelectItem>
+                <SelectItem value="20">20 aulas</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Template</label>
-            <select className="form-select">
-              <option>Violão Adulto Padrão</option>
-              <option>Guitarra Rock</option>
-              <option>Canto Popular</option>
-              <option>Novo</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label>Template</Label>
+            <Select defaultValue="violao-adulto"><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="violao-adulto">Violão Adulto Padrão</SelectItem>
+                <SelectItem value="guitarra-rock">Guitarra Rock</SelectItem>
+                <SelectItem value="canto-popular">Canto Popular</SelectItem>
+                <SelectItem value="novo">Novo</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -102,7 +107,7 @@ export function Jornadas() {
                 <div className="font-bold text-[13px] truncate">Fundamentos 1</div>
                 <div className="text-[11px] text-text3">Aulas 1-10 · 10 aulas</div>
               </div>
-              <span className="badge badge-accent text-[9px] px-1.5 py-0.5">START</span>
+              <Badge variant="accent" className="text-[9px] px-1.5 py-0.5">START</Badge>
             </div>
             
             <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
@@ -119,7 +124,7 @@ export function Jornadas() {
                 <div className="font-bold text-[13px] truncate">Revisão 1+2</div>
                 <div className="text-[11px] text-text3">Aulas 21-22 · 2 aulas</div>
               </div>
-              <span className="badge badge-foundation text-[9px] px-1.5 py-0.5">CORE</span>
+              <Badge variant="foundation" className="text-[9px] px-1.5 py-0.5">CORE</Badge>
             </div>
 
             <div className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:bg-azul-soft hover:border-[rgba(30,58,95,0.2)]">
@@ -144,12 +149,12 @@ export function Jornadas() {
                 <div className="font-bold text-[13px] truncate">Consolidação</div>
                 <div className="text-[11px] text-text3">Aulas 43-44 · 2 aulas</div>
               </div>
-              <span className="badge badge-verde text-[9px] px-1.5 py-0.5">CHECK</span>
+              <Badge variant="advance" className="text-[9px] px-1.5 py-0.5">CHECK</Badge>
             </div>
           </div>
-          <button className="btn btn-ghost btn-sm w-full mt-3 justify-center">
+          <Button variant="ghost" size="sm" className="w-full mt-3 justify-center">
             <Plus size={16} /> Adicionar Estação
-          </button>
+          </Button>
         </div>
 
         <div className="card">
@@ -159,9 +164,9 @@ export function Jornadas() {
               <div className="font-serif text-[20px]">Fundamentos 1</div>
               <div className="text-[11px] text-text3 mt-2">Selecione e reordene os tópicos por dimensão</div>
             </div>
-            <button className="btn btn-primary btn-sm">
+            <Button size="sm">
               <FloppyDisk size={16} /> Salvar
-            </button>
+            </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-5">

@@ -4,18 +4,21 @@ import {
   WhatsappLogo, ChartBar, PlugsConnected, GearSix, Plus, Bell, Moon, Sun, CaretLeft, CaretRight
 } from "@phosphor-icons/react";
 import { useState, useRef, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "../utils";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
-  activePage: string;
-  setActivePage: (page: string) => void;
   isCollapsed: boolean;
   toggleSidebar: () => void;
   theme: string;
   toggleTheme: () => void;
 }
 
-export function Sidebar({ activePage, setActivePage, isCollapsed, toggleSidebar, theme, toggleTheme }: SidebarProps) {
+export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: SidebarProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -81,12 +84,15 @@ export function Sidebar({ activePage, setActivePage, isCollapsed, toggleSidebar,
           }
 
           const Icon = item.icon!;
-          const isActive = activePage === item.id;
+          const path = item.id === 'dashboard' ? '/' : `/${item.id}`;
+          const isActive = item.id === 'dashboard' 
+            ? location.pathname === '/' 
+            : location.pathname.startsWith(`/${item.id}`);
 
           return (
             <div 
               key={item.id}
-              onClick={() => setActivePage(item.id!)}
+              onClick={() => navigate(path)}
               className={cn(
                 "flex items-center gap-2.5 py-[9px] px-3.5 mx-2 my-px rounded-[var(--radius-sm)] cursor-pointer transition-all duration-200 text-text2 text-[13.5px] relative select-none whitespace-nowrap overflow-hidden group",
                 isActive ? "bg-gradient-to-br from-[rgba(30,58,95,0.2)] to-[rgba(45,90,142,0.12)] text-azul-claro font-semibold dark:from-[rgba(30,58,95,0.5)] dark:to-[rgba(45,90,142,0.25)] dark:text-white" : "hover:bg-azul-soft hover:text-azul-claro",
@@ -111,18 +117,30 @@ export function Sidebar({ activePage, setActivePage, isCollapsed, toggleSidebar,
       </div>
 
       <div className="p-3 border-t border-sidebar-border flex flex-col gap-2 shrink-0">
+        <TooltipProvider delayDuration={300}>
         <div className="flex items-center gap-1.5 px-1 flex-wrap justify-center relative">
-          <button className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center cursor-pointer text-text2 text-sm transition-all hover:bg-azul-soft hover:text-azul-claro shrink-0" title="Ação rápida">
-            <Plus />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" className="w-8 h-8 shrink-0">
+                <Plus />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Ação rápida</TooltipContent>
+          </Tooltip>
           <div className="relative" ref={notifRef}>
-            <button 
-              onClick={() => setIsNotifOpen(!isNotifOpen)}
-              className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center cursor-pointer text-text2 text-sm transition-all hover:bg-azul-soft hover:text-azul-claro shrink-0 relative"
-            >
-              <Bell />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-accent rounded-full border-2 border-sidebar-bg" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" size="icon"
+                  onClick={() => setIsNotifOpen(!isNotifOpen)}
+                  className="w-8 h-8 shrink-0 relative"
+                >
+                  <Bell />
+                  <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-accent rounded-full border-2 border-sidebar-bg" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Notificações</TooltipContent>
+            </Tooltip>
             
             {isNotifOpen && (
               <div className="absolute bottom-full left-0 mb-2 w-[300px] bg-surface border border-border rounded-[var(--radius)] shadow-[var(--shadow-lg)] z-[999] animate-in fade-in slide-in-from-bottom-2">
@@ -144,10 +162,16 @@ export function Sidebar({ activePage, setActivePage, isCollapsed, toggleSidebar,
               </div>
             )}
           </div>
-          <button onClick={toggleTheme} className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center cursor-pointer text-text2 text-sm transition-all hover:bg-azul-soft hover:text-azul-claro shrink-0" title="Tema">
-            {theme === 'dark' ? <Moon /> : <Sun />}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" onClick={toggleTheme} className="w-8 h-8 shrink-0">
+                {theme === 'dark' ? <Moon /> : <Sun />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Tema</TooltipContent>
+          </Tooltip>
         </div>
+        </TooltipProvider>
 
         <div className={cn(
           "flex items-center gap-2.5 p-2 bg-azul-soft rounded-[var(--radius-sm)] cursor-pointer overflow-hidden",
@@ -162,12 +186,13 @@ export function Sidebar({ activePage, setActivePage, isCollapsed, toggleSidebar,
           </div>
         </div>
 
-        <button 
+        <Button 
+          variant="ghost"
           onClick={toggleSidebar}
-          className="flex items-center justify-center w-full p-2 rounded-[var(--radius-sm)] cursor-pointer transition-all bg-azul-soft text-azul-claro border-none text-base hover:bg-azul-escuro hover:text-white"
+          className="w-full bg-azul-soft text-azul-claro hover:bg-azul-escuro hover:text-white"
         >
           {isCollapsed ? <CaretRight /> : <CaretLeft />}
-        </button>
+        </Button>
       </div>
     </nav>
   );

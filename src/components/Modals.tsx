@@ -1,9 +1,14 @@
-import { Modal } from './Modal';
 import { useAppContext } from '../AppContext';
 import { 
   FloppyDisk, Sparkle, Article, TextAa, Image as ImageIcon, Guitar, 
   MusicNotesSimple, ListNumbers, Barbell, MusicNote, Lightbulb, Trophy, QrCode, Minus 
 } from '@phosphor-icons/react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export function Modals() {
   const { isModalOpen, closeModal, showToast } = useAppContext();
@@ -11,559 +16,621 @@ export function Modals() {
   return (
     <>
       {/* Modal Jornada */}
-      <Modal 
-        isOpen={isModalOpen('modal-jornada')} 
-        onClose={() => closeModal('modal-jornada')}
-        title={<>Nova <em className="not-italic text-accent">Jornada</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Nome</label>
-            <input className="form-input" placeholder="Jornada Violão Adulto" />
+      <Dialog open={isModalOpen('modal-jornada')} onOpenChange={() => closeModal('modal-jornada')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Jornada</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input placeholder="Jornada Violão Adulto" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instrumento</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
+                  <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="piano">Piano</SelectItem>
+                  <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
+                  <SelectItem value="baixo">Baixo</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Público-alvo</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="adult">Adulto</SelectItem><SelectItem value="teen">Teen</SelectItem>
+                  <SelectItem value="kids">Kids</SelectItem><SelectItem value="baby">Baby</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Aulas por Stage</Label>
+              <Select defaultValue="40"><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="40">40</SelectItem><SelectItem value="30">30</SelectItem><SelectItem value="20">20</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Instrumento</label>
-            <select className="form-select">
-              <option>Violão</option><option>Guitarra</option><option>Teclado</option>
-              <option>Piano</option><option>Canto</option><option>Bateria</option>
-              <option>Baixo</option><option>Ukulele</option>
-            </select>
+          <div className="p-4 bg-azul-soft rounded-[var(--radius-sm)] mb-4">
+            <div className="text-[11px] text-text3 mb-2">⚓ METODOLOGIA</div>
+            <div className="text-[13px] text-text2">Ancoragem de Fundamentos — cada conteúdo vivenciado, fixado e celebrado antes de avançar.</div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Público-alvo</label>
-            <select className="form-select">
-              <option>Adulto</option><option>Teen</option><option>Kids</option><option>Baby</option>
-            </select>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-jornada')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-jornada'); showToast('✅ Jornada criada!'); }}>
+              <FloppyDisk size={16} /> Criar Jornada
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Aulas por Stage</label>
-            <select className="form-select">
-              <option>40</option><option>30</option><option>20</option>
-            </select>
-          </div>
-        </div>
-        <div className="p-4 bg-azul-soft rounded-[var(--radius-sm)] mb-4">
-          <div className="text-[11px] text-text3 mb-2">⚓ METODOLOGIA</div>
-          <div className="text-[13px] text-text2">Ancoragem de Fundamentos — cada conteúdo vivenciado, fixado e celebrado antes de avançar.</div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-jornada')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-jornada'); showToast('✅ Jornada criada!'); }}>
-            <FloppyDisk size={16} /> Criar Jornada
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Aluno */}
-      <Modal 
-        isOpen={isModalOpen('modal-aluno')} 
-        onClose={() => closeModal('modal-aluno')}
-        title={<>Novo <em className="not-italic text-accent">Aluno</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Nome completo</label>
-            <input className="form-input" placeholder="Nome do aluno" />
+      <Dialog open={isModalOpen('modal-aluno')} onOpenChange={() => closeModal('modal-aluno')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Aluno</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Nome completo</Label>
+              <Input placeholder="Nome do aluno" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>WhatsApp</Label>
+              <Input placeholder="(21) 99999-0000" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instrumento</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
+                  <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="canto">Canto</SelectItem>
+                  <SelectItem value="bateria">Bateria</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Turma</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="t1">Violão Adulto — Seg/Qua</SelectItem>
+                  <SelectItem value="t2">Guitarra Rock — Ter/Qui</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Responsável</Label>
+              <Input placeholder="Nome do responsável" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>WhatsApp responsável</Label>
+              <Input placeholder="(21) 99999-0000" />
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">WhatsApp</label>
-            <input className="form-input" placeholder="(21) 99999-0000" />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-aluno')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-aluno'); showToast('✅ Aluno cadastrado!'); }}>
+              <FloppyDisk size={16} /> Cadastrar
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Instrumento</label>
-            <select className="form-select">
-              <option>Violão</option><option>Guitarra</option><option>Teclado</option>
-              <option>Canto</option><option>Bateria</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Turma</label>
-            <select className="form-select">
-              <option>Violão Adulto — Seg/Qua</option><option>Guitarra Rock — Ter/Qui</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Responsável</label>
-            <input className="form-input" placeholder="Nome do responsável" />
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">WhatsApp responsável</label>
-            <input className="form-input" placeholder="(21) 99999-0000" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-aluno')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-aluno'); showToast('✅ Aluno cadastrado!'); }}>
-            <FloppyDisk size={16} /> Cadastrar
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Música */}
-      <Modal 
-        isOpen={isModalOpen('modal-musica')} 
-        onClose={() => closeModal('modal-musica')}
-        title={<>Nova <em className="not-italic text-accent">Música</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Título</label>
-            <input className="form-input" placeholder="Nome da música" />
+      <Dialog open={isModalOpen('modal-musica')} onOpenChange={() => closeModal('modal-musica')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Música</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Título</Label>
+              <Input placeholder="Nome da música" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Artista</Label>
+              <Input placeholder="Nome do artista" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tonalidade</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="C">C</SelectItem><SelectItem value="D">D</SelectItem>
+                  <SelectItem value="E">E</SelectItem><SelectItem value="G">G</SelectItem>
+                  <SelectItem value="A">A</SelectItem><SelectItem value="Am">Am</SelectItem><SelectItem value="Em">Em</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Gênero</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rock">Rock</SelectItem><SelectItem value="mpb">MPB</SelectItem>
+                  <SelectItem value="pop">Pop</SelectItem><SelectItem value="reggae">Reggae</SelectItem>
+                  <SelectItem value="sertanejo">Sertanejo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Dificuldade</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 - Iniciante</SelectItem><SelectItem value="2">2 - Fácil</SelectItem>
+                  <SelectItem value="3">3 - Médio</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Acordes</Label>
+              <Input placeholder="C, G, Am, F" />
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Artista</label>
-            <input className="form-input" placeholder="Nome do artista" />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-musica')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-musica'); showToast('✅ Música adicionada!'); }}>
+              <FloppyDisk size={16} /> Salvar
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Tonalidade</label>
-            <select className="form-select">
-              <option>C</option><option>D</option><option>E</option><option>G</option>
-              <option>A</option><option>Am</option><option>Em</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Gênero</label>
-            <select className="form-select">
-              <option>Rock</option><option>MPB</option><option>Pop</option>
-              <option>Reggae</option><option>Sertanejo</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Dificuldade</label>
-            <select className="form-select">
-              <option>1 - Iniciante</option><option>2 - Fácil</option><option>3 - Médio</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Acordes</label>
-            <input className="form-input" placeholder="C, G, Am, F" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-musica')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-musica'); showToast('✅ Música adicionada!'); }}>
-            <FloppyDisk size={16} /> Salvar
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Conquista */}
-      <Modal 
-        isOpen={isModalOpen('modal-conquista')} 
-        onClose={() => closeModal('modal-conquista')}
-        title={<>Nova <em className="not-italic text-accent">Conquista</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Nome</label>
-            <input className="form-input" placeholder="Primeiro Acorde" />
+      <Dialog open={isModalOpen('modal-conquista')} onOpenChange={() => closeModal('modal-conquista')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Conquista</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input placeholder="Primeiro Acorde" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Descrição</Label>
+              <Input placeholder="Tocou o primeiro acorde" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="milestone">Milestone</SelectItem><SelectItem value="challenge">Challenge</SelectItem>
+                  <SelectItem value="streak">Streak</SelectItem><SelectItem value="special">Special</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Pontos</Label>
+              <Input placeholder="100" type="number" />
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Descrição</label>
-            <input className="form-input" placeholder="Tocou o primeiro acorde" />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-conquista')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-conquista'); showToast('✅ Conquista criada!'); }}>
+              <FloppyDisk size={16} /> Criar
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Tipo</label>
-            <select className="form-select">
-              <option>Milestone</option><option>Challenge</option><option>Streak</option><option>Special</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Pontos</label>
-            <input className="form-input" placeholder="100" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-conquista')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-conquista'); showToast('✅ Conquista criada!'); }}>
-            <FloppyDisk size={16} /> Criar
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Template */}
-      <Modal 
-        isOpen={isModalOpen('modal-template')} 
-        onClose={() => closeModal('modal-template')}
-        title={<>Novo <em className="not-italic text-accent">Template</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Nome</label>
-            <input className="form-input" placeholder="Falta consecutiva" />
+      <Dialog open={isModalOpen('modal-template')} onOpenChange={() => closeModal('modal-template')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Template</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input placeholder="Falta consecutiva" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Trigger</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual</SelectItem><SelectItem value="absence">Falta detectada</SelectItem>
+                  <SelectItem value="checkpoint">Checkpoint completo</SelectItem><SelectItem value="scheduled">Agendado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Trigger</label>
-            <select className="form-select">
-              <option>Manual</option><option>Falta detectada</option>
-              <option>Checkpoint completo</option><option>Agendado</option>
-            </select>
+          <div className="space-y-1.5 mb-4">
+            <Label>Mensagem</Label>
+            <Textarea placeholder="Oi {aluno}! Preparei um material pra você não ficar pra trás 🎸" />
           </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Mensagem</label>
-          <textarea className="form-textarea" placeholder="Oi {aluno}! Preparei um material pra você não ficar pra trás 🎸"></textarea>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-template')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-template'); showToast('✅ Template salvo!'); }}>
-            <FloppyDisk size={16} /> Salvar
-          </button>
-        </div>
-      </Modal>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-template')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-template'); showToast('✅ Template salvo!'); }}>
+              <FloppyDisk size={16} /> Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Turma */}
-      <Modal 
-        isOpen={isModalOpen('modal-turma')} 
-        onClose={() => closeModal('modal-turma')}
-        title={<>Nova <em className="not-italic text-accent">Turma</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Nome da turma</label>
-            <input className="form-input" placeholder="Violão Adulto — Seg/Qua 19h" />
+      <Dialog open={isModalOpen('modal-turma')} onOpenChange={() => closeModal('modal-turma')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Nova <span className="text-accent">Turma</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Nome da turma</Label>
+              <Input placeholder="Violão Adulto — Seg/Qua 19h" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instrumento / Disciplina</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
+                  <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="piano">Piano</SelectItem>
+                  <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
+                  <SelectItem value="baixo">Baixo</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
+                  <SelectItem value="musicalizacao-baby">Musicalização (Baby)</SelectItem>
+                  <SelectItem value="musicalizacao-kids">Musicalização (Kids)</SelectItem>
+                  <SelectItem value="iniciacao-heart">Iniciação (Heart)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Professor</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="renan">Renan</SelectItem><SelectItem value="kinho">Kinho</SelectItem>
+                  <SelectItem value="peterson">Peterson</SelectItem><SelectItem value="jeyson">Jeyson</SelectItem>
+                  <SelectItem value="juliana">Juliana</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Jornada vinculada</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="violao-adulto">Violão Adulto Padrão</SelectItem>
+                  <SelectItem value="guitarra-rock">Guitarra Rock</SelectItem>
+                  <SelectItem value="canto-popular">Canto Popular</SelectItem>
+                  <SelectItem value="teclado-ini">Teclado Iniciante</SelectItem>
+                  <SelectItem value="baby-class">Baby Class</SelectItem>
+                  <SelectItem value="kids">Kids</SelectItem><SelectItem value="heart">Heart</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Horário</Label>
+              <Input placeholder="Seg/Qua 19:00" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Max. alunos</Label>
+              <Input placeholder="10" type="number" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Unidade</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="campo-grande">Campo Grande</SelectItem>
+                  <SelectItem value="recreio">Recreio</SelectItem><SelectItem value="barra">Barra</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Instrumento / Disciplina</label>
-            <select className="form-select">
-              <option>Violão</option><option>Guitarra</option><option>Teclado</option>
-              <option>Piano</option><option>Canto</option><option>Bateria</option>
-              <option>Baixo</option><option>Ukulele</option><option>Musicalização (Baby)</option>
-              <option>Musicalização (Kids)</option><option>Iniciação (Heart)</option>
-            </select>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-turma')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-turma'); showToast('✅ Turma criada!'); }}>
+              <FloppyDisk size={16} /> Criar Turma
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Professor</label>
-            <select className="form-select">
-              <option>Renan</option><option>Kinho</option><option>Peterson</option>
-              <option>Jeyson</option><option>Juliana</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Jornada vinculada</label>
-            <select className="form-select">
-              <option>Violão Adulto Padrão</option><option>Guitarra Rock</option>
-              <option>Canto Popular</option><option>Teclado Iniciante</option>
-              <option>Baby Class</option><option>Kids</option><option>Heart</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Horário</label>
-            <input className="form-input" placeholder="Seg/Qua 19:00" />
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Max. alunos</label>
-            <input className="form-input" placeholder="10" />
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Unidade</label>
-            <select className="form-select">
-              <option>Campo Grande</option><option>Recreio</option><option>Barra</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-turma')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-turma'); showToast('✅ Turma criada!'); }}>
-            <FloppyDisk size={16} /> Criar Turma
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Imagem IA */}
-      <Modal 
-        isOpen={isModalOpen('modal-imagem')} 
-        onClose={() => closeModal('modal-imagem')}
-        title={<>Gerar <em className="not-italic text-accent">Imagem IA</em></>}
-      >
-        <div className="form-group">
-          <label className="form-label">Descrição da imagem</label>
-          <textarea className="form-textarea" placeholder="Ex: Foto profissional de um violão clássico sobre fundo escuro, iluminação lateral suave, estilo editorial para material didático musical"></textarea>
-        </div>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Estilo</label>
-            <select className="form-select">
-              <option>Fotográfico (realista)</option><option>Ilustração didática</option>
-              <option>Diagrama técnico</option><option>Artístico / Editorial</option>
-            </select>
+      <Dialog open={isModalOpen('modal-imagem')} onOpenChange={() => closeModal('modal-imagem')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Gerar <span className="text-accent">Imagem IA</span></DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5 mb-4">
+            <Label>Descrição da imagem</Label>
+            <Textarea placeholder="Ex: Foto profissional de um violão clássico sobre fundo escuro, iluminação lateral suave, estilo editorial para material didático musical" />
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Resolução</label>
-            <select className="form-select">
-              <option>512x512</option><option>1024x1024</option>
-              <option>768x512 (paisagem)</option><option>512x768 (retrato)</option>
-            </select>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Estilo</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="foto">Fotográfico (realista)</SelectItem>
+                  <SelectItem value="ilustracao">Ilustração didática</SelectItem>
+                  <SelectItem value="diagrama">Diagrama técnico</SelectItem>
+                  <SelectItem value="artistico">Artístico / Editorial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Resolução</Label>
+              <Select defaultValue="512"><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="512">512x512</SelectItem><SelectItem value="1024">1024x1024</SelectItem>
+                  <SelectItem value="768x512">768x512 (paisagem)</SelectItem><SelectItem value="512x768">512x768 (retrato)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
-        <div className="p-3.5 bg-azul-soft rounded-[var(--radius-sm)] mb-4">
-          <div className="text-[11px] text-text3 mb-1">💡 SUGESTÕES DE USO</div>
-          <div className="text-xs text-text2">Aparelho fonador para material de canto · Instrumentos para capas · Cenas históricas (blues, jazz, MPB) · Postura corporal · Sala de aula musical · Sarau</div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-imagem')}>Cancelar</button>
-          <button className="btn btn-accent" onClick={() => { closeModal('modal-imagem'); showToast('✨ Imagem sendo gerada via Gemini API...'); }}>
-            <Sparkle size={16} /> Gerar com Gemini
-          </button>
-        </div>
-      </Modal>
+          <div className="p-3.5 bg-azul-soft rounded-[var(--radius-sm)] mb-4">
+            <div className="text-[11px] text-text3 mb-1">💡 SUGESTÕES DE USO</div>
+            <div className="text-xs text-text2">Aparelho fonador para material de canto · Instrumentos para capas · Cenas históricas (blues, jazz, MPB) · Postura corporal · Sala de aula musical · Sarau</div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-imagem')}>Cancelar</Button>
+            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-imagem'); showToast('✨ Imagem sendo gerada via Gemini API...'); }}>
+              <Sparkle size={16} /> Gerar com Gemini
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Conteúdo */}
-      <Modal 
-        isOpen={isModalOpen('modal-conteudo')} 
-        onClose={() => closeModal('modal-conteudo')}
-        title={<>Novo <em className="not-italic text-accent">Bloco de Conteúdo</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Título</label>
-            <input className="form-input" placeholder="Ex: Escala Pentatônica Menor" />
+      <Dialog open={isModalOpen('modal-conteudo')} onOpenChange={() => closeModal('modal-conteudo')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Bloco de Conteúdo</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Título</Label>
+              <Input placeholder="Ex: Escala Pentatônica Menor" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instrumento</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="universal">Universal (Teoria)</SelectItem><SelectItem value="violao">Violão</SelectItem>
+                  <SelectItem value="guitarra">Guitarra</SelectItem><SelectItem value="teclado">Teclado</SelectItem>
+                  <SelectItem value="canto">Canto</SelectItem><SelectItem value="bateria">Bateria</SelectItem>
+                  <SelectItem value="baixo">Baixo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Pilar</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="theoretical_foundations">Fundamentos Teóricos</SelectItem>
+                  <SelectItem value="instrument_practice">Prática do Instrumento</SelectItem>
+                  <SelectItem value="repertoire">Repertório</SelectItem>
+                  <SelectItem value="improvisation_composition">Improvisação e Composição</SelectItem>
+                  <SelectItem value="auditory_development">Desenvolvimento Auditivo</SelectItem>
+                  <SelectItem value="evaluations_presentations">Avaliações e Apresentações</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nível</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="foundation">Foundation</SelectItem><SelectItem value="grow">Grow</SelectItem>
+                  <SelectItem value="advance">Advance</SelectItem><SelectItem value="master">Master</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo de bloco</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Texto explicativo</SelectItem><SelectItem value="exercise">Exercício</SelectItem>
+                  <SelectItem value="chord_diagram">Diagrama de acorde (SVGuitar)</SelectItem>
+                  <SelectItem value="notation">Notação (VexFlow)</SelectItem>
+                  <SelectItem value="tablature">Tablatura (VexTab)</SelectItem>
+                  <SelectItem value="scale_diagram">Diagrama de escala</SelectItem>
+                  <SelectItem value="image">Imagem (IA)</SelectItem><SelectItem value="tip">Dica / Exemplo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tempo estimado</Label>
+              <Input placeholder="15 min" />
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Instrumento</label>
-            <select className="form-select">
-              <option>Universal (Teoria)</option><option>Violão</option><option>Guitarra</option>
-              <option>Teclado</option><option>Canto</option><option>Bateria</option><option>Baixo</option>
-            </select>
+          <div className="space-y-1.5 mb-4">
+            <Label>Conteúdo</Label>
+            <Textarea placeholder="Conteúdo do bloco (texto, dados para renderização, etc.)" />
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Pilar</label>
-            <select className="form-select">
-              <option>Fundamentos Teóricos</option><option>Prática do Instrumento</option>
-              <option>Repertório</option><option>Improvisação e Composição</option>
-              <option>Desenvolvimento Auditivo</option><option>Avaliações e Apresentações</option>
-            </select>
+          <div className="space-y-1.5 mb-4">
+            <Label>Tags</Label>
+            <Input placeholder="escala, pentatônica, guitarra, improvisação" />
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Nível</label>
-            <select className="form-select">
-              <option>Foundation</option><option>Grow</option><option>Advance</option><option>Master</option>
-            </select>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-conteudo')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-conteudo'); showToast('✅ Bloco salvo como rascunho! Aguardando curadoria N4.'); }}>
+              <FloppyDisk size={16} /> Salvar rascunho
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Tipo de bloco</label>
-            <select className="form-select">
-              <option>Texto explicativo</option><option>Exercício</option>
-              <option>Diagrama de acorde (SVGuitar)</option><option>Notação (VexFlow)</option>
-              <option>Tablatura (VexTab)</option><option>Diagrama de escala</option>
-              <option>Imagem (IA)</option><option>Dica / Exemplo</option>
-            </select>
-          </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Tempo estimado</label>
-            <input className="form-input" placeholder="15 min" />
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Conteúdo</label>
-          <textarea className="form-textarea" placeholder="Conteúdo do bloco (texto, dados para renderização, etc.)"></textarea>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Tags</label>
-          <input className="form-input" placeholder="escala, pentatônica, guitarra, improvisação" />
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-conteudo')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-conteudo'); showToast('✅ Bloco salvo como rascunho! Aguardando curadoria N4.'); }}>
-            <FloppyDisk size={16} /> Salvar rascunho
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Acorde */}
-      <Modal 
-        isOpen={isModalOpen('modal-acorde')} 
-        onClose={() => closeModal('modal-acorde')}
-        title={<>Novo <em className="not-italic text-accent">Acorde</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Nome do acorde</label>
-            <input className="form-input" placeholder="Ex: Am7, F#m, Bb" />
+      <Dialog open={isModalOpen('modal-acorde')} onOpenChange={() => closeModal('modal-acorde')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Acorde</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Nome do acorde</Label>
+              <Input placeholder="Ex: Am7, F#m, Bb" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instrumento</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="guitar">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
+                  <SelectItem value="ukulele">Ukulele</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aberto">Aberto</SelectItem><SelectItem value="pestana">Pestana</SelectItem>
+                  <SelectItem value="jazz">Jazz</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Dificuldade</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1</SelectItem><SelectItem value="2">2</SelectItem>
+                  <SelectItem value="3">3</SelectItem><SelectItem value="4">4</SelectItem><SelectItem value="5">5</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Instrumento</label>
-            <select className="form-select">
-              <option>Violão</option><option>Guitarra</option><option>Ukulele</option>
-            </select>
+          <div className="space-y-1.5 mb-4">
+            <Label>Posição (JSON SVGuitar)</Label>
+            <Textarea className="font-mono text-xs min-h-[80px]" placeholder='{"fingers": [[1,2],[2,3,1],[3,2,2]], "barres": []}' />
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Tipo</label>
-            <select className="form-select">
-              <option>Aberto</option><option>Pestana</option><option>Jazz</option>
-            </select>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-acorde')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-acorde'); showToast('✅ Acorde salvo na biblioteca!'); }}>
+              <FloppyDisk size={16} /> Salvar
+            </Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Dificuldade</label>
-            <select className="form-select">
-              <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
-            </select>
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Posição (JSON SVGuitar)</label>
-          <textarea className="form-textarea font-mono text-xs min-h-[80px]" placeholder='{"fingers": [[1,2],[2,3,1],[3,2,2]], "barres": []}'></textarea>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-acorde')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-acorde'); showToast('✅ Acorde salvo na biblioteca!'); }}>
-            <FloppyDisk size={16} /> Salvar
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Add Block */}
-      <Modal 
-        isOpen={isModalOpen('modal-add-block')} 
-        onClose={() => closeModal('modal-add-block')}
-        title={<>Adicionar <em className="not-italic text-accent">Bloco</em></>}
-      >
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px'}}>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Bloco de texto adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--azul-soft)', color:'var(--azul-claro)'}}><Article size={16} /></div>
-              <div><div className="font-bold text-xs">Texto</div><div className="text-[11px] text-text3">Parágrafo editável</div></div>
-            </div>
+      <Dialog open={isModalOpen('modal-add-block')} onOpenChange={() => closeModal('modal-add-block')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Adicionar <span className="text-accent">Bloco</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { icon: Article, label: 'Texto', desc: 'Parágrafo editável', bg: 'bg-azul-soft', color: 'text-azul-claro', msg: '✅ Bloco de texto adicionado!' },
+              { icon: TextAa, label: 'Título de Seção', desc: 'Cabeçalho colorido', bg: 'bg-foundation-soft', color: 'text-foundation', msg: '✅ Título adicionado!' },
+              { icon: ImageIcon, label: 'Imagem', desc: 'Upload ou Gemini IA', bg: 'bg-accent-soft', color: 'text-accent', msg: '✅ Imagem adicionada!' },
+              { icon: Guitar, label: 'Diagrama de Acorde', desc: 'SVGuitar renderizado', bg: 'bg-grow-soft', color: 'text-grow', msg: '✅ Diagrama adicionado!' },
+              { icon: MusicNotesSimple, label: 'Notação Musical', desc: 'VexFlow na pauta', bg: 'bg-master-soft', color: 'text-master', msg: '✅ Notação adicionada!' },
+              { icon: ListNumbers, label: 'Tablatura', desc: 'VexTab', bg: 'bg-azul-soft', color: 'text-azul-claro', msg: '✅ Tablatura adicionada!' },
+              { icon: Barbell, label: 'Exercício', desc: 'Prática dirigida', bg: 'bg-advance-soft', color: 'text-advance', msg: '✅ Exercício adicionado!' },
+              { icon: MusicNote, label: 'Ficha de Repertório', desc: 'Música + acordes', bg: 'bg-dourado-soft', color: 'text-dourado', msg: '✅ Repertório adicionado!' },
+              { icon: Lightbulb, label: 'Dica / Destaque', desc: 'Box informativo', bg: 'bg-dourado-soft', color: 'text-dourado', msg: '✅ Dica adicionada!' },
+              { icon: Trophy, label: 'Selo / Conquista', desc: 'Badge gamificação', bg: 'bg-verde-soft', color: 'text-verde', msg: '✅ Selo adicionado!' },
+              { icon: QrCode, label: 'QR Code', desc: 'Link externo', bg: 'bg-azul-soft', color: 'text-azul-claro', msg: '✅ QR Code adicionado!' },
+              { icon: Minus, label: 'Separador', desc: 'Linha divisória', bg: 'bg-bg2', color: 'text-text3', msg: '✅ Separador adicionado!' },
+            ].map((block) => {
+              const Icon = block.icon
+              return (
+                <div
+                  key={block.label}
+                  className="p-3.5 border border-border rounded-[var(--radius-sm)] cursor-pointer transition-all hover:bg-azul-soft hover:border-azul-claro/20"
+                  onClick={() => { closeModal('modal-add-block'); showToast(block.msg); }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-lg ${block.bg} ${block.color} flex items-center justify-center`}>
+                      <Icon size={16} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs">{block.label}</div>
+                      <div className="text-[11px] text-text3">{block.desc}</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Título adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--foundation-soft)', color:'var(--foundation)'}}><TextAa size={16} /></div>
-              <div><div className="font-bold text-xs">Título de Seção</div><div className="text-[11px] text-text3">Cabeçalho colorido</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Imagem adicionada!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--accent-soft)', color:'var(--accent)'}}><ImageIcon size={16} /></div>
-              <div><div className="font-bold text-xs">Imagem</div><div className="text-[11px] text-text3">Upload ou Gemini IA</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Diagrama adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--grow-soft)', color:'var(--grow)'}}><Guitar size={16} /></div>
-              <div><div className="font-bold text-xs">Diagrama de Acorde</div><div className="text-[11px] text-text3">SVGuitar renderizado</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Notação adicionada!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--master-soft)', color:'var(--master)'}}><MusicNotesSimple size={16} /></div>
-              <div><div className="font-bold text-xs">Notação Musical</div><div className="text-[11px] text-text3">VexFlow na pauta</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Tablatura adicionada!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--azul-soft)', color:'var(--azul-claro)'}}><ListNumbers size={16} /></div>
-              <div><div className="font-bold text-xs">Tablatura</div><div className="text-[11px] text-text3">VexTab</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Exercício adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--advance-soft)', color:'var(--advance)'}}><Barbell size={16} /></div>
-              <div><div className="font-bold text-xs">Exercício</div><div className="text-[11px] text-text3">Prática dirigida</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Repertório adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--dourado-soft)', color:'var(--dourado)'}}><MusicNote size={16} /></div>
-              <div><div className="font-bold text-xs">Ficha de Repertório</div><div className="text-[11px] text-text3">Música + acordes</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Dica adicionada!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--dourado-soft)', color:'var(--dourado)'}}><Lightbulb size={16} /></div>
-              <div><div className="font-bold text-xs">Dica / Destaque</div><div className="text-[11px] text-text3">Box informativo</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Selo adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--verde-soft)', color:'var(--verde)'}}><Trophy size={16} /></div>
-              <div><div className="font-bold text-xs">Selo / Conquista</div><div className="text-[11px] text-text3">Badge gamificação</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ QR Code adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--azul-soft)', color:'var(--azul-claro)'}}><QrCode size={16} /></div>
-              <div><div className="font-bold text-xs">QR Code</div><div className="text-[11px] text-text3">Link externo</div></div>
-            </div>
-          </div>
-          <div style={{padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', cursor:'pointer', transition:'var(--transition)'}} onClick={() => { closeModal('modal-add-block'); showToast('✅ Separador adicionado!'); }}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-              <div className="block-type-icon" style={{background:'var(--bg2)', color:'var(--text3)'}}><Minus size={16} /></div>
-              <div><div className="font-bold text-xs">Separador</div><div className="text-[11px] text-text3">Linha divisória</div></div>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Trocar Imagem */}
-      <Modal 
-        isOpen={isModalOpen('modal-trocar-imagem')} 
-        onClose={() => closeModal('modal-trocar-imagem')}
-        title={<>Trocar <em className="not-italic text-accent">Imagem</em></>}
-      >
-        <div className="flex gap-2 mb-4">
-          <div className="px-3 py-1.5 bg-azul-soft text-azul-claro rounded-[var(--radius-sm)] text-xs font-medium cursor-pointer">Gerar com IA</div>
-          <div className="px-3 py-1.5 text-text2 hover:bg-bg2 rounded-[var(--radius-sm)] text-xs font-medium cursor-pointer transition-all">Upload</div>
-          <div className="px-3 py-1.5 text-text2 hover:bg-bg2 rounded-[var(--radius-sm)] text-xs font-medium cursor-pointer transition-all">Biblioteca</div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Descreva a imagem</label>
-          <textarea className="form-textarea" placeholder="Ex: Diagrama didático mostrando as partes do violão clássico com setas indicando: corpo, braço, mão, trastes, cordas, boca, cavalete. Estilo clean, fundo branco, para material didático."></textarea>
-        </div>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Estilo</label>
-            <select className="form-select">
-              <option>Diagrama didático</option><option>Foto realista</option><option>Ilustração</option><option>Artístico</option>
-            </select>
+      <Dialog open={isModalOpen('modal-trocar-imagem')} onOpenChange={() => closeModal('modal-trocar-imagem')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Trocar <span className="text-accent">Imagem</span></DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-2 mb-4">
+            <Button variant="secondary" size="sm">Gerar com IA</Button>
+            <Button variant="ghost" size="sm">Upload</Button>
+            <Button variant="ghost" size="sm">Biblioteca</Button>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Resolução</label>
-            <select className="form-select">
-              <option>512x512</option><option>1024x1024</option>
-            </select>
+          <div className="space-y-1.5 mb-4">
+            <Label>Descreva a imagem</Label>
+            <Textarea placeholder="Ex: Diagrama didático mostrando as partes do violão clássico com setas indicando: corpo, braço, mão, trastes, cordas, boca, cavalete. Estilo clean, fundo branco, para material didático." />
           </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-trocar-imagem')}>Cancelar</button>
-          <button className="btn btn-accent" onClick={() => { closeModal('modal-trocar-imagem'); showToast('✨ Imagem gerada e substituída!'); }}>
-            <Sparkle size={16} /> Gerar com Gemini
-          </button>
-        </div>
-      </Modal>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Estilo</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="diagrama">Diagrama didático</SelectItem><SelectItem value="foto">Foto realista</SelectItem>
+                  <SelectItem value="ilustracao">Ilustração</SelectItem><SelectItem value="artistico">Artístico</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Resolução</Label>
+              <Select defaultValue="512"><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="512">512x512</SelectItem><SelectItem value="1024">1024x1024</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-trocar-imagem')}>Cancelar</Button>
+            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-trocar-imagem'); showToast('✨ Imagem gerada e substituída!'); }}>
+              <Sparkle size={16} /> Gerar com Gemini
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Trocar Acorde */}
-      <Modal 
-        isOpen={isModalOpen('modal-trocar-acorde')} 
-        onClose={() => closeModal('modal-trocar-acorde')}
-        title={<>Trocar <em className="not-italic text-accent">Acorde</em></>}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group mb-0">
-            <label className="form-label">Acorde</label>
-            <select className="form-select">
-              <option>G (Sol Maior)</option><option>C (Dó Maior)</option><option>D (Ré Maior)</option><option>E (Mi Maior)</option><option>A (Lá Maior)</option><option>Am (Lá menor)</option><option>Em (Mi menor)</option><option>F (Fá Maior)</option>
-            </select>
+      <Dialog open={isModalOpen('modal-trocar-acorde')} onOpenChange={() => closeModal('modal-trocar-acorde')}>
+        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">Trocar <span className="text-accent">Acorde</span></DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <Label>Acorde</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="G">G (Sol Maior)</SelectItem><SelectItem value="C">C (Dó Maior)</SelectItem>
+                  <SelectItem value="D">D (Ré Maior)</SelectItem><SelectItem value="E">E (Mi Maior)</SelectItem>
+                  <SelectItem value="A">A (Lá Maior)</SelectItem><SelectItem value="Am">Am (Lá menor)</SelectItem>
+                  <SelectItem value="Em">Em (Mi menor)</SelectItem><SelectItem value="F">F (Fá Maior)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Posição</Label>
+              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aberta">Aberta (padrão)</SelectItem>
+                  <SelectItem value="pestana3">Pestana 3ª casa</SelectItem>
+                  <SelectItem value="pestana5">Pestana 5ª casa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label">Posição</label>
-            <select className="form-select">
-              <option>Aberta (padrão)</option><option>Pestana 3ª casa</option><option>Pestana 5ª casa</option>
-            </select>
+          <div className="w-[120px] h-[150px] border border-border rounded-lg flex items-center justify-center bg-bg mx-auto mb-4">
+            <div className="text-center">
+              <div className="text-[9px] text-text3">SVGuitar Preview</div>
+              <div className="text-[28px] my-1">G</div>
+            </div>
           </div>
-        </div>
-        <div style={{width:'120px', height:'150px', border:'1px solid var(--border)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)', margin:'0 auto 16px'}}>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:'9px', color:'var(--text3)'}}>SVGuitar Preview</div>
-            <div style={{fontSize:'28px', margin:'4px 0'}}>G</div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => closeModal('modal-trocar-acorde')}>Cancelar</Button>
+            <Button onClick={() => { closeModal('modal-trocar-acorde'); showToast('✅ Acorde atualizado!'); }}>
+              <FloppyDisk size={16} /> Aplicar
+            </Button>
           </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn btn-ghost" onClick={() => closeModal('modal-trocar-acorde')}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { closeModal('modal-trocar-acorde'); showToast('✅ Acorde atualizado!'); }}>
-            <FloppyDisk size={16} /> Aplicar
-          </button>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

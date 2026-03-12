@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../AppContext";
 import { 
   ArrowLeft, FloppyDisk, FilePdf, Image as ImageIcon, TextAa, Article, 
@@ -9,7 +10,8 @@ import {
 
 export function Editor() {
   const [selectedBlock, setSelectedBlock] = useState(0);
-  const { showToast, openModal, setActivePage } = useAppContext();
+  const { showToast, openModal } = useAppContext();
+  const navigate = useNavigate();
   const canvasRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const selectBlock = (idx: number) => {
@@ -31,7 +33,7 @@ export function Editor() {
               <div className="font-serif" style={{fontSize:'16px'}}>Fundamentos 1</div>
               <div className="text-[11px] text-text3">Violão · Foundation · 10 aulas</div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => setActivePage('gerador')}>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/gerador')}>
               <ArrowLeft size={16} />
             </button>
           </div>
@@ -179,7 +181,7 @@ export function Editor() {
         <div className="editor-canvas">
           <div style={{maxWidth:'680px', margin:'0 auto'}}>
             {/* Block 0: Capa */}
-            <div className={`canvas-block ${selectedBlock === 0 ? 'selected' : ''}`} onClick={() => selectBlock(0)} ref={el => canvasRefs.current[0] = el}>
+            <div className={`canvas-block ${selectedBlock === 0 ? 'selected' : ''}`} onClick={() => selectBlock(0)} ref={el => { canvasRefs.current[0] = el }}>
               <div style={{textAlign:'center', padding:'20px 0'}}>
                 <div style={{width:'56px', height:'56px', borderRadius:'14px', background:'linear-gradient(135deg,var(--azul-escuro),var(--azul))', margin:'0 auto 12px', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:'18px', fontWeight:800}}>LA</div>
                 <div style={{fontSize:'10px', letterSpacing:'2px', textTransform:'uppercase', color:'var(--text3)'}}>LA Music School</div>
@@ -193,18 +195,18 @@ export function Editor() {
             </div>
 
             {/* Block 1: Section Title */}
-            <div className={`canvas-block ${selectedBlock === 1 ? 'selected' : ''}`} onClick={() => selectBlock(1)} ref={el => canvasRefs.current[1] = el}>
+            <div className={`canvas-block ${selectedBlock === 1 ? 'selected' : ''}`} onClick={() => selectBlock(1)} ref={el => { canvasRefs.current[1] = el }}>
               <div contentEditable className="font-serif" style={{fontSize:'20px', color:'var(--foundation)', borderLeft:'3px solid var(--foundation)', paddingLeft:'12px'}}>📖 Teoria e Conceitos</div>
             </div>
 
             {/* Block 2: Text */}
-            <div className={`canvas-block ${selectedBlock === 2 ? 'selected' : ''}`} onClick={() => selectBlock(2)} ref={el => canvasRefs.current[2] = el}>
+            <div className={`canvas-block ${selectedBlock === 2 ? 'selected' : ''}`} onClick={() => selectBlock(2)} ref={el => { canvasRefs.current[2] = el }}>
               <div style={{fontSize:'14px', fontWeight:600, color:'var(--text)', marginBottom:'8px'}} contentEditable>Anatomia do Violão</div>
               <div contentEditable style={{fontSize:'13px', color:'var(--text2)', lineHeight:1.8}}>O violão é composto por três partes principais: <strong>corpo</strong> (caixa de ressonância), <strong>braço</strong> (onde ficam os trastes e as casas) e <strong>mão</strong> ou cabeça (onde ficam as tarraxas para afinação). As 6 cordas são numeradas de baixo para cima: 1ª (mi agudo) até 6ª (mi grave). Os trastes dividem o braço em casas, e cada casa equivale a meio tom.</div>
             </div>
 
             {/* Block 3: Image */}
-            <div className={`canvas-block ${selectedBlock === 3 ? 'selected' : ''}`} onClick={() => selectBlock(3)} ref={el => canvasRefs.current[3] = el}>
+            <div className={`canvas-block ${selectedBlock === 3 ? 'selected' : ''}`} onClick={() => selectBlock(3)} ref={el => { canvasRefs.current[3] = el }}>
               <div style={{aspectRatio:'16/9', background:'linear-gradient(135deg,var(--azul-soft),var(--accent-soft))', borderRadius:'var(--radius-sm)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer'}} onClick={() => openModal('modal-trocar-imagem')}>
                 <ImageIcon size={36} style={{color:'var(--text3)', marginBottom:'8px'}} />
                 <div style={{fontSize:'12px', color:'var(--text3)'}}>Imagem: Partes do Violão</div>
@@ -213,18 +215,18 @@ export function Editor() {
             </div>
 
             {/* Block 4: Text */}
-            <div className={`canvas-block ${selectedBlock === 4 ? 'selected' : ''}`} onClick={() => selectBlock(4)} ref={el => canvasRefs.current[4] = el}>
+            <div className={`canvas-block ${selectedBlock === 4 ? 'selected' : ''}`} onClick={() => selectBlock(4)} ref={el => { canvasRefs.current[4] = el }}>
               <div style={{fontSize:'14px', fontWeight:600, color:'var(--text)', marginBottom:'8px'}} contentEditable>Postura e Posição das Mãos</div>
               <div contentEditable style={{fontSize:'13px', color:'var(--text2)', lineHeight:1.8}}>A postura correta é fundamental para evitar lesões e facilitar a execução. Sente-se com a coluna ereta, o violão apoiado na perna direita (posição popular) ou esquerda (posição clássica). A <strong>mão direita</strong> (D) é responsável pela pulsação e ritmo. A <strong>mão esquerda</strong> (E) pressiona as cordas nos trastes para formar notas e acordes.</div>
             </div>
 
             {/* Block 5: Section Title */}
-            <div className={`canvas-block ${selectedBlock === 5 ? 'selected' : ''}`} onClick={() => selectBlock(5)} ref={el => canvasRefs.current[5] = el}>
+            <div className={`canvas-block ${selectedBlock === 5 ? 'selected' : ''}`} onClick={() => selectBlock(5)} ref={el => { canvasRefs.current[5] = el }}>
               <div contentEditable className="font-serif" style={{fontSize:'20px', color:'var(--grow)', borderLeft:'3px solid var(--grow)', paddingLeft:'12px'}}>🎯 Técnica</div>
             </div>
 
             {/* Block 6: Chord Diagram */}
-            <div className={`canvas-block ${selectedBlock === 6 ? 'selected' : ''}`} onClick={() => selectBlock(6)} ref={el => canvasRefs.current[6] = el}>
+            <div className={`canvas-block ${selectedBlock === 6 ? 'selected' : ''}`} onClick={() => selectBlock(6)} ref={el => { canvasRefs.current[6] = el }}>
               <div style={{fontSize:'14px', fontWeight:600, color:'var(--text)', marginBottom:'12px'}} contentEditable>Acorde G — Sol Maior</div>
               <div style={{display:'flex', gap:'24px', alignItems:'flex-start'}}>
                 <div style={{width:'120px', height:'150px', border:'1px solid var(--border)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)', flexShrink:0, cursor:'pointer'}} onClick={() => openModal('modal-trocar-acorde')}>
@@ -239,7 +241,7 @@ export function Editor() {
             </div>
 
             {/* Block 7: Chord Diagram */}
-            <div className={`canvas-block ${selectedBlock === 7 ? 'selected' : ''}`} onClick={() => selectBlock(7)} ref={el => canvasRefs.current[7] = el}>
+            <div className={`canvas-block ${selectedBlock === 7 ? 'selected' : ''}`} onClick={() => selectBlock(7)} ref={el => { canvasRefs.current[7] = el }}>
               <div style={{fontSize:'14px', fontWeight:600, color:'var(--text)', marginBottom:'12px'}} contentEditable>Acorde C — Dó Maior</div>
               <div style={{display:'flex', gap:'24px', alignItems:'flex-start'}}>
                 <div style={{width:'120px', height:'150px', border:'1px solid var(--border)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)', flexShrink:0}}>
@@ -254,7 +256,7 @@ export function Editor() {
             </div>
 
             {/* Block 8: Exercise */}
-            <div className={`canvas-block ${selectedBlock === 8 ? 'selected' : ''}`} onClick={() => selectBlock(8)} ref={el => canvasRefs.current[8] = el}>
+            <div className={`canvas-block ${selectedBlock === 8 ? 'selected' : ''}`} onClick={() => selectBlock(8)} ref={el => { canvasRefs.current[8] = el }}>
               <div style={{background:'var(--advance-soft)', borderRadius:'var(--radius-sm)', padding:'16px', borderLeft:'3px solid var(--advance)'}}>
                 <div style={{fontSize:'14px', fontWeight:600, color:'var(--advance)', marginBottom:'8px'}} contentEditable>Exercício: Psicomotor 1234</div>
                 <div contentEditable style={{fontSize:'13px', color:'var(--text2)', lineHeight:1.8}}>Posicione os dedos 1, 2, 3 e 4 nas casas 1, 2, 3 e 4 respectivamente, na 1ª corda. Toque cada nota individualmente, mantendo os dedos anteriores pressionados. Repita em todas as cordas, de cima para baixo. Faça com metrônomo a 60 BPM.</div>
@@ -263,12 +265,12 @@ export function Editor() {
             </div>
 
             {/* Block 9: Section Title */}
-            <div className={`canvas-block ${selectedBlock === 9 ? 'selected' : ''}`} onClick={() => selectBlock(9)} ref={el => canvasRefs.current[9] = el}>
+            <div className={`canvas-block ${selectedBlock === 9 ? 'selected' : ''}`} onClick={() => selectBlock(9)} ref={el => { canvasRefs.current[9] = el }}>
               <div contentEditable className="font-serif" style={{fontSize:'20px', color:'var(--advance)', borderLeft:'3px solid var(--advance)', paddingLeft:'12px'}}>🥁 Ritmo</div>
             </div>
 
             {/* Block 10: Notation */}
-            <div className={`canvas-block ${selectedBlock === 10 ? 'selected' : ''}`} onClick={() => selectBlock(10)} ref={el => canvasRefs.current[10] = el}>
+            <div className={`canvas-block ${selectedBlock === 10 ? 'selected' : ''}`} onClick={() => selectBlock(10)} ref={el => { canvasRefs.current[10] = el }}>
               <div style={{fontSize:'14px', fontWeight:600, color:'var(--text)', marginBottom:'12px'}} contentEditable>Figuras Rítmicas Básicas</div>
               <div style={{height:'80px', border:'1px solid var(--border)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)', cursor:'pointer'}}>
                 <div style={{textAlign:'center', fontSize:'11px', color:'var(--text3)'}}>
@@ -281,12 +283,12 @@ export function Editor() {
             </div>
 
             {/* Block 11: Section Title */}
-            <div className={`canvas-block ${selectedBlock === 11 ? 'selected' : ''}`} onClick={() => selectBlock(11)} ref={el => canvasRefs.current[11] = el}>
+            <div className={`canvas-block ${selectedBlock === 11 ? 'selected' : ''}`} onClick={() => selectBlock(11)} ref={el => { canvasRefs.current[11] = el }}>
               <div contentEditable className="font-serif" style={{fontSize:'20px', color:'var(--master)', borderLeft:'3px solid var(--master)', paddingLeft:'12px'}}>🎵 Repertório</div>
             </div>
 
             {/* Block 12: Repertoire Sheet */}
-            <div className={`canvas-block ${selectedBlock === 12 ? 'selected' : ''}`} onClick={() => selectBlock(12)} ref={el => canvasRefs.current[12] = el}>
+            <div className={`canvas-block ${selectedBlock === 12 ? 'selected' : ''}`} onClick={() => selectBlock(12)} ref={el => { canvasRefs.current[12] = el }}>
               <div style={{border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', padding:'16px', background:'var(--bg)'}}>
                 <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px'}}>
                   <div style={{fontSize:'16px', fontWeight:600, color:'var(--text)'}} contentEditable>Love Me Do — Beatles</div>
@@ -303,7 +305,7 @@ export function Editor() {
             </div>
 
             {/* Block 13: Achievement */}
-            <div className={`canvas-block ${selectedBlock === 13 ? 'selected' : ''}`} onClick={() => selectBlock(13)} ref={el => canvasRefs.current[13] = el}>
+            <div className={`canvas-block ${selectedBlock === 13 ? 'selected' : ''}`} onClick={() => selectBlock(13)} ref={el => { canvasRefs.current[13] = el }}>
               <div style={{textAlign:'center', padding:'16px', background:'linear-gradient(135deg,var(--verde-soft),var(--dourado-soft))', borderRadius:'var(--radius)', border:'1px dashed var(--dourado)'}}>
                 <div style={{fontSize:'36px', marginBottom:'6px'}}>🎸</div>
                 <div style={{fontSize:'16px', fontWeight:700, color:'var(--text)'}} contentEditable>Primeiro Acorde!</div>
@@ -313,7 +315,7 @@ export function Editor() {
             </div>
 
             {/* Block 14: QR Code */}
-            <div className={`canvas-block ${selectedBlock === 14 ? 'selected' : ''}`} onClick={() => selectBlock(14)} ref={el => canvasRefs.current[14] = el}>
+            <div className={`canvas-block ${selectedBlock === 14 ? 'selected' : ''}`} onClick={() => selectBlock(14)} ref={el => { canvasRefs.current[14] = el }}>
               <div style={{display:'flex', alignItems:'center', gap:'16px', padding:'14px', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)'}}>
                 <div style={{width:'72px', height:'72px', border:'1px solid var(--border)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)', flexShrink:0}}>
                   <QrCode size={32} style={{color:'var(--text3)'}} />

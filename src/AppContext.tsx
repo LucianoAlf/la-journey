@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { Toast } from './components/Toast';
+import { toast as sonnerToast } from 'sonner';
 
 interface AppContextType {
   showToast: (message: string) => void;
@@ -11,15 +11,10 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [toast, setToast] = useState({ message: '', isVisible: false });
   const [openModals, setOpenModals] = useState<Record<string, boolean>>({});
 
   const showToast = (message: string) => {
-    setToast({ message, isVisible: true });
-  };
-
-  const closeToast = () => {
-    setToast(prev => ({ ...prev, isVisible: false }));
+    sonnerToast.success(message);
   };
 
   const openModal = (modalId: string) => {
@@ -37,7 +32,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ showToast, openModal, closeModal, isModalOpen }}>
       {children}
-      <Toast message={toast.message} isVisible={toast.isVisible} onClose={closeToast} />
     </AppContext.Provider>
   );
 }

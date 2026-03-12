@@ -1,5 +1,6 @@
 import { Plus, Medal, LockKeyOpen, Star } from "@phosphor-icons/react";
 import { useAppContext } from "../AppContext";
+import { Button } from "@/components/ui/button";
 
 export function Gamificacao() {
   const { openModal } = useAppContext();
@@ -15,9 +16,9 @@ export function Gamificacao() {
             Conquistas, badges, desafios e ranking para engajamento
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => openModal('modal-conquista')}>
+        <Button onClick={() => openModal('modal-conquista')}>
           <Plus size={16} /> Nova Conquista
-        </button>
+        </Button>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">

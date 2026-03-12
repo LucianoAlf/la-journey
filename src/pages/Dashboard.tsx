@@ -1,212 +1,208 @@
 import { 
-  UsersThree, FileText, MapTrifold, Trophy, ArrowRight, Hourglass, DownloadSimple 
+  UsersThree, MapTrifold, Trophy, Chalkboard, 
+  SpinnerGap, Warning 
 } from "@phosphor-icons/react";
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
+import { useSchool } from '@/hooks/useSchool'
+import { useStudents } from '@/hooks/useStudents'
+import { useClasses } from '@/hooks/useClasses'
+import { useJourneys } from '@/hooks/useJourneys'
+import { useAchievements } from '@/hooks/useAchievements'
+import { PhosphorIconRenderer } from '@/lib/phosphor-icon-map'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+
+const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  Foundation: { label: '🧱 Foundation', color: 'bg-foundation', bg: 'bg-foundation-soft' },
+  Grow:       { label: '📈 Grow',       color: 'bg-grow',       bg: 'bg-grow-soft' },
+  Advance:    { label: '✅ Advance',    color: 'bg-advance',    bg: 'bg-advance-soft' },
+  Master:     { label: '🏆 Master',     color: 'bg-master',     bg: 'bg-master-soft' },
+}
 
 export function Dashboard() {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { data: school, loading: schoolLoading } = useSchool()
+  const { data: students, loading: studentsLoading } = useStudents()
+  const { data: classes, loading: classesLoading } = useClasses()
+  const { data: journeys, loading: journeysLoading } = useJourneys()
+  const { data: achievements, loading: achievementsLoading } = useAchievements()
+
+  const loading = schoolLoading || studentsLoading || classesLoading || journeysLoading || achievementsLoading
+
+  const hoje = format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Usuário'
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <SpinnerGap size={32} className="animate-spin text-accent mx-auto mb-3" />
+          <p className="text-text2 text-sm">Carregando dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const stats = [
+    {
+      label: 'Alunos',
+      value: students?.length ?? 0,
+      icon: <UsersThree size={20} />,
+      gradient: 'from-azul-escuro to-azul-claro',
+      iconBg: 'bg-azul-soft text-azul-claro',
+    },
+    {
+      label: 'Turmas',
+      value: classes?.length ?? 0,
+      icon: <Chalkboard size={20} />,
+      gradient: 'from-accent to-[#D91A60]',
+      iconBg: 'bg-accent-soft text-accent',
+    },
+    {
+      label: 'Jornadas',
+      value: journeys?.length ?? 0,
+      icon: <MapTrifold size={20} />,
+      gradient: 'from-[#4F46E5] to-foundation',
+      iconBg: 'bg-foundation-soft text-foundation',
+    },
+    {
+      label: 'Conquistas',
+      value: achievements?.length ?? 0,
+      icon: <Trophy size={20} />,
+      gradient: 'from-[#D97706] to-dourado',
+      iconBg: 'bg-dourado-soft text-dourado',
+    },
+  ]
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-serif text-[26px] leading-[1.2] text-text">
-            Boa tarde, <em className="not-italic text-accent">Alf</em> 🎵
+            Olá, <em className="not-italic text-accent">{userName}</em> 🎵
           </h1>
-          <p className="text-text2 text-[13.5px] mt-1.5">
-            Quarta-feira, 11 de março de 2026 · 3 materiais gerados hoje · 12 alunos avançaram
+          <p className="text-text2 text-[13.5px] mt-1.5 capitalize">
+            {hoje}
+            {school && <> · <strong>{school.name}</strong></>}
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm">
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/jornadas')}>
             <MapTrifold size={16} /> Jornadas
           </button>
-          <button className="btn btn-accent">
+          <button className="btn btn-accent" onClick={() => navigate('/gerador')}>
             <span className="text-base">✨</span> Gerar Material
           </button>
         </div>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="card relative overflow-hidden group">
-          <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--radius)] bg-gradient-to-r from-azul-escuro to-azul-claro" />
-          <span className="absolute top-[18px] right-[18px] w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-azul-soft text-azul-claro">
-            <UsersThree size={20} />
-          </span>
-          <div className="text-[10px] tracking-[2.5px] uppercase text-text3 mb-2">Alunos ativos</div>
-          <div className="font-serif text-[30px] font-semibold leading-none mb-2 text-text">1.297</div>
-          <div className="text-xs text-text2">
-            Em jornada <span className="inline-flex items-center gap-[3px] text-[11px] font-semibold ml-1 text-verde">↑ 12%</span>
+        {stats.map((stat) => (
+          <div key={stat.label} className="card relative overflow-hidden group">
+            <div className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--radius)] bg-gradient-to-r ${stat.gradient}`} />
+            <span className={`absolute top-[18px] right-[18px] w-10 h-10 rounded-xl flex items-center justify-center text-lg ${stat.iconBg}`}>
+              {stat.icon}
+            </span>
+            <div className="text-[10px] tracking-[2.5px] uppercase text-text3 mb-2">{stat.label}</div>
+            <div className="font-serif text-[30px] font-semibold leading-none mb-2 text-text">{stat.value}</div>
           </div>
-          <div className="h-1 bg-bg2 rounded-sm mt-2 overflow-hidden">
-            <div className="h-full rounded-sm transition-all duration-1000 w-[65%] bg-gradient-to-r from-azul-escuro to-azul-claro" />
-          </div>
-        </div>
-
-        <div className="card relative overflow-hidden group">
-          <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--radius)] bg-gradient-to-r from-accent to-[#D91A60]" />
-          <span className="absolute top-[18px] right-[18px] w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-accent-soft text-accent">
-            <FileText size={20} />
-          </span>
-          <div className="text-[10px] tracking-[2.5px] uppercase text-text3 mb-2">Materiais gerados</div>
-          <div className="font-serif text-[30px] font-semibold leading-none mb-2 text-text">347</div>
-          <div className="text-xs text-text2">
-            Este mês <span className="inline-flex items-center gap-[3px] text-[11px] font-semibold ml-1 text-verde">↑ 28%</span>
-          </div>
-          <div className="h-1 bg-bg2 rounded-sm mt-2 overflow-hidden">
-            <div className="h-full rounded-sm transition-all duration-1000 w-[70%] bg-gradient-to-r from-accent to-[#D91A60]" />
-          </div>
-        </div>
-
-        <div className="card relative overflow-hidden group">
-          <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--radius)] bg-gradient-to-r from-[#4F46E5] to-foundation" />
-          <span className="absolute top-[18px] right-[18px] w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-foundation-soft text-foundation">
-            <MapTrifold size={20} />
-          </span>
-          <div className="text-[10px] tracking-[2.5px] uppercase text-text3 mb-2">Jornadas ativas</div>
-          <div className="font-serif text-[30px] font-semibold leading-none mb-2 text-text">21</div>
-          <div className="text-xs text-text2">
-            8 instrumentos <span className="inline-flex items-center gap-[3px] text-[11px] font-semibold ml-1 text-verde">↑ 5</span>
-          </div>
-          <div className="h-1 bg-bg2 rounded-sm mt-2 overflow-hidden">
-            <div className="h-full rounded-sm transition-all duration-1000 w-[53%] bg-foundation" />
-          </div>
-        </div>
-
-        <div className="card relative overflow-hidden group">
-          <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--radius)] bg-gradient-to-r from-[#D97706] to-dourado" />
-          <span className="absolute top-[18px] right-[18px] w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-dourado-soft text-dourado">
-            <Trophy size={20} />
-          </span>
-          <div className="text-[10px] tracking-[2.5px] uppercase text-text3 mb-2">Conquistas</div>
-          <div className="font-serif text-[30px] font-semibold leading-none mb-2 text-text">2.891</div>
-          <div className="text-xs text-text2">
-            Desbloqueadas <span className="inline-flex items-center gap-[3px] text-[11px] font-semibold ml-1 text-verde">↑ 34%</span>
-          </div>
-          <div className="h-1 bg-bg2 rounded-sm mt-2 overflow-hidden">
-            <div className="h-full rounded-sm transition-all duration-1000 w-[80%] bg-dourado" />
-          </div>
-        </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-2 gap-5">
+        {/* Jornada com Stages */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <div className="font-serif text-[17px]">Progresso por Stage</div>
-            <span className="badge badge-azul">Violão Adulto</span>
+            <div className="font-serif text-[17px]">Jornadas cadastradas</div>
+            <span className="badge badge-azul">{journeys?.length ?? 0} ativa(s)</span>
           </div>
-          <div className="flex flex-col gap-3">
-            <div>
-              <div className="flex justify-between text-[13px] mb-2">
-                <span>🧱 Foundation</span><span className="text-text2">78%</span>
-              </div>
-              <div className="h-1 bg-bg2 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm transition-all duration-1000 w-[78%] bg-foundation" />
-              </div>
+
+          {journeys && journeys.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {journeys.map((journey) => (
+                <div key={journey.id} className="p-3 rounded-[var(--radius-sm)] border border-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-bold text-[13px]">{journey.name}</div>
+                    <span className="badge badge-azul text-[10px]">{journey.instrument} · {journey.target_audience}</span>
+                  </div>
+                  <div className="text-[11px] text-text3">
+                    Status: <span className="text-verde font-medium">{journey.status}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div>
-              <div className="flex justify-between text-[13px] mb-2">
-                <span>📈 Grow</span><span className="text-text2">45%</span>
-              </div>
-              <div className="h-1 bg-bg2 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm transition-all duration-1000 w-[45%] bg-grow" />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-[13px] mb-2">
-                <span>✅ Advance</span><span className="text-text2">22%</span>
-              </div>
-              <div className="h-1 bg-bg2 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm transition-all duration-1000 w-[22%] bg-advance" />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-[13px] mb-2">
-                <span>🏆 Master</span><span className="text-text2">8%</span>
-              </div>
-              <div className="h-1 bg-bg2 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm transition-all duration-1000 w-[8%] bg-master" />
-              </div>
-            </div>
-          </div>
+          ) : (
+            <EmptyState message="Nenhuma jornada cadastrada" />
+          )}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-serif text-[17px]">Materiais recentes</div>
-              <button className="btn btn-ghost btn-sm">
-                <ArrowRight size={16} /> Ver todos
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 p-2.5 bg-foundation-soft rounded-[var(--radius-sm)] border-l-[3px] border-foundation">
-                <div className="flex-1">
-                  <div className="font-bold text-[13px]">Violão Foundation — Fund. 1</div>
-                  <div className="text-[11px] text-text3">32 págs · 10/03 · 45 downloads</div>
-                </div>
-                <span className="badge badge-verde">Pronto</span>
-              </div>
-              <div className="flex items-center gap-3 p-2.5 bg-grow-soft rounded-[var(--radius-sm)] border-l-[3px] border-grow">
-                <div className="flex-1">
-                  <div className="font-bold text-[13px]">Guitarra Foundation — Fund. 2</div>
-                  <div className="text-[11px] text-text3">28 págs · 09/03 · 23 downloads</div>
-                </div>
-                <span className="badge badge-verde">Pronto</span>
-              </div>
-              <div className="flex items-center gap-3 p-2.5 bg-dourado-soft rounded-[var(--radius-sm)] border-l-[3px] border-dourado">
-                <div className="flex-1">
-                  <div className="font-bold text-[13px]">Repertório Violão — Nível 1</div>
-                  <div className="text-[11px] text-text3">12 págs · 11/03</div>
-                </div>
-                <span className="badge badge-dourado">Gerando...</span>
-              </div>
-            </div>
+        {/* Turmas */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <div className="font-serif text-[17px]">Turmas</div>
+            <span className="badge badge-azul">{classes?.length ?? 0} turma(s)</span>
           </div>
 
-          <div className="card">
-            <div className="font-serif mb-3 text-[17px]">Alertas prioritários</div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2.5 p-2.5 bg-dourado-soft rounded-[var(--radius-sm)] border-l-[3px] border-dourado">
-                <span>⚠️</span>
-                <div className="flex-1 text-[13px]"><strong>Ana Oliveira</strong> — atrasada 3 aulas</div>
-                <button className="btn btn-ghost btn-sm">Enviar material</button>
-              </div>
-              <div className="flex items-center gap-2.5 p-2.5 bg-vermelho-soft rounded-[var(--radius-sm)] border-l-[3px] border-vermelho">
-                <span>🛑</span>
-                <div className="flex-1 text-[13px]"><strong>João Ferreira</strong> — estagnado há 2 semanas</div>
-                <button className="btn btn-ghost btn-sm">Ver</button>
-              </div>
-              <div className="flex items-center gap-2.5 p-2.5 bg-verde-soft rounded-[var(--radius-sm)] border-l-[3px] border-verde">
-                <span>✅</span>
-                <div className="flex-1 text-[13px]"><strong>15 alunos</strong> completaram checkpoint esta semana</div>
-              </div>
+          {classes && classes.length > 0 ? (
+            <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+              {classes.map((cls) => (
+                <div key={cls.id} className="flex items-center gap-3 p-2.5 rounded-[var(--radius-sm)] border border-border">
+                  <div className="flex-1">
+                    <div className="font-bold text-[13px]">{cls.name}</div>
+                    <div className="text-[11px] text-text3">
+                      {cls.instrument} · Máx {cls.max_students} alunos
+                    </div>
+                  </div>
+                  <span className={`badge ${cls.is_active ? 'badge-verde' : 'badge-vermelho'} text-[10px]`}>
+                    {cls.is_active ? 'Ativa' : 'Inativa'}
+                  </span>
+                </div>
+              ))}
             </div>
-          </div>
+          ) : (
+            <EmptyState message="Nenhuma turma cadastrada" />
+          )}
         </div>
       </div>
 
+      {/* Achievements */}
       <div className="card mt-4">
         <div className="flex items-center justify-between mb-4">
-          <div className="font-serif text-[17px]">Instrumentos</div>
-          <span className="badge badge-azul">8 ativos</span>
+          <div className="font-serif text-[17px]">Conquistas disponíveis</div>
+          <span className="badge badge-dourado">{achievements?.length ?? 0} conquista(s)</span>
         </div>
-        <div className="grid grid-cols-8 gap-2.5">
-          {[
-            { icon: '🎸', name: 'Violão', count: 342 },
-            { icon: '🎸', name: 'Guitarra', count: 187 },
-            { icon: '🎹', name: 'Teclado', count: 156 },
-            { icon: '🎹', name: 'Piano', count: 98 },
-            { icon: '🎤', name: 'Canto', count: 224 },
-            { icon: '🥁', name: 'Bateria', count: 134 },
-            { icon: '🎸', name: 'Baixo', count: 67 },
-            { icon: '🪕', name: 'Ukulele', count: 89 },
-          ].map((inst, i) => (
-            <div key={i} className="text-center p-3.5 rounded-[var(--radius-sm)] border border-border cursor-pointer transition-all hover:border-azul-claro hover:bg-azul-soft">
-              <div className="text-2xl mb-1.5">{inst.icon}</div>
-              <div className="font-bold text-[11px]">{inst.name}</div>
-              <div className="text-[11px] text-text3">{inst.count}</div>
-            </div>
-          ))}
-        </div>
+        {achievements && achievements.length > 0 ? (
+          <div className="grid grid-cols-3 gap-3">
+            {achievements.map((ach) => (
+              <div key={ach.id} className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border">
+                <PhosphorIconRenderer name={ach.icon} size={28} className="text-dourado shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-[13px] truncate">{ach.name}</div>
+                  <div className="text-[11px] text-text3 truncate">{ach.description}</div>
+                  {ach.points && (
+                    <div className="text-[10px] text-dourado font-semibold mt-0.5">{ach.points} pts</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState message="Nenhuma conquista cadastrada" />
+        )}
       </div>
     </div>
   );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex items-center gap-2.5 p-4 rounded-[var(--radius-sm)] bg-bg2 text-text3 text-[13px]">
+      <Warning size={18} />
+      <span>{message}</span>
+    </div>
+  )
 }

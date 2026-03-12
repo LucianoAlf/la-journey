@@ -1,0 +1,28 @@
+import { useAsync } from './useAsync'
+import { getTopics, getTopicById, getBlocks } from '@/services/contentService'
+import type { Database } from '@/lib/database.types'
+
+export function useTopics(filters?: {
+  instrument?: string
+  pillar?: Database['public']['Enums']['pillar_type']
+  difficulty?: Database['public']['Enums']['difficulty_level']
+}) {
+  return useAsync(
+    () => getTopics(filters),
+    [filters?.instrument, filters?.pillar, filters?.difficulty]
+  )
+}
+
+export function useTopic(id: string | undefined) {
+  return useAsync(() => {
+    if (!id) return Promise.resolve(null)
+    return getTopicById(id)
+  }, [id])
+}
+
+export function useBlocks(topicId: string | undefined) {
+  return useAsync(() => {
+    if (!topicId) return Promise.resolve(null)
+    return getBlocks(topicId)
+  }, [topicId])
+}
