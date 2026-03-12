@@ -6,7 +6,6 @@ import {
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "../utils";
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
@@ -121,23 +120,22 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
         <div className="flex items-center gap-1.5 px-1 flex-wrap justify-center relative">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" className="w-8 h-8 shrink-0">
+              <button className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center cursor-pointer text-text2 text-sm transition-all hover:bg-azul-soft hover:text-azul-claro shrink-0">
                 <Plus />
-              </Button>
+              </button>
             </TooltipTrigger>
             <TooltipContent side="top">Ação rápida</TooltipContent>
           </Tooltip>
           <div className="relative" ref={notifRef}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" size="icon"
+                <button 
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
-                  className="w-8 h-8 shrink-0 relative"
+                  className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center cursor-pointer text-text2 text-sm transition-all hover:bg-azul-soft hover:text-azul-claro shrink-0 relative"
                 >
                   <Bell />
                   <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-accent rounded-full border-2 border-sidebar-bg" />
-                </Button>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="top">Notificações</TooltipContent>
             </Tooltip>
@@ -164,9 +162,9 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={toggleTheme} className="w-8 h-8 shrink-0">
+              <button onClick={toggleTheme} className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center cursor-pointer text-text2 text-sm transition-all hover:bg-azul-soft hover:text-azul-claro shrink-0">
                 {theme === 'dark' ? <Moon /> : <Sun />}
-              </Button>
+              </button>
             </TooltipTrigger>
             <TooltipContent side="top">Tema</TooltipContent>
           </Tooltip>
@@ -186,13 +184,12 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
           </div>
         </div>
 
-        <Button 
-          variant="ghost"
+        <button 
           onClick={toggleSidebar}
-          className="w-full bg-azul-soft text-azul-claro hover:bg-azul-escuro hover:text-white"
+          className="flex items-center justify-center w-full p-2 rounded-[var(--radius-sm)] cursor-pointer transition-all bg-azul-soft text-azul-claro border-none text-base hover:bg-azul-escuro hover:text-white"
         >
           {isCollapsed ? <CaretRight /> : <CaretLeft />}
-        </Button>
+        </button>
       </div>
     </nav>
   );
