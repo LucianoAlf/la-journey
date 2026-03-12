@@ -112,6 +112,9 @@
     --shadow: 0 2px 12px rgba(30, 58, 95, .06);
     --shadow-lg: 0 8px 32px rgba(30, 58, 95, .12);
     --input-bg: #F5F2FA;
+    --wk-bg: #FFFFFF;
+    --bk-bg: #1a1a2e;
+    --piano-wrap-bg: #f1f5f9;
   }
 
   [data-theme="dark"] {
@@ -139,6 +142,9 @@
     --shadow: 0 2px 16px rgba(0, 0, 0, .4);
     --shadow-lg: 0 8px 40px rgba(0, 0, 0, .5);
     --input-bg: rgba(255, 255, 255, .04);
+    --wk-bg: #1E293B;
+    --bk-bg: #0F172A;
+    --piano-wrap-bg: #0F172A;
   }
 
   body {
@@ -212,10 +218,12 @@
 }
 
 /* NOTATION — VexFlow sempre renderiza preto; dark mode inverte via CSS */
-[data-theme="dark"] .notation-container {
+[data-theme="dark"] .notation-container,
+.dark .notation-container {
   background: var(--surface) !important;
 }
-[data-theme="dark"] .notation-container svg {
+[data-theme="dark"] .notation-container svg,
+.dark .notation-container svg {
   filter: invert(0.88) hue-rotate(180deg);
 }
 

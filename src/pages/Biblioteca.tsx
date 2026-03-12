@@ -1,5 +1,6 @@
 import { Plus, SpinnerGap, Warning, Guitar, PianoKeys } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect } from "react";
+import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,9 @@ import { ChordDiagram } from "@/components/music/ChordDiagram";
 import { StaffNotation } from "@/components/music/StaffNotation";
 import { RhythmNotation } from "@/components/music/RhythmNotation";
 import { Tablature } from "@/components/music/Tablature";
+import { PianoKeyboard } from "@/components/music/PianoKeyboard";
+import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
+import { createChord, updateChord, deleteChord } from "@/services/libraryService";
 
 
 /** Converte notas de escala para formato VexFlow */
@@ -30,29 +34,38 @@ const STAGE_BADGES: Record<string, 'foundation' | 'grow' | 'advance' | 'master'>
   foundation: 'foundation', grow: 'grow', advance: 'advance', master: 'master',
 }
 
-/** Placeholder visual para acordes de piano (até criarmos PianoKeyboard.tsx) */
-function PianoChordPlaceholder({ positions, name }: { positions: any; name: string }) {
+/** Card de acorde de piano com teclado SVG real */
+function PianoChordCard({ positions, name }: { positions: any; name: string }) {
   const keys = (positions?.keys ?? []) as string[]
   const fingeringRh = (positions?.fingering_rh ?? []) as number[]
   const quality = positions?.quality as string | undefined
 
+  if (keys.length === 0) {
+    return (
+      <div className="h-[180px] flex flex-col items-center justify-center gap-2 w-full">
+        <PianoKeys size={32} className="text-text3" />
+        <div className="text-[11px] text-text3">Sem dados</div>
+      </div>
+    )
+  }
+
   return (
-    <div className="h-[180px] flex flex-col items-center justify-center gap-2 w-full">
-      <PianoKeys size={32} className="text-foundation" weight="duotone" />
-      <div className="font-bold text-[15px]">{name}</div>
+    <div className="flex flex-col items-center justify-center gap-1 w-full">
+      <div className="font-bold text-[15px] text-text">{name}</div>
       {quality && (
-        <Badge variant="foundation" className="text-[9px]">{quality}</Badge>
+        <Badge variant="foundation" className="text-[8px] mb-0.5">{quality}</Badge>
       )}
-      {keys.length > 0 && (
-        <div className="text-[12px] font-mono text-text2">
-          {keys.join(' · ')}
-        </div>
-      )}
-      {fingeringRh.length > 0 && (
-        <div className="text-[10px] text-text3">
-          MD: {fingeringRh.join('-')}
-        </div>
-      )}
+      <PianoKeyboard
+        keys={keys}
+        root={positions?.root}
+        fingeringRH={fingeringRh}
+        showLabels={true}
+        hand="rh"
+        highlightColor="#FF2D78"
+        range={['C4', 'C6']}
+        scale={1}
+        className="w-full overflow-hidden"
+      />
     </div>
   )
 }
@@ -82,6 +95,41 @@ export function Biblioteca() {
   const [chordSearch, setChordSearch] = useState('');
   const [diffFilter, setDiffFilter] = useState('todos');
 
+  // Estado do KeyboardEditor (piano)
+  const [pianoEditorOpen, setPianoEditorOpen] = useState(false);
+  const [editingPianoChord, setEditingPianoChord] = useState<any>(null);
+
+  const handleSavePianoChord = async (data: PianoChordData) => {
+    if (editingPianoChord) {
+      await updateChord(editingPianoChord.id, {
+        name: data.name,
+        instrument: 'piano' as any,
+        positions: data.positions as any,
+        difficulty: data.difficulty,
+        tags: data.tags as any,
+      });
+      toast.success('Acorde de piano atualizado!');
+    } else {
+      await createChord({
+        name: data.name,
+        instrument: 'piano' as any,
+        positions: data.positions as any,
+        difficulty: data.difficulty,
+        tags: data.tags as any,
+      });
+      toast.success('Acorde de piano criado!');
+    }
+    refetchChords();
+    window.dispatchEvent(new Event('chord-library-updated'));
+  };
+
+  const handleDeletePianoChord = async (id: string) => {
+    await deleteChord(id);
+    toast.success('Acorde de piano excluído');
+    refetchChords();
+    window.dispatchEvent(new Event('chord-library-updated'));
+  };
+
   const filteredChords = useMemo(() => {
     let list = chords ?? []
     if (chordSearch) {
@@ -105,7 +153,16 @@ export function Biblioteca() {
             {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {instrument === 'piano' ? 'Piano' : 'SVGuitar'} · VexFlow
           </p>
         </div>
-        <Button onClick={() => openModal(activeTab === 'imagens' ? 'modal-imagem' : 'modal-acorde')}>
+        <Button onClick={() => {
+          if (activeTab === 'imagens') {
+            openModal('modal-imagem');
+          } else if (instrument === 'piano') {
+            setEditingPianoChord(null);
+            setPianoEditorOpen(true);
+          } else {
+            openModal('modal-acorde');
+          }
+        }}>
           <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : 'Novo Acorde'}
         </Button>
       </div>
@@ -182,7 +239,7 @@ export function Biblioteca() {
                 <Warning size={20} className="inline mr-1" /> Nenhum acorde encontrado.
               </div>
             ) : (
-              <div className="grid grid-cols-6 gap-3">
+              <div className={`grid gap-4 ${instrument === 'piano' ? 'grid-cols-4' : 'grid-cols-6 gap-3'}`}>
                 {filteredChords.map(chord => {
                   const tags = (chord.tags ?? []) as string[]
                   const positions = (chord.positions ?? {}) as any
@@ -191,11 +248,18 @@ export function Biblioteca() {
                     <div
                       key={chord.id}
                       className="card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer"
-                      onClick={() => openModal('modal-acorde', chord)}
+                      onClick={() => {
+                        if (instrument === 'piano') {
+                          setEditingPianoChord(chord);
+                          setPianoEditorOpen(true);
+                        } else {
+                          openModal('modal-acorde', chord);
+                        }
+                      }}
                     >
                       <div className="flex justify-center mb-1">
                         {instrument === 'piano' ? (
-                          <PianoChordPlaceholder positions={positions} name={chord.name} />
+                          <PianoChordCard positions={positions} name={chord.name} />
                         ) : (
                           <ChordDiagram
                             name={chord.name}
@@ -212,7 +276,14 @@ export function Biblioteca() {
                 })}
                 <div
                   className="card text-center p-3 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors"
-                  onClick={() => openModal('modal-acorde')}
+                  onClick={() => {
+                    if (instrument === 'piano') {
+                      setEditingPianoChord(null);
+                      setPianoEditorOpen(true);
+                    } else {
+                      openModal('modal-acorde');
+                    }
+                  }}
                 >
                   <div className="h-[180px] flex items-center justify-center">
                     <div className="text-[28px] text-text3">+</div>
@@ -392,6 +463,15 @@ E|-------------|--------------|`}
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* KeyboardEditor — modal de piano */}
+      <KeyboardEditor
+        open={pianoEditorOpen}
+        onOpenChange={(v) => { setPianoEditorOpen(v); if (!v) setEditingPianoChord(null); }}
+        chord={editingPianoChord}
+        onSave={handleSavePianoChord}
+        onDelete={handleDeletePianoChord}
+      />
     </div>
   );
 }

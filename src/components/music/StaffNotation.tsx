@@ -32,16 +32,11 @@ export function StaffNotation({
     ref.current.innerHTML = ''
 
     try {
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.classList.contains('dark')
-      const noteColor = isDark ? '#e2e8f0' : '#1a1a2e'
-      const lineColor = isDark ? '#94a3b8' : '#1a1a2e'
-
+      // VexFlow SEMPRE renderiza preto sobre branco
+      // Dark mode é tratado via CSS no container (.notation-container + filter invert)
       const renderer = new Renderer(ref.current, Renderer.Backends.SVG)
       renderer.resize(width, height)
       const context = renderer.getContext()
-
-      context.setFillStyle(noteColor)
-      context.setStrokeStyle(lineColor)
 
       const staveWidth = width - 20
       const stave = new Stave(10, 10, staveWidth)
@@ -86,25 +81,10 @@ export function StaffNotation({
 
       new Formatter().joinVoices([voice]).format([voice], staveWidth - 80)
       voice.draw(context, stave)
-
-      // Patch pós-render: forçar cores em todos os elementos SVG
-      const svg = ref.current.querySelector('svg')
-      if (svg) {
-        const BLACK = ['#000000', '#000', 'black', 'none', '']
-        svg.querySelectorAll('path, line, rect').forEach(el => {
-          const s = el.getAttribute('stroke')
-          if (!s || BLACK.includes(s)) el.setAttribute('stroke', lineColor)
-          const f = el.getAttribute('fill')
-          if (f && BLACK.includes(f)) el.setAttribute('fill', noteColor)
-        })
-        svg.querySelectorAll('text').forEach(el => {
-          el.setAttribute('fill', noteColor)
-        })
-      }
     } catch (e) {
       console.error('StaffNotation render error:', e)
     }
   }, [notes, clef, timeSignature, keySignature, width, height])
 
-  return <div ref={ref} className="overflow-x-auto" />
+  return <div ref={ref} className="overflow-x-auto notation-container bg-white rounded-lg" />
 }

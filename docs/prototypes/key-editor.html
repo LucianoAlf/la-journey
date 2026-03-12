@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LA Journey — Editor de Teclado v2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0F172A;--card:#1E293B;--card-border:#334155;--text:#E2E8F0;--text-muted:#94A3B8;
+    --accent:#FF2D78;--accent-hover:#FF4D8E;--toolbar-bg:#162032;
+    --white-key:#FFFFFF;--white-hover:#FFF0F5;--black-key:#1a1a2e;--black-hover:#333;--key-border:#CBD5E1;
+    --right-hand:#FF2D78;--left-hand:#6366F1;--root-color:#F97316;
+  }
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;justify-content:center;padding:20px}
+  .box{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:24px;max-width:960px;width:100%;box-shadow:0 25px 50px rgba(0,0,0,.4)}
+  h2{font-family:'Playfair Display',serif;font-size:22px;margin-bottom:14px}
+  .accent{color:var(--accent)}
+
+  /* Config row */
+  .row{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:end}
+  .f{flex:1;min-width:100px}
+  .f.w{flex:2;min-width:160px}
+  .f label{display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px}
+  .f input,.f select{width:100%;padding:6px 10px;border:1px solid var(--card-border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans';font-size:13px;outline:none}
+  .f input:focus,.f select:focus{border-color:var(--accent)}
+  .mt{display:flex;border:1px solid var(--card-border);border-radius:8px;overflow:hidden}
+  .mb{padding:6px 12px;border:none;background:transparent;color:var(--text-muted);font-family:'DM Sans';font-size:12px;cursor:pointer;transition:.15s;white-space:nowrap}
+  .mb.a{background:var(--accent);color:#fff}
+  .mb:hover:not(.a){background:rgba(255,45,120,.1);color:var(--accent)}
+
+  /* Hand toggle */
+  .hand-toggle{display:flex;border:1px solid var(--card-border);border-radius:8px;overflow:hidden}
+  .hand-btn{padding:6px 12px;border:none;background:transparent;color:var(--text-muted);font-family:'DM Sans';font-size:12px;cursor:pointer;transition:.15s;white-space:nowrap;display:flex;align-items:center;gap:4px}
+  .hand-btn .dot{width:8px;height:8px;border-radius:50%}
+  .hand-btn.right .dot{background:var(--right-hand)}
+  .hand-btn.left .dot{background:var(--left-hand)}
+  .hand-btn.a{color:#fff}
+  .hand-btn.right.a{background:var(--right-hand)}
+  .hand-btn.left.a{background:var(--left-hand)}
+  .hand-btn:hover:not(.a){background:rgba(255,255,255,.05)}
+
+  /* Toolbar */
+  .tb{display:flex;gap:3px;padding:7px 10px;background:var(--toolbar-bg);border-radius:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+  .tg{display:flex;gap:3px;align-items:center;padding-right:8px;margin-right:5px;border-right:1px solid var(--card-border)}
+  .tg:last-child{border:none}
+  .tgl{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px;white-space:nowrap}
+  .t{height:30px;padding:0 10px;border:1px solid var(--card-border);border-radius:7px;background:transparent;color:var(--text-muted);font-family:'DM Sans';font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;white-space:nowrap}
+  .t:hover{border-color:var(--accent);color:var(--accent)}
+  .t.a{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* Main */
+  .main{display:grid;grid-template-columns:1fr 190px;gap:16px;align-items:start}
+
+  /* Piano */
+  .piano-wrap{background:#f1f5f9;border-radius:12px;padding:16px 16px 12px;position:relative}
+  .piano-label{font-size:10px;color:#64748B;text-align:center;margin-bottom:8px;font-weight:500}
+  .piano{position:relative;display:flex;height:150px;user-select:none}
+
+  /* White keys */
+  .wk{position:relative;flex:1;background:var(--white-key);border:1px solid var(--key-border);border-radius:0 0 5px 5px;cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:6px;transition:background .1s;z-index:1;min-width:0}
+  .wk:hover{background:var(--white-hover)}
+  .wk.right-active{background:var(--right-hand)}
+  .wk.left-active{background:var(--left-hand)}
+  .wk.root-active{background:var(--root-color)}
+  .wk.right-active .wk-label,.wk.left-active .wk-label,.wk.root-active .wk-label{color:#fff;font-weight:700}
+  .wk-label{font-size:9px;color:#94A3B8;font-family:'DM Mono',monospace;transition:color .1s}
+  .wk-note{font-size:7px;color:#CBD5E1;margin-top:1px}
+  .wk-finger{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3);pointer-events:none}
+  .wk-finger.right{background:var(--right-hand)}
+  .wk-finger.left{background:var(--left-hand)}
+  .wk-finger.root{background:var(--root-color)}
+
+  /* Black keys */
+  .bk{position:absolute;top:0;height:95px;background:var(--black-key);border-radius:0 0 4px 4px;cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:5px;transition:background .1s;box-shadow:0 3px 6px rgba(0,0,0,.3);z-index:3}
+  .bk:hover{background:var(--black-hover)}
+  .bk.right-active{background:var(--right-hand)}
+  .bk.left-active{background:var(--left-hand)}
+  .bk.root-active{background:var(--root-color)}
+  .bk .bk-label{font-size:8px;color:#64748B;font-family:'DM Mono',monospace}
+  .bk.right-active .bk-label,.bk.left-active .bk-label,.bk.root-active .bk-label{color:#fff}
+  .bk-finger{position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3);pointer-events:none}
+  .bk-finger.right{background:var(--right-hand)}
+  .bk-finger.left{background:var(--left-hand)}
+  .bk-finger.root{background:var(--root-color)}
+
+  /* Legend */
+  .legend{display:flex;gap:14px;justify-content:center;margin-top:8px;font-size:10px;color:var(--text-muted)}
+  .legend-item{display:flex;align-items:center;gap:4px}
+  .legend-dot{width:10px;height:10px;border-radius:50%}
+  .legend-dot.r{background:var(--right-hand)}
+  .legend-dot.l{background:var(--left-hand)}
+  .legend-dot.t{background:var(--root-color)}
+
+  /* Side panel */
+  .sp{display:flex;flex-direction:column;gap:10px}
+  .ic{background:var(--bg);border:1px solid var(--card-border);border-radius:10px;padding:10px}
+  .ic h3{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:5px}
+  .sr{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+  .sl{color:var(--text-muted)}.sv{color:var(--text);font-weight:600;font-family:'DM Mono',monospace}
+  .sel-notes{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+  .sel-note{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;font-family:'DM Mono',monospace;color:#fff}
+  .sel-note.rh{background:rgba(255,45,120,.8)}
+  .sel-note.lh{background:rgba(99,102,241,.8)}
+  .sel-note.rt{background:rgba(249,115,22,.8)}
+
+  /* Actions */
+  .ar{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--card-border)}
+  .bc{background:transparent;border:none;color:var(--text-muted);font-family:'DM Sans';font-size:12px;cursor:pointer;padding:7px 12px;border-radius:7px}
+  .bc:hover{color:#EF4444;background:rgba(239,68,68,.1)}
+  .bg{display:flex;gap:8px}
+  .bx{padding:8px 16px;border:1px solid var(--card-border);border-radius:8px;background:transparent;color:var(--text);font-family:'DM Sans';font-size:13px;cursor:pointer}
+  .bs{padding:8px 16px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:'DM Sans';font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .bs:hover{background:var(--accent-hover)}
+  .ins{font-size:10px;color:var(--text-muted);text-align:center;line-height:1.7;margin-top:8px}
+  .ins strong{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>Editor de <span class="accent">Teclado</span></h2>
+
+  <div class="row">
+    <div class="f"><label>Modo</label>
+      <div class="mt">
+        <button class="mb a" onclick="setMode('chord')">Acorde</button>
+        <button class="mb" onclick="setMode('scale')">Escala</button>
+        <button class="mb" onclick="setMode('free')">Livre</button>
+      </div>
+    </div>
+    <div class="f"><label>Mão ativa</label>
+      <div class="hand-toggle">
+        <button class="hand-btn right a" onclick="setHand('right')"><span class="dot"></span>Direita</button>
+        <button class="hand-btn left" onclick="setHand('left')"><span class="dot"></span>Esquerda</button>
+      </div>
+    </div>
+    <div class="f"><label>Oitavas</label>
+      <select id="selOct" onchange="buildPiano()">
+        <option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option>
+      </select>
+    </div>
+    <div class="f"><label>Início</label>
+      <select id="selStart" onchange="buildPiano()">
+        <option value="2">C2</option><option value="3">C3</option><option value="4" selected>C4</option><option value="5">C5</option>
+      </select>
+    </div>
+    <div class="f w"><label>Label</label>
+      <input id="txtLabel" value="Dó Maior — Mão Direita">
+    </div>
+  </div>
+
+  <div class="tb">
+    <div class="tg"><span class="tgl">Tônica</span>
+      <select id="selRoot" onchange="reloadPreset()" style="padding:4px 6px;border:1px solid var(--card-border);border-radius:6px;background:var(--bg);color:var(--text);font-size:11px;font-family:'DM Mono'">
+        <option value="0">Dó</option><option value="1">Dó#</option><option value="2">Ré</option>
+        <option value="3">Ré#</option><option value="4">Mi</option><option value="5">Fá</option>
+        <option value="6">Fá#</option><option value="7">Sol</option><option value="8">Sol#</option>
+        <option value="9">Lá</option><option value="10">Lá#</option><option value="11">Si</option>
+      </select>
+    </div>
+    <div class="tg"><span class="tgl">Acordes</span>
+      <button class="t" onclick="loadPreset('major')">Maior</button>
+      <button class="t" onclick="loadPreset('minor')">Menor</button>
+      <button class="t" onclick="loadPreset('7')">7ª</button>
+      <button class="t" onclick="loadPreset('m7')">m7</button>
+      <button class="t" onclick="loadPreset('maj7')">Maj7</button>
+      <button class="t" onclick="loadPreset('dim')">Dim</button>
+    </div>
+    <div class="tg"><span class="tgl">Escalas</span>
+      <button class="t" onclick="loadPreset('major_scale')">Maior</button>
+      <button class="t" onclick="loadPreset('minor_scale')">Menor</button>
+      <button class="t" onclick="loadPreset('penta')">Penta</button>
+      <button class="t" onclick="loadPreset('blues')">Blues</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div>
+      <div class="piano-wrap">
+        <div class="piano-label" id="pianoLabel">2 oitavas · C4 — B5</div>
+        <div class="piano" id="piano"></div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot r"></div>Mão direita</div>
+          <div class="legend-item"><div class="legend-dot l"></div>Mão esquerda</div>
+          <div class="legend-item"><div class="legend-dot t"></div>Tônica</div>
+        </div>
+      </div>
+      <div class="ins">
+        <strong>Clique</strong> = selecionar com a mão ativa · <strong>Duplo clique</strong> = marcar como tônica (laranja)<br>
+        Alterne entre <strong>Mão Direita</strong> e <strong>Mão Esquerda</strong> para definir dedilhado separado
+      </div>
+    </div>
+
+    <div class="sp">
+      <div class="ic">
+        <h3>Informações</h3>
+        <div class="sr"><span class="sl">Modo</span><span class="sv" id="iM">Acorde</span></div>
+        <div class="sr"><span class="sl">Mão direita</span><span class="sv" id="iR">0 teclas</span></div>
+        <div class="sr"><span class="sl">Mão esquerda</span><span class="sv" id="iL">0 teclas</span></div>
+        <div class="sr"><span class="sl">Tônica</span><span class="sv" id="iT">—</span></div>
+      </div>
+      <div class="ic">
+        <h3>Mão direita</h3>
+        <div class="sel-notes" id="rhNotes"><span style="color:var(--text-muted);font-size:10px">—</span></div>
+      </div>
+      <div class="ic">
+        <h3>Mão esquerda</h3>
+        <div class="sel-notes" id="lhNotes"><span style="color:var(--text-muted);font-size:10px">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ar">
+    <button class="bc" onclick="clearAll()">✕ Limpar tudo</button>
+    <div class="bg"><button class="bx">Cancelar</button><button class="bs" onclick="save()">💾 Salvar</button></div>
+  </div>
+</div>
+
+<script>
+const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NP=['Dó','Dó#','Ré','Ré#','Mi','Fá','Fá#','Sol','Sol#','Lá','Lá#','Si'];
+const WN=[0,2,4,5,7,9,11];
+const BP=[{s:1,a:0},{s:3,a:1},{s:6,a:3},{s:8,a:4},{s:10,a:5}];
+
+const PRESETS={
+  major:[0,4,7],minor:[0,3,7],'7':[0,4,7,10],m7:[0,3,7,10],maj7:[0,4,7,11],dim:[0,3,6],aug:[0,4,8],
+  major_scale:[0,2,4,5,7,9,11],minor_scale:[0,2,3,5,7,8,10],penta:[0,2,4,7,9],blues:[0,3,5,6,7,10]
+};
+
+// Piano fingering for common patterns (1=thumb...5=pinky)
+const FINGERING_RH={
+  major:[1,3,5],minor:[1,3,5],maj7:[1,2,3,5],m7:[1,2,3,5],'7':[1,2,3,5],dim:[1,3,5],aug:[1,3,5],
+  major_scale:[1,2,3,1,2,3,4,5],minor_scale:[1,2,3,1,2,3,4,5],penta:[1,2,3,1,2,3],blues:[1,2,3,1,2,3,4]
+};
+const FINGERING_LH={
+  major:[5,3,1],minor:[5,3,1],maj7:[5,4,2,1],m7:[5,4,2,1],'7':[5,4,2,1],dim:[5,3,1],aug:[5,3,1],
+  major_scale:[5,4,3,2,1,3,2,1],minor_scale:[5,4,3,2,1,3,2,1],penta:[3,2,1,3,2,1],blues:[4,3,2,1,3,2,1]
+};
+
+let mode='chord';
+let activeHand='right'; // 'right' or 'left'
+let rightKeys=new Map(); // midi -> {finger}
+let leftKeys=new Map();  // midi -> {finger}
+let rootNote=null;
+let lastPreset=null;
+
+function getOct(){return+document.getElementById('selOct').value}
+function getStart(){return+document.getElementById('selStart').value}
+
+function buildPiano(){
+  const oct=getOct(),so=getStart(),container=document.getElementById('piano');
+  container.innerHTML='';
+  document.getElementById('pianoLabel').textContent=`${oct} oitava${oct>1?'s':''} · C${so} — B${so+oct-1}`;
+  const totalW=oct*7;
+
+  // White keys
+  for(let o=so;o<so+oct;o++){
+    WN.forEach(sem=>{
+      const midi=sem+o*12+12;
+      const div=document.createElement('div');
+      div.className='wk';
+      const rh=rightKeys.has(midi), lh=leftKeys.has(midi), isRoot=rootNote===midi;
+      if(isRoot) div.classList.add('root-active');
+      else if(rh) div.classList.add('right-active');
+      else if(lh) div.classList.add('left-active');
+
+      const label=document.createElement('span');label.className='wk-label';label.textContent=NP[sem];
+      const note=document.createElement('span');note.className='wk-note';note.textContent=NN[sem]+o;
+      div.appendChild(label);div.appendChild(note);
+
+      // Finger number
+      if(rh||lh||isRoot){
+        const info=rh?rightKeys.get(midi):leftKeys.get(midi);
+        if(info&&info.finger){
+          const f=document.createElement('div');
+          f.className='wk-finger '+(isRoot?'root':rh?'right':'left');
+          f.textContent=info.finger;
+          div.appendChild(f);
+        }
+      }
+
+      div.onclick=()=>toggleKey(midi);
+      div.ondblclick=e=>{e.preventDefault();setRoot(midi)};
+      container.appendChild(div);
+    });
+  }
+
+  // Black keys
+  for(let o=so;o<so+oct;o++){
+    const octOff=(o-so)*7;
+    BP.forEach(bp=>{
+      const midi=bp.s+o*12+12;
+      const wIdx=octOff+bp.a;
+      const leftPct=((wIdx+1)/totalW)*100-(100/totalW)*0.3;
+
+      const bk=document.createElement('div');
+      bk.className='bk';
+      bk.style.left=leftPct+'%';
+      bk.style.width=(100/totalW)*0.6+'%';
+
+      const rh=rightKeys.has(midi),lh=leftKeys.has(midi),isRoot=rootNote===midi;
+      if(isRoot)bk.classList.add('root-active');
+      else if(rh)bk.classList.add('right-active');
+      else if(lh)bk.classList.add('left-active');
+
+      const bl=document.createElement('span');bl.className='bk-label';bl.textContent=NP[bp.s];
+      bk.appendChild(bl);
+
+      if(rh||lh||isRoot){
+        const info=rh?rightKeys.get(midi):leftKeys.get(midi);
+        if(info&&info.finger){
+          const f=document.createElement('div');
+          f.className='bk-finger '+(isRoot?'root':rh?'right':'left');
+          f.textContent=info.finger;
+          bk.appendChild(f);
+        }
+      }
+
+      bk.onclick=e=>{e.stopPropagation();toggleKey(midi)};
+      bk.ondblclick=e=>{e.stopPropagation();e.preventDefault();setRoot(midi)};
+      container.appendChild(bk);
+    });
+  }
+
+  updateInfo();
+}
+
+function toggleKey(midi){
+  const map=activeHand==='right'?rightKeys:leftKeys;
+  const other=activeHand==='right'?leftKeys:rightKeys;
+  if(map.has(midi)){
+    map.delete(midi);
+    if(rootNote===midi)rootNote=null;
+  }else{
+    // Remove from other hand if present
+    other.delete(midi);
+    // Auto finger: count existing + 1
+    const sorted=[...map.keys()].sort((a,b)=>a-b);
+    map.set(midi,{finger:sorted.length+1});
+    if(rootNote===null)rootNote=midi;
+  }
+  // Re-number fingers in order
+  renumberFingers(rightKeys);
+  renumberFingers(leftKeys);
+  buildPiano();
+}
+
+function renumberFingers(map){
+  const sorted=[...map.keys()].sort((a,b)=>a-b);
+  sorted.forEach((midi,i)=>{
+    map.set(midi,{finger:i+1});
+  });
+}
+
+function setRoot(midi){
+  // Add to active hand if not present
+  const map=activeHand==='right'?rightKeys:leftKeys;
+  if(!map.has(midi)&&!rightKeys.has(midi)&&!leftKeys.has(midi)){
+    map.set(midi,{finger:map.size+1});
+    renumberFingers(map);
+  }
+  rootNote=midi;
+  buildPiano();
+}
+
+function clearAll(){
+  rightKeys.clear();leftKeys.clear();rootNote=null;lastPreset=null;buildPiano();
+}
+
+function setHand(h){
+  activeHand=h;
+  document.querySelectorAll('.hand-btn').forEach(b=>{
+    b.classList.toggle('a',
+      (h==='right'&&b.classList.contains('right'))||(h==='left'&&b.classList.contains('left'))
+    );
+  });
+}
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.mt .mb').forEach(b=>{
+    b.classList.toggle('a',(m==='chord'&&b.textContent==='Acorde')||(m==='scale'&&b.textContent==='Escala')||(m==='free'&&b.textContent==='Livre'));
+  });
+}
+
+function loadPreset(name){
+  lastPreset=name;
+  const root=+document.getElementById('selRoot').value;
+  const so=getStart();
+  const intervals=PRESETS[name];if(!intervals)return;
+
+  const map=activeHand==='right'?rightKeys:leftKeys;
+  map.clear();
+  const rootMidi=root+so*12+12;
+  rootNote=rootMidi;
+
+  const fingering=activeHand==='right'?(FINGERING_RH[name]||[]):(FINGERING_LH[name]||[]);
+
+  intervals.forEach((interval,i)=>{
+    const midi=rootMidi+interval;
+    map.set(midi,{finger:fingering[i]||(i+1)});
+  });
+
+  const rootName=NP[root];
+  const labels={major:'Maior',minor:'Menor','7':'7ª',m7:'m7',maj7:'Maj7',dim:'Dim',aug:'Aug',
+    major_scale:'Escala Maior',minor_scale:'Escala Menor',penta:'Pentatônica',blues:'Blues'};
+  const handLabel=activeHand==='right'?'Mão Direita':'Mão Esquerda';
+  document.getElementById('txtLabel').value=`${rootName} ${labels[name]||name} — ${handLabel}`;
+
+  buildPiano();
+}
+
+function reloadPreset(){if(lastPreset)loadPreset(lastPreset)}
+
+function updateInfo(){
+  document.getElementById('iM').textContent=mode==='chord'?'Acorde':mode==='scale'?'Escala':'Livre';
+  document.getElementById('iR').textContent=rightKeys.size+' teclas';
+  document.getElementById('iL').textContent=leftKeys.size+' teclas';
+
+  if(rootNote!==null){
+    document.getElementById('iT').textContent=NP[rootNote%12]+(Math.floor(rootNote/12)-1);
+  }else{
+    document.getElementById('iT').textContent='—';
+  }
+
+  // Right hand notes
+  const rhC=document.getElementById('rhNotes');rhC.innerHTML='';
+  if(rightKeys.size===0){rhC.innerHTML='<span style="color:var(--text-muted);font-size:10px">—</span>';
+  }else{
+    [...rightKeys.entries()].sort((a,b)=>a[0]-b[0]).forEach(([midi,info])=>{
+      const s=document.createElement('span');
+      s.className='sel-note '+(rootNote===midi?'rt':'rh');
+      s.textContent=(info.finger||'')+' '+NP[midi%12]+(Math.floor(midi/12)-1);
+      rhC.appendChild(s);
+    });
+  }
+
+  // Left hand notes
+  const lhC=document.getElementById('lhNotes');lhC.innerHTML='';
+  if(leftKeys.size===0){lhC.innerHTML='<span style="color:var(--text-muted);font-size:10px">—</span>';
+  }else{
+    [...leftKeys.entries()].sort((a,b)=>a[0]-b[0]).forEach(([midi,info])=>{
+      const s=document.createElement('span');
+      s.className='sel-note '+(rootNote===midi?'rt':'lh');
+      s.textContent=(info.finger||'')+' '+NP[midi%12]+(Math.floor(midi/12)-1);
+      lhC.appendChild(s);
+    });
+  }
+}
+
+function save(){
+  const toNotes=map=>[...map.entries()].sort((a,b)=>a[0]-b[0]).map(([midi,info])=>({
+    note:NN[midi%12].toLowerCase()+'/'+(Math.floor(midi/12)-1),
+    finger:info.finger||null
+  }));
+
+  const json={keyboard:{
+    type:mode,
+    right_hand:toNotes(rightKeys),
+    left_hand:toNotes(leftKeys),
+    root:rootNote?NN[rootNote%12].toLowerCase()+'/'+(Math.floor(rootNote/12)-1):null,
+    octave_start:getStart(),
+    octave_count:getOct(),
+    label:document.getElementById('txtLabel').value
+  }};
+  alert('Teclado salvo!\n\n'+JSON.stringify(json,null,2));
+}
+
+// INIT
+buildPiano();
+loadPreset('major');
+</script>
+</body>
+</html>

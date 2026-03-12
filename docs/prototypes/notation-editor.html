@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LA Journey — Editor de Notação v4</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0F172A;--card:#1E293B;--card-border:#334155;--text:#E2E8F0;--text-muted:#94A3B8;--accent:#FF2D78;--accent-hover:#FF4D8E;--toolbar-bg:#162032;--chord-color:#6366F1;--tie-color:#F97316}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;justify-content:center;padding:16px}
+  .box{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:22px;max-width:980px;width:100%;box-shadow:0 25px 50px rgba(0,0,0,.4)}
+  h2{font-family:'Playfair Display',serif;font-size:20px;margin-bottom:12px}
+  .accent{color:var(--accent)}
+
+  .row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:end}
+  .f{flex:1;min-width:90px}
+  .f.w{flex:2;min-width:160px}
+  .f label{display:block;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:3px}
+  .f input,.f select{width:100%;padding:5px 8px;border:1px solid var(--card-border);border-radius:7px;background:var(--bg);color:var(--text);font-family:'DM Sans';font-size:12px;outline:none}
+  .f input:focus,.f select:focus{border-color:var(--accent)}
+
+  .mt{display:flex;border:1px solid var(--card-border);border-radius:7px;overflow:hidden}
+  .mb{padding:5px 10px;border:none;background:transparent;color:var(--text-muted);font-family:'DM Sans';font-size:11px;cursor:pointer;transition:.15s;white-space:nowrap}
+  .mb.a{background:var(--accent);color:#fff}
+  .mb:hover:not(.a){background:rgba(255,45,120,.1);color:var(--accent)}
+
+  /* Toolbar */
+  .tb{display:flex;gap:2px;padding:6px 8px;background:var(--toolbar-bg);border-radius:9px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+  .tg{display:flex;gap:2px;align-items:center;padding-right:7px;margin-right:4px;border-right:1px solid var(--card-border)}
+  .tg:last-child{border:none}
+  .tgl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:3px;white-space:nowrap}
+  .t{min-width:30px;height:30px;padding:0 6px;border:1px solid var(--card-border);border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;white-space:nowrap}
+  .t:hover{border-color:var(--accent);color:var(--accent)}
+  .t.a{background:var(--accent);border-color:var(--accent);color:#fff}
+  .t.chord-active{background:var(--chord-color);border-color:var(--chord-color);color:#fff}
+  .t.tie-active{background:var(--tie-color);border-color:var(--tie-color);color:#fff}
+
+  .main{display:grid;grid-template-columns:1fr 180px;gap:14px;align-items:start}
+  .sw{background:#fff;border-radius:10px;padding:10px 14px;position:relative;overflow-x:auto}
+  .sw canvas{display:block;cursor:crosshair}
+  .ni{position:absolute;background:var(--card);border:1px solid var(--accent);border-radius:6px;padding:2px 7px;font-size:10px;color:var(--accent);font-weight:600;pointer-events:none;display:none;z-index:10;white-space:nowrap}
+  .ni.s{display:block}
+
+  .sp{display:flex;flex-direction:column;gap:8px}
+  .ic{background:var(--bg);border:1px solid var(--card-border);border-radius:9px;padding:8px}
+  .ic h3{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px}
+  .sr{display:flex;justify-content:space-between;font-size:10px;padding:1px 0}
+  .sl{color:var(--text-muted)}.sv{color:var(--text);font-weight:600;font-family:'DM Mono',monospace;font-size:10px}
+  .ln{text-align:center;padding:6px}
+  .lnb{font-size:18px;font-weight:700;color:var(--accent)}
+  .lns{font-size:9px;color:var(--text-muted);margin-top:1px}
+
+  .ar{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--card-border)}
+  .bc{background:transparent;border:none;color:var(--text-muted);font-family:'DM Sans';font-size:11px;cursor:pointer;padding:6px 10px;border-radius:6px}
+  .bc:hover{color:#EF4444;background:rgba(239,68,68,.1)}
+  .bg{display:flex;gap:6px}
+  .bx{padding:7px 14px;border:1px solid var(--card-border);border-radius:7px;background:transparent;color:var(--text);font-family:'DM Sans';font-size:12px;cursor:pointer}
+  .bs{padding:7px 14px;border:none;border-radius:7px;background:var(--accent);color:#fff;font-family:'DM Sans';font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px}
+  .bs:hover{background:var(--accent-hover)}
+  .ins{font-size:9px;color:var(--text-muted);text-align:center;line-height:1.6;margin-top:6px}
+  .ins strong{color:var(--accent)}
+  .ins .chord-c{color:var(--chord-color)}
+  .ins .tie-c{color:var(--tie-color)}
+
+  /* Cifra input popup */
+  .cifra-popup{position:absolute;background:var(--card);border:2px solid var(--accent);border-radius:8px;padding:8px;z-index:20;display:none;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .cifra-popup.show{display:flex;gap:4px;align-items:center}
+  .cifra-popup input{width:80px;padding:4px 8px;border:1px solid var(--card-border);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Mono';font-size:12px;outline:none}
+  .cifra-popup button{padding:4px 8px;border:none;border-radius:6px;background:var(--accent);color:#fff;font-size:11px;cursor:pointer;font-family:'DM Sans'}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>Editor de <span class="accent">Notação</span></h2>
+  <div class="row">
+    <div class="f"><label>Modo</label><div class="mt"><button class="mb a" onclick="setMode('free')">Livre</button><button class="mb" onclick="setMode('metered')">Compasso</button></div></div>
+    <div class="f"><label>Clave</label><select id="sC" onchange="onCfg()"><option value="treble">Sol</option><option value="bass">Fá</option><option value="alto">Dó</option></select></div>
+    <div class="f" id="fT"><label>Compasso</label><select id="sT" onchange="D()"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select></div>
+    <div class="f"><label>Armadura</label><select id="sK" onchange="D()"><option value="C">Dó M</option><option value="G">Sol M</option><option value="D">Ré M</option><option value="A">Lá M</option><option value="F">Fá M</option><option value="Bb">Sib M</option><option value="Eb">Mib M</option></select></div>
+    <div class="f w"><label>Label</label><input id="sL" value="Escala de Dó Maior" oninput="D()"></div>
+  </div>
+
+  <div class="tb">
+    <div class="tg"><span class="tgl">Duração</span>
+      <button class="t" data-d="w" onclick="sD('w')">𝅝</button>
+      <button class="t a" data-d="q" onclick="sD('q')">♩</button>
+      <button class="t" data-d="h" onclick="sD('h')">𝅗𝅥</button>
+      <button class="t" data-d="8" onclick="sD('8')">♪</button>
+      <button class="t" data-d="16" onclick="sD('16')">𝅘𝅥𝅯</button>
+    </div>
+    <div class="tg"><span class="tgl">Alteração</span>
+      <button class="t a" data-a="none" onclick="sA('none')">♮</button>
+      <button class="t" data-a="#" onclick="sA('#')">♯</button>
+      <button class="t" data-a="b" onclick="sA('b')">♭</button>
+    </div>
+    <div class="tg"><span class="tgl">Modo</span>
+      <button class="t a" id="btnMelodic" onclick="setInput('melodic')" title="Melódico — notas horizontais" style="font-size:10px;padding:0 8px">→ Mel</button>
+      <button class="t" id="btnChord" onclick="setInput('chord')" title="Harmônico — empilha notas" style="font-size:10px;padding:0 8px">↕ Ac</button>
+      <button class="t" id="btnTie" onclick="setInput('tie')" title="Ligadura" style="font-size:10px;padding:0 8px">⌒ Lig</button>
+      <button class="t" id="btnCifra" onclick="setInput('cifra')" title="Cifra em cima" style="font-size:10px;padding:0 8px">A7</button>
+    </div>
+    <div class="tg"><span class="tgl">Ferramentas</span>
+      <button class="t" onclick="undo()">↩</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div>
+      <div class="sw" id="W">
+        <canvas id="V"></canvas>
+        <div class="ni" id="NI"></div>
+        <div class="cifra-popup" id="cifraPopup">
+          <input id="cifraInput" placeholder="Cmaj7" onkeydown="if(event.key==='Enter')applyCifra()">
+          <button onclick="applyCifra()">OK</button>
+        </div>
+      </div>
+      <div class="ins">
+        <strong>→ Mel</strong> = notas horizontais (melódicas) · 
+        <span class="chord-c"><strong>↕ Ac</strong> = empilha na última posição (harmônico)</span> · 
+        <span class="tie-c"><strong>⌒ Lig</strong> = liga nota anterior à próxima</span> · 
+        <strong>A7</strong> = cifra em cima<br>
+        <strong>Clique</strong> = colocar nota · <strong>Duplo clique</strong> = remover nota (remove uma de cada vez no acorde)
+      </div>
+    </div>
+    <div class="sp">
+      <div class="ic"><h3>Informações</h3>
+        <div class="sr"><span class="sl">Notas</span><span class="sv" id="iN">0</span></div>
+        <div class="sr"><span class="sl">Acordes</span><span class="sv" id="iA">0</span></div>
+        <div class="sr" id="iB"><span class="sl">Compassos</span><span class="sv" id="iBv">0</span></div>
+        <div class="sr"><span class="sl">Clave</span><span class="sv" id="iC">Sol</span></div>
+        <div class="sr"><span class="sl">Armadura</span><span class="sv" id="iK">Dó M</span></div>
+        <div class="sr"><span class="sl">Tempos</span><span class="sv" id="iD">0</span></div>
+        <div class="sr"><span class="sl">Ligaduras</span><span class="sv" id="iTi">0</span></div>
+        <div class="sr"><span class="sl">Cifras</span><span class="sv" id="iCf">0</span></div>
+      </div>
+      <div class="ic"><div class="ln"><div class="lnb" id="lB">—</div><div class="lns" id="lS">Clique na pauta</div></div></div>
+    </div>
+  </div>
+
+  <div class="ar">
+    <button class="bc" onclick="clr()">✕ Limpar tudo</button>
+    <div class="bg"><button class="bx">Cancelar</button><button class="bs" onclick="save()">💾 Salvar</button></div>
+  </div>
+</div>
+
+<script>
+const LS=12,ST=38,NR=6; // ST pushed down to make room for cifra text above
+const SB=()=>ST+4*LS;
+const TR=['c/4','d/4','e/4','f/4','g/4','a/4','b/4','c/5','d/5','e/5','f/5','g/5','a/5','b/5','c/6'];
+const BA=['e/2','f/2','g/2','a/2','b/2','c/3','d/3','e/3','f/3','g/3','a/3','b/3','c/4','d/4','e/4'];
+const AL=['d/3','e/3','f/3','g/3','a/3','b/3','c/4','d/4','e/4','f/4','g/4','a/4','b/4','c/5','d/5'];
+const PT={c:'Dó',d:'Ré',e:'Mi',f:'Fá',g:'Sol',a:'Lá',b:'Si'};
+const DB={w:4,h:2,q:1,'8':.5,'16':.25};
+const DN={w:'Semibreve',h:'Mínima',q:'Semínima','8':'Colcheia','16':'Semicolcheia'};
+
+// Each "beat" is an object with one or more pitches (chord), duration, ties, cifra
+// beats = [{pitches: [{pitch, accidental}], duration, tie: bool, cifra: string|null}]
+let beats=[];
+let mode='free',cD='q',cA=null,hP=null;
+let chordMode=false; // when true, next click adds note to last beat (stacking)
+let tieMode=false;   // when true, last placed beat gets tie
+let cifraMode=false; // when true, clicking shows cifra input
+let cifraTarget=null; // beat index to add cifra to
+
+const cv=document.getElementById('V'),cx=cv.getContext('2d');
+
+function cl(){return document.getElementById('sC').value}
+function sc(){return cl()==='treble'?TR:cl()==='bass'?BA:AL}
+function pY(p){return SB()-(p-4)*(LS/2)}
+function yP(y){const p=Math.round((SB()-y)/(LS/2))+4;return Math.max(0,Math.min(sc().length-1,p))}
+function dn(pitch,acc){const[l,o]=pitch.split('/');let n=PT[l]||l.toUpperCase();if(acc==='#')n+='♯';if(acc==='b')n+='♭';return n+o}
+
+function clefW(){return 45}
+function availW(){return cv.width-clefW()-20}
+function nX(i){
+  const total=beats.length||1;
+  const aw=availW();
+  const sp=Math.max(32,Math.min(65,aw/(total+1)));
+  return clefW()+sp*(i+1)-sp/2;
+}
+function ghostX(){
+  const aw=availW();
+  const sp=Math.max(32,Math.min(65,aw/(beats.length+2)));
+  return clefW()+sp*(beats.length+1)-sp/2;
+}
+
+function updateCanvas(){
+  const w=document.getElementById('W').clientWidth-28;
+  cv.width=Math.max(500,w);
+  cv.height=SB()+40;
+}
+
+// ===== DRAW =====
+function D(){
+  updateCanvas();
+  const w=cv.width,h=cv.height;
+  cx.clearRect(0,0,w,h);
+  cx.fillStyle='#fff';cx.fillRect(0,0,w,h);
+
+  // Staff lines
+  cx.strokeStyle='#1a1a2e';cx.lineWidth=1;
+  for(let i=0;i<5;i++){const y=ST+i*LS;cx.beginPath();cx.moveTo(8,y);cx.lineTo(w-8,y);cx.stroke()}
+
+  // Clef
+  cx.fillStyle='#1a1a2e';cx.font='36px serif';cx.textBaseline='middle';
+  const c=cl();
+  if(c==='treble')cx.fillText('𝄞',10,ST+2*LS+2);
+  else if(c==='bass')cx.fillText('𝄢',10,ST+1.5*LS);
+  else cx.fillText('𝄡',12,ST+2*LS);
+
+  // Key sig
+  const k=document.getElementById('sK').value;
+  if(k!=='C'){cx.font='10px "DM Sans"';cx.fillStyle='#94A3B8';cx.textAlign='left';cx.fillText(k,clefW()-8,ST-8)}
+
+  // Time sig
+  if(mode==='metered'){
+    const tv=document.getElementById('sT').value,[n,d]=tv.split('/');
+    cx.font='bold 16px "DM Sans"';cx.fillStyle='#1a1a2e';cx.textAlign='center';
+    cx.fillText(n,clefW()+5,ST+1.2*LS);cx.fillText(d,clefW()+5,ST+3.2*LS);cx.textAlign='left';
+  }
+
+  // Mode indicator on canvas
+  cx.font='bold 10px "DM Sans"';cx.textAlign='right';cx.textBaseline='top';
+  if(inputMode==='chord'){
+    cx.fillStyle='#6366F1';cx.fillText('↕ ACORDE',w-12,4);
+  }else if(inputMode==='tie'){
+    cx.fillStyle='#F97316';cx.fillText('⌒ LIGADURA',w-12,4);
+  }else if(inputMode==='cifra'){
+    cx.fillStyle='#6366F1';cx.fillText('A7 CIFRA',w-12,4);
+  }else{
+    cx.fillStyle='#22C55E';cx.fillText('→ MELÓDICO',w-12,4);
+  }
+  cx.textAlign='left';cx.textBaseline='middle';
+
+  // Ghost note
+  if(hP!==null&&!cifraMode){
+    const gx=chordMode&&beats.length>0?nX(beats.length-1):ghostX();
+    const gy=pY(hP);
+    if(gx<w-15){
+      cx.globalAlpha=.2;cx.fillStyle=chordMode?'#6366F1':'#FF2D78';
+      cx.beginPath();cx.ellipse(gx,gy,NR+1,NR-1,-.2,0,Math.PI*2);cx.fill();
+      dL(gx,hP,.2);cx.globalAlpha=1;
+    }
+  }
+
+  // Draw beats
+  beats.forEach((beat,i)=>{
+    const x=nX(i);
+    const isChord=beat.pitches.length>1;
+
+    // Cifra above staff
+    if(beat.cifra){
+      cx.font='bold 13px "DM Mono", monospace';
+      cx.fillStyle='#6366F1';
+      cx.textAlign='center';cx.textBaseline='bottom';
+      cx.fillText(beat.cifra,x,ST-10);
+      cx.textAlign='left';cx.textBaseline='middle';
+    }
+
+    // Draw each pitch in the beat
+    const positions=beat.pitches.map(p=>sc().indexOf(p.pitch)).filter(p=>p!==-1);
+    positions.sort((a,b)=>a-b);
+
+    // Stem: find highest and lowest
+    const minPos=Math.min(...positions);
+    const maxPos=Math.max(...positions);
+    const stemFromY=pY(maxPos);
+    const stemToY=stemFromY-30;
+
+    positions.forEach((pos,pi)=>{
+      const y=pY(pos);
+      dL(x,pos,1);
+
+      cx.fillStyle='#1a1a2e';cx.strokeStyle='#1a1a2e';cx.lineWidth=1.5;
+      const isW=beat.duration==='w',isH=beat.duration==='h';
+
+      if(isW||isH){
+        cx.beginPath();cx.ellipse(x,y,NR+1,NR-1,-.2,0,Math.PI*2);cx.stroke();
+      }else{
+        cx.beginPath();cx.ellipse(x,y,NR+1,NR-1,-.2,0,Math.PI*2);cx.fill();
+      }
+
+      // Accidental
+      const noteData=beat.pitches[pi];
+      if(noteData&&noteData.accidental){
+        cx.font='14px serif';cx.fillStyle='#1a1a2e';cx.textAlign='right';cx.textBaseline='middle';
+        cx.fillText(noteData.accidental==='#'?'♯':'♭',x-NR-2,y);cx.textAlign='left';
+      }
+    });
+
+    // Stem (not for whole notes)
+    if(beat.duration!=='w'&&positions.length>0){
+      cx.strokeStyle='#1a1a2e';cx.lineWidth=1.5;
+      cx.beginPath();cx.moveTo(x+NR,stemFromY);cx.lineTo(x+NR,stemToY);cx.stroke();
+
+      // Flags
+      if(beat.duration==='8'){
+        cx.beginPath();cx.moveTo(x+NR,stemToY);cx.quadraticCurveTo(x+NR+10,stemToY+10,x+NR+3,stemToY+18);cx.stroke();
+      }else if(beat.duration==='16'){
+        cx.beginPath();cx.moveTo(x+NR,stemToY);cx.quadraticCurveTo(x+NR+10,stemToY+10,x+NR+3,stemToY+18);cx.stroke();
+        cx.beginPath();cx.moveTo(x+NR,stemToY+6);cx.quadraticCurveTo(x+NR+10,stemToY+16,x+NR+3,stemToY+24);cx.stroke();
+      }else if(beat.duration==='h'){
+        cx.beginPath();cx.moveTo(x+NR,stemFromY);cx.lineTo(x+NR,stemToY);cx.stroke();
+      }
+    }
+
+    // Chord bracket indicator (subtle)
+    if(isChord){
+      cx.fillStyle='rgba(99,102,241,0.15)';
+      const top=pY(maxPos)-NR-2;
+      const bot=pY(minPos)+NR+2;
+      cx.fillRect(x-NR-4,top,2,bot-top);
+    }
+
+    // Tie arc to next beat
+    if(beat.tie&&i<beats.length-1){
+      const nextX=nX(i+1);
+      const tieY=pY(minPos)+NR+8;
+      cx.strokeStyle='#F97316';cx.lineWidth=2;
+      cx.beginPath();
+      cx.moveTo(x+NR,tieY);
+      cx.quadraticCurveTo((x+nextX)/2,tieY+12,nextX-NR,tieY);
+      cx.stroke();
+    }
+  });
+
+  // Bar lines
+  if(mode==='metered'&&beats.length>1){
+    const tv=document.getElementById('sT').value,[n,d]=tv.split('/');
+    const bpb=parseInt(n)*(4/parseInt(d));
+    let bt=0;
+    beats.forEach((b,i)=>{
+      bt+=DB[b.duration]||1;
+      if(bt>=bpb&&i<beats.length-1){
+        bt=0;
+        const bx=(nX(i)+nX(i+1))/2;
+        cx.strokeStyle='#1a1a2e';cx.lineWidth=1;
+        cx.beginPath();cx.moveTo(bx,ST);cx.lineTo(bx,SB());cx.stroke();
+      }
+    });
+  }
+
+  uS();
+}
+
+function dL(x,pos,a){
+  cx.globalAlpha=a;cx.strokeStyle='#1a1a2e';cx.lineWidth=1;
+  if(pos<4){for(let p=2;p>=pos;p-=2){const y=pY(p);cx.beginPath();cx.moveTo(x-10,y);cx.lineTo(x+10,y);cx.stroke()}}
+  if(pos>12){for(let p=14;p<=pos;p+=2){const y=pY(p);cx.beginPath();cx.moveTo(x-10,y);cx.lineTo(x+10,y);cx.stroke()}}
+  cx.globalAlpha=1;
+}
+
+// ===== INTERACTION =====
+cv.addEventListener('mousemove',e=>{
+  const r=cv.getBoundingClientRect(),sx=cv.width/r.width;
+  hP=yP((e.clientY-r.top)*sx);
+  const pitch=sc()[hP];
+  if(pitch&&inputMode!=='cifra'){
+    const ni=document.getElementById('NI');
+    const modeLabel=inputMode==='chord'?'⬆ empilhar: ':inputMode==='tie'?'⌒ ligar: ':'';
+    ni.textContent=modeLabel+dn(pitch,cA)+' · '+DN[cD];
+    const wr=document.getElementById('W').getBoundingClientRect();
+    ni.style.left=(e.clientX-wr.left+10)+'px';
+    ni.style.top=(e.clientY-wr.top-24)+'px';
+    ni.classList.add('s');
+  }
+  D();
+});
+cv.addEventListener('mouseleave',()=>{hP=null;document.getElementById('NI').classList.remove('s');D()});
+
+cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect(),sx=cv.width/r.width;
+  const mx=(e.clientX-r.left)*sx,my=(e.clientY-r.top)*sx;
+
+  // Cifra mode: find beat and show input
+  if(cifraMode){
+    const bi=findBeat(mx);
+    if(bi!==null){
+      cifraTarget=bi;
+      const popup=document.getElementById('cifraPopup');
+      const wr=document.getElementById('W').getBoundingClientRect();
+      popup.style.left=(e.clientX-wr.left-40)+'px';
+      popup.style.top=(e.clientY-wr.top-50)+'px';
+      popup.classList.add('show');
+      const inp=document.getElementById('cifraInput');
+      inp.value=beats[bi].cifra||'';
+      inp.focus();
+    }
+    return;
+  }
+
+  // Check if clicking existing note
+  if(findNote(mx,my)!==null)return;
+
+  const pos=yP(my),pitch=sc()[pos];
+  if(!pitch)return;
+
+  if(chordMode&&beats.length>0){
+    // Add to last beat (stack)
+    const last=beats[beats.length-1];
+    if(!last.pitches.find(p=>p.pitch===pitch)){
+      last.pitches.push({pitch,accidental:cA});
+      last.pitches.sort((a,b)=>sc().indexOf(a.pitch)-sc().indexOf(b.pitch));
+    }
+  }else{
+    // New beat (melodic or tie)
+    beats.push({
+      pitches:[{pitch,accidental:cA}],
+      duration:cD,
+      tie:false,
+      cifra:null
+    });
+    // If tie mode: mark PREVIOUS beat with tie arc, then switch back to melodic
+    if(tieMode&&beats.length>=2){
+      beats[beats.length-2].tie=true;
+      setInput('melodic');
+    }
+  }
+
+  document.getElementById('lB').textContent=dn(pitch,cA);
+  document.getElementById('lS').textContent=chordMode?'Empilhado':DN[cD];
+  D();
+});
+
+cv.addEventListener('dblclick',e=>{
+  const r=cv.getBoundingClientRect(),sx=cv.width/r.width;
+  const mx=(e.clientX-r.left)*sx,my=(e.clientY-r.top)*sx;
+  const result=findNote(mx,my);
+  if(result!==null){
+    const{beatIdx,noteIdx}=result;
+    if(beats[beatIdx].pitches.length>1){
+      // Remove just this note from chord
+      beats[beatIdx].pitches.splice(noteIdx,1);
+    }else{
+      // Remove entire beat
+      beats.splice(beatIdx,1);
+    }
+    D();
+  }
+});
+
+function findBeat(mx){
+  for(let i=beats.length-1;i>=0;i--){
+    if(Math.abs(mx-nX(i))<20)return i;
+  }
+  return null;
+}
+
+function findNote(mx,my){
+  const s=sc();
+  for(let i=beats.length-1;i>=0;i--){
+    for(let j=beats[i].pitches.length-1;j>=0;j--){
+      const pos=s.indexOf(beats[i].pitches[j].pitch);
+      if(pos===-1)continue;
+      const dx=mx-nX(i),dy=my-pY(pos);
+      if(dx*dx+dy*dy<15*15)return{beatIdx:i,noteIdx:j};
+    }
+  }
+  return null;
+}
+
+// ===== TOOLBAR =====
+function sD(d){cD=d;document.querySelectorAll('[data-d]').forEach(b=>b.classList.toggle('a',b.dataset.d===d))}
+function sA(a){cA=a==='none'?null:a;document.querySelectorAll('[data-a]').forEach(b=>b.classList.toggle('a',b.dataset.a===a||(a==='none'&&b.dataset.a==='none')))}
+
+function toggleChord(){}
+function toggleTie(){}
+function toggleCifra(){}
+
+// Unified input mode
+let inputMode='melodic'; // melodic, chord, tie, cifra
+
+function setInput(m){
+  inputMode=m;
+  // Update all mode buttons
+  document.getElementById('btnMelodic').classList.toggle('a',m==='melodic');
+  document.getElementById('btnChord').classList.toggle('chord-active',m==='chord');
+  document.getElementById('btnTie').classList.toggle('tie-active',m==='tie');
+  document.getElementById('btnCifra').classList.toggle('a',m==='cifra');
+  // Sync old vars for compatibility
+  chordMode=(m==='chord');
+  tieMode=(m==='tie');
+  cifraMode=(m==='cifra');
+  if(m!=='cifra'){document.getElementById('cifraPopup').classList.remove('show')}
+  D();
+}
+
+function applyCifra(){
+  if(cifraTarget!==null&&cifraTarget<beats.length){
+    beats[cifraTarget].cifra=document.getElementById('cifraInput').value||null;
+  }
+  document.getElementById('cifraPopup').classList.remove('show');
+  cifraTarget=null;
+  D();
+}
+
+function undo(){if(beats.length>0){beats.pop();D()}}
+function clr(){beats=[];setInput('melodic');
+  document.getElementById('cifraPopup').classList.remove('show');
+  document.getElementById('lB').textContent='—';document.getElementById('lS').textContent='Clique na pauta';D()}
+function onCfg(){beats=[];D()}
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.mt .mb').forEach(b=>b.classList.toggle('a',b.textContent.trim()===(m==='free'?'Livre':'Compasso')));
+  document.getElementById('fT').style.display=m==='free'?'none':'block';
+  document.getElementById('iB').style.display=m==='free'?'none':'flex';
+  D();
+}
+
+function uS(){
+  document.getElementById('iN').textContent=beats.reduce((s,b)=>s+b.pitches.length,0);
+  document.getElementById('iA').textContent=beats.filter(b=>b.pitches.length>1).length;
+  document.getElementById('iC').textContent=cl()==='treble'?'Sol':cl()==='bass'?'Fá':'Dó';
+  document.getElementById('iK').textContent=document.getElementById('sK').value;
+  const tot=beats.reduce((s,b)=>s+(DB[b.duration]||1),0);
+  document.getElementById('iD').textContent=tot+' tempos';
+  document.getElementById('iTi').textContent=beats.filter(b=>b.tie).length;
+  document.getElementById('iCf').textContent=beats.filter(b=>b.cifra).length;
+  if(mode==='metered'){
+    const tv=document.getElementById('sT').value,[n,d]=tv.split('/');
+    document.getElementById('iBv').textContent=Math.ceil(tot/(parseInt(n)*(4/parseInt(d))))||0;
+  }
+}
+
+function save(){
+  const j={notation:{type:mode==='free'?'staff':'metered_staff',staves:[{
+    clef:cl(),key_signature:document.getElementById('sK').value,
+    time_signature:mode==='metered'?document.getElementById('sT').value:null,
+    beats:beats.map(b=>({
+      notes:b.pitches.map(p=>p.pitch+':'+b.duration),
+      accidentals:b.pitches.map(p=>p.accidental),
+      tie:b.tie||false,
+      cifra:b.cifra||null
+    })),
+    label:document.getElementById('sL').value
+  }],width:550,height:140}};
+  alert('Notação salva!\n\n'+JSON.stringify(j,null,2));
+}
+
+// INIT
+setMode('free');
+setInput('melodic');
+// Example: C major chord (stacked) then scale
+beats.push({pitches:[{pitch:'c/4',accidental:null},{pitch:'e/4',accidental:null},{pitch:'g/4',accidental:null}],duration:'h',tie:false,cifra:'C'});
+beats.push({pitches:[{pitch:'d/4',accidental:null},{pitch:'f/4',accidental:null},{pitch:'a/4',accidental:null}],duration:'h',tie:false,cifra:'Dm'});
+beats.push({pitches:[{pitch:'e/4',accidental:null},{pitch:'g/4',accidental:null},{pitch:'b/4',accidental:null}],duration:'h',tie:false,cifra:'Em'});
+beats.push({pitches:[{pitch:'f/4',accidental:null},{pitch:'a/4',accidental:null},{pitch:'c/5',accidental:null}],duration:'h',tie:false,cifra:'F'});
+window.addEventListener('resize',D);
+D();
+</script>
+</body>
+</html>
