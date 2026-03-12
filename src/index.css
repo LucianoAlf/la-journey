@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+@theme {
+  --color-azul-escuro: var(--azul-escuro);
+  --color-azul: var(--azul);
+  --color-azul-claro: var(--azul-claro);
+  --color-accent: var(--accent);
+  --color-foundation: var(--foundation);
+  --color-grow: var(--grow);
+  --color-advance: var(--advance);
+  --color-master: var(--master);
+  --color-verde: var(--verde);
+  --color-vermelho: var(--vermelho);
+  --color-dourado: var(--dourado);
+  
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-surface: var(--surface);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-text: var(--text);
+  --color-text2: var(--text2);
+  --color-text3: var(--text3);
+  --color-border: var(--border);
+  --color-topbar-bg: var(--topbar-bg);
+  
+  --color-azul-soft: var(--azul-soft);
+  --color-accent-soft: var(--accent-soft);
+  --color-foundation-soft: var(--foundation-soft);
+  --color-grow-soft: var(--grow-soft);
+  --color-advance-soft: var(--advance-soft);
+  --color-master-soft: var(--master-soft);
+  --color-verde-soft: var(--verde-soft);
+  --color-vermelho-soft: var(--vermelho-soft);
+  --color-dourado-soft: var(--dourado-soft);
+  --color-input-bg: var(--input-bg);
+
+  --font-sans: 'DM Sans', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+@layer base {
+  :root {
+    --azul-escuro: #1E3A5F;
+    --azul: #2D5A8E;
+    --azul-claro: #4A7DC0;
+    --accent: #FF2D78;
+    --foundation: #6366F1;
+    --grow: #F97316;
+    --advance: #22C55E;
+    --master: #EC4899;
+    --verde: #22C55E;
+    --vermelho: #EF4444;
+    --dourado: #F59E0B;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --sidebar-w: 240px;
+    --sidebar-w-collapsed: 64px;
+    --transition: all .22s cubic-bezier(.4, 0, .2, 1);
+    --sidebar-transition: all .28s cubic-bezier(.4, 0, .2, 1);
+  }
+
+  [data-theme="light"] {
+    --bg: #F5F2FA;
+    --bg2: #EDE9F3;
+    --surface: #FFF;
+    --sidebar-bg: #FFF;
+    --sidebar-border: rgba(30, 58, 95, .12);
+    --card: #FFF;
+    --card-border: rgba(30, 58, 95, .1);
+    --text: #0F172A;
+    --text2: #475569;
+    --text3: #94A3B8;
+    --border: rgba(30, 58, 95, .1);
+    --topbar-bg: rgba(255, 255, 255, .92);
+    --azul-soft: rgba(30, 58, 95, .06);
+    --accent-soft: rgba(255, 45, 120, .06);
+    --foundation-soft: rgba(99, 102, 241, .08);
+    --grow-soft: rgba(249, 115, 22, .08);
+    --advance-soft: rgba(34, 197, 94, .08);
+    --master-soft: rgba(236, 72, 153, .08);
+    --verde-soft: rgba(34, 197, 94, .08);
+    --vermelho-soft: rgba(239, 68, 68, .08);
+    --dourado-soft: rgba(245, 158, 11, .08);
+    --shadow: 0 2px 12px rgba(30, 58, 95, .06);
+    --shadow-lg: 0 8px 32px rgba(30, 58, 95, .12);
+    --input-bg: #F5F2FA;
+  }
+
+  [data-theme="dark"] {
+    --bg: #07091A;
+    --bg2: #0F1629;
+    --surface: #131B2E;
+    --sidebar-bg: #0B1120;
+    --sidebar-border: rgba(45, 90, 142, .2);
+    --card: rgba(255, 255, 255, .03);
+    --card-border: rgba(45, 90, 142, .18);
+    --text: rgba(255, 255, 255, .92);
+    --text2: rgba(255, 255, 255, .55);
+    --text3: rgba(255, 255, 255, .28);
+    --border: rgba(255, 255, 255, .07);
+    --topbar-bg: rgba(7, 9, 26, .85);
+    --azul-soft: rgba(30, 58, 95, .3);
+    --accent-soft: rgba(255, 45, 120, .12);
+    --foundation-soft: rgba(99, 102, 241, .15);
+    --grow-soft: rgba(249, 115, 22, .15);
+    --advance-soft: rgba(34, 197, 94, .15);
+    --master-soft: rgba(236, 72, 153, .15);
+    --verde-soft: rgba(34, 197, 94, .12);
+    --vermelho-soft: rgba(239, 68, 68, .12);
+    --dourado-soft: rgba(245, 158, 11, .12);
+    --shadow: 0 2px 16px rgba(0, 0, 0, .4);
+    --shadow-lg: 0 8px 40px rgba(0, 0, 0, .5);
+    --input-bg: rgba(255, 255, 255, .04);
+  }
+
+  body {
+    @apply font-sans bg-bg text-text min-h-screen transition-colors duration-300;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(30, 58, 95, .3);
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-[7px] px-[18px] py-[9px] rounded-[var(--radius-sm)] font-sans text-[13px] font-medium cursor-pointer border-none transition-all whitespace-nowrap;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--azul-escuro), var(--azul));
+    @apply text-white hover:-translate-y-[1px];
+    box-shadow: 0 4px 14px rgba(30, 58, 95, .35);
+  }
+  .btn-accent {
+    background: linear-gradient(135deg, var(--accent), #D91A60);
+    @apply text-white hover:-translate-y-[1px];
+    box-shadow: 0 4px 14px rgba(255, 45, 120, .35);
+  }
+  .btn-ghost {
+    @apply bg-surface text-text2 border border-border hover:bg-azul-soft hover:text-azul-claro hover:border-[rgba(30,58,95,.2)];
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .card {
+    @apply bg-card border border-card-border rounded-[var(--radius)] p-6 transition-all;
+    box-shadow: var(--shadow);
+  }
+  .card:hover {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .badge {
+    @apply inline-flex items-center px-[10px] py-[3px] rounded-full text-[11px] font-medium;
+  }
+  .badge-verde { @apply bg-verde-soft text-verde; }
+  .badge-vermelho { @apply bg-vermelho-soft text-vermelho; }
+  .badge-dourado { @apply bg-dourado-soft text-dourado; }
+  .badge-azul { @apply bg-azul-soft text-azul-claro; }
+  .badge-accent { @apply bg-accent-soft text-accent; }
+  .badge-foundation { @apply bg-foundation-soft text-foundation; }
+  .badge-grow { @apply bg-grow-soft text-grow; }
+  .badge-advance { @apply bg-advance-soft text-advance; }
+  .badge-master { @apply bg-master-soft text-master; }
+
+  .form-label {
+    @apply text-[10px] tracking-[2.5px] uppercase text-text3 mb-1.5 block font-semibold;
+  }
+  .form-input, .form-select, .form-textarea {
+    @apply w-full bg-input-bg border-[1.5px] border-border rounded-[var(--radius-sm)] px-3.5 py-2.5 text-text font-sans text-[13.5px] transition-all outline-none focus:border-azul-claro;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    box-shadow: 0 0 0 3px rgba(30, 58, 95, .12);
+  }
+  .form-textarea {
+    @apply resize-y min-h-[100px];
+  }
+}
