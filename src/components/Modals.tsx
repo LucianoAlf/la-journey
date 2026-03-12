@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAppContext } from '../AppContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,12 +13,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createTopic } from '@/services/contentService';
-import { createChord } from '@/services/libraryService';
+import { createChord, updateChord } from '@/services/libraryService';
 import { createAchievement } from '@/services/achievementService';
 import { createTemplate } from '@/services/whatsappService';
+import { ChordEditor, createEmptyState, stateToPositions, positionsToState, type ChordEditorState } from '@/components/music/ChordEditor';
+import type { Chord } from '@/services/libraryService';
 
 export function Modals() {
-  const { isModalOpen, closeModal } = useAppContext();
+  const { isModalOpen, closeModal, getModalData } = useAppContext();
   const { user } = useAuth();
 
   // Conteúdo form state
@@ -45,29 +47,69 @@ export function Modals() {
     finally { setTopicSaving(false); }
   };
 
-  // Acorde form state
-  const [chordForm, setChordForm] = useState({ name: '', instrument: 'guitar', difficulty: '1', positions: '' });
+  // Acorde form state — editor visual
+  const [chordName, setChordName] = useState('');
+  const [chordInstrument, setChordInstrument] = useState('guitar');
+  const [chordDifficulty, setChordDifficulty] = useState('1');
+  const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState());
+  const [chordStartFret, setChordStartFret] = useState(1);
   const [chordSaving, setChordSaving] = useState(false);
+  const [editingChordId, setEditingChordId] = useState<string | null>(null);
 
-  const handleCreateChord = async () => {
-    if (!chordForm.name.trim()) { toast.error('Informe o nome do acorde'); return; }
+  // Detectar modo edição: quando o modal abre com dados de um acorde existente
+  const editChordData = getModalData<Chord>('modal-acorde');
+  useEffect(() => {
+    if (editChordData && isModalOpen('modal-acorde')) {
+      setChordName(editChordData.name);
+      setChordInstrument(editChordData.instrument ?? 'guitar');
+      setChordDifficulty(String(editChordData.difficulty ?? 1));
+      setEditingChordId(editChordData.id);
+      const pos = (editChordData.positions ?? { fingers: [], barres: [], muted: [] }) as any;
+      // Detectar startFret a partir dos fingers existentes
+      const frets = [...(pos.fingers ?? []).map((f: any) => f[1]).filter((f: number) => f > 0), ...(pos.barres ?? []).map((b: any) => b.fret)];
+      const minFret = frets.length > 0 ? Math.min(...frets) : 1;
+      const sf = minFret > 0 ? minFret : 1;
+      setChordStartFret(sf);
+      setChordEditorState(positionsToState(pos, sf));
+    }
+  }, [editChordData, isModalOpen]);
+
+  const handleSaveChord = async () => {
+    if (!chordName.trim()) { toast.error('Informe o nome do acorde'); return; }
     setChordSaving(true);
     try {
-      let positionsJson: any = [];
-      if (chordForm.positions.trim()) {
-        try { positionsJson = JSON.parse(chordForm.positions); } catch { /* ignora JSON inválido */ }
+      const positions = stateToPositions(chordEditorState, chordStartFret);
+      if (editingChordId) {
+        await updateChord(editingChordId, {
+          name: chordName,
+          instrument: chordInstrument as any,
+          difficulty: parseInt(chordDifficulty) || 1,
+          positions: positions as any,
+        });
+        toast.success('Acorde atualizado!');
+      } else {
+        await createChord({
+          name: chordName,
+          instrument: chordInstrument as any,
+          difficulty: parseInt(chordDifficulty) || 1,
+          positions: positions as any,
+        });
+        toast.success('Acorde salvo na biblioteca!');
       }
-      await createChord({
-        name: chordForm.name,
-        instrument: chordForm.instrument as any,
-        difficulty: parseInt(chordForm.difficulty) || 1,
-        positions: positionsJson,
-      });
-      toast.success('Acorde salvo na biblioteca!');
       closeModal('modal-acorde');
-      setChordForm({ name: '', instrument: 'guitar', difficulty: '1', positions: '' });
-    } catch (e: any) { toast.error(e?.message || 'Erro ao criar acorde'); }
+      resetChordEditor();
+      window.dispatchEvent(new Event('chord-library-updated'));
+    } catch (e: any) { toast.error(e?.message || 'Erro ao salvar acorde'); }
     finally { setChordSaving(false); }
+  };
+
+  const resetChordEditor = () => {
+    setChordName('');
+    setChordInstrument('guitar');
+    setChordDifficulty('1');
+    setChordEditorState(createEmptyState());
+    setChordStartFret(1);
+    setEditingChordId(null);
   };
 
   // Conquista form state
@@ -297,29 +339,32 @@ export function Modals() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Acorde — CRUD real */}
-      <Dialog open={isModalOpen('modal-acorde')} onOpenChange={() => closeModal('modal-acorde')}>
-        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
+      {/* Modal Acorde — Editor Visual */}
+      <Dialog open={isModalOpen('modal-acorde')} onOpenChange={() => { closeModal('modal-acorde'); resetChordEditor(); }}>
+        <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border">
           <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Novo <span className="text-accent">Acorde</span></DialogTitle>
+            <DialogTitle className="font-serif text-[22px]">{editingChordId ? 'Editar' : 'Novo'} <span className="text-accent">Acorde</span></DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mb-4">
+
+          {/* Campos: nome, instrumento, dificuldade, traste inicial */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div className="space-y-1.5">
               <Label>Nome do acorde</Label>
-              <Input placeholder="Ex: Am7, F#m, Bb" value={chordForm.name} onChange={e => setChordForm(p => ({ ...p, name: e.target.value }))} />
+              <Input placeholder="Ex: Am7, F#m" value={chordName} onChange={e => setChordName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Instrumento</Label>
-              <Select value={chordForm.instrument} onValueChange={v => setChordForm(p => ({ ...p, instrument: v }))}>
+              <Select value={chordInstrument} onValueChange={setChordInstrument}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="guitar">Violão</SelectItem><SelectItem value="ukulele">Ukulele</SelectItem>
+                  <SelectItem value="guitar">Violão</SelectItem>
+                  <SelectItem value="ukulele">Ukulele</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Dificuldade</Label>
-              <Select value={chordForm.difficulty} onValueChange={v => setChordForm(p => ({ ...p, difficulty: v }))}>
+              <Select value={chordDifficulty} onValueChange={setChordDifficulty}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">1</SelectItem><SelectItem value="2">2</SelectItem>
@@ -327,16 +372,37 @@ export function Modals() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label>Traste inicial</Label>
+              <Select value={String(chordStartFret)} onValueChange={v => setChordStartFret(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(f => (
+                    <SelectItem key={f} value={String(f)}>{f}ª casa</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="space-y-1.5 mb-4">
-            <Label>Posições (JSON SVGuitar)</Label>
-            <Textarea className="font-mono text-xs min-h-[80px]" placeholder='{"fingers": [[1,2],[2,3,1],[3,2,2]], "barres": []}' value={chordForm.positions} onChange={e => setChordForm(p => ({ ...p, positions: e.target.value }))} />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-acorde')} disabled={chordSaving}>Cancelar</Button>
-            <Button onClick={handleCreateChord} disabled={chordSaving}>
-              <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : 'Salvar'}
+
+          {/* Editor visual do braço + preview */}
+          <ChordEditor
+            state={chordEditorState}
+            onChange={setChordEditorState}
+            chordName={chordName}
+            startFret={chordStartFret}
+          />
+
+          <div className="flex justify-between items-center mt-4 pt-3 border-t border-border">
+            <Button variant="ghost" size="sm" onClick={resetChordEditor} className="text-text3 text-[12px]">
+              Limpar tudo
             </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => { closeModal('modal-acorde'); resetChordEditor(); }} disabled={chordSaving}>Cancelar</Button>
+              <Button onClick={handleSaveChord} disabled={chordSaving}>
+                <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : (editingChordId ? 'Atualizar' : 'Salvar')}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

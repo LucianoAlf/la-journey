@@ -10,6 +10,7 @@ import { useSchool } from "@/hooks/useSchool";
 import { supabase } from "@/lib/supabase";
 import { generateEmbedding, generateText } from "@/services/aiService";
 import { AI_CONFIG } from "@/lib/ai-config";
+import { MaterialPreview, type MaterialBlock } from "@/components/material/MaterialPreview";
 
 interface RAGBlock {
   id: string
@@ -37,8 +38,9 @@ export function Gerador() {
   const [ragSearched, setRagSearched] = useState(false);
 
   // Geração State
-  const [generatedText, setGeneratedText] = useState('');
+  const [generatedBlocks, setGeneratedBlocks] = useState<MaterialBlock[]>([]);
   const [genLoading, setGenLoading] = useState(false);
+  const [genMeta, setGenMeta] = useState<{ latencyMs: number; tokens: number | string } | null>(null);
 
   const handleRAGSearch = async () => {
     if (!selectedJourney || !selectedStage) {
@@ -96,7 +98,8 @@ export function Gerador() {
     }
 
     setGenLoading(true);
-    setGeneratedText('');
+    setGeneratedBlocks([]);
+    setGenMeta(null);
 
     try {
       let contextBlock = '';
@@ -108,24 +111,64 @@ export function Gerador() {
       }
 
       const systemPrompt = `Você é um compositor de material didático musical para a plataforma LA Journey.
-Baseado nos conteúdos curados fornecidos (se houver), gere um texto explicativo para uma apostila de música.
-O texto deve ser didático, claro, em português brasileiro, adequado para o nível ${selectedStage.name}.
-Instrumento: ${selectedJourney.instrument}.
-Formato: parágrafos curtos, com destaques em **negrito** para termos importantes.
-Use markdown para formatação.`;
+IMPORTANTE: Retorne APENAS um array JSON de blocos, sem texto adicional antes ou depois.
+Não use markdown fora do JSON. O resultado deve ser parseável por JSON.parse().
+Cada bloco tem esta estrutura:
+{
+  "block_type": "title" | "text" | "chord_diagram" | "chord_grid" | "notation" | "exercise" | "tip",
+  "title": "Título do bloco (opcional)",
+  "content": { "text": "conteúdo textual com **negrito** para termos importantes", "dimension": "teoria|técnica|ritmo|repertório" },
+  "render_data": { ...dados específicos do tipo }
+}
+Para "notation", render_data: { "notes": ["c/4:q","d/4:q"], "clef": "treble", "time_signature": "4/4", "key_signature": "C" }
+Para "chord_diagram", render_data: { "chord_name": "C", "fingers": [[1,2],[2,4],[3,5]], "barres": [], "position": 1 }
+Para "chord_grid" (vários acordes juntos), render_data: { "chords": [{ "chord_name": "G", "fingers": [[2,5],[3,6],[3,1]] }, ...] }
+Para "exercise", content.text + render_data com notes ou tab se aplicável.
+Para "tip", apenas content.text.
+Dados de acordes corretos (SVGuitar: [corda, traste] onde corda 1 = mi agudo):
+C: [[1,2],[2,4],[3,5]] | D: [[2,1],[2,3],[3,2]] | E: [[1,3],[2,4],[2,5]] | G: [[2,5],[3,6],[3,1]]
+A: [[2,2],[2,3],[2,4]] | Am: [[1,2],[2,3],[2,4]] | Em: [[2,4],[2,5]] | F: fingers [[2,3],[3,4],[3,5]], barres [{"fromString":1,"toString":6,"fret":1}]`;
 
-      const prompt = contextBlock
-        ? `Conteúdos de referência (RAG):\n\n${contextBlock}\n\nGere um texto didático cobrindo esses tópicos para o stage ${selectedStage.name} de ${selectedJourney.instrument}.`
-        : `Gere um texto didático para o stage ${selectedStage.name} de ${selectedJourney.instrument}, cobrindo os fundamentos essenciais deste nível. Não há conteúdo curado disponível — use seu conhecimento musical.`;
+      const ragContext = contextBlock
+        ? `\nConteúdos curados (RAG) para usar como base:\n${contextBlock}\n`
+        : '';
 
-      toast.info('Gerando texto com Gemini Flash...');
+      const prompt = `${ragContext}
+Gere um material didático para ${selectedJourney.instrument} nível ${selectedStage.name}.
+Inclua OBRIGATORIAMENTE:
+- 1 bloco "title" (título da seção)
+- 2-3 blocos "text" explicativos
+- 1 bloco "chord_grid" com pelo menos 3 acordes adequados ao nível
+- 1 bloco "notation" com uma escala ou progressão na pauta (notas no formato "nota/oitava:duração")
+- 1 bloco "exercise" com instrução prática
+- 1 bloco "tip" com dica para o aluno
+Retorne APENAS o array JSON.`;
 
-      const result = await generateText(prompt, AI_CONFIG.generation, systemPrompt);
+      toast.info('Gerando material estruturado com Gemini Flash...');
 
-      setGeneratedText(result.text);
-      toast.success(`Texto gerado em ${result.latencyMs}ms · ${result.tokensUsed ?? '?'} tokens`);
+      const result = await generateText(prompt, { ...AI_CONFIG.generation, maxTokens: 4096 }, systemPrompt);
+
+      // Parsear JSON — extrair array de dentro da resposta
+      let blocks: MaterialBlock[] = [];
+      try {
+        let jsonStr = result.text.trim();
+        // Remover markdown code fences se Gemini colocar
+        if (jsonStr.startsWith('```')) {
+          jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+        }
+        blocks = JSON.parse(jsonStr);
+        if (!Array.isArray(blocks)) blocks = [blocks];
+      } catch {
+        // Fallback: se não parsear, mostrar como texto
+        blocks = [{ block_type: 'text', title: 'Material Gerado', content: { text: result.text } }];
+        toast.warning('IA retornou texto em vez de JSON — exibindo como texto.');
+      }
+
+      setGeneratedBlocks(blocks);
+      setGenMeta({ latencyMs: result.latencyMs, tokens: result.tokensUsed ?? '?' });
+      toast.success(`${blocks.length} blocos gerados em ${result.latencyMs}ms`);
     } catch (e: any) {
-      toast.error(e?.message || 'Erro ao gerar texto');
+      toast.error(e?.message || 'Erro ao gerar material');
     } finally {
       setGenLoading(false);
     }
@@ -173,7 +216,7 @@ Use markdown para formatação.`;
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <Label>Jornada</Label>
-            <Select value={selectedJourneyId} onValueChange={v => { setSelectedJourneyId(v); setSelectedStageId(''); setRagBlocks([]); setRagSearched(false); setGeneratedText(''); }}>
+            <Select value={selectedJourneyId} onValueChange={v => { setSelectedJourneyId(v); setSelectedStageId(''); setRagBlocks([]); setRagSearched(false); setGeneratedBlocks([]); setGenMeta(null); }}>
               <SelectTrigger><SelectValue placeholder="Selecione uma jornada" /></SelectTrigger>
               <SelectContent>
                 {(journeys ?? []).map(j => (
@@ -184,7 +227,7 @@ Use markdown para formatação.`;
           </div>
           <div className="space-y-1.5">
             <Label>Stage</Label>
-            <Select value={selectedStageId} onValueChange={v => { setSelectedStageId(v); setRagBlocks([]); setRagSearched(false); setGeneratedText(''); }}>
+            <Select value={selectedStageId} onValueChange={v => { setSelectedStageId(v); setRagBlocks([]); setRagSearched(false); setGeneratedBlocks([]); setGenMeta(null); }}>
               <SelectTrigger><SelectValue placeholder="Selecione um stage" /></SelectTrigger>
               <SelectContent>
                 {(stages ?? []).map(s => (
@@ -275,8 +318,9 @@ Use markdown para formatação.`;
                 <Sparkle size={18} className="inline mr-2 text-accent" />
                 Preview Gerado (Gemini)
               </div>
-              {generatedText && (
+              {generatedBlocks.length > 0 && (
                 <div className="flex gap-1">
+                  <Badge variant="advance" className="text-[10px]">{generatedBlocks.length} blocos</Badge>
                   <Button variant="ghost" size="sm"><FilePdf size={14} /> PDF</Button>
                   <Button variant="ghost" size="sm"><Eye size={14} /> HTML</Button>
                   <Button variant="ghost" size="sm"><Printer size={14} /></Button>
@@ -284,9 +328,9 @@ Use markdown para formatação.`;
               )}
             </div>
 
-            {!generatedText && !genLoading && (
+            {generatedBlocks.length === 0 && !genLoading && (
               <div className="text-center py-8 text-text3 text-sm">
-                Clique <strong>Gerar Preview com IA</strong> para criar texto didático.
+                Clique <strong>Gerar Preview com IA</strong> para criar material estruturado.
                 {ragBlocks.length > 0 && (
                   <div className="text-[11px] text-verde mt-2">
                     <Lightning size={12} className="inline" /> {ragBlocks.length} blocos RAG serão usados como contexto.
@@ -298,52 +342,35 @@ Use markdown para formatação.`;
             {genLoading && (
               <div className="flex flex-col items-center justify-center py-12 gap-3 text-text2">
                 <SpinnerGap size={28} className="animate-spin text-accent" />
-                <div className="text-sm">Gerando texto com <strong>Gemini Flash</strong>...</div>
+                <div className="text-sm">Gerando material com <strong>Gemini Flash</strong>...</div>
                 <div className="text-[11px] text-text3">
                   {ragBlocks.length > 0 ? `Usando ${ragBlocks.length} blocos RAG como contexto` : 'Geração pura sem contexto RAG'}
                 </div>
               </div>
             )}
 
-            {generatedText && (
-              <div className="max-h-[500px] overflow-y-auto">
+            {generatedBlocks.length > 0 && (
+              <div className="max-h-[600px] overflow-y-auto pr-1">
                 {/* Mini preview de capa */}
-                <div className="bg-white rounded-lg p-4 mb-3 text-center shadow-sm">
+                <div className="bg-white rounded-lg p-4 mb-4 text-center shadow-sm">
                   <div className="w-8 h-8 rounded-md bg-[#1E3A5F] mx-auto mb-1 flex items-center justify-center text-white text-[9px] font-extrabold">LA</div>
                   <div className="text-[9px] text-[#666]">{school?.name ?? 'LA Music School'}</div>
                   <div className="text-sm font-bold text-[#1E293B] mt-1">{selectedStage?.name ?? 'Stage'}</div>
                   <div className="text-[8px] text-[#94A3B8]">{selectedJourney?.instrument} · {selectedStage?.total_lessons ?? '?'} aulas</div>
                 </div>
 
-                {/* Texto gerado */}
-                <div className="prose prose-sm prose-invert max-w-none text-text2 text-[13px] leading-relaxed">
-                  {generatedText.split('\n').map((line, i) => {
-                    if (!line.trim()) return <br key={i} />;
-                    if (line.startsWith('# ')) return <h2 key={i} className="font-serif text-lg text-text mt-4 mb-2">{line.replace('# ', '')}</h2>;
-                    if (line.startsWith('## ')) return <h3 key={i} className="font-serif text-base text-text mt-3 mb-1">{line.replace('## ', '')}</h3>;
-                    if (line.startsWith('### ')) return <h4 key={i} className="font-bold text-[13px] text-accent mt-2 mb-1">{line.replace('### ', '')}</h4>;
-                    if (line.startsWith('- ') || line.startsWith('* ')) return <div key={i} className="ml-4 text-[12px]">• {line.replace(/^[-*]\s/, '')}</div>;
+                {/* Material renderizado com componentes musicais */}
+                <MaterialPreview blocks={generatedBlocks} />
 
-                    // Renderizar **negrito** inline
-                    const parts = line.split(/(\*\*[^*]+\*\*)/g);
-                    return (
-                      <p key={i} className="mb-2">
-                        {parts.map((part, j) =>
-                          part.startsWith('**') && part.endsWith('**')
-                            ? <strong key={j} className="text-text font-semibold">{part.slice(2, -2)}</strong>
-                            : <span key={j}>{part}</span>
-                        )}
-                      </p>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-4 p-3 bg-azul-soft rounded-[var(--radius-sm)]">
-                  <div className="text-[11px] text-text3">
-                    <Article size={12} className="inline mr-1" />
-                    Gerado por {AI_CONFIG.generation.model} · {ragBlocks.length > 0 ? `${ragBlocks.length} blocos RAG como contexto` : 'Geração pura'}
+                {genMeta && (
+                  <div className="mt-4 p-3 bg-azul-soft rounded-[var(--radius-sm)]">
+                    <div className="text-[11px] text-text3">
+                      <Article size={12} className="inline mr-1" />
+                      {generatedBlocks.length} blocos · Gerado por {AI_CONFIG.generation.model} em {genMeta.latencyMs}ms · {genMeta.tokens} tokens
+                      {ragBlocks.length > 0 && ` · ${ragBlocks.length} blocos RAG`}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>

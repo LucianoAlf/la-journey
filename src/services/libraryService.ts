@@ -39,6 +39,18 @@ export async function createChord(chord: TablesInsert<'chord_library'>) {
   return data
 }
 
+export async function updateChord(id: string, chord: Partial<TablesInsert<'chord_library'>>) {
+  const { data, error } = await supabase
+    .from('chord_library')
+    .update(chord)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return data
+}
+
 export async function createScale(scale: TablesInsert<'scale_library'>) {
   const { data, error } = await supabase
     .from('scale_library')

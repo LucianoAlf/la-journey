@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LA Journey — Editor de Acordes v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0F172A;
+    --card: #1E293B;
+    --card-border: #334155;
+    --text: #E2E8F0;
+    --text-muted: #94A3B8;
+    --accent: #FF2D78;
+    --nut: #CBD5E1;
+    --fret: #475569;
+    --open: #22C55E;
+    --muted: #EF4444;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .editor-container {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 720px;
+    width: 100%;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+  }
+
+  .editor-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  .editor-header .accent { color: var(--accent); }
+
+  .fields-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+  }
+
+  .field input, .field select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+
+  .main-area {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .neck-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .guitar-neck {
+    position: relative;
+  }
+
+  .guitar-neck canvas {
+    display: block;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+
+  .instructions {
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.8;
+  }
+
+  .instructions strong { color: var(--accent); }
+
+  .tool-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .tool-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tool-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tool-btn.danger:hover { border-color: var(--muted); color: var(--muted); }
+
+  .preview-area { display: flex; flex-direction: column; gap: 14px; }
+
+  .preview-card {
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .preview-card h3 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .preview-chord-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px;
+    margin-bottom: 6px;
+  }
+
+  .actions-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--card-border);
+  }
+
+  .btn-clear {
+    background: transparent; border: none; color: var(--text-muted);
+    font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer;
+    padding: 8px 16px; border-radius: 8px;
+  }
+  .btn-clear:hover { color: var(--muted); background: rgba(239,68,68,0.1); }
+
+  .btn-group { display: flex; gap: 10px; }
+
+  .btn-cancel {
+    padding: 10px 20px; border: 1px solid var(--card-border); border-radius: 8px;
+    background: transparent; color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 14px; cursor: pointer;
+  }
+  .btn-cancel:hover { background: var(--card-border); }
+
+  .btn-save {
+    padding: 10px 20px; border: none; border-radius: 8px; background: var(--accent);
+    color: white; font-family: 'DM Sans', sans-serif; font-size: 14px;
+    font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .btn-save:hover { background: #FF4D8E; }
+
+  /* Finger tooltip on hover */
+  .finger-tooltip {
+    position: fixed;
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 5px;
+    display: none;
+    gap: 3px;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    pointer-events: auto;
+  }
+
+  .finger-tooltip.show { display: flex; }
+
+  .finger-tooltip button {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--accent); background: transparent;
+    color: var(--accent); font-family: 'DM Sans', sans-serif;
+    font-weight: 700; font-size: 13px; cursor: pointer;
+    transition: all 0.12s;
+  }
+  .finger-tooltip button:hover,
+  .finger-tooltip button.active {
+    background: var(--accent); color: white;
+  }
+</style>
+</head>
+<body>
+
+<div class="editor-container">
+  <div class="editor-header">
+    <h2>Novo <span class="accent">Acorde</span></h2>
+  </div>
+
+  <div class="fields-row">
+    <div class="field">
+      <label>Nome do acorde</label>
+      <input type="text" id="chordName" value="F" oninput="render()">
+    </div>
+    <div class="field">
+      <label>Instrumento</label>
+      <select><option selected>Violão</option><option>Ukulele</option></select>
+    </div>
+    <div class="field">
+      <label>Dificuldade</label>
+      <select id="difficulty">
+        <option value="1">1 — Fácil</option><option value="2">2 — Médio</option>
+        <option value="3" selected>3 — Difícil</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Casa inicial</label>
+      <select id="startFret" onchange="render()">
+        <option value="1" selected>1</option><option value="2">2</option>
+        <option value="3">3</option><option value="5">5</option><option value="7">7</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="main-area">
+    <div class="neck-section">
+      <div class="guitar-neck">
+        <canvas id="neck" width="260" height="440"></canvas>
+      </div>
+      <div class="instructions">
+        <strong>Clique</strong> = colocar dedo · <strong>Passe o mouse</strong> no dedo = escolher número (1–4)<br>
+        <strong>Duplo clique</strong> = apagar dedo ou pestana · <strong>Topo</strong>: ○ aberta / ✕ muda
+      </div>
+      <div class="tool-row">
+        <button class="tool-btn" id="btnBarre" onclick="toggleBarreMode()">🎸 Pestana</button>
+        <button class="tool-btn danger" onclick="clearAll()">✕ Limpar tudo</button>
+      </div>
+    </div>
+
+    <div class="preview-area">
+      <div class="preview-card">
+        <h3>Preview</h3>
+        <div class="preview-chord-name" id="previewName">F</div>
+        <canvas id="preview" width="160" height="210"></canvas>
+        <p style="font-size:10px;color:var(--text-muted);margin-top:4px;">Tempo real</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions-row">
+    <button class="btn-clear" onclick="clearAll()">Limpar tudo</button>
+    <div class="btn-group">
+      <button class="btn-cancel">Cancelar</button>
+      <button class="btn-save" onclick="saveChord()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Floating finger tooltip (appears on hover over dots) -->
+<div class="finger-tooltip" id="fingerTip">
+  <button onmousedown="assignFinger(1)">1</button>
+  <button onmousedown="assignFinger(2)">2</button>
+  <button onmousedown="assignFinger(3)">3</button>
+  <button onmousedown="assignFinger(4)">4</button>
+</div>
+
+<script>
+// ===== CONFIG =====
+const S = 6, F = 7;
+const NAMES = ['E','A','D','G','B','e'];
+const PT = 40, PB = 10, PL = 30, PR = 10, NUT = 5;
+const MARKERS = [3,5,7,9,12];
+
+// ===== STATE =====
+let dots = [];         // {s, f, finger}
+let openMuted = Array(S).fill(null);
+let barres = [];       // {fret, from, to, finger}
+let barreMode = false, barreFirst = null;
+let hoveredDot = null; // index into dots[]
+let tooltipLock = false;
+
+const neck = document.getElementById('neck');
+const nCtx = neck.getContext('2d');
+const prev = document.getElementById('preview');
+const pCtx = prev.getContext('2d');
+
+// ===== LAYOUT =====
+function ss() { return (neck.width - PL - PR) / (S - 1); }
+function fs() { return (neck.height - PT - NUT - PB) / F; }
+function sx(s) { return PL + s * ss(); }
+function fy(f) { return PT + NUT + f * fs(); }
+function cy(f) { return fy(f) + fs() / 2; }
+function startFret() { return +document.getElementById('startFret').value; }
+
+// ===== DRAW NECK =====
+function drawNeck() {
+  const c = nCtx, w = neck.width, h = neck.height;
+  c.clearRect(0, 0, w, h);
+
+  // String names
+  c.font = '500 11px "DM Mono", monospace';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  for (let i = 0; i < S; i++) {
+    c.fillStyle = '#64748B';
+    c.fillText(NAMES[i], sx(i), 12);
+  }
+
+  // Open/Muted markers
+  for (let i = 0; i < S; i++) {
+    const x = sx(i), y = 28;
+    if (openMuted[i] === 'open') {
+      c.strokeStyle = '#22C55E'; c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, 7, 0, Math.PI*2); c.stroke();
+    } else if (openMuted[i] === 'muted') {
+      c.fillStyle = '#EF4444';
+      c.font = '700 14px "DM Sans"';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('✕', x, y);
+    }
+  }
+
+  // Nut
+  if (startFret() === 1) {
+    c.fillStyle = '#CBD5E1';
+    c.fillRect(PL - 2, PT, w - PL - PR + 4, NUT);
+  }
+
+  // Fret lines
+  for (let f = 1; f <= F; f++) {
+    c.strokeStyle = '#475569'; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(PL-2, fy(f)); c.lineTo(PL+(S-1)*ss()+2, fy(f)); c.stroke();
+  }
+
+  // Strings with thickness
+  for (let i = 0; i < S; i++) {
+    c.strokeStyle = i < 3 ? '#A0A0A0' : '#8B8B8B';
+    c.lineWidth = Math.max(2.5 - i*0.3, 0.8);
+    c.beginPath(); c.moveTo(sx(i), PT+NUT); c.lineTo(sx(i), fy(F)); c.stroke();
+  }
+
+  // Fret numbers
+  c.fillStyle = '#475569';
+  c.font = '500 11px "DM Mono", monospace';
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  for (let f = 0; f < F; f++) c.fillText(String(f + startFret()), PL - 10, cy(f));
+
+  // Position markers
+  for (let f = 0; f < F; f++) {
+    if (MARKERS.includes(f + startFret())) {
+      c.fillStyle = 'rgba(71,85,105,0.25)';
+      c.beginPath(); c.arc((sx(2)+sx(3))/2, cy(f), 4, 0, Math.PI*2); c.fill();
+    }
+  }
+
+  // Barre mode overlay
+  if (barreMode) {
+    c.fillStyle = 'rgba(255,45,120,0.04)';
+    c.fillRect(PL-5, PT, (S-1)*ss()+10, F*fs());
+  }
+  if (barreFirst) {
+    c.strokeStyle = '#FF2D78'; c.lineWidth = 2; c.setLineDash([4,4]);
+    c.beginPath(); c.arc(sx(barreFirst.s), cy(barreFirst.f), 16, 0, Math.PI*2); c.stroke();
+    c.setLineDash([]);
+  }
+
+  // Barres
+  barres.forEach(b => {
+    const mn = Math.min(b.from, b.to), mx = Math.max(b.from, b.to);
+    const y = cy(b.fret), x1 = sx(mn), x2 = sx(mx), bh = 18, r = bh/2;
+    c.fillStyle = '#FF2D78';
+    c.beginPath(); c.roundRect(x1-r, y-r, (x2-x1)+2*r, bh, r); c.fill();
+    c.fillStyle = '#fff'; c.font = '700 12px "DM Sans"';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(String(b.finger||1), (x1+x2)/2, y);
+  });
+
+  // Dots
+  dots.forEach((d, i) => {
+    const x = sx(d.s), y = cy(d.f), r = 14;
+    const isHovered = (hoveredDot === i);
+
+    // Shadow
+    c.fillStyle = isHovered ? 'rgba(255,45,120,0.5)' : 'rgba(255,45,120,0.25)';
+    c.beginPath(); c.arc(x, y+2, r+2, 0, Math.PI*2); c.fill();
+
+    // Dot
+    c.fillStyle = isHovered ? '#FF4D8E' : '#FF2D78';
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI*2); c.fill();
+
+    // Finger number
+    if (d.finger) {
+      c.fillStyle = '#fff'; c.font = '700 13px "DM Sans"';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(String(d.finger), x, y);
+    }
+  });
+}
+
+// ===== DRAW PREVIEW =====
+function drawPreview() {
+  const c = pCtx, w = 160, h = 210;
+  c.clearRect(0, 0, w, h);
+
+  const pt = 22, pl = 15, pr = 15;
+  const nutY = pt + 4, fsp = 25;
+  const ssp = (w - pl - pr) / 5;
+  function px(s) { return pl + s * ssp; }
+  function pfy(f) { return nutY + 4 + f * fsp; }
+
+  // Nut
+  if (startFret() === 1) {
+    c.fillStyle = '#CBD5E1';
+    c.fillRect(pl-1, nutY, w-pl-pr+2, 3);
+  } else {
+    c.fillStyle = '#64748B'; c.font = '500 9px "DM Mono"';
+    c.textAlign = 'right'; c.fillText(startFret()+'fr', pl-4, nutY+fsp/2+4);
+  }
+
+  // Strings
+  for (let s = 0; s < 6; s++) {
+    c.strokeStyle = '#64748B'; c.lineWidth = 1.6-s*0.15;
+    c.beginPath(); c.moveTo(px(s), nutY+3); c.lineTo(px(s), pfy(F)); c.stroke();
+  }
+
+  // Frets
+  for (let f = 1; f <= F; f++) {
+    c.strokeStyle = '#475569'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(pl-1, nutY+3+f*fsp); c.lineTo(w-pr+1, nutY+3+f*fsp); c.stroke();
+  }
+
+  // Open/Muted
+  for (let s = 0; s < 6; s++) {
+    const x = px(s);
+    if (openMuted[s] === 'open') {
+      c.strokeStyle = '#22C55E'; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(x, nutY-7, 5, 0, Math.PI*2); c.stroke();
+    } else if (openMuted[s] === 'muted') {
+      c.fillStyle = '#EF4444'; c.font = '700 10px "DM Sans"';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('✕', x, nutY-7);
+    }
+  }
+
+  // Barres
+  barres.forEach(b => {
+    const mn = Math.min(b.from, b.to), mx = Math.max(b.from, b.to);
+    const y = pfy(b.fret) + fsp/2 + 1;
+    c.fillStyle = '#FF2D78';
+    c.beginPath(); c.roundRect(px(mn)-5, y-6, px(mx)-px(mn)+10, 12, 6); c.fill();
+    c.fillStyle = '#fff'; c.font = '700 8px "DM Sans"';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(String(b.finger||1), (px(mn)+px(mx))/2, y);
+  });
+
+  // Dots
+  dots.forEach(d => {
+    const x = px(d.s), y = pfy(d.f) + fsp/2 + 1;
+    c.fillStyle = '#FF2D78'; c.beginPath(); c.arc(x, y, 7, 0, Math.PI*2); c.fill();
+    if (d.finger) {
+      c.fillStyle = '#fff'; c.font = '700 8px "DM Sans"';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(d.finger), x, y);
+    }
+  });
+}
+
+// ===== HIT TESTING =====
+function findString(mx) {
+  for (let s = 0; s < S; s++) if (Math.abs(mx - sx(s)) < ss()/2) return s;
+  return null;
+}
+
+function findFret(my) {
+  for (let f = 0; f < F; f++) if (Math.abs(my - cy(f)) < fs()/2) return f;
+  return null;
+}
+
+function findDot(mx, my) {
+  for (let i = dots.length - 1; i >= 0; i--) {
+    const d = dots[i];
+    const dx = mx - sx(d.s), dy = my - cy(d.f);
+    if (dx*dx + dy*dy < 16*16) return i;
+  }
+  return null;
+}
+
+function findBarre(mx, my) {
+  for (let i = barres.length - 1; i >= 0; i--) {
+    const b = barres[i];
+    const mn = Math.min(b.from, b.to), mx2 = Math.max(b.from, b.to);
+    const y = cy(b.fret);
+    if (my > y - 14 && my < y + 14 && mx > sx(mn) - 14 && mx < sx(mx2) + 14) return i;
+  }
+  return null;
+}
+
+// ===== MOUSE EVENTS =====
+
+// Single click: place dot, toggle open/muted, or barre
+neck.addEventListener('click', (e) => {
+  const r = neck.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+
+  hideTooltip();
+
+  // Open/muted area
+  if (my < PT - 5) {
+    const s = findString(mx);
+    if (s !== null) {
+      const st = [null, 'open', 'muted'];
+      openMuted[s] = st[(st.indexOf(openMuted[s]) + 1) % 3];
+      if (openMuted[s] === 'muted') dots = dots.filter(d => d.s !== s);
+      render();
+    }
+    return;
+  }
+
+  const s = findString(mx), f = findFret(my);
+  if (s === null || f === null) return;
+
+  // Barre mode
+  if (barreMode) {
+    if (!barreFirst) {
+      barreFirst = { s, f };
+    } else {
+      if (barreFirst.f === f && barreFirst.s !== s) {
+        const from = Math.min(barreFirst.s, s), to = Math.max(barreFirst.s, s);
+        barres.push({ fret: f, from, to, finger: 1 });
+        dots = dots.filter(d => !(d.f === f && d.s >= from && d.s <= to));
+        for (let i = from; i <= to; i++) if (openMuted[i] === 'muted') openMuted[i] = null;
+      }
+      barreFirst = null;
+      barreMode = false;
+      document.getElementById('btnBarre').classList.remove('active');
+    }
+    render();
+    return;
+  }
+
+  // Check if clicking existing dot — don't place new one
+  if (findDot(mx, my) !== null) return;
+
+  // Place new dot
+  dots.push({ s, f, finger: 0 });
+  if (openMuted[s] === 'muted') openMuted[s] = null;
+  render();
+});
+
+// Double click: remove dot or barre
+neck.addEventListener('dblclick', (e) => {
+  const r = neck.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+
+  hideTooltip();
+
+  // Check dot
+  const di = findDot(mx, my);
+  if (di !== null) {
+    dots.splice(di, 1);
+    render();
+    return;
+  }
+
+  // Check barre
+  const bi = findBarre(mx, my);
+  if (bi !== null) {
+    barres.splice(bi, 1);
+    render();
+    return;
+  }
+});
+
+// Mouse move: show tooltip when hovering over a dot
+neck.addEventListener('mousemove', (e) => {
+  const r = neck.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+
+  const di = findDot(mx, my);
+
+  if (di !== null && di !== hoveredDot) {
+    hoveredDot = di;
+    drawNeck(); // redraw with hover highlight
+
+    // Show tooltip above the dot
+    const d = dots[di];
+    const dotScreenX = r.left + sx(d.s);
+    const dotScreenY = r.top + cy(d.f);
+    showTooltip(dotScreenX, dotScreenY - 30, d.finger);
+  } else if (di === null && hoveredDot !== null) {
+    // Small delay before hiding (so user can reach tooltip)
+    setTimeout(() => {
+      if (!tooltipLock) {
+        hoveredDot = null;
+        hideTooltip();
+        drawNeck();
+      }
+    }, 200);
+  }
+});
+
+// Tooltip interactions
+const tip = document.getElementById('fingerTip');
+
+tip.addEventListener('mouseenter', () => { tooltipLock = true; });
+tip.addEventListener('mouseleave', () => {
+  tooltipLock = false;
+  hoveredDot = null;
+  hideTooltip();
+  drawNeck();
+});
+
+function showTooltip(x, y, currentFinger) {
+  tip.style.left = (x - 68) + 'px';
+  tip.style.top = (y - 38) + 'px';
+  tip.classList.add('show');
+
+  // Highlight current finger
+  tip.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', +b.textContent === currentFinger);
+  });
+}
+
+function hideTooltip() {
+  tip.classList.remove('show');
+}
+
+function assignFinger(n) {
+  if (hoveredDot === null) return;
+  dots[hoveredDot].finger = n;
+  tooltipLock = false;
+  hoveredDot = null;
+  hideTooltip();
+  render();
+}
+
+// ===== BARRE =====
+function toggleBarreMode() {
+  barreMode = !barreMode;
+  barreFirst = null;
+  document.getElementById('btnBarre').classList.toggle('active', barreMode);
+  render();
+}
+
+// ===== GENERATE JSON =====
+function generateJSON() {
+  const fingers = [], muted = [], sf = startFret();
+  for (let s = 0; s < S; s++) {
+    const sv = 6 - s;
+    if (openMuted[s] === 'muted') muted.push(sv);
+    else if (openMuted[s] === 'open') fingers.push([sv, 0]);
+  }
+  dots.forEach(d => {
+    const sv = 6-d.s, fret = d.f+sf;
+    d.finger ? fingers.push([sv, fret, String(d.finger)]) : fingers.push([sv, fret]);
+  });
+  const bOut = barres.map(b => ({ fromString: 6-b.from, toString: 6-b.to, fret: b.fret+sf }));
+  return { fingers, barres: bOut, muted };
+}
+
+// ===== ACTIONS =====
+function clearAll() {
+  dots = []; openMuted = Array(S).fill(null); barres = [];
+  barreMode = false; barreFirst = null;
+  document.getElementById('btnBarre').classList.remove('active');
+  render();
+}
+
+function saveChord() {
+  const json = generateJSON();
+  const name = document.getElementById('chordName').value;
+  alert(`Acorde "${name}" salvo!\n\n${JSON.stringify(json, null, 2)}`);
+}
+
+// ===== RENDER =====
+function render() {
+  document.getElementById('previewName').textContent = document.getElementById('chordName').value || '?';
+  drawNeck();
+  drawPreview();
+}
+
+// ===== INIT: F chord =====
+barres.push({ fret: 0, from: 0, to: 5, finger: 1 });
+dots.push({ s: 3, f: 1, finger: 2 });
+dots.push({ s: 1, f: 2, finger: 3 });
+dots.push({ s: 2, f: 2, finger: 4 });
+
+render();
+</script>
+
+</body>
+</html>
