@@ -221,10 +221,36 @@
 [data-theme="dark"] .notation-container,
 .dark .notation-container {
   background: var(--surface) !important;
+  border-color: var(--border) !important;
 }
 [data-theme="dark"] .notation-container svg,
 .dark .notation-container svg {
   filter: invert(0.88) hue-rotate(180deg);
+}
+
+/* NotationRenderer dentro de cards: sem borda/padding/margin extras */
+.card .notation-container {
+  border: none !important;
+  margin: 0 !important;
+  padding: 8px !important;
+  border-radius: 8px !important;
+}
+
+/* NotationRenderer dentro do editor: sem borda/padding/margin extras */
+.notation-editor-vexflow .notation-container {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+/* Editor sempre fundo branco — NÃO inverter SVG no dark mode */
+[data-theme="dark"] .notation-editor-vexflow .notation-container {
+  background: transparent !important;
+}
+[data-theme="dark"] .notation-editor-vexflow .notation-container svg,
+.dark .notation-editor-vexflow .notation-container svg {
+  filter: none !important;
 }
 
 /* EDITOR */

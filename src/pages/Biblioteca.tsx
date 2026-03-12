@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect } from "react";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
@@ -14,8 +14,12 @@ import { StaffNotation } from "@/components/music/StaffNotation";
 import { RhythmNotation } from "@/components/music/RhythmNotation";
 import { Tablature } from "@/components/music/Tablature";
 import { PianoKeyboard } from "@/components/music/PianoKeyboard";
+import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
+import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
 import { createChord, updateChord, deleteChord } from "@/services/libraryService";
+import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
+import { useNotations } from "@/hooks/useNotations";
 
 
 /** Converte notas de escala para formato VexFlow */
@@ -70,6 +74,16 @@ function PianoChordCard({ positions, name }: { positions: any; name: string }) {
   )
 }
 
+const NOTATION_CATEGORY_BADGES: Record<string, { label: string; variant: string }> = {
+  scale: { label: 'Escala', variant: 'advance' },
+  chord: { label: 'Acorde', variant: 'foundation' },
+  interval: { label: 'Intervalo', variant: 'gold' },
+  rhythm: { label: 'Ritmo', variant: 'accent' },
+  exercise: { label: 'Exercício', variant: 'grow' },
+  pattern: { label: 'Padrão', variant: 'secondary' },
+}
+
+
 type InstrumentFilter = 'guitar' | 'piano' | 'bass' | 'ukulele'
 
 const INSTRUMENTS: { value: InstrumentFilter; label: string; icon: typeof Guitar }[] = [
@@ -85,6 +99,7 @@ export function Biblioteca() {
   const { openModal } = useAppContext();
   const { data: chords, loading: chordsLoading, refetch: refetchChords } = useChords(instrument as any);
   const { data: scales, loading: scalesLoading } = useScales();
+  const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
 
   // Refetch automático quando um novo acorde é salvo via modal
   useEffect(() => {
@@ -94,6 +109,13 @@ export function Biblioteca() {
   }, [refetchChords]);
   const [chordSearch, setChordSearch] = useState('');
   const [diffFilter, setDiffFilter] = useState('todos');
+
+  // Estado da aba Notação
+  const [notationSearch, setNotationSearch] = useState('');
+  const [notationCatFilter, setNotationCatFilter] = useState('todas');
+  const [notationDiffFilter, setNotationDiffFilter] = useState('todos');
+  const [notationEditorOpen, setNotationEditorOpen] = useState(false);
+  const [editingNotation, setEditingNotation] = useState<NotationLibraryRow | null>(null);
 
   // Estado do KeyboardEditor (piano)
   const [pianoEditorOpen, setPianoEditorOpen] = useState(false);
@@ -130,6 +152,24 @@ export function Biblioteca() {
     window.dispatchEvent(new Event('chord-library-updated'));
   };
 
+  // CRUD Notação
+  const handleSaveNotation = async (data: NotationSaveData) => {
+    if (editingNotation) {
+      await updateNotation(editingNotation.id, data);
+      toast.success('Notação atualizada!');
+    } else {
+      await createNotation(data as any);
+      toast.success('Notação criada!');
+    }
+    refetchNotations();
+  };
+
+  const handleDeleteNotation = async (id: string) => {
+    await deleteNotation(id);
+    toast.success('Notação excluída');
+    refetchNotations();
+  };
+
   const filteredChords = useMemo(() => {
     let list = chords ?? []
     if (chordSearch) {
@@ -142,6 +182,21 @@ export function Biblioteca() {
     return list
   }, [chords, chordSearch, diffFilter])
 
+  const filteredNotations = useMemo(() => {
+    let list = (notations ?? []) as NotationLibraryRow[]
+    if (notationSearch) {
+      const q = notationSearch.toLowerCase()
+      list = list.filter(n => n.name.toLowerCase().includes(q) || (n.description ?? '').toLowerCase().includes(q))
+    }
+    if (notationCatFilter !== 'todas') {
+      list = list.filter(n => n.category === notationCatFilter)
+    }
+    if (notationDiffFilter !== 'todos') {
+      list = list.filter(n => n.difficulty === Number(notationDiffFilter))
+    }
+    return list
+  }, [notations, notationSearch, notationCatFilter, notationDiffFilter])
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="flex items-center justify-between mb-6">
@@ -150,12 +205,15 @@ export function Biblioteca() {
             Biblioteca <em className="not-italic text-accent">Musical</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {instrument === 'piano' ? 'Piano' : 'SVGuitar'} · VexFlow
+            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {(notations ?? []).length} notações
           </p>
         </div>
         <Button onClick={() => {
           if (activeTab === 'imagens') {
             openModal('modal-imagem');
+          } else if (activeTab === 'notacao') {
+            setEditingNotation(null);
+            setNotationEditorOpen(true);
           } else if (instrument === 'piano') {
             setEditingPianoChord(null);
             setPianoEditorOpen(true);
@@ -163,16 +221,16 @@ export function Biblioteca() {
             openModal('modal-acorde');
           }
         }}>
-          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : 'Novo Acorde'}
+          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : 'Novo Acorde'}
         </Button>
       </div>
 
       <Tabs defaultValue="acordes" className="mb-6" onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="acordes">Acordes ({(chords ?? []).length})</TabsTrigger>
-          <TabsTrigger value="escalas">Escalas ({(scales ?? []).length})</TabsTrigger>
-          <TabsTrigger value="notacao">Notação (VexFlow)</TabsTrigger>
-          <TabsTrigger value="imagens">Imagens IA</TabsTrigger>
+          <TabsTrigger value="acordes">🎸 Acordes ({(chords ?? []).length})</TabsTrigger>
+          <TabsTrigger value="escalas">📊 Escalas ({(scales ?? []).length})</TabsTrigger>
+          <TabsTrigger value="notacao">🎵 Notação ({(notations ?? []).length})</TabsTrigger>
+          <TabsTrigger value="imagens">🖼 Imagens IA</TabsTrigger>
         </TabsList>
 
         <TabsContent value="acordes">
@@ -383,54 +441,104 @@ export function Biblioteca() {
         </TabsContent>
 
         <TabsContent value="notacao">
-          <div className="grid grid-cols-2 gap-5">
-            <div className="card">
-              <div className="font-serif mb-3 text-[17px]">Figuras Rítmicas</div>
-              <p className="text-[12px] text-text3 mb-3">
-                Semibreve (4 tempos), Mínima (2), Semínima (1), Colcheia (½), Semicolcheia (¼)
-              </p>
-              <RhythmNotation />
+          <div>
+            {/* Filtros */}
+            <div className="card mb-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Buscar</Label>
+                  <Input placeholder="Ex: Dó Maior, pentatônica..." value={notationSearch} onChange={e => setNotationSearch(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Categoria</Label>
+                  <Select value={notationCatFilter} onValueChange={setNotationCatFilter}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todas">Todas</SelectItem>
+                      <SelectItem value="scale">Escalas</SelectItem>
+                      <SelectItem value="chord">Acordes</SelectItem>
+                      <SelectItem value="interval">Intervalos</SelectItem>
+                      <SelectItem value="rhythm">Ritmo</SelectItem>
+                      <SelectItem value="exercise">Exercícios</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Dificuldade</Label>
+                  <Select value={notationDiffFilter} onValueChange={setNotationDiffFilter}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="1">1 — Fácil</SelectItem>
+                      <SelectItem value="2">2 — Intermediário</SelectItem>
+                      <SelectItem value="3">3 — Avançado</SelectItem>
+                      <SelectItem value="4">4 — Difícil</SelectItem>
+                      <SelectItem value="5">5 — Expert</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="card">
-              <div className="font-serif mb-3 text-[17px]">Escala de Dó Maior na Pauta</div>
-              <p className="text-[12px] text-text3 mb-3">
-                Exemplo de notação na pauta com VexFlow — 8 notas ascendentes
-              </p>
-              <StaffNotation
-                notes={['c/4:q', 'd/4:q', 'e/4:q', 'f/4:q', 'g/4:q', 'a/4:q', 'b/4:q', 'c/5:q']}
-                clef="treble"
-                keySignature="C"
-                width={480}
-                height={130}
-              />
-            </div>
-            <div className="card">
-              <div className="font-serif mb-3 text-[17px]">Acorde na Pauta</div>
-              <p className="text-[12px] text-text3 mb-3">
-                Notas empilhadas formando um acorde de Dó Maior (C E G)
-              </p>
-              <StaffNotation
-                notes={['c/4:w']}
-                clef="treble"
-                width={250}
-                height={130}
-              />
-            </div>
-            <div className="card">
-              <div className="font-serif mb-3 text-[17px]">Tablatura — Exercício 1234</div>
-              <p className="text-[12px] text-text3 mb-3">
-                Exercício psicomotor para mão esquerda — 4 trastes sequenciais
-              </p>
-              <Tablature
-                title="Exercício 1234 — 1ª corda"
-                tab={`e|--1--2--3--4--|--4--3--2--1--|
-B|-------------|--------------|
-G|-------------|--------------|
-D|-------------|--------------|
-A|-------------|--------------|
-E|-------------|--------------|`}
-              />
-            </div>
+
+            {notationsLoading ? (
+              <div className="flex items-center justify-center h-40 gap-2 text-text2">
+                <SpinnerGap size={20} className="animate-spin" /> Carregando notações...
+              </div>
+            ) : filteredNotations.length === 0 ? (
+              <div className="card p-8 text-center text-text3">
+                <Warning size={20} className="inline mr-1" /> Nenhuma notação encontrada.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {filteredNotations.map(nota => {
+                  const catBadge = NOTATION_CATEGORY_BADGES[nota.category] ?? { label: nota.category, variant: 'secondary' as const }
+                  const noteCount = (nota.notation_data?.beats ?? []).reduce((s: number, b: any) => s + (b.notes?.length ?? 0), 0)
+                  return (
+                    <div
+                      key={nota.id}
+                      className="card p-4 hover:border-accent/30 transition-colors cursor-pointer"
+                      onClick={() => {
+                        setEditingNotation(nota);
+                        setNotationEditorOpen(true);
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant={catBadge.variant as any} className="text-[8px]">{catBadge.label}</Badge>
+                        <span className="text-[10px] text-text3 font-mono">Nível {nota.difficulty}</span>
+                      </div>
+                      <div className="w-full rounded-lg mb-2 overflow-hidden">
+                        {nota.render_data?.notation ? (
+                          <NotationRenderer notation={nota.render_data.notation} />
+                        ) : (
+                          <div className="h-[80px] flex items-center justify-center text-text3 text-[11px]">
+                            <MusicNotes size={16} className="mr-1" /> Sem preview
+                          </div>
+                        )}
+                      </div>
+                      <div className="font-bold text-[13px] text-text truncate">{nota.name}</div>
+                      <div className="text-[11px] text-text3 truncate mt-0.5">
+                        <MusicNotes size={12} className="inline mr-1" weight="fill" />
+                        {noteCount} notas · {nota.clef === 'treble' ? 'Sol' : nota.clef === 'bass' ? 'Fá' : 'Dó'}
+                        {nota.key_signature !== 'C' && ` · ${nota.key_signature}`}
+                      </div>
+                    </div>
+                  )
+                })}
+                {/* Card "Adicionar" */}
+                <div
+                  className="card text-center p-4 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors"
+                  onClick={() => {
+                    setEditingNotation(null);
+                    setNotationEditorOpen(true);
+                  }}
+                >
+                  <div className="h-[130px] flex items-center justify-center">
+                    <div className="text-[28px] text-text3">+</div>
+                  </div>
+                  <div className="text-sm text-text2">Adicionar</div>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -471,6 +579,15 @@ E|-------------|--------------|`}
         chord={editingPianoChord}
         onSave={handleSavePianoChord}
         onDelete={handleDeletePianoChord}
+      />
+
+      {/* NotationEditor — modal de notação */}
+      <NotationEditor
+        open={notationEditorOpen}
+        onOpenChange={(v) => { setNotationEditorOpen(v); if (!v) setEditingNotation(null); }}
+        notation={editingNotation}
+        onSave={handleSaveNotation}
+        onDelete={handleDeleteNotation}
       />
     </div>
   );
