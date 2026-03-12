@@ -1,5 +1,4 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { ChordPositions } from './ChordDiagram'
 import { cn } from '@/lib/utils'
 
@@ -232,27 +231,24 @@ function drawNeck(
     c.setLineDash([])
   }
 
-  // Pestanas
+  // Pestanas (preta no light, cinza claro no dark)
+  const barreColor = isDark ? '#cbd5e1' : '#1a1a2e'
+  const barreTextColor = isDark ? '#0f172a' : '#ffffff'
   barres.forEach(b => {
     const mn = Math.min(b.from, b.to), mx = Math.max(b.from, b.to)
     const y = cellY(b.fret), x1 = stringX(mn), x2 = stringX(mx), bh = 18, r = bh / 2
-    c.fillStyle = ACCENT
+    c.fillStyle = barreColor
     c.beginPath(); c.roundRect(x1 - r, y - r, (x2 - x1) + 2 * r, bh, r); c.fill()
-    c.fillStyle = '#fff'; c.font = '700 12px "DM Sans", sans-serif'
+    c.fillStyle = barreTextColor; c.font = '700 12px "DM Sans", sans-serif'
     c.textAlign = 'center'; c.textBaseline = 'middle'
     c.fillText(String(b.finger || 1), (x1 + x2) / 2, y)
   })
 
-  // Bolinhas dos dedos
+  // Bolinhas dos dedos (sem sombra)
   dots.forEach((d, i) => {
     const x = stringX(d.s), y = cellY(d.f), r = 14
     const isHov = hoveredDot === i
 
-    // Sombra
-    c.fillStyle = isHov ? 'rgba(255,45,120,0.5)' : 'rgba(255,45,120,0.25)'
-    c.beginPath(); c.arc(x, y + 2, r + 2, 0, Math.PI * 2); c.fill()
-
-    // Bolinha
     c.fillStyle = isHov ? '#FF4D8E' : ACCENT
     c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill()
 
@@ -278,7 +274,8 @@ function drawPreview(
   const c = ctx
   c.clearRect(0, 0, PREV_W, PREV_H)
 
-  const pt = 22, pl = 15, pr = 15
+  const pt = 22, pr = 15
+  const pl = startFret === 1 ? 15 : 30
   const nutY = pt + 4, fsp = 25
   const ssp = (PREV_W - pl - pr) / 5
   const px = (s: number) => pl + s * ssp
@@ -287,15 +284,20 @@ function drawPreview(
   const nutColor = isDark ? '#CBD5E1' : '#1a1a2e'
   const fretColor = isDark ? '#475569' : '#CBD5E1'
   const stringColor = isDark ? '#64748B' : '#9CA3AF'
-  const fretNumColor = isDark ? '#64748B' : '#94A3B8'
 
-  // Nut
+  // Nut ou indicador de posição
   if (startFret === 1) {
     c.fillStyle = nutColor
     c.fillRect(pl - 1, nutY, PREV_W - pl - pr + 2, 3)
   } else {
-    c.fillStyle = fretNumColor; c.font = '500 9px "DM Mono", monospace'
-    c.textAlign = 'right'; c.fillText(startFret + 'fr', pl - 4, nutY + fsp / 2 + 4)
+    // Linha fina no lugar do nut
+    c.strokeStyle = fretColor; c.lineWidth = 1
+    c.beginPath(); c.moveTo(pl - 1, nutY + 1); c.lineTo(PREV_W - pr + 1, nutY + 1); c.stroke()
+    // Indicador do traste à esquerda das cordas
+    c.font = '600 10px "DM Mono", monospace'
+    c.textAlign = 'right'; c.textBaseline = 'middle'
+    c.fillStyle = isDark ? '#94a3b8' : '#475569'
+    c.fillText(startFret + 'fr', pl - 4, nutY + fsp / 2 + 2)
   }
 
   // Cordas
@@ -322,13 +324,15 @@ function drawPreview(
     }
   }
 
-  // Pestanas
+  // Pestanas (preta no light, cinza claro no dark)
+  const barreCol = isDark ? '#cbd5e1' : '#1a1a2e'
+  const barreTxt = isDark ? '#0f172a' : '#ffffff'
   barres.forEach(b => {
     const mn = Math.min(b.from, b.to), mx = Math.max(b.from, b.to)
     const y = pfy(b.fret) + fsp / 2 + 1
-    c.fillStyle = ACCENT
+    c.fillStyle = barreCol
     c.beginPath(); c.roundRect(px(mn) - 5, y - 6, px(mx) - px(mn) + 10, 12, 6); c.fill()
-    c.fillStyle = '#fff'; c.font = '700 8px "DM Sans", sans-serif'
+    c.fillStyle = barreTxt; c.font = '700 8px "DM Sans", sans-serif'
     c.textAlign = 'center'; c.textBaseline = 'middle'
     c.fillText(String(b.finger || 1), (px(mn) + px(mx)) / 2, y)
   })
@@ -353,10 +357,10 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
 
   const [barreMode, setBarreMode] = useState(false)
   const [barreFirst, setBarreFirst] = useState<{ s: number; f: number } | null>(null)
-  const [hoveredDot, setHoveredDot] = useState<number | null>(null)
-  const [tooltipLock, setTooltipLock] = useState(false)
+  const [selectedDot, setSelectedDot] = useState<number | null>(null)
   const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null)
   const [tipVisible, setTipVisible] = useState(false)
+  const tipJustClosed = useRef(false)
 
   // Detectar dark mode
   const isDark = typeof document !== 'undefined' &&
@@ -366,37 +370,54 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
   const renderAll = useCallback(() => {
     const nCtx = neckRef.current?.getContext('2d')
     const pCtx = prevRef.current?.getContext('2d')
-    if (nCtx) drawNeck(nCtx, state.dots, state.openMuted, state.barres, startFret, hoveredDot, barreMode, barreFirst, isDark)
+    if (nCtx) drawNeck(nCtx, state.dots, state.openMuted, state.barres, startFret, selectedDot, barreMode, barreFirst, isDark)
     if (pCtx) drawPreview(pCtx, state.dots, state.openMuted, state.barres, startFret, isDark)
-  }, [state, startFret, hoveredDot, barreMode, barreFirst, isDark])
+  }, [state, startFret, selectedDot, barreMode, barreFirst, isDark])
 
   useEffect(() => { renderAll() }, [renderAll])
 
   // ── Tooltip helpers ──
-  const showTooltip = useCallback((screenX: number, screenY: number) => {
-    setTipPos({ x: screenX - 68, y: screenY - 42 })
-    setTipVisible(true)
-  }, [])
-
   const hideTooltip = useCallback(() => {
     setTipVisible(false)
     setTipPos(null)
+    setSelectedDot(null)
+    tipJustClosed.current = true
+    setTimeout(() => { tipJustClosed.current = false }, 200)
   }, [])
 
   const assignFinger = useCallback((n: number) => {
-    if (hoveredDot === null) return
+    if (selectedDot === null) return
     const newDots = [...state.dots]
-    newDots[hoveredDot] = { ...newDots[hoveredDot], finger: n }
-    setTooltipLock(false)
-    setHoveredDot(null)
+    newDots[selectedDot] = { ...newDots[selectedDot], finger: n }
     hideTooltip()
     onChange({ ...state, dots: newDots })
-  }, [hoveredDot, state, onChange, hideTooltip])
+  }, [selectedDot, state, onChange, hideTooltip])
+
+  // ── Clique direito: abrir tooltip para numerar dedo ──
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    const rect = neckRef.current!.getBoundingClientRect()
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top
+
+    const di = findDot(state.dots, mx, my)
+    if (di !== null) {
+      setSelectedDot(di)
+      const d = state.dots[di]
+      // Posição relativa ao canvas (não à tela)
+      setTipPos({ x: stringX(d.s) - 68, y: cellY(d.f) - 46 })
+      setTipVisible(true)
+    } else {
+      hideTooltip()
+    }
+  }, [state.dots, hideTooltip])
 
   // ── Click: colocar dedo, open/muted, barre ──
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = neckRef.current!.getBoundingClientRect()
     const mx = e.clientX - rect.left, my = e.clientY - rect.top
+
+    // Se o tooltip acabou de fechar, ignorar este clique
+    if (tipJustClosed.current) { tipJustClosed.current = false; return }
 
     hideTooltip()
 
@@ -435,7 +456,7 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
       return
     }
 
-    // Se clicou em bolinha existente, ignorar (tooltip vai aparecer)
+    // Se clicou em bolinha existente, ignorar
     if (findDot(state.dots, mx, my) !== null) return
 
     // Colocar novo dedo
@@ -466,29 +487,6 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
     }
   }, [state, onChange, hideTooltip])
 
-  // ── Mouse move: hover tooltip sobre bolinhas ──
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = neckRef.current!.getBoundingClientRect()
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top
-
-    const di = findDot(state.dots, mx, my)
-
-    if (di !== null && di !== hoveredDot) {
-      setHoveredDot(di)
-      const d = state.dots[di]
-      const dotScreenX = rect.left + stringX(d.s)
-      const dotScreenY = rect.top + cellY(d.f)
-      showTooltip(dotScreenX, dotScreenY - 30)
-    } else if (di === null && hoveredDot !== null) {
-      setTimeout(() => {
-        if (!tooltipLock) {
-          setHoveredDot(null)
-          hideTooltip()
-        }
-      }, 200)
-    }
-  }, [state.dots, hoveredDot, tooltipLock, showTooltip, hideTooltip])
-
   // ── Limpar tudo ──
   const clearAll = useCallback(() => {
     setBarreMode(false)
@@ -503,11 +501,12 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
     setBarreMode(prev => !prev)
   }, [])
 
+
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex gap-6 items-start">
         {/* Neck canvas */}
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center relative">
           <canvas
             ref={neckRef}
             width={NECK_W}
@@ -515,18 +514,44 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
             className="cursor-pointer rounded"
             onClick={handleClick}
             onDoubleClick={handleDblClick}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => {
-              if (!tooltipLock) {
-                setHoveredDot(null)
-                hideTooltip()
-              }
-            }}
+            onContextMenu={handleContextMenu}
           />
+
+          {/* Tooltip flutuante para dedos — abre com clique direito */}
+          {tipVisible && tipPos && selectedDot !== null && (
+            <>
+              {/* Overlay invisível para fechar ao clicar fora */}
+              <div
+                className="fixed inset-0 z-[199]"
+                onMouseDown={hideTooltip}
+              />
+              <div
+                ref={tipRef}
+                className="absolute z-[200] flex gap-[3px] p-[5px] rounded-xl border-2 border-accent bg-surface shadow-2xl"
+                style={{ left: tipPos.x, top: tipPos.y }}
+              >
+                {[1, 2, 3, 4].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => assignFinger(n)}
+                    className={cn(
+                      'w-[30px] h-[30px] rounded-full border-2 border-accent font-bold text-[13px] transition-all cursor-pointer select-none',
+                      state.dots[selectedDot]?.finger === n
+                        ? 'bg-accent text-white'
+                        : 'bg-transparent text-accent hover:bg-accent hover:text-white',
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Instruções */}
           <div className="mt-3 text-[11px] text-text3 text-center leading-relaxed">
-            <span className="text-accent font-semibold">Clique</span> = colocar dedo · <span className="text-accent font-semibold">Passe o mouse</span> no dedo = escolher número (1–4)
+            <span className="text-accent font-semibold">Clique</span> = colocar dedo · <span className="text-accent font-semibold">Clique direito</span> no dedo = número (1–4)
             <br />
             <span className="text-accent font-semibold">Duplo clique</span> = apagar dedo ou pestana · <span className="text-accent font-semibold">Topo</span>: ○ aberta / ✕ muda
           </div>
@@ -566,37 +591,6 @@ export function ChordEditor({ state, onChange, chordName = '', startFret = 1 }: 
         </div>
       </div>
 
-      {/* Tooltip flutuante para dedos (portal no body) */}
-      {tipVisible && tipPos && createPortal(
-        <div
-          ref={tipRef}
-          className="fixed z-[200] flex gap-[3px] p-[5px] rounded-xl border-2 border-accent bg-surface shadow-2xl"
-          style={{ left: tipPos.x, top: tipPos.y }}
-          onMouseEnter={() => setTooltipLock(true)}
-          onMouseLeave={() => {
-            setTooltipLock(false)
-            setHoveredDot(null)
-            hideTooltip()
-          }}
-        >
-          {[1, 2, 3, 4].map(n => (
-            <button
-              key={n}
-              type="button"
-              onMouseDown={() => assignFinger(n)}
-              className={cn(
-                'w-[30px] h-[30px] rounded-full border-2 border-accent font-bold text-[13px] transition-all cursor-pointer',
-                state.dots[hoveredDot!]?.finger === n
-                  ? 'bg-accent text-white'
-                  : 'bg-transparent text-accent hover:bg-accent hover:text-white',
-              )}
-            >
-              {n}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SVGuitarChord, ChordStyle } from 'svguitar'
 
 export interface ChordPositions {
@@ -26,6 +26,7 @@ function getStyle() {
     nutColor: isDark ? '#e2e8f0' : '#1a1a2e',
     fingerColor: '#FF2D78',
     fingerTextColor: '#ffffff',
+    barreChordStrokeColor: isDark ? '#cbd5e1' : '#1a1a2e',
     stringColor: isDark ? '#94a3b8' : '#374151',
     fretColor: isDark ? '#475569' : '#9ca3af',
     titleColor: isDark ? '#f1f5f9' : '#1a1a2e',
@@ -34,8 +35,23 @@ function getStyle() {
   }
 }
 
+function useTheme() {
+  const [theme, setTheme] = useState(() =>
+    typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') ?? 'dark' : 'dark'
+  )
+  useEffect(() => {
+    const obs = new MutationObserver(() => {
+      setTheme(document.documentElement.getAttribute('data-theme') ?? 'dark')
+    })
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    return () => obs.disconnect()
+  }, [])
+  return theme
+}
+
 export function ChordDiagram({ name, positions, position = 1, size = 'full' }: ChordDiagramProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const theme = useTheme()
 
   useEffect(() => {
     if (!ref.current) return
@@ -47,6 +63,16 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full' }: C
       ...(positions.muted ?? []).map(s => [s, 'x'] as [number, 'x']),
     ]
 
+    const style = getStyle()
+
+    // Injetar cor da pestana em cada barre (senão herda fingerColor rosa)
+    const barreColor = style.barreChordStrokeColor
+    const styledBarres = (positions.barres ?? []).map(b => ({
+      ...b,
+      color: barreColor,
+      textColor: style.fingerTextColor,
+    }))
+
     const chart = new SVGuitarChord(ref.current)
       .configure({
         title: name,
@@ -56,15 +82,30 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full' }: C
         style: ChordStyle.normal,
         titleFontSize: size === 'compact' ? 36 : 48,
         fingerSize: 0.65,
-        ...getStyle(),
+        ...style,
       })
       .chord({
         fingers: allFingers,
-        barres: positions.barres ?? [],
+        barres: styledBarres,
       })
 
     chart.draw()
-  }, [name, positions, position, size])
+
+    // Forçar cor da pestana nos rects do SVG (SVGuitar usa fingerColor como fallback)
+    if (ref.current) {
+      const svg = ref.current.querySelector('svg')
+      if (svg) {
+        const rects = svg.querySelectorAll('rect')
+        rects.forEach(r => {
+          const w = parseFloat(r.getAttribute('width') || '0')
+          const fill = r.getAttribute('fill')
+          if (w > 50 && fill && fill !== 'transparent' && fill !== 'none') {
+            r.setAttribute('fill', barreColor as string)
+          }
+        })
+      }
+    }
+  }, [name, positions, position, size, theme])
 
   const dimensions = size === 'compact'
     ? { width: 90, height: 120 }

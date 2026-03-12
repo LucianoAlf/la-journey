@@ -393,16 +393,11 @@ export function Modals() {
             startFret={chordStartFret}
           />
 
-          <div className="flex justify-between items-center mt-4 pt-3 border-t border-border">
-            <Button variant="ghost" size="sm" onClick={resetChordEditor} className="text-text3 text-[12px]">
-              Limpar tudo
+          <div className="flex justify-end items-center gap-2 mt-4 pt-3 border-t border-border">
+            <Button variant="ghost" onClick={() => { closeModal('modal-acorde'); resetChordEditor(); }} disabled={chordSaving}>Cancelar</Button>
+            <Button onClick={handleSaveChord} disabled={chordSaving}>
+              <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : (editingChordId ? 'Atualizar' : 'Salvar')}
             </Button>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => { closeModal('modal-acorde'); resetChordEditor(); }} disabled={chordSaving}>Cancelar</Button>
-              <Button onClick={handleSaveChord} disabled={chordSaving}>
-                <FloppyDisk size={16} /> {chordSaving ? 'Salvando...' : (editingChordId ? 'Atualizar' : 'Salvar')}
-              </Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
