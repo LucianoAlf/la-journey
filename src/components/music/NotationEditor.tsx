@@ -202,9 +202,17 @@ const NOTES_PER_LINE_OPTIONS = [4, 8, 12, 16] as const
 function splitBeatsIntoLines(beats: Beat[], notesPerLine: number): Beat[][] {
   if (beats.length === 0) return [[]]
   const lines: Beat[][] = []
-  for (let i = 0; i < beats.length; i += notesPerLine) {
-    lines.push(beats.slice(i, i + notesPerLine))
+  let current: Beat[] = []
+  for (const beat of beats) {
+    current.push(beat)
+    // Quebra de linha: atingiu notesPerLine OU beat tem barAfter (separação de stave)
+    if (current.length >= notesPerLine || beat.barAfter) {
+      lines.push(current)
+      current = []
+    }
   }
+  if (current.length > 0) lines.push(current)
+  if (lines.length === 0) lines.push([])
   return lines
 }
 

@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/editor/RichTextEditor";
+import { ensureHtml, htmlToMarkdown } from "@/lib/markdownToHtml";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -280,6 +282,9 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [editingTitle, setEditingTitle] = useState(false)
   const canvasRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
+  // Edição inline no canvas
+  const [inlineEditingBlockId, setInlineEditingBlockId] = useState<string | null>(null)
+
   // Estados dos editores visuais integrados
   const [notationEditorOpen, setNotationEditorOpen] = useState(false)
   const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
@@ -431,28 +436,29 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   // ── Editores visuais integrados ──────────────────────────────────────
 
   // Helper: converter render_data.notation.staves[].notes (formato VexFlow) → notation_data.beats
-  // Notas VexFlow: "e/4:w", "c/4:q", "d/5:qd", "b/4:qr" etc.
-  // Beats do editor: { notes: ["e/4:w"], accidentals: [null] }
+  // Preserva separação entre staves com barAfter + salva stave_boundaries para reconstrução
   const vexNotesToBeats = useCallback((staves: any[]): any => {
     if (!staves || staves.length === 0) return null
-    // Concatenar notas de todos os staves em uma sequência única
-    const allNotes: string[] = []
-    const allAccidentals: (string | null)[] = []
-    for (const stave of staves) {
+    const beats: any[] = []
+    const staveBoundaries: number[] = [] // índices onde cada stave termina
+    for (let s = 0; s < staves.length; s++) {
+      const stave = staves[s]
       const notes = (stave.notes ?? []) as string[]
       const accs = (stave.accidentals ?? []) as (string | null)[]
       for (let i = 0; i < notes.length; i++) {
-        allNotes.push(notes[i])
-        allAccidentals.push(accs[i] ?? null)
+        const isLastNoteOfStave = i === notes.length - 1
+        const isLastStave = s === staves.length - 1
+        beats.push({
+          notes: [notes[i]],
+          accidentals: [accs[i] ?? null],
+          // Colocar barra de compasso entre staves para separação visual
+          ...(isLastNoteOfStave && !isLastStave ? { barAfter: true } : {}),
+        })
       }
+      staveBoundaries.push(beats.length)
     }
-    if (allNotes.length === 0) return null
-    // Cada nota VexFlow vira um beat com 1 pitch
-    const beats = allNotes.map((note, i) => ({
-      notes: [note],
-      accidentals: [allAccidentals[i]],
-    }))
-    return { beats }
+    if (beats.length === 0) return null
+    return { beats, _stave_boundaries: staveBoundaries }
   }, [])
 
   // Helper: converter render_data de um bloco para um NotationLibraryRow fake para o NotationEditor
@@ -490,33 +496,50 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const block = blocks.find(b => b.id === notationEditorBlockId)
     if (!block) return
 
-    // Reconstruir o render_data.notation a partir dos beats salvos
-    // O NotationEditor salva notation_data: { beats: [...] }
-    // Precisamos gerar o formato staff do NotationRenderer a partir dos beats
+    const rd = (block.render_data ?? {}) as any
+    const originalStaves = rd.notation?.staves ?? []
     const beats = data.notation_data?.beats ?? []
-    const notes: string[] = []
-    const accidentals: (string | null)[] = []
+
+    // Reconstruir múltiplos staves usando barAfter como separador
+    // Cada grupo de beats entre barras vira um stave separado
+    const staveGroups: any[][] = []
+    let currentGroup: any[] = []
     for (const b of beats) {
-      for (const n of (b.notes ?? [])) {
-        notes.push(n)
-      }
-      for (const a of (b.accidentals ?? [])) {
-        accidentals.push(a)
+      currentGroup.push(b)
+      if (b.barAfter) {
+        staveGroups.push(currentGroup)
+        currentGroup = []
       }
     }
+    if (currentGroup.length > 0) staveGroups.push(currentGroup)
+
+    // Construir staves preservando labels originais
+    const clefVal = data.clef as 'treble' | 'bass' | 'alto' | 'percussion'
+    const keySigVal = data.clef === 'percussion' ? undefined : (data.key_signature !== 'C' ? data.key_signature : undefined)
+    const timeSigVal = data.time_signature ?? undefined
+
+    const newStaves = staveGroups.map((group, idx) => {
+      const notes: string[] = []
+      const accidentals: (string | null)[] = []
+      for (const b of group) {
+        for (const n of (b.notes ?? [])) notes.push(n)
+        for (const a of (b.accidentals ?? [])) accidentals.push(a)
+      }
+      return {
+        clef: clefVal,
+        key_signature: keySigVal,
+        time_signature: timeSigVal,
+        notes,
+        accidentals,
+        label: originalStaves[idx]?.label ?? '',
+      }
+    })
 
     const staveNotation = {
       type: 'staff' as const,
-      staves: [{
-        clef: data.clef as 'treble' | 'bass' | 'alto' | 'percussion',
-        key_signature: data.clef === 'percussion' ? undefined : (data.key_signature !== 'C' ? data.key_signature : undefined),
-        time_signature: data.time_signature ?? undefined,
-        notes,
-        accidentals,
-        label: '',
-      }],
-      width: 550,
-      height: 150,
+      staves: newStaves,
+      width: rd.notation?.width ?? 500,
+      height: newStaves.length > 1 ? 140 * newStaves.length : 150,
     }
 
     const newRenderData = {
@@ -744,22 +767,59 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
         </div>
 
         {/* Coluna 2 — Canvas (Preview) */}
-        <div className="editor-canvas">
+        <div className="editor-canvas" onClick={() => { if (inlineEditingBlockId) setInlineEditingBlockId(null) }}>
           <div style={{ maxWidth: '680px', margin: '0 auto' }}>
-            {blocks.map(block => (
-              <div
-                key={block.id}
-                ref={el => { canvasRefs.current[block.id] = el }}
-                className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''}`}
-                onClick={() => selectBlock(block.id)}
-                onDoubleClick={() => {
-                  if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
-                  else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
-                }}
-              >
-                <MaterialPreview blocks={[editorBlockToPreview(block)]} />
-              </div>
-            ))}
+            {blocks.map(block => {
+              const isTextBlock = ['text', 'tip', 'exercise', 'title'].includes(block.block_type)
+              const isInlineEditing = inlineEditingBlockId === block.id
+
+              return (
+                <div
+                  key={block.id}
+                  ref={el => { canvasRefs.current[block.id] = el }}
+                  className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''} ${isInlineEditing ? 'inline-editing' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    selectBlock(block.id)
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
+                    else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+                    else if (isTextBlock && !isInlineEditing) setInlineEditingBlockId(block.id)
+                  }}
+                >
+                  {isInlineEditing && isTextBlock ? (
+                    <div onClick={e => e.stopPropagation()}>
+                      {block.title && (
+                        <Input
+                          value={block.title ?? ''}
+                          onChange={e => updateSelectedField('title', e.target.value)}
+                          className="font-bold text-[14px] text-text mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                          placeholder="Título do bloco"
+                        />
+                      )}
+                      <RichTextEditor
+                        key={`inline-${block.id}`}
+                        content={ensureHtml((block.content as any)?.html ?? (block.content as any)?.text ?? '')}
+                        onChange={(html) => updateSelectedField('content', {
+                          ...(block.content ?? {}),
+                          html,
+                          text: htmlToMarkdown(html),
+                        })}
+                        placeholder="Clique para editar..."
+                        inline
+                      />
+                      <div className="text-[10px] text-text3 mt-2 text-right opacity-60">
+                        Clique fora para sair da edição
+                      </div>
+                    </div>
+                  ) : (
+                    <MaterialPreview blocks={[editorBlockToPreview(block)]} />
+                  )}
+                </div>
+              )
+            })}
 
             {blocks.length === 0 && (
               <div className="text-center py-16 text-text3 text-sm">
@@ -817,14 +877,16 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
               {['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type) && (
                 <div className="prop-section">
                   <div className="prop-label">Conteúdo</div>
-                  <Textarea
-                    value={(selectedBlock.content as any)?.text ?? ''}
-                    onChange={e => updateSelectedField('content', {
+                  <RichTextEditor
+                    key={selectedBlock.id}
+                    content={ensureHtml((selectedBlock.content as any)?.html ?? (selectedBlock.content as any)?.text ?? '')}
+                    onChange={(html) => updateSelectedField('content', {
                       ...(selectedBlock.content ?? {}),
-                      text: e.target.value,
+                      html,
+                      text: htmlToMarkdown(html),
                     })}
                     placeholder="Conteúdo do bloco"
-                    className="text-[12px] min-h-[120px]"
+                    compact
                   />
                 </div>
               )}

@@ -55,6 +55,22 @@ function renderMarkdownText(text: string) {
   })
 }
 
+/** Renderiza conteúdo: prioriza HTML (editor rico), fallback para markdown */
+function renderContent(content?: { text?: string; html?: string; [key: string]: any }) {
+  const html = content?.html
+  const text = content?.text ?? ''
+  if (html) {
+    return (
+      <div
+        className="rich-content text-[13px] leading-relaxed text-text2 [&_strong]:text-text [&_strong]:font-semibold [&_em]:text-text2 [&_p]:mb-2 [&_h1]:font-serif [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:text-text [&_h1]:mb-3 [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:text-text [&_h2]:mb-2 [&_h3]:font-serif [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-text [&_h3]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-2 [&_blockquote]:border-l-[3px] [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-text3 [&_a]:text-accent [&_a]:underline [&_mark]:bg-yellow-200/80 [&_mark]:rounded-sm [&_mark]:px-0.5 [&_hr]:border-border [&_hr]:my-4"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    )
+  }
+  if (text) return <>{renderMarkdownText(text)}</>
+  return null
+}
+
 function BlockTitle({ block }: { block: MaterialBlock }) {
   const dimension = block.content?.dimension?.toLowerCase() ?? ''
   const colorClass = DIMENSION_COLORS[dimension] ?? 'text-accent border-accent/30'
@@ -70,11 +86,10 @@ function BlockTitle({ block }: { block: MaterialBlock }) {
 }
 
 function BlockText({ block }: { block: MaterialBlock }) {
-  const text = block.content?.text ?? ''
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      {renderMarkdownText(text)}
+      {renderContent(block.content)}
       {block.render_data?.notation && (
         <NotationRenderer notation={block.render_data.notation} />
       )}
@@ -158,11 +173,11 @@ function BlockRhythm({ block }: { block: MaterialBlock }) {
 }
 
 function BlockExercise({ block }: { block: MaterialBlock }) {
-  const text = block.content?.text ?? ''
   const rd = block.render_data ?? {}
   const hasOldNotation = rd.notes && rd.notes.length > 0
   const hasNewNotation = !!rd.notation
   const hasTab = rd.tab
+  const hasContent = block.content?.html || block.content?.text
 
   return (
     <div className="mb-4 p-4 bg-advance/10 border border-advance/20 rounded-[var(--radius-sm)]">
@@ -170,7 +185,7 @@ function BlockExercise({ block }: { block: MaterialBlock }) {
         <Target size={18} className="text-advance shrink-0 mt-0.5" weight="bold" />
         <h3 className="font-bold text-[14px] text-advance">{block.title ?? 'Exercício'}</h3>
       </div>
-      {text && <div className="text-[13px] text-text2 mb-3">{renderMarkdownText(text)}</div>}
+      {hasContent && <div className="text-[13px] text-text2 mb-3">{renderContent(block.content)}</div>}
       {hasNewNotation && <NotationRenderer notation={rd.notation} />}
       {hasOldNotation && !hasNewNotation && (
         <StaffNotation
@@ -186,14 +201,13 @@ function BlockExercise({ block }: { block: MaterialBlock }) {
 }
 
 function BlockTip({ block }: { block: MaterialBlock }) {
-  const text = block.content?.text ?? ''
   return (
     <div className="mb-4 p-4 bg-dourado-soft border border-dourado/20 rounded-[var(--radius-sm)]">
       <div className="flex items-start gap-2">
         <Lightbulb size={18} className="text-dourado shrink-0 mt-0.5" weight="fill" />
         <div>
           {block.title && <h4 className="font-bold text-[13px] text-dourado mb-1">{block.title}</h4>}
-          <div className="text-[12px] text-text2">{renderMarkdownText(text)}</div>
+          <div className="text-[12px] text-text2">{renderContent(block.content)}</div>
         </div>
       </div>
       {block.render_data?.notation && (
