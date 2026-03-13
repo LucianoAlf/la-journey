@@ -1,4 +1,6 @@
-import { Lightbulb, Target, Trophy } from '@phosphor-icons/react'
+import React, { useRef, useCallback } from 'react'
+import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
+import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { StaffNotation } from '@/components/music/StaffNotation'
 import { RhythmNotation } from '@/components/music/RhythmNotation'
@@ -6,7 +8,7 @@ import { Tablature } from '@/components/music/Tablature'
 import { NotationRenderer } from '@/components/music/NotationRenderer'
 
 export interface MaterialBlock {
-  block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'qr_code' | 'badge'
+  block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns'
   title?: string
   content?: { text?: string; [key: string]: any }
   render_data?: any
@@ -14,6 +16,10 @@ export interface MaterialBlock {
 
 interface MaterialPreviewProps {
   blocks: MaterialBlock[]
+  coverEditable?: boolean
+  onCoverPositionChange?: (field: string, pos: { x: number; y: number }) => void
+  coverTitleEditing?: boolean
+  onCoverTitleChange?: (value: string) => void
 }
 
 const DIMENSION_COLORS: Record<string, string> = {
@@ -260,28 +266,415 @@ function BlockBadge({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockImage({ block }: { block: MaterialBlock }) {
-  const url = block.render_data?.url ?? block.content?.url
-  const alt = block.title ?? 'Imagem'
+// ─── Bloco Áudio ────────────────────────────────────────────────────
+
+function BlockAudio({ block }: { block: MaterialBlock }) {
+  const url = block.render_data?.url as string | undefined
+  const caption = block.render_data?.caption as string | undefined
 
   if (url) {
     return (
-      <div className="mb-4 text-center">
-        <img src={url} alt={alt} className="rounded-lg max-h-64 mx-auto" />
-        {block.title && <div className="text-[11px] text-text3 mt-1">{block.title}</div>}
+      <div className="mb-4">
+        {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+        <audio controls className="w-full" preload="metadata">
+          <source src={url} />
+          Seu navegador não suporta o elemento de áudio.
+        </audio>
+        {caption && <div className="text-[11px] text-text3 mt-1 italic">{caption}</div>}
       </div>
     )
   }
 
   return (
-    <div className="mb-4 p-8 bg-bg2 border border-border rounded-[var(--radius-sm)] text-center text-text3">
-      🖼️ Placeholder — imagem será gerada com Imagen 4
+    <div className="mb-4 p-6 bg-bg2 border border-dashed border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
+      {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+      Áudio — adicione uma URL pelo painel lateral
+    </div>
+  )
+}
+
+// ─── Bloco Vídeo ────────────────────────────────────────────────────
+
+function extractVideoEmbed(url: string): { type: 'youtube' | 'vimeo' | 'unknown'; embedUrl: string } | null {
+  if (!url) return null
+  // YouTube
+  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/)
+  if (ytMatch) return { type: 'youtube', embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` }
+  // Vimeo
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/)
+  if (vimeoMatch) return { type: 'vimeo', embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}` }
+  return { type: 'unknown', embedUrl: url }
+}
+
+function BlockVideo({ block }: { block: MaterialBlock }) {
+  const url = block.render_data?.url as string | undefined
+  const caption = block.render_data?.caption as string | undefined
+  const embed = url ? extractVideoEmbed(url) : null
+
+  if (embed && (embed.type === 'youtube' || embed.type === 'vimeo')) {
+    return (
+      <div className="mb-4">
+        {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+        <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+          <iframe
+            src={embed.embedUrl}
+            className="absolute inset-0 w-full h-full rounded-lg"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            title={block.title ?? 'Vídeo'}
+          />
+        </div>
+        {caption && <div className="text-[11px] text-text3 mt-1 italic">{caption}</div>}
+      </div>
+    )
+  }
+
+  if (url) {
+    return (
+      <div className="mb-4">
+        {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-azul underline text-[12px]">
+          Abrir vídeo: {url}
+        </a>
+        {caption && <div className="text-[11px] text-text3 mt-1 italic">{caption}</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-4 p-6 bg-bg2 border border-dashed border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
+      {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+      Vídeo — cole uma URL do YouTube ou Vimeo pelo painel lateral
+    </div>
+  )
+}
+
+// ─── Bloco Imagem ───────────────────────────────────────────────────
+
+function BlockImage({ block }: { block: MaterialBlock }) {
+  const url = block.render_data?.url ?? block.content?.url
+  const alt = block.render_data?.caption ?? block.title ?? 'Imagem'
+  const caption = block.render_data?.caption as string | undefined
+  const size = (block.render_data?.size as string) ?? 'medium'
+
+  const sizeClass = size === 'small' ? 'max-h-32 max-w-[200px]'
+    : size === 'large' ? 'max-h-[400px] max-w-full'
+    : size === 'full' ? 'w-full'
+    : 'max-h-64 max-w-[400px]' // medium
+
+  if (url) {
+    return (
+      <div className="mb-4 text-center">
+        <img src={url} alt={alt} className={`rounded-lg mx-auto ${sizeClass}`} />
+        {caption && <div className="text-[11px] text-text3 mt-1 italic">{caption}</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-4 p-8 bg-bg2 border border-dashed border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
+      Imagem — arraste ou selecione pelo painel lateral
       {block.title && <div className="text-[11px] mt-1">{block.title}</div>}
     </div>
   )
 }
 
+// ─── Bloco Capa ─────────────────────────────────────────────────────
+
+const COVER_TEMPLATES: Record<string, string> = {
+  minimal: 'Minimalista',
+  colorful: 'Colorido',
+  classic: 'Clássico',
+  modern: 'Moderno',
+  geometric: 'Geométrico',
+  gradient: 'Gradiente',
+  musical: 'Musical',
+  bold: 'Impactante',
+  elegant: 'Elegante',
+  vibrant: 'Vibrante',
+}
+
+function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange }: {
+  block: MaterialBlock
+  editable?: boolean
+  onPositionChange?: (field: string, pos: { x: number; y: number }) => void
+  titleEditing?: boolean
+  onTitleChange?: (value: string) => void
+}) {
+  const rd = block.render_data ?? {}
+  const template = (rd.template as string) ?? 'minimal'
+  const titulo = (rd.titulo as string) ?? block.title ?? 'Material Didático'
+  const subtitulo = (rd.subtitulo as string) ?? ''
+  const instrumento = (rd.instrumento as string) ?? ''
+  const nivel = (rd.nivel as string) ?? ''
+  const professor = (rd.professor as string) ?? ''
+  const escola = (rd.escola as string) ?? ''
+  const data = (rd.data as string) ?? ''
+  const coverImageUrl = (rd.cover_image_url as string) ?? ''
+
+  // Posições dos grupos (em %)
+  const contentPos = (rd.content_pos as { x: number; y: number }) ?? { x: 50, y: 45 }
+  const footerPos = (rd.footer_pos as { x: number; y: number }) ?? { x: 50, y: 88 }
+
+  const coverRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{
+    field: string
+    startMouse: { x: number; y: number }
+    startPos: { x: number; y: number }
+  } | null>(null)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, field: string, pos: { x: number; y: number }) => {
+    if (!editable) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = { field, startMouse: { x: e.clientX, y: e.clientY }, startPos: { ...pos } }
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current || !coverRef.current) return
+      const rect = coverRef.current.getBoundingClientRect()
+      const dx = ((ev.clientX - dragRef.current.startMouse.x) / rect.width) * 100
+      const dy = ((ev.clientY - dragRef.current.startMouse.y) / rect.height) * 100
+      const newX = Math.max(5, Math.min(95, dragRef.current.startPos.x + dx))
+      const newY = Math.max(3, Math.min(97, dragRef.current.startPos.y + dy))
+      onPositionChange?.(dragRef.current.field, { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 })
+    }
+
+    const handleMouseUp = () => {
+      dragRef.current = null
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [editable, onPositionChange])
+
+  const hasImage = !!coverImageUrl
+  const classes = [
+    'block-cover',
+    `block-cover--${template}`,
+    hasImage && 'block-cover--with-image',
+  ].filter(Boolean).join(' ')
+
+  const bgStyle: React.CSSProperties = hasImage
+    ? { backgroundImage: `url(${coverImageUrl})`, color: '#fff' }
+    : {}
+
+  const hasFooter = professor || escola || data
+
+  return (
+    <div ref={coverRef} className={classes} style={bgStyle}>
+      {/* Overlay escuro quando tem imagem de fundo */}
+      {hasImage && <div className="cover-overlay" />}
+
+      {/* Decorações específicas do template */}
+      {template === 'colorful' && (
+        <div className="cover-decoration" style={{ top: -30, right: -30 }}>
+          <MusicNotes size={120} weight="thin" />
+        </div>
+      )}
+      {template === 'geometric' && (
+        <>
+          <div className="cover-deco-1" />
+          <div className="cover-deco-2" />
+          <div className="cover-deco-3" />
+        </>
+      )}
+      {template === 'musical' && (
+        <div className="cover-deco-1">
+          <MusicNotes size={300} weight="thin" />
+        </div>
+      )}
+      {template === 'bold' && <div className="cover-deco-1" />}
+      {template === 'elegant' && <div className="cover-deco-1" />}
+      {template === 'vibrant' && (
+        <>
+          <div className="cover-deco-1" />
+          <div className="cover-deco-2" />
+        </>
+      )}
+
+      {/* Conteúdo principal — posição absoluta */}
+      <div
+        className={`cover-content ${editable ? 'cover-draggable' : ''}`}
+        style={{
+          position: 'absolute',
+          left: `${contentPos.x}%`,
+          top: `${contentPos.y}%`,
+          transform: 'translate(-50%, -50%)',
+        }}
+        onMouseDown={e => handleMouseDown(e, 'content_pos', contentPos)}
+      >
+        {instrumento && (
+          <div className="cover-instrument">{instrumento}{nivel ? ` · ${nivel}` : ''}</div>
+        )}
+        {titleEditing && onTitleChange ? (
+          <input
+            className="cover-title"
+            value={titulo}
+            onChange={e => onTitleChange(e.target.value)}
+            autoFocus
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+            style={{ background: 'rgba(0,0,0,.2)', border: 'none', outline: '2px dashed rgba(255,255,255,.5)', outlineOffset: '4px', textAlign: 'center', width: '100%', color: 'inherit', padding: '8px 12px', borderRadius: '8px' }}
+          />
+        ) : (
+          <h1 className="cover-title">{titulo}</h1>
+        )}
+        {subtitulo && <p className="cover-subtitle">{subtitulo}</p>}
+      </div>
+
+      {hasFooter && (
+        <div
+          className={`cover-footer ${editable ? 'cover-draggable' : ''}`}
+          style={{
+            position: 'absolute',
+            left: `${footerPos.x}%`,
+            top: `${footerPos.y}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+          onMouseDown={e => handleMouseDown(e, 'footer_pos', footerPos)}
+        >
+          {professor && <div className="cover-professor">{professor}</div>}
+          {escola && <div className="cover-escola">{escola}</div>}
+          {data && <div className="cover-data">{data}</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Bloco Piano/Teclado ────────────────────────────────────────────
+
+function BlockKeyboard({ block }: { block: MaterialBlock }) {
+  const rd = block.render_data ?? {}
+  const keys = (rd.keys as string[]) ?? []
+  const fingeringRH = (rd.fingering_rh as number[]) ?? []
+  const fingeringLH = (rd.fingering_lh as number[]) ?? []
+  const hand = (rd.hand as 'rh' | 'lh') ?? 'rh'
+  const chordName = (rd.chord_name as string) ?? block.title ?? ''
+
+  if (keys.length === 0) {
+    return (
+      <div className="mb-4 p-6 bg-bg2 border border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
+        Teclado vazio — abra o editor para configurar
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-4">
+      {chordName && <h3 className="font-bold text-[14px] text-text mb-2">{chordName}</h3>}
+      <div className="flex justify-center">
+        <PianoKeyboard
+          keys={keys}
+          fingeringRH={fingeringRH}
+          fingeringLH={fingeringLH}
+          hand={hand}
+          showLabels={true}
+          scale={1}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Bloco Grade de Teclados ─────────────────────────────────────────
+
+function BlockKeyboardGrid({ block }: { block: MaterialBlock }) {
+  const rd = block.render_data ?? {}
+  const keyboards = (rd.keyboards as any[]) ?? []
+  const columns = (rd.columns as number) ?? 3
+
+  if (keyboards.length === 0) {
+    return (
+      <div className="mb-4 p-6 bg-bg2 border border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
+        {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+        Grade de teclados vazia — adicione teclados pelo painel
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-4">
+      {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
+      <div className="flex flex-wrap gap-4 justify-center" style={{ columns }}>
+        {keyboards.map((kb: any, i: number) => (
+          <div key={i} className="text-center">
+            {kb.chord_name && <div className="text-[11px] font-semibold text-text mb-1">{kb.chord_name}</div>}
+            <PianoKeyboard
+              keys={kb.keys ?? []}
+              fingeringRH={kb.fingering_rh ?? []}
+              fingeringLH={kb.fingering_lh ?? []}
+              hand={kb.hand ?? 'rh'}
+              showLabels={true}
+              scale={0.7}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Bloco Colunas ──────────────────────────────────────────────────
+
+function BlockColumns({ block }: { block: MaterialBlock }) {
+  const rd = block.render_data ?? {}
+  const cols = (rd.columns as Array<{ blocks: MaterialBlock[] }>) ?? []
+  const numCols = cols.length || 2
+
+  if (cols.length === 0 || cols.every(c => (c.blocks?.length ?? 0) === 0)) {
+    return (
+      <div className="mb-4 p-6 bg-bg2 border border-dashed border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
+        {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+        Bloco de colunas vazio — adicione conteúdo pelo painel lateral
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-4">
+      {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
+      <div className="block-columns" style={{ gridTemplateColumns: `repeat(${numCols}, 1fr)` }}>
+        {cols.map((col, ci) => (
+          <div key={ci} className="block-column">
+            {(col.blocks ?? []).map((subBlock, si) => {
+              const Renderer = BLOCK_RENDERERS_INNER[subBlock.block_type]
+              if (!Renderer) return null
+              return <Renderer key={si} block={subBlock} />
+            })}
+            {(!col.blocks || col.blocks.length === 0) && (
+              <div className="p-4 border border-dashed border-border/50 rounded text-center text-text3 text-[11px] min-h-[60px] flex items-center justify-center">
+                Coluna {ci + 1} vazia
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const BLOCK_RENDERERS_INNER: Record<string, React.FC<{ block: MaterialBlock }>> = {
+  title: BlockTitle,
+  text: BlockText,
+  chord_diagram: BlockChordDiagram,
+  chord_grid: BlockChordGrid,
+  notation: BlockNotation,
+  rhythm: BlockRhythm,
+  exercise: BlockExercise,
+  tip: BlockTip,
+  tablature: BlockTablature,
+  image: BlockImage,
+  audio: BlockAudio,
+  video: BlockVideo,
+  keyboard: BlockKeyboard,
+  keyboard_grid: BlockKeyboardGrid,
+}
+
 const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
+  cover: BlockCover,
   title: BlockTitle,
   text: BlockText,
   chord_diagram: BlockChordDiagram,
@@ -293,9 +686,14 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   tablature: BlockTablature,
   badge: BlockBadge,
   image: BlockImage,
+  audio: BlockAudio,
+  video: BlockVideo,
+  keyboard: BlockKeyboard,
+  keyboard_grid: BlockKeyboardGrid,
+  columns: BlockColumns,
 }
 
-export function MaterialPreview({ blocks }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -307,6 +705,9 @@ export function MaterialPreview({ blocks }: MaterialPreviewProps) {
   return (
     <div className="space-y-1">
       {blocks.map((block, i) => {
+        if (block.block_type === 'cover') {
+          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} />
+        }
         const Renderer = BLOCK_RENDERERS[block.block_type]
         if (!Renderer) {
           return (

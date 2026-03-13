@@ -9,11 +9,12 @@ import {
   Printer, Code, Eye, EyeSlash, PencilLine, PianoKeys,
   MagnifyingGlassPlus, MagnifyingGlassMinus, Gear, Hash,
   TextAlignLeft, TextAlignCenter, TextAlignRight,
+  BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { RichTextEditor } from "@/components/editor/RichTextEditor";
+import { RichTextEditor, type AIActionType } from "@/components/editor/RichTextEditor";
 import { ensureHtml, htmlToMarkdown } from "@/lib/markdownToHtml";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -45,6 +46,8 @@ import { NotationEditor, type NotationSaveData } from "@/components/music/Notati
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
 import type { ChordPositions } from "@/components/music/ChordDiagram";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
+import { generateImage, generateText } from "@/services/aiService";
+import { supabase } from "@/lib/supabase";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -122,6 +125,13 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType
   page_break:     { label: 'Quebra de Página', icon: LineSegment, bg: 'var(--border)',      color: 'var(--text3)' },
   image:          { label: 'Imagem',    icon: ImageIcon,    bg: 'var(--accent-soft)',      color: 'var(--accent)' },
   badge:          { label: 'Conquista', icon: PencilCircle, bg: 'var(--verde-soft)',       color: 'var(--verde)' },
+  cover:          { label: 'Capa',      icon: BookOpen,     bg: 'var(--accent-soft)',      color: 'var(--accent)' },
+  chord_grid:     { label: 'Grade Acordes', icon: GridFour, bg: 'var(--grow-soft)',        color: 'var(--grow)' },
+  keyboard:       { label: 'Teclado',   icon: PianoKeys,    bg: 'var(--master-soft)',      color: 'var(--master)' },
+  keyboard_grid:  { label: 'Grade Teclados', icon: GridFour, bg: 'var(--master-soft)',   color: 'var(--master)' },
+  columns:         { label: 'Colunas',  icon: Rows,     bg: 'var(--azul-soft)',       color: 'var(--azul)' },
+  audio:           { label: 'Áudio',   icon: SpeakerHigh, bg: 'var(--grow-soft)',    color: 'var(--grow)' },
+  video:           { label: 'Vídeo',   icon: VideoCamera,  bg: 'var(--accent-soft)',  color: 'var(--accent)' },
 }
 
 function getBlockConfig(type: string) {
@@ -332,6 +342,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Edição inline no canvas
   const [inlineEditingBlockId, setInlineEditingBlockId] = useState<string | null>(null)
+  const [coverTitleEditing, setCoverTitleEditing] = useState(false)
 
   // Zoom do canvas A4
   const [zoom, setZoom] = useState(0.75)
@@ -414,6 +425,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         continue
       }
 
+      // Bloco capa ocupa página inteira
+      if (block.block_type === 'cover') {
+        if (result[result.length - 1].length > 0) result.push([])
+        result[result.length - 1].push(block)
+        result.push([]) // próximos blocos na página seguinte
+        currentHeight = 0
+        continue
+      }
+
       const h = blockHeights[block.id] ?? 120 // fallback estimado
       if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
         result.push([])
@@ -459,21 +479,47 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Adicionar bloco
   const handleAddBlock = useCallback(async (blockType: string) => {
+    const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
+    const defaultTitle = blockType === 'cover' ? (materialTitle || 'Capa')
+      : blockType === 'chord_grid' ? 'Grade de Acordes'
+      : blockType === 'keyboard' ? 'Teclado'
+      : blockType === 'keyboard_grid' ? 'Grade de Teclados'
+      : blockType === 'columns' ? null
+      : null
+    const defaultRenderData = blockType === 'cover'
+      ? { template: 'minimal', titulo: materialTitle || '', subtitulo: '', instrumento: '', nivel: '', professor: '', escola: '', data: '' }
+      : blockType === 'chord_grid' ? { chords: [], columns: 3 }
+      : blockType === 'keyboard' ? { keys: [], hand: 'rh' }
+      : blockType === 'keyboard_grid' ? { keyboards: [], columns: 3 }
+      : blockType === 'columns' ? { columns: [{ blocks: [] }, { blocks: [] }] }
+      : null
     try {
-      const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
       await addMaterialBlock({
         materialId,
         blockType,
-        title: null,
+        title: defaultTitle,
         content: { text: '' },
+        renderData: defaultRenderData,
         afterOrder: lastOrder,
       })
       toast.success('Bloco adicionado')
       refetch()
     } catch (e: any) {
-      toast.error('Erro ao adicionar bloco: ' + (e?.message ?? ''))
+      // Fallback local: banco pode rejeitar block_types novos (CHECK constraint)
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      setBlocks(prev => [...prev, {
+        id: tempId,
+        block_type: blockType,
+        title: defaultTitle,
+        content: { text: '' },
+        render_data: defaultRenderData,
+        sort_order: lastOrder + 1,
+        is_edited: false,
+        original_content: null,
+      }])
+      toast.info('Bloco adicionado localmente (salvar no banco pendente)')
     }
-  }, [blocks, materialId, refetch])
+  }, [blocks, materialId, materialTitle, refetch])
 
   // Deletar bloco
   const handleDeleteBlock = useCallback(async (blockId: string) => {
@@ -535,6 +581,418 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       return b
     }))
   }, [selectedBlockId])
+
+  // Atualizar render_data do bloco selecionado (para capa, grade de acordes, etc.)
+  const updateSelectedRenderData = useCallback((field: string, value: any) => {
+    if (!selectedBlockId) return
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== selectedBlockId) return b
+      return { ...b, render_data: { ...(b.render_data ?? {}), [field]: value } }
+    }))
+  }, [selectedBlockId])
+
+  // Abrir KeyboardEditor para bloco tipo 'keyboard'
+  const [keyboardEditorBlockId, setKeyboardEditorBlockId] = useState<string | null>(null)
+  const [keyboardEditorOpen, setKeyboardEditorOpen] = useState(false)
+
+  const openKeyboardEditorForBlock = useCallback((blockId: string) => {
+    setKeyboardEditorBlockId(blockId)
+    setKeyboardEditorOpen(true)
+  }, [])
+
+  // Grade de teclados — estado e handlers (antes do save genérico)
+  const [keyboardGridTargetBlockId, setKeyboardGridTargetBlockId] = useState<string | null>(null)
+
+  const openKeyboardEditorForGrid = useCallback((blockId: string) => {
+    setKeyboardGridTargetBlockId(blockId)
+    setKeyboardEditorBlockId(null)
+    setKeyboardEditorOpen(true)
+  }, [])
+
+  const handleKeyboardGridSave = useCallback((data: PianoChordData) => {
+    if (!keyboardGridTargetBlockId) return
+    const newKeyboard = {
+      chord_name: data.name || 'Acorde',
+      keys: data.positions.keys,
+      root: data.positions.root,
+      octave: data.positions.octave,
+      fingering_rh: data.positions.fingering_rh,
+      fingering_lh: data.positions.fingering_lh,
+      type: data.positions.type,
+      quality: data.positions.quality,
+      octave_start: data.positions.octave_start,
+      octave_count: data.positions.octave_count,
+      hand: 'rh',
+    }
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== keyboardGridTargetBlockId) return b
+      const existingKbs = ((b.render_data as any)?.keyboards ?? []) as any[]
+      return { ...b, render_data: { ...(b.render_data ?? {}), keyboards: [...existingKbs, newKeyboard] } }
+    }))
+    setKeyboardGridTargetBlockId(null)
+    setKeyboardEditorOpen(false)
+    toast.success(`Teclado "${data.name || 'Acorde'}" adicionado à grade`)
+  }, [keyboardGridTargetBlockId])
+
+  const handleKeyboardEditorSave = useCallback(async (data: PianoChordData) => {
+    // Se estamos adicionando à grade de teclados, despacha para o handler da grade
+    if (keyboardGridTargetBlockId) {
+      handleKeyboardGridSave(data)
+      return
+    }
+    if (!keyboardEditorBlockId) return
+    const newRenderData = {
+      chord_name: data.name,
+      keys: data.positions.keys,
+      root: data.positions.root,
+      octave: data.positions.octave,
+      fingering_rh: data.positions.fingering_rh,
+      fingering_lh: data.positions.fingering_lh,
+      type: data.positions.type,
+      quality: data.positions.quality,
+      octave_start: data.positions.octave_start,
+      octave_count: data.positions.octave_count,
+      hand: 'rh',
+    }
+    setBlocks(prev => prev.map(b =>
+      b.id === keyboardEditorBlockId ? { ...b, title: data.name || b.title, render_data: newRenderData } : b,
+    ))
+    try {
+      await updateMaterialBlockRpc({
+        blockId: keyboardEditorBlockId,
+        title: data.name,
+        renderData: newRenderData,
+      })
+      toast.success('Teclado atualizado no bloco')
+    } catch (e: any) {
+      toast.error('Erro ao salvar teclado')
+    }
+    setKeyboardEditorOpen(false)
+    setKeyboardEditorBlockId(null)
+  }, [keyboardEditorBlockId, keyboardGridTargetBlockId, handleKeyboardGridSave])
+
+  // Abrir ChordEditor para grade de acordes (adiciona acorde à grade)
+  const [chordGridTargetBlockId, setChordGridTargetBlockId] = useState<string | null>(null)
+
+  const openChordEditorForGrid = useCallback((blockId: string) => {
+    setChordGridTargetBlockId(blockId)
+    setChordEditorState(createEmptyState())
+    setChordEditorName('')
+    setChordEditorStartFret(1)
+    setChordEditorBlockId(null) // não é edição de chord_diagram individual
+    setChordEditorOpen(true)
+  }, [])
+
+  const handleChordGridSave = useCallback(() => {
+    if (!chordGridTargetBlockId) return
+    const positions = stateToPositions(chordEditorState)
+    const newChord = {
+      chord_name: chordEditorName || 'Acorde',
+      fingers: positions.fingers,
+      barres: positions.barres,
+      muted: positions.muted,
+      position: chordEditorStartFret,
+    }
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== chordGridTargetBlockId) return b
+      const existingChords = ((b.render_data as any)?.chords ?? []) as any[]
+      return { ...b, render_data: { ...(b.render_data ?? {}), chords: [...existingChords, newChord] } }
+    }))
+    setChordGridTargetBlockId(null)
+    toast.success(`Acorde "${chordEditorName || 'Acorde'}" adicionado à grade`)
+  }, [chordGridTargetBlockId, chordEditorState, chordEditorName, chordEditorStartFret])
+
+  // Gerar imagem de capa com IA (Nano Banana 2)
+  const [coverImageLoading, setCoverImageLoading] = useState(false)
+  const [coverPromptLoading, setCoverPromptLoading] = useState(false)
+
+  // Melhorar prompt do usuário com IA
+  const handleEnhanceCoverPrompt = useCallback(async () => {
+    if (!selectedBlock) return
+    const rd = selectedBlock.render_data as any ?? {}
+    const userPrompt = (rd.cover_prompt as string) ?? ''
+    if (!userPrompt.trim()) {
+      toast.error('Escreva uma descrição antes de melhorar')
+      return
+    }
+    setCoverPromptLoading(true)
+    try {
+      const titulo = rd.titulo || selectedBlock.title || materialTitle || ''
+      const instrumento = rd.instrumento || ''
+      const systemPrompt = `Você é um especialista em design de capas de livros e material didático musical. Sua tarefa é melhorar o prompt do usuário para gerar uma imagem de capa impressionante. Responda APENAS com o prompt melhorado em inglês, sem explicações. O prompt deve ser para gerar uma imagem de capa profissional.`
+      const enhancePrompt = `Melhore este prompt para gerar uma capa de livro didático musical:
+Prompt do usuário: "${userPrompt}"
+Contexto: Título="${titulo}", Instrumento="${instrumento}"
+Responda APENAS com o prompt melhorado em inglês, otimizado para geração de imagem.`
+      const result = await generateText(enhancePrompt, undefined, systemPrompt)
+      updateSelectedRenderData('cover_prompt', result.text.trim())
+      toast.success('Prompt melhorado!')
+    } catch (e: any) {
+      toast.error('Erro ao melhorar prompt: ' + (e?.message?.slice(0, 80) ?? ''))
+    } finally {
+      setCoverPromptLoading(false)
+    }
+  }, [selectedBlock, materialTitle, updateSelectedRenderData])
+
+  const handleGenerateCoverImage = useCallback(async (blockId: string) => {
+    const block = blocks.find(b => b.id === blockId)
+    if (!block) return
+    const rd = block.render_data as any ?? {}
+    const titulo = rd.titulo || block.title || materialTitle || 'Material Didático Musical'
+    const instrumento = rd.instrumento || ''
+    const nivel = rd.nivel || ''
+    const escola = rd.escola || ''
+    const template = rd.template || 'minimal'
+    const userPrompt = (rd.cover_prompt as string) ?? ''
+
+    // Se o usuário escreveu um prompt personalizado, usar ele como base
+    const prompt = userPrompt.trim()
+      ? `${userPrompt.trim()} Portrait orientation (3:4 aspect ratio). No text in the image — only visual design elements. High quality, professional graphic design.`
+      : [
+        `Create a stunning, professional book cover design for a music education textbook.`,
+        `Title: "${titulo}".`,
+        instrumento && `Instrument: ${instrumento}.`,
+        nivel && `Level: ${nivel}.`,
+        escola && `School: ${escola}.`,
+        `Style: modern, clean, visually striking with musical elements (instruments, notes, sound waves).`,
+        `The design should be elegant and suitable for a professional music school.`,
+        `Portrait orientation (3:4 aspect ratio). No text in the image — only visual design elements.`,
+        `High quality, vibrant colors, professional graphic design aesthetics.`,
+        template === 'geometric' && 'Use geometric shapes and bold angular compositions.',
+        template === 'gradient' && 'Use smooth gradient backgrounds with depth.',
+        template === 'musical' && 'Feature musical instruments and notation prominently.',
+        template === 'bold' && 'Use high contrast, dramatic lighting, dark background.',
+        template === 'elegant' && 'Use refined, minimal composition with warm tones.',
+        template === 'vibrant' && 'Use bright, energetic colors and dynamic shapes.',
+        template === 'colorful' && 'Use a vibrant gradient with abstract musical elements.',
+      ].filter(Boolean).join(' ')
+
+    setCoverImageLoading(true)
+    try {
+      const result = await generateImage(prompt, true)
+
+      // Upload para Supabase Storage (content-images bucket)
+      const ext = result.mimeType === 'image/jpeg' ? 'jpg' : 'png'
+      const filePath = `covers/${materialId}/${blockId}_${Date.now()}.${ext}`
+      const binaryStr = atob(result.imageBase64)
+      const bytes = new Uint8Array(binaryStr.length)
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
+      const file = new Blob([bytes], { type: result.mimeType })
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('content-images')
+        .upload(filePath, file, { contentType: result.mimeType, upsert: true })
+
+      if (uploadError) throw new Error(`Upload falhou: ${uploadError.message}`)
+
+      const { data: urlData } = supabase.storage
+        .from('content-images')
+        .getPublicUrl(uploadData.path)
+
+      const publicUrl = urlData.publicUrl
+
+      // Atualizar o render_data do bloco com a URL pública
+      setBlocks(prev => prev.map(b =>
+        b.id === blockId
+          ? { ...b, render_data: { ...(b.render_data ?? {}), cover_image_url: publicUrl } }
+          : b,
+      ))
+      toast.success(`Capa gerada em ${(result.latencyMs / 1000).toFixed(1)}s`)
+    } catch (e: any) {
+      console.error('Erro ao gerar capa:', e)
+      toast.error(e?.message?.slice(0, 100) || 'Erro ao gerar imagem da capa')
+    } finally {
+      setCoverImageLoading(false)
+    }
+  }, [blocks, materialTitle, materialId])
+
+  // Upload de imagem para bloco 'image'
+  const [imageUploading, setImageUploading] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!selectedBlockId) return
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Formato não suportado. Use JPG, PNG ou WebP.')
+      return
+    }
+    if (file.size > maxSize) {
+      toast.error('Imagem muito grande. Máximo 5MB.')
+      return
+    }
+
+    setImageUploading(true)
+    try {
+      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/webp' ? 'webp' : 'png'
+      const filePath = `images/${materialId}/${selectedBlockId}_${Date.now()}.${ext}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('content-images')
+        .upload(filePath, file, { contentType: file.type, upsert: true })
+
+      if (uploadError) throw new Error(`Upload falhou: ${uploadError.message}`)
+
+      const { data: urlData } = supabase.storage
+        .from('content-images')
+        .getPublicUrl(uploadData.path)
+
+      updateSelectedRenderData('url', urlData.publicUrl)
+      toast.success('Imagem enviada!')
+    } catch (e: any) {
+      console.error('Erro ao enviar imagem:', e)
+      toast.error(e?.message?.slice(0, 100) || 'Erro ao enviar imagem')
+    } finally {
+      setImageUploading(false)
+    }
+  }, [selectedBlockId, materialId, updateSelectedRenderData])
+
+  // Handler de IA contextual para o RichTextEditor
+  const handleAITextAction = useCallback(async (selectedText: string, action: AIActionType): Promise<string | null> => {
+    const prompts: Record<AIActionType, { system: string; user: string }> = {
+      rewrite: {
+        system: 'Você é um professor de música reescrevendo material didático. Mantenha o mesmo significado mas melhore a clareza e fluidez. Responda APENAS com o texto reescrito, sem explicações.',
+        user: `Reescreva este trecho de material didático musical:\n\n"${selectedText}"`,
+      },
+      simplify: {
+        system: 'Você é um professor de música simplificando material para alunos iniciantes. Use linguagem simples e direta. Responda APENAS com o texto simplificado, sem explicações.',
+        user: `Simplifique este trecho para um aluno iniciante:\n\n"${selectedText}"`,
+      },
+      expand: {
+        system: 'Você é um professor de música expandindo material didático. Adicione exemplos, analogias e explicações mais detalhadas. Responda APENAS com o texto expandido, sem explicações.',
+        user: `Expanda este trecho com mais detalhes e exemplos:\n\n"${selectedText}"`,
+      },
+      correct: {
+        system: 'Você é um revisor de português brasileiro. Corrija erros de ortografia, gramática e pontuação. Mantenha o conteúdo idêntico. Responda APENAS com o texto corrigido, sem explicações.',
+        user: `Corrija a ortografia e gramática deste texto:\n\n"${selectedText}"`,
+      },
+      translate: {
+        system: 'Você é um tradutor especializado em música. Se o texto está em português, traduza para inglês. Se está em inglês, traduza para português brasileiro. Responda APENAS com a tradução, sem explicações.',
+        user: `Traduza este texto:\n\n"${selectedText}"`,
+      },
+    }
+
+    const { system, user } = prompts[action]
+    try {
+      const result = await generateText(user, undefined, system)
+      toast.success(`IA: ${action === 'rewrite' ? 'Reescrito' : action === 'simplify' ? 'Simplificado' : action === 'expand' ? 'Expandido' : action === 'correct' ? 'Corrigido' : 'Traduzido'} (${(result.latencyMs / 1000).toFixed(1)}s)`)
+      return result.text.trim()
+    } catch (e: any) {
+      toast.error('Erro da IA: ' + (e?.message?.slice(0, 80) ?? ''))
+      return null
+    }
+  }, [])
+
+  // Geração de bloco por IA
+  const [aiBlockDialogOpen, setAiBlockDialogOpen] = useState(false)
+  const [aiBlockPrompt, setAiBlockPrompt] = useState('')
+  const [aiBlockLoading, setAiBlockLoading] = useState(false)
+
+  const handleGenerateAIBlock = useCallback(async () => {
+    if (!aiBlockPrompt.trim()) return
+    setAiBlockLoading(true)
+    try {
+      const systemPrompt = `Você é um professor de música criando blocos de material didático para a plataforma LA Journey.
+Retorne APENAS um objeto JSON válido (não array) com esta estrutura:
+{
+  "block_type": "text" | "tip" | "exercise",
+  "title": "título do bloco",
+  "content": { "text": "conteúdo em HTML com <strong> para termos técnicos, <p> para parágrafos" }
+}
+
+Para exercícios: inclua instruções passo-a-passo detalhadas.
+Para dicas: seja conciso e prático.
+Para texto: use linguagem didática e acessível, 2-3 parágrafos.
+Use APENAS HTML básico: <p>, <strong>, <em>, <br>, <ul>, <li>, <ol>.`
+
+      const prompt = `Gere um bloco de material didático musical baseado nesta descrição:
+"${aiBlockPrompt}"
+
+Contexto do material: "${materialTitle}"
+
+Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
+
+      const result = await generateText(prompt, undefined, systemPrompt)
+      let jsonStr = result.text.trim()
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+      }
+
+      const blockData = JSON.parse(jsonStr)
+      const blockType = ['text', 'tip', 'exercise'].includes(blockData.block_type) ? blockData.block_type : 'text'
+
+      const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
+      const contentHtml = blockData.content?.text ?? ''
+      const contentPlain = contentHtml.replace(/<[^>]+>/g, '')
+      const newBlockId = await addMaterialBlock({
+        materialId,
+        blockType,
+        title: blockData.title ?? 'Bloco gerado',
+        content: { html: contentHtml, text: contentPlain },
+        renderData: blockData.render_data ?? null,
+        afterOrder: lastOrder,
+      })
+
+      setBlocks(prev => [...prev, {
+        id: newBlockId,
+        block_type: blockType,
+        title: blockData.title ?? 'Bloco gerado',
+        content: { html: blockData.content?.text ?? '', text: blockData.content?.text?.replace(/<[^>]+>/g, '') ?? '' },
+        render_data: blockData.render_data ?? null,
+        sort_order: lastOrder + 1,
+        is_edited: false,
+        original_content: null,
+      }])
+
+      toast.success(`Bloco "${blockData.title}" gerado em ${(result.latencyMs / 1000).toFixed(1)}s`)
+      setAiBlockDialogOpen(false)
+      setAiBlockPrompt('')
+    } catch (e: any) {
+      console.error('Erro ao gerar bloco:', e)
+      toast.error('Erro ao gerar bloco: ' + (e?.message?.slice(0, 80) ?? ''))
+    } finally {
+      setAiBlockLoading(false)
+    }
+  }, [aiBlockPrompt, blocks, materialId, materialTitle])
+
+  // Sugestão automática de próximo bloco
+  const [aiSuggestion, setAiSuggestion] = useState<{ block_type: string; title: string; content: { text: string } } | null>(null)
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false)
+
+  const handleSuggestNextBlock = useCallback(async () => {
+    if (blocks.length === 0) return
+    setAiSuggestLoading(true)
+    setAiSuggestion(null)
+    try {
+      const ctx = blocks.slice(-3).map(b => `[${b.block_type}] ${b.title}: ${((b.content as any)?.text ?? '').slice(0, 150)}`).join('\n')
+      const sys = 'Você é professor de música. Sugira o próximo bloco pedagógico. Retorne APENAS JSON: {"block_type":"text"|"tip"|"exercise","title":"...","content":{"text":"HTML"}}'
+      const result = await generateText(`Material: "${materialTitle}"\nÚltimos blocos:\n${ctx}\n\nSugira o próximo bloco.`, undefined, sys)
+      let json = result.text.trim()
+      if (json.startsWith('```')) json = json.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+      setAiSuggestion(JSON.parse(json))
+      toast.success(`Sugestão gerada em ${(result.latencyMs / 1000).toFixed(1)}s`)
+    } catch (e: any) {
+      toast.error('Erro ao sugerir: ' + (e?.message?.slice(0, 60) ?? ''))
+    } finally {
+      setAiSuggestLoading(false)
+    }
+  }, [blocks, materialTitle])
+
+  const handleAcceptSuggestion = useCallback(async () => {
+    if (!aiSuggestion) return
+    const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
+    const html = aiSuggestion.content?.text ?? ''
+    const plain = html.replace(/<[^>]+>/g, '')
+    try {
+      const id = await addMaterialBlock({ materialId, blockType: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, afterOrder: lastOrder })
+      setBlocks(prev => [...prev, { id, block_type: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, render_data: null, sort_order: lastOrder + 1, is_edited: false, original_content: null }])
+      toast.success(`Bloco "${aiSuggestion.title}" aceito!`)
+      setAiSuggestion(null)
+    } catch (e: any) {
+      toast.error('Erro ao salvar sugestão')
+    }
+  }, [aiSuggestion, blocks, materialId])
 
   // Salvar título do material
   const handleSaveTitle = useCallback(async () => {
@@ -886,7 +1344,7 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {['text', 'tip', 'exercise', 'title', 'notation', 'chord_diagram', 'tablature', 'separator', 'page_break'].map(type => {
+              {['text', 'tip', 'exercise', 'title', 'image', 'audio', 'video', 'cover', 'columns', 'notation', 'chord_diagram', 'chord_grid', 'keyboard', 'keyboard_grid', 'tablature', 'separator', 'page_break'].map(type => {
                 const cfg = getBlockConfig(type)
                 const Icon = cfg.icon
                 return (
@@ -896,8 +1354,51 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                   </DropdownMenuItem>
                 )
               })}
+              <div className="h-px bg-border my-1" />
+              <DropdownMenuItem onClick={() => setAiBlockDialogOpen(true)} className="gap-2 text-accent font-medium">
+                <Sparkle size={16} weight="fill" className="text-accent" />
+                Gerar com IA
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Ghost block — sugestão automática */}
+          {aiSuggestion && (
+            <div className="mt-2 border border-dashed border-accent/40 rounded-[var(--radius-sm)] p-2.5 bg-accent/5 animate-in fade-in slide-in-from-bottom-2">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Sparkle size={12} weight="fill" className="text-accent" />
+                <span className="text-[10px] font-semibold text-accent uppercase tracking-wide">Sugestão IA</span>
+              </div>
+              <div className="text-[11px] font-medium text-text1 mb-0.5">{aiSuggestion.title}</div>
+              <div className="text-[10px] text-text3 line-clamp-3 mb-2" dangerouslySetInnerHTML={{ __html: aiSuggestion.content?.text?.slice(0, 200) + '...' }} />
+              <div className="flex gap-1.5">
+                <Button size="sm" onClick={handleAcceptSuggestion} className="h-6 text-[10px] px-2 gap-1">
+                  <Plus size={10} /> Aceitar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAiSuggestion(null)} className="h-6 text-[10px] px-2">
+                  Descartar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleSuggestNextBlock} className="h-6 text-[10px] px-2" disabled={aiSuggestLoading}>
+                  Outra
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Botão sugerir próximo */}
+          {!aiSuggestion && blocks.length >= 2 && (
+            <button
+              onClick={handleSuggestNextBlock}
+              disabled={aiSuggestLoading}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-accent/70 hover:text-accent hover:bg-accent/5 rounded-[var(--radius-sm)] transition-colors disabled:opacity-50"
+            >
+              {aiSuggestLoading ? (
+                <><SpinnerGap size={12} className="animate-spin" /> Gerando sugestão...</>
+              ) : (
+                <><Sparkle size={12} /> Sugerir próximo bloco</>
+              )}
+            </button>
+          )}
 
           {/* Rodapé info */}
           <div className="mt-3 p-2.5 bg-azul-soft rounded-[var(--radius-sm)] text-[11px] text-text2">
@@ -952,11 +1453,12 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
           >
             {pages.map((pageBlocks, pageIdx) => {
               const pageCtx = { titulo: materialTitle, pagina: pageIdx + 1, total: pages.length }
-              const showHeader = pageConfig.header.enabled && (pageConfig.header.showOnFirstPage || pageIdx > 0)
-              const showFooter = pageConfig.footer.enabled
+              const isCoverPage = pageBlocks.some(b => b.block_type === 'cover')
+              const showHeader = !isCoverPage && pageConfig.header.enabled && (pageConfig.header.showOnFirstPage || pageIdx > 0)
+              const showFooter = !isCoverPage && pageConfig.footer.enabled
 
               return (
-              <div key={pageIdx} className="a4-page">
+              <div key={pageIdx} className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}>
                 {/* Cabeçalho */}
                 {showHeader ? (
                   <div className="a4-page-header">
@@ -976,9 +1478,9 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                       )}
                     </div>
                   </div>
-                ) : (
+                ) : !isCoverPage ? (
                   <div className="a4-page-header" style={{ borderBottom: 'none', padding: '8px 60px 0' }} />
-                )}
+                ) : null}
 
                 {/* Conteúdo dos blocos */}
                 <div className="a4-page-content">
@@ -994,11 +1496,13 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                         onClick={(e) => {
                           e.stopPropagation()
                           selectBlock(block.id)
+                          if (block.block_type !== 'cover') setCoverTitleEditing(false)
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation()
                           if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
                           else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+                          else if (block.block_type === 'cover') setCoverTitleEditing(true)
                           else if (isTextBlock && !isInlineEditing) setInlineEditingBlockId(block.id)
                         }}
                       >
@@ -1026,13 +1530,28 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                               }}
                               placeholder="Clique para editar..."
                               inline
+                              onAIAction={handleAITextAction}
                             />
                             <div className="text-[10px] text-text3 mt-2 text-right opacity-60">
                               Clique fora para sair da edição
                             </div>
                           </div>
                         ) : (
-                          <MaterialPreview blocks={[editorBlockToPreview(block)]} />
+                          <MaterialPreview
+                            blocks={[editorBlockToPreview(block)]}
+                            coverEditable={block.block_type === 'cover' && block.id === selectedBlockId}
+                            onCoverPositionChange={block.block_type === 'cover' ? (field, pos) => {
+                              setBlocks(prev => prev.map(b =>
+                                b.id === block.id
+                                  ? { ...b, render_data: { ...(b.render_data ?? {}), [field]: pos } }
+                                  : b,
+                              ))
+                            } : undefined}
+                            coverTitleEditing={block.block_type === 'cover' && coverTitleEditing}
+                            onCoverTitleChange={block.block_type === 'cover' ? (value) => {
+                              updateSelectedRenderData('titulo', value)
+                            } : undefined}
+                          />
                         )}
                       </div>
                     )
@@ -1073,9 +1592,9 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                       </span>
                     </div>
                   </div>
-                ) : (
+                ) : !isCoverPage ? (
                   <div className="a4-page-footer" style={{ borderTop: 'none', padding: '0 60px 8px' }} />
-                )}
+                ) : null}
               </div>
               )
             })}
@@ -1334,6 +1853,7 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                     }}
                     placeholder="Conteúdo do bloco"
                     compact
+                    onAIAction={handleAITextAction}
                   />
                 </div>
               )}
@@ -1378,6 +1898,597 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                       Acorde: {(selectedBlock.render_data as any).chord_name}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Capa — formulário de campos */}
+              {selectedBlock.block_type === 'cover' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Dados da Capa</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Template</label>
+                    <Select
+                      value={(selectedBlock.render_data as any)?.template ?? 'minimal'}
+                      onValueChange={v => updateSelectedRenderData('template', v)}
+                    >
+                      <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="minimal">Minimalista</SelectItem>
+                        <SelectItem value="colorful">Colorido</SelectItem>
+                        <SelectItem value="classic">Clássico</SelectItem>
+                        <SelectItem value="modern">Moderno</SelectItem>
+                        <SelectItem value="geometric">Geométrico</SelectItem>
+                        <SelectItem value="gradient">Gradiente</SelectItem>
+                        <SelectItem value="musical">Musical</SelectItem>
+                        <SelectItem value="bold">Impactante</SelectItem>
+                        <SelectItem value="elegant">Elegante</SelectItem>
+                        <SelectItem value="vibrant">Vibrante</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Imagem de fundo IA */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Imagem de Fundo (IA)</label>
+                    {(selectedBlock.render_data as any)?.cover_image_url ? (
+                      <div className="space-y-1.5">
+                        <div className="relative rounded overflow-hidden border border-border">
+                          <img
+                            src={(selectedBlock.render_data as any).cover_image_url}
+                            alt="Capa gerada"
+                            className="w-full h-24 object-cover"
+                          />
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-7 text-[10px] gap-1 border-accent/30 text-accent hover:bg-accent/10"
+                            onClick={() => handleGenerateCoverImage(selectedBlock.id)}
+                            disabled={coverImageLoading}
+                          >
+                            <Sparkle size={12} weight="bold" /> Regenerar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[10px] border-vermelho/30 text-vermelho hover:bg-vermelho/10"
+                            onClick={() => updateSelectedRenderData('cover_image_url', null)}
+                          >
+                            <Trash size={12} />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full justify-center gap-2 border-accent/30 text-accent hover:bg-accent/10"
+                        onClick={() => handleGenerateCoverImage(selectedBlock.id)}
+                        disabled={coverImageLoading}
+                      >
+                        {coverImageLoading ? (
+                          <><SpinnerGap size={14} className="animate-spin" /> Gerando...</>
+                        ) : (
+                          <><Sparkle size={14} weight="bold" /> Gerar Capa com IA</>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  {/* Prompt personalizado para IA */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Prompt da Capa (IA)</label>
+                    <Textarea
+                      value={(selectedBlock.render_data as any)?.cover_prompt ?? ''}
+                      onChange={e => updateSelectedRenderData('cover_prompt', e.target.value)}
+                      placeholder="Ex: Capa minimalista com violão acústico, tons azuis e dourados, estilo profissional..."
+                      className="text-[11px] min-h-[60px] resize-none"
+                      rows={3}
+                    />
+                    <div className="flex gap-1 mt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-7 text-[10px] gap-1 border-azul-claro/30 text-azul-claro hover:bg-azul-claro/10"
+                        onClick={handleEnhanceCoverPrompt}
+                        disabled={coverPromptLoading}
+                      >
+                        {coverPromptLoading ? (
+                          <><SpinnerGap size={12} className="animate-spin" /> Melhorando...</>
+                        ) : (
+                          <><Sparkle size={12} weight="bold" /> Melhorar Prompt</>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-[9px] text-text3 mt-1 opacity-60">
+                      Descreva como quer a capa. Se vazio, a IA gera automaticamente com base nos dados.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Título da capa</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.titulo ?? ''}
+                      onChange={e => updateSelectedRenderData('titulo', e.target.value)}
+                      placeholder={materialTitle || 'Título do material'}
+                      className="h-8 text-[12px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Subtítulo</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.subtitulo ?? ''}
+                      onChange={e => updateSelectedRenderData('subtitulo', e.target.value)}
+                      placeholder="Descrição ou complemento"
+                      className="h-8 text-[12px]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-text3 block mb-1">Instrumento</label>
+                      <Input
+                        value={(selectedBlock.render_data as any)?.instrumento ?? ''}
+                        onChange={e => updateSelectedRenderData('instrumento', e.target.value)}
+                        placeholder="Violão, Piano..."
+                        className="h-8 text-[12px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-text3 block mb-1">Nível</label>
+                      <Input
+                        value={(selectedBlock.render_data as any)?.nivel ?? ''}
+                        onChange={e => updateSelectedRenderData('nivel', e.target.value)}
+                        placeholder="Iniciante..."
+                        className="h-8 text-[12px]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Professor</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.professor ?? ''}
+                      onChange={e => updateSelectedRenderData('professor', e.target.value)}
+                      placeholder="Nome do professor"
+                      className="h-8 text-[12px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Escola</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.escola ?? ''}
+                      onChange={e => updateSelectedRenderData('escola', e.target.value)}
+                      placeholder="Nome da escola"
+                      className="h-8 text-[12px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Data</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.data ?? ''}
+                      onChange={e => updateSelectedRenderData('data', e.target.value)}
+                      placeholder="Março 2026"
+                      className="h-8 text-[12px]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Teclado — botão para abrir KeyboardEditor */}
+              {selectedBlock.block_type === 'keyboard' && (
+                <div className="prop-section">
+                  <div className="prop-label">Teclado</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10"
+                    onClick={() => openKeyboardEditorForBlock(selectedBlock.id)}
+                  >
+                    <PianoKeys size={14} weight="bold" /> Editar Teclado
+                  </Button>
+                  {(selectedBlock.render_data as any)?.chord_name && (
+                    <div className="text-[10px] text-text3 mt-1 text-center">
+                      {(selectedBlock.render_data as any).chord_name}
+                      {' · '}
+                      {((selectedBlock.render_data as any)?.keys as string[])?.length ?? 0} teclas
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Grade de Acordes — lista de acordes + controle de colunas */}
+              {selectedBlock.block_type === 'chord_grid' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Grade de Acordes</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Colunas</label>
+                    <div className="flex gap-1">
+                      {[2, 3, 4, 6].map(n => (
+                        <button
+                          key={n}
+                          className={`flex-1 px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                            ((selectedBlock.render_data as any)?.columns ?? 3) === n
+                              ? 'border-grow bg-grow/10 text-grow font-semibold'
+                              : 'border-border text-text3 hover:bg-azul-soft'
+                          }`}
+                          onClick={() => updateSelectedRenderData('columns', n)}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-text3">
+                    {((selectedBlock.render_data as any)?.chords as any[])?.length ?? 0} acordes na grade
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10"
+                    onClick={() => openChordEditorForGrid(selectedBlock.id)}
+                  >
+                    <Guitar size={14} weight="bold" /> Adicionar Acorde
+                  </Button>
+                  {/* Lista dos acordes existentes */}
+                  {((selectedBlock.render_data as any)?.chords as any[])?.length > 0 && (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {((selectedBlock.render_data as any).chords as any[]).map((chord: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between px-2 py-1 bg-bg2 rounded text-[11px]">
+                          <span className="font-medium text-text">{chord.chord_name ?? chord.name ?? `Acorde ${idx + 1}`}</span>
+                          <button
+                            className="text-text3 hover:text-vermelho transition-colors"
+                            onClick={() => {
+                              const chords = [...((selectedBlock.render_data as any)?.chords ?? [])]
+                              chords.splice(idx, 1)
+                              updateSelectedRenderData('chords', chords)
+                            }}
+                          >
+                            <Trash size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Grade de Teclados — lista de teclados + controle de colunas */}
+              {selectedBlock.block_type === 'keyboard_grid' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Grade de Teclados</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Colunas</label>
+                    <div className="flex gap-1">
+                      {[2, 3, 4, 6].map(n => (
+                        <button
+                          key={n}
+                          className={`flex-1 px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                            ((selectedBlock.render_data as any)?.columns ?? 3) === n
+                              ? 'border-master bg-master/10 text-master font-semibold'
+                              : 'border-border text-text3 hover:bg-azul-soft'
+                          }`}
+                          onClick={() => updateSelectedRenderData('columns', n)}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-text3">
+                    {((selectedBlock.render_data as any)?.keyboards as any[])?.length ?? 0} teclados na grade
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10"
+                    onClick={() => openKeyboardEditorForGrid(selectedBlock.id)}
+                  >
+                    <PianoKeys size={14} weight="bold" /> Adicionar Teclado
+                  </Button>
+                  {/* Lista dos teclados existentes */}
+                  {((selectedBlock.render_data as any)?.keyboards as any[])?.length > 0 && (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {((selectedBlock.render_data as any).keyboards as any[]).map((kb: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between px-2 py-1 bg-bg2 rounded text-[11px]">
+                          <span className="font-medium text-text">{kb.chord_name ?? `Teclado ${idx + 1}`}</span>
+                          <button
+                            className="text-text3 hover:text-vermelho transition-colors"
+                            onClick={() => {
+                              const keyboards = [...((selectedBlock.render_data as any)?.keyboards ?? [])]
+                              keyboards.splice(idx, 1)
+                              updateSelectedRenderData('keyboards', keyboards)
+                            }}
+                          >
+                            <Trash size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Bloco Áudio — URL + legenda */}
+              {selectedBlock.block_type === 'audio' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Áudio</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">URL do áudio</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.url ?? ''}
+                      onChange={e => updateSelectedRenderData('url', e.target.value)}
+                      placeholder="https://... (.mp3, .ogg, .wav)"
+                      className="h-7 text-[11px]"
+                    />
+                    <span className="text-[9px] text-text3/60 mt-0.5 block">
+                      Cole a URL de um arquivo de áudio ou do Supabase Storage
+                    </span>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Legenda</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.caption ?? ''}
+                      onChange={e => updateSelectedRenderData('caption', e.target.value)}
+                      placeholder="Ex: Como soa o acorde de Dó Maior"
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco Vídeo — URL YouTube/Vimeo + legenda */}
+              {selectedBlock.block_type === 'video' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Vídeo</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">URL do vídeo</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.url ?? ''}
+                      onChange={e => updateSelectedRenderData('url', e.target.value)}
+                      placeholder="https://youtube.com/watch?v=... ou vimeo.com/..."
+                      className="h-7 text-[11px]"
+                    />
+                    <span className="text-[9px] text-text3/60 mt-0.5 block">
+                      YouTube ou Vimeo · No PDF será exibido como QR code
+                    </span>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Legenda</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.caption ?? ''}
+                      onChange={e => updateSelectedRenderData('caption', e.target.value)}
+                      placeholder="Descrição do vídeo"
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco Imagem — upload, URL, legenda, tamanho */}
+              {selectedBlock.block_type === 'image' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Imagem</div>
+
+                  {/* Preview da imagem atual */}
+                  {(selectedBlock.render_data as any)?.url ? (
+                    <div className="space-y-1.5">
+                      <img
+                        src={(selectedBlock.render_data as any).url}
+                        alt={selectedBlock.title ?? 'Imagem'}
+                        className="w-full rounded-md border border-border object-cover max-h-32"
+                      />
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-7 text-[10px] border-accent/30 text-accent hover:bg-accent/10"
+                          onClick={() => imageInputRef.current?.click()}
+                          disabled={imageUploading}
+                        >
+                          {imageUploading ? <SpinnerGap size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+                          Trocar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] border-vermelho/30 text-vermelho hover:bg-vermelho/10"
+                          onClick={() => updateSelectedRenderData('url', null)}
+                        >
+                          <Trash size={12} />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Zona de upload drag-and-drop */
+                    <div
+                      className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-colors"
+                      onClick={() => imageInputRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-accent', 'bg-accent/5') }}
+                      onDragLeave={e => { e.currentTarget.classList.remove('border-accent', 'bg-accent/5') }}
+                      onDrop={e => {
+                        e.preventDefault()
+                        e.currentTarget.classList.remove('border-accent', 'bg-accent/5')
+                        const file = e.dataTransfer.files?.[0]
+                        if (file) handleImageUpload(file)
+                      }}
+                    >
+                      {imageUploading ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <SpinnerGap size={24} className="animate-spin text-accent" />
+                          <span className="text-[11px] text-text3">Enviando...</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <ImageIcon size={24} className="text-text3" />
+                          <span className="text-[11px] text-text3">Arraste uma imagem ou clique para selecionar</span>
+                          <span className="text-[9px] text-text3/60">JPG, PNG ou WebP · máx. 5MB</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Input hidden para file */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) handleImageUpload(file)
+                      e.target.value = ''
+                    }}
+                  />
+
+                  {/* URL manual */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">ou URL externa</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.url ?? ''}
+                      onChange={e => updateSelectedRenderData('url', e.target.value)}
+                      placeholder="https://..."
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+
+                  {/* Legenda */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Legenda</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.caption ?? ''}
+                      onChange={e => updateSelectedRenderData('caption', e.target.value)}
+                      placeholder="Descrição da imagem"
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+
+                  {/* Tamanho */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Tamanho</label>
+                    <div className="flex gap-1">
+                      {[
+                        { value: 'small', label: 'P' },
+                        { value: 'medium', label: 'M' },
+                        { value: 'large', label: 'G' },
+                        { value: 'full', label: 'Total' },
+                      ].map(s => (
+                        <button
+                          key={s.value}
+                          className={`flex-1 px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                            ((selectedBlock.render_data as any)?.size ?? 'medium') === s.value
+                              ? 'border-accent bg-accent/10 text-accent font-semibold'
+                              : 'border-border text-text3 hover:bg-accent-soft'
+                          }`}
+                          onClick={() => updateSelectedRenderData('size', s.value)}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco Colunas — controle de layout + conteúdo das colunas */}
+              {selectedBlock.block_type === 'columns' && (
+                <div className="prop-section space-y-2.5">
+                  <div className="prop-label">Layout de Colunas</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Número de colunas</label>
+                    <div className="flex gap-1">
+                      {[2, 3].map(n => (
+                        <button
+                          key={n}
+                          className={`flex-1 px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                            ((selectedBlock.render_data as any)?.columns as any[])?.length === n
+                              ? 'border-azul bg-azul/10 text-azul font-semibold'
+                              : 'border-border text-text3 hover:bg-azul-soft'
+                          }`}
+                          onClick={() => {
+                            const current = ((selectedBlock.render_data as any)?.columns as any[]) ?? []
+                            let newCols: any[]
+                            if (n > current.length) {
+                              newCols = [...current, ...Array.from({ length: n - current.length }, () => ({ blocks: [] }))]
+                            } else {
+                              newCols = current.slice(0, n)
+                            }
+                            updateSelectedRenderData('columns', newCols)
+                          }}
+                        >
+                          {n} col
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Conteúdo de cada coluna */}
+                  {((selectedBlock.render_data as any)?.columns as any[])?.map((col: any, ci: number) => (
+                    <div key={ci} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-semibold text-text2">Coluna {ci + 1}</span>
+                        <span className="text-[9px] text-text3">{(col.blocks?.length ?? 0)} itens</span>
+                      </div>
+
+                      {/* Lista dos sub-blocos */}
+                      {(col.blocks ?? []).length > 0 && (
+                        <div className="space-y-0.5">
+                          {(col.blocks as any[]).map((sb: any, si: number) => {
+                            const cfg = getBlockConfig(sb.block_type)
+                            return (
+                              <div key={si} className="flex items-center justify-between px-2 py-1 bg-bg2 rounded text-[10px]">
+                                <span className="font-medium text-text truncate flex-1">{sb.title || cfg.label}</span>
+                                <button
+                                  className="text-text3 hover:text-vermelho transition-colors ml-1 shrink-0"
+                                  onClick={() => {
+                                    const cols = [...((selectedBlock.render_data as any)?.columns ?? [])]
+                                    const newBlocks = [...(cols[ci]?.blocks ?? [])]
+                                    newBlocks.splice(si, 1)
+                                    cols[ci] = { ...cols[ci], blocks: newBlocks }
+                                    updateSelectedRenderData('columns', cols)
+                                  }}
+                                >
+                                  <Trash size={11} />
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Adicionar sub-bloco */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline" className="w-full justify-center gap-1 text-[10px] h-7 border-azul/30 text-azul hover:bg-azul/10">
+                            <Plus size={12} /> Adicionar na coluna {ci + 1}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-44">
+                          {['text', 'tip', 'exercise', 'chord_diagram', 'chord_grid', 'notation', 'keyboard', 'image'].map(subType => {
+                            const cfg = getBlockConfig(subType)
+                            const Icon = cfg.icon
+                            return (
+                              <DropdownMenuItem
+                                key={subType}
+                                className="gap-2 text-[11px]"
+                                onClick={() => {
+                                  const cols = [...((selectedBlock.render_data as any)?.columns ?? [])]
+                                  const newBlock = {
+                                    block_type: subType,
+                                    title: subType === 'text' ? 'Texto' : subType === 'tip' ? 'Dica' : subType === 'exercise' ? 'Exercício' : null,
+                                    content: { text: '' },
+                                    render_data: subType === 'chord_grid' ? { chords: [], columns: 2 } : null,
+                                  }
+                                  const newBlocks = [...(cols[ci]?.blocks ?? []), newBlock]
+                                  cols[ci] = { ...cols[ci], blocks: newBlocks }
+                                  updateSelectedRenderData('columns', cols)
+                                }}
+                              >
+                                <Icon size={14} style={{ color: cfg.color }} />
+                                {cfg.label}
+                              </DropdownMenuItem>
+                            )
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1439,8 +2550,58 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
         onSave={handleNotationEditorSave}
       />
 
+      {/* Dialog — Gerar bloco com IA */}
+      <Dialog open={aiBlockDialogOpen} onOpenChange={setAiBlockDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[20px] flex items-center gap-2">
+              <Sparkle size={20} weight="fill" className="text-accent" />
+              Gerar bloco com <span className="text-accent">IA</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className="text-[11px] text-text3 block mb-1">Descreva o bloco que deseja gerar</label>
+              <Textarea
+                value={aiBlockPrompt}
+                onChange={e => setAiBlockPrompt(e.target.value)}
+                placeholder="Ex: Exercício de escala pentatônica menor no violão, com tablatura e dica de dedilhado"
+                className="min-h-[100px] text-[13px]"
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault()
+                    handleGenerateAIBlock()
+                  }
+                }}
+              />
+              <span className="text-[9px] text-text3/60 mt-0.5 block">
+                Ctrl+Enter para gerar · A IA criará um bloco de texto, dica ou exercício
+              </span>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setAiBlockDialogOpen(false)} disabled={aiBlockLoading}>
+              Cancelar
+            </Button>
+            <Button onClick={handleGenerateAIBlock} disabled={aiBlockLoading || !aiBlockPrompt.trim()} className="gap-2">
+              {aiBlockLoading ? (
+                <>
+                  <SpinnerGap size={14} className="animate-spin" />
+                  Gerando...
+                </>
+              ) : (
+                <>
+                  <Sparkle size={14} weight="fill" />
+                  Gerar bloco
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ChordEditor — edição de diagrama de acorde (wrapper Dialog) */}
-      <Dialog open={chordEditorOpen} onOpenChange={(v) => { setChordEditorOpen(v); if (!v) setChordEditorBlockId(null) }}>
+      <Dialog open={chordEditorOpen} onOpenChange={(v) => { setChordEditorOpen(v); if (!v) { setChordEditorBlockId(null); setChordGridTargetBlockId(null) } }}>
         <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="font-serif text-[22px]">
@@ -1483,12 +2644,49 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
 
           <DialogFooter className="mt-4">
             <Button variant="ghost" onClick={() => setChordEditorOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveChordToBlock}>
-              <FloppyDisk size={16} /> Salvar Acorde
+            <Button onClick={() => {
+              if (chordGridTargetBlockId) {
+                handleChordGridSave()
+                setChordEditorOpen(false)
+              } else {
+                handleSaveChordToBlock()
+              }
+            }}>
+              <FloppyDisk size={16} /> {chordGridTargetBlockId ? 'Adicionar à Grade' : 'Salvar Acorde'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* KeyboardEditor — edição de teclado/piano */}
+      <KeyboardEditor
+        open={keyboardEditorOpen}
+        onOpenChange={(v) => { setKeyboardEditorOpen(v); if (!v) { setKeyboardEditorBlockId(null); setKeyboardGridTargetBlockId(null) } }}
+        chord={keyboardEditorBlockId ? (() => {
+          const block = blocks.find(b => b.id === keyboardEditorBlockId)
+          if (!block?.render_data?.keys) return null
+          const rd = block.render_data as any
+          return {
+            id: block.id,
+            name: rd.chord_name ?? block.title ?? '',
+            instrument: 'piano' as const,
+            positions: {
+              keys: rd.keys ?? [],
+              root: rd.root ?? 'C',
+              octave: rd.octave ?? 4,
+              fingering_rh: rd.fingering_rh ?? [],
+              fingering_lh: rd.fingering_lh ?? [],
+              type: rd.type ?? 'major',
+              quality: rd.quality ?? 'Maior',
+              octave_start: rd.octave_start ?? 3,
+              octave_count: rd.octave_count ?? 2,
+            },
+            difficulty: 1,
+            tags: [],
+          }
+        })() : null}
+        onSave={handleKeyboardEditorSave}
+      />
     </div>
   )
 }

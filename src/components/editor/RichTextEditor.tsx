@@ -9,13 +9,14 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   TextB, TextItalic, TextUnderline, TextStrikethrough,
   TextHOne, TextHTwo, TextHThree,
   ListBullets, ListNumbers, TextAlignLeft, TextAlignCenter,
   TextAlignRight, Quotes, Minus, LinkSimple, HighlighterCircle,
   Eraser, ArrowCounterClockwise, ArrowClockwise, Palette,
+  Sparkle, SpinnerGap,
 } from '@phosphor-icons/react'
 
 // ─── Cores rápidas ────────────────────────────────────────────────
@@ -51,6 +52,16 @@ const FONT_FAMILIES = [
 ]
 
 // ─── Props ────────────────────────────────────────────────────────
+export type AIActionType = 'rewrite' | 'simplify' | 'expand' | 'correct' | 'translate'
+
+const AI_ACTIONS: { type: AIActionType; label: string; emoji: string }[] = [
+  { type: 'rewrite', label: 'Reescrever', emoji: '✏️' },
+  { type: 'simplify', label: 'Simplificar', emoji: '🎯' },
+  { type: 'expand', label: 'Expandir', emoji: '📝' },
+  { type: 'correct', label: 'Corrigir ortografia', emoji: '✅' },
+  { type: 'translate', label: 'Traduzir (EN↔PT)', emoji: '🌐' },
+]
+
 interface RichTextEditorProps {
   content: string
   onChange: (html: string) => void
@@ -65,6 +76,8 @@ interface RichTextEditorProps {
   className?: string
   /** Desabilitar edição */
   disabled?: boolean
+  /** Callback para ações de IA — recebe (textoSelecionado, ação) e retorna texto transformado */
+  onAIAction?: (selectedText: string, action: AIActionType) => Promise<string | null>
 }
 
 // ─── Botão da toolbar ─────────────────────────────────────────────
@@ -97,9 +110,11 @@ function ToolbarSep() {
 // ─── Componente principal ─────────────────────────────────────────
 export function RichTextEditor({
   content, onChange, placeholder = 'Digite o conteúdo...', compact = false, inline = false,
-  variant = 'full', className = '', disabled = false,
+  variant = 'full', className = '', disabled = false, onAIAction,
 }: RichTextEditorProps) {
   const isInternalUpdate = useRef(false)
+  const [aiMenuOpen, setAiMenuOpen] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
 
   const editor = useEditor({
     extensions: [
@@ -156,6 +171,24 @@ export function RichTextEditor({
     }
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
   }, [editor])
+
+  const handleAIAction = useCallback(async (action: AIActionType) => {
+    if (!editor || !onAIAction) return
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, ' ')
+    if (!selectedText.trim()) return
+
+    setAiLoading(true)
+    setAiMenuOpen(false)
+    try {
+      const result = await onAIAction(selectedText, action)
+      if (result) {
+        editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, result).run()
+      }
+    } finally {
+      setAiLoading(false)
+    }
+  }, [editor, onAIAction])
 
   const setColor = useCallback((color: string) => {
     if (!editor) return
@@ -303,6 +336,41 @@ export function RichTextEditor({
               style={{ background: c.value }}
             />
           ))}
+          {onAIAction && (
+            <>
+              <ToolbarSep />
+              <div className="relative">
+                <button
+                  type="button"
+                  title="IA"
+                  disabled={aiLoading}
+                  onClick={() => setAiMenuOpen(v => !v)}
+                  className={`
+                    flex items-center gap-1 px-1.5 h-7 rounded-md text-[11px] font-medium transition-colors
+                    ${aiLoading ? 'text-accent animate-pulse' : aiMenuOpen ? 'bg-accent/20 text-accent' : 'text-accent hover:bg-accent/10'}
+                  `}
+                >
+                  {aiLoading ? <SpinnerGap size={13} className="animate-spin" /> : <Sparkle size={13} weight="fill" />}
+                  IA
+                </button>
+                {aiMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-xl p-1 z-50 min-w-[160px]">
+                    {AI_ACTIONS.map(a => (
+                      <button
+                        key={a.type}
+                        type="button"
+                        onClick={() => handleAIAction(a.type)}
+                        className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-md hover:bg-accent/10 transition-colors flex items-center gap-2"
+                      >
+                        <span>{a.emoji}</span>
+                        <span>{a.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </BubbleMenu>
       <EditorContent

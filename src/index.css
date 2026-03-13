@@ -334,7 +334,110 @@
 
 .prop-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;font-weight:600}
 
+/* Página de capa — sem padding, sem margens, bloco ocupa 100% */
+.a4-page--cover .a4-page-content{padding:0;flex:1;display:flex;flex-direction:column}
+.a4-page--cover .canvas-block{padding:0;margin:0;border:none;border-radius:0;flex:1;display:flex;flex-direction:column}
+.a4-page--cover .canvas-block:hover{border-color:transparent;background:transparent}
+.a4-page--cover .canvas-block.selected{border:none;box-shadow:none;background:transparent}
+.a4-page--cover{border-radius:0!important;box-shadow:none!important;border:none!important;background:transparent!important;overflow:hidden;outline:none!important}
+.a4-page.a4-page--cover{box-shadow:none!important;background:transparent!important}
+
+/* ─── Bloco Capa (cover) ─────────────────────────────────── */
+.block-cover{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;min-height:1123px;text-align:center;position:relative;overflow:hidden;padding:60px 40px;box-sizing:border-box;background-size:cover;background-position:center;background-repeat:no-repeat}
+.block-cover .cover-overlay{position:absolute;inset:0;z-index:0;background:rgba(0,0,0,.45)}
+.block-cover--with-image .cover-overlay{display:none}
+/* Quando tem imagem de fundo IA — força cover, anula template backgrounds/borders */
+.block-cover--with-image{background-color:transparent!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;padding:0!important;color:#fff!important;border:none!important;margin:0!important;width:100%!important;height:100%!important;min-height:1123px!important}
+.block-cover .cover-content{z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:90%;max-width:90%;pointer-events:none}
+.block-cover .cover-instrument{font-family:'DM Sans',sans-serif;font-size:13px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;font-weight:600}
+.block-cover .cover-title{font-family:'DM Sans',sans-serif;font-size:36px;font-weight:700;line-height:1.2;margin:0 0 16px;width:100%;box-sizing:border-box}
+.block-cover .cover-subtitle{font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.5;max-width:480px;margin:0 auto 0;opacity:.8}
+.block-cover .cover-footer{z-index:1;font-family:'DM Sans',sans-serif;font-size:12px;opacity:.7;display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none}
+/* Draggable no modo editor */
+.block-cover .cover-draggable{pointer-events:auto;cursor:move;border-radius:8px;padding:12px 20px;transition:outline .15s,box-shadow .15s}
+.block-cover .cover-draggable:hover{outline:2px dashed rgba(255,45,120,.6);box-shadow:0 0 0 4px rgba(255,45,120,.12)}
+.block-cover .cover-professor{font-weight:600}
+.block-cover .cover-decoration{position:absolute;pointer-events:none;z-index:0}
+
+/* --- Minimal --- */
+.block-cover--minimal{background:#fff;color:#1E293B}
+.block-cover--minimal .cover-instrument{color:var(--accent)}
+.block-cover--minimal .cover-title{border-bottom:2px solid var(--accent);padding-bottom:16px;display:inline-block}
+
+/* --- Colorful --- */
+.block-cover--colorful{background:linear-gradient(135deg,#FF2D78 0%,#7C3AED 50%,#2563EB 100%);color:#fff}
+.block-cover--colorful .cover-instrument{color:rgba(255,255,255,.8);letter-spacing:5px}
+.block-cover--colorful .cover-decoration{top:-30px;right:-30px;opacity:.08}
+
+/* --- Classic --- */
+.block-cover--classic{background:#1E293B;color:#F8FAFC;border:3px double #475569;margin:8px}
+.block-cover--classic .cover-instrument{color:var(--dourado);letter-spacing:4px}
+.block-cover--classic .cover-title{font-size:32px;border-top:1px solid #475569;border-bottom:1px solid #475569;padding:16px 0}
+
+/* --- Modern --- */
+.block-cover--modern{background:#F8FAFC;color:#0F172A}
+.block-cover--modern .cover-instrument{color:var(--accent);font-size:11px;letter-spacing:6px}
+.block-cover--modern .cover-title{font-family:'DM Sans',sans-serif;font-weight:800;font-size:42px;letter-spacing:-1px}
+.block-cover--modern .cover-subtitle{font-size:14px}
+
+/* --- Geometric --- formas geométricas com cores vibrantes */
+.block-cover--geometric{background:#0F172A;color:#F8FAFC}
+.block-cover--geometric .cover-instrument{color:#38BDF8;letter-spacing:5px}
+.block-cover--geometric .cover-title{font-family:'DM Sans',sans-serif;font-weight:800;font-size:44px;letter-spacing:-1px;text-transform:uppercase}
+.block-cover--geometric .cover-subtitle{color:rgba(255,255,255,.6)}
+.block-cover--geometric .cover-deco-1{position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:linear-gradient(135deg,#3B82F6,#8B5CF6);opacity:.25}
+.block-cover--geometric .cover-deco-2{position:absolute;bottom:-60px;left:-30px;width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,#06B6D4,#3B82F6);opacity:.15}
+.block-cover--geometric .cover-deco-3{position:absolute;top:30%;right:10%;width:60px;height:60px;background:#F472B6;opacity:.2;transform:rotate(45deg)}
+
+/* --- Gradient --- gradiente suave e elegante */
+.block-cover--gradient{background:linear-gradient(160deg,#1E1B4B 0%,#312E81 30%,#4338CA 60%,#6366F1 100%);color:#fff}
+.block-cover--gradient .cover-instrument{color:#A5B4FC;letter-spacing:4px}
+.block-cover--gradient .cover-title{font-size:38px;text-shadow:0 2px 20px rgba(0,0,0,.3)}
+.block-cover--gradient .cover-subtitle{color:rgba(255,255,255,.7)}
+.block-cover--gradient .cover-footer{color:rgba(255,255,255,.5)}
+
+/* --- Musical --- tema musical com elementos visuais */
+.block-cover--musical{background:#FFF7ED;color:#1C1917}
+.block-cover--musical .cover-instrument{color:#EA580C;letter-spacing:4px;font-weight:700}
+.block-cover--musical .cover-title{font-size:40px;color:#1C1917}
+.block-cover--musical .cover-subtitle{color:#78716C}
+.block-cover--musical .cover-deco-1{position:absolute;top:20px;left:20px;width:100%;height:100%;opacity:.04;font-size:300px;display:flex;align-items:center;justify-content:center}
+
+/* --- Bold --- tipografia grande e impactante */
+.block-cover--bold{background:#18181B;color:#FAFAFA}
+.block-cover--bold .cover-instrument{color:#FACC15;letter-spacing:6px;font-size:11px}
+.block-cover--bold .cover-title{font-family:'DM Sans',sans-serif;font-weight:900;font-size:52px;letter-spacing:-2px;line-height:1;text-transform:uppercase}
+.block-cover--bold .cover-subtitle{font-size:14px;color:rgba(250,250,250,.5);text-transform:uppercase;letter-spacing:2px}
+.block-cover--bold .cover-deco-1{position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#FACC15,#F97316,#EF4444);z-index:1}
+
+/* --- Elegant --- sofisticado com tipografia serif */
+.block-cover--elegant{background:#FFFBEB;color:#1C1917;border:1px solid #D6D3D1;margin:16px}
+.block-cover--elegant .cover-instrument{color:#92400E;letter-spacing:5px;font-size:11px}
+.block-cover--elegant .cover-title{font-family:'Playfair Display',serif;font-size:34px;font-style:italic;font-weight:600}
+.block-cover--elegant .cover-subtitle{font-family:'Playfair Display',serif;font-size:15px;font-style:italic;color:#78716C}
+.block-cover--elegant .cover-deco-1{position:absolute;top:24px;left:24px;right:24px;bottom:24px;border:1px solid #D6D3D1;border-radius:0;pointer-events:none}
+
+/* --- Vibrant --- cores vivas, estilo festival de música */
+.block-cover--vibrant{background:linear-gradient(135deg,#FDE047 0%,#FB923C 50%,#F43F5E 100%);color:#1C1917}
+.block-cover--vibrant .cover-instrument{color:rgba(0,0,0,.6);letter-spacing:3px;font-weight:700}
+.block-cover--vibrant .cover-title{font-family:'DM Sans',sans-serif;font-weight:900;font-size:46px;text-transform:uppercase;letter-spacing:-1px}
+.block-cover--vibrant .cover-subtitle{color:rgba(0,0,0,.5)}
+.block-cover--vibrant .cover-deco-1{position:absolute;top:-50px;right:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.15)}
+.block-cover--vibrant .cover-deco-2{position:absolute;bottom:-30px;left:-30px;width:150px;height:150px;border-radius:50%;background:rgba(0,0,0,.08)}
+
+/* --- Com imagem de fundo (IA) --- */
+.block-cover--with-image .cover-overlay{background:rgba(0,0,0,.45)}
+.block-cover--with-image .cover-title{text-shadow:0 2px 12px rgba(0,0,0,.5)}
+.block-cover--with-image .cover-instrument{text-shadow:0 1px 8px rgba(0,0,0,.4)}
+.block-cover--with-image .cover-subtitle{text-shadow:0 1px 6px rgba(0,0,0,.3)}
+.block-cover--with-image .cover-footer{text-shadow:0 1px 4px rgba(0,0,0,.3);opacity:.9}
+
 /* PRINT — exportação PDF/impressão do editor */
+/* ─── Bloco Colunas ──────────────────────────────────────────────── */
+.block-columns{display:grid;gap:16px;align-items:start}
+.block-column{min-width:0}
+.block-column>*:last-child{margin-bottom:0}
+
 @media print {
   .editor-sidebar,.editor-properties,.editor-header,nav,aside,header,[class*="Sidebar"] { display:none !important }
   .editor-layout { display:block !important; margin:0 !important }

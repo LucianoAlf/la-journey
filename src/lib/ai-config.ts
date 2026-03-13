@@ -25,12 +25,12 @@ export const AI_CONFIG = {
   },
   imageFast: {
     provider: 'google' as const,
-    model: 'imagen-4.0-fast-generate-001',
+    model: 'gemini-2.5-flash-image',
     apiKey: import.meta.env.VITE_GOOGLE_AI_KEY as string,
   },
   imagePremium: {
     provider: 'google' as const,
-    model: 'gemini-2.0-flash-preview-image-generation',
+    model: 'gemini-2.5-flash-image',
     apiKey: import.meta.env.VITE_GOOGLE_AI_KEY as string,
   },
   embeddings: {

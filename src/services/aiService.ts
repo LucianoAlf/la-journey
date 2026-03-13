@@ -213,10 +213,8 @@ export async function generateImage(
   const config = premium ? AI_CONFIG.imagePremium : AI_CONFIG.imageFast
   const start = performance.now()
 
-  if (premium) {
-    return generateImageGemini(prompt, config, start)
-  }
-  return generateImageImagen(prompt, config, start)
+  // Todos os modelos Nano Banana usam a API generateContent do Gemini
+  return generateImageGemini(prompt, config, start)
 }
 
 async function generateImageImagen(
@@ -263,8 +261,8 @@ async function generateImageGemini(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `Gere uma imagem: ${prompt}` }] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['Text', 'Image'] },
       }),
     },
   )
@@ -278,7 +276,11 @@ async function generateImageGemini(
   const parts = data.candidates?.[0]?.content?.parts ?? []
   const imagePart = parts.find((p: any) => p.inlineData)
 
-  if (!imagePart) throw new Error('Gemini não retornou imagem')
+  if (!imagePart) {
+    const textPart = parts.find((p: any) => p.text)
+    const detail = textPart?.text?.slice(0, 200) || 'Sem detalhes'
+    throw new Error(`Gemini não retornou imagem. Resposta: ${detail}`)
+  }
 
   return {
     imageBase64: imagePart.inlineData.data,
