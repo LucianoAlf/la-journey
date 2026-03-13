@@ -802,11 +802,15 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                       <RichTextEditor
                         key={`inline-${block.id}`}
                         content={ensureHtml((block.content as any)?.html ?? (block.content as any)?.text ?? '')}
-                        onChange={(html) => updateSelectedField('content', {
-                          ...(block.content ?? {}),
-                          html,
-                          text: htmlToMarkdown(html),
-                        })}
+                        onChange={(html) => {
+                          setBlocks(prev => prev.map(b => {
+                            if (b.id !== block.id) return b
+                            return {
+                              ...b,
+                              content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
+                            }
+                          }))
+                        }}
                         placeholder="Clique para editar..."
                         inline
                       />
@@ -865,12 +869,29 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
               {/* Título */}
               <div className="prop-section">
                 <div className="prop-label">Título</div>
-                <Input
-                  value={selectedBlock.title ?? ''}
-                  onChange={e => updateSelectedField('title', e.target.value)}
-                  placeholder="Título do bloco"
-                  className="text-[12px] h-8"
-                />
+                <div className="title-editor-compact">
+                  <RichTextEditor
+                    key={`title-${selectedBlock.id}`}
+                    content={
+                      (selectedBlock.content as any)?.title_html
+                      ?? `<p>${selectedBlock.title ?? ''}</p>`
+                    }
+                    onChange={(html) => {
+                      const plainText = html.replace(/<[^>]+>/g, '').trim()
+                      setBlocks(prev => prev.map(b => {
+                        if (b.id !== selectedBlockId) return b
+                        return {
+                          ...b,
+                          title: plainText,
+                          content: { ...(b.content ?? {}), title_html: html },
+                        }
+                      }))
+                    }}
+                    placeholder="Título do bloco"
+                    variant="title"
+                    className="[&_.tiptap]:font-bold [&_.tiptap_p]:mb-0 [&_.tiptap_h1]:mb-0 [&_.tiptap_h2]:mb-0 [&_.tiptap_h3]:mb-0"
+                  />
+                </div>
               </div>
 
               {/* Conteúdo (para text/tip/exercise) */}
@@ -880,11 +901,15 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                   <RichTextEditor
                     key={selectedBlock.id}
                     content={ensureHtml((selectedBlock.content as any)?.html ?? (selectedBlock.content as any)?.text ?? '')}
-                    onChange={(html) => updateSelectedField('content', {
-                      ...(selectedBlock.content ?? {}),
-                      html,
-                      text: htmlToMarkdown(html),
-                    })}
+                    onChange={(html) => {
+                      setBlocks(prev => prev.map(b => {
+                        if (b.id !== selectedBlockId) return b
+                        return {
+                          ...b,
+                          content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
+                        }
+                      }))
+                    }}
                     placeholder="Conteúdo do bloco"
                     compact
                   />

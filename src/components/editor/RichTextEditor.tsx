@@ -21,6 +21,7 @@ import {
 // ─── Cores rápidas ────────────────────────────────────────────────
 const QUICK_COLORS = [
   { label: 'Padrão', value: '' },
+  { label: 'Preto', value: '#000000' },
   { label: 'Vermelho', value: '#dc2626' },
   { label: 'Laranja', value: '#ea580c' },
   { label: 'Dourado', value: '#ca8a04' },
@@ -29,6 +30,24 @@ const QUICK_COLORS = [
   { label: 'Roxo', value: '#7c3aed' },
   { label: 'Rosa', value: '#db2777' },
   { label: 'Cinza', value: '#6b7280' },
+  { label: 'Branco', value: '#ffffff' },
+]
+
+// ─── Fontes disponíveis ──────────────────────────────────────────
+const FONT_FAMILIES = [
+  { label: 'DM Sans (padrão)', value: '' },
+  { label: 'Playfair Display', value: 'Playfair Display' },
+  { label: 'Roboto', value: 'Roboto' },
+  { label: 'Open Sans', value: 'Open Sans' },
+  { label: 'Lato', value: 'Lato' },
+  { label: 'Montserrat', value: 'Montserrat' },
+  { label: 'Poppins', value: 'Poppins' },
+  { label: 'Inter', value: 'Inter' },
+  { label: 'Merriweather', value: 'Merriweather' },
+  { label: 'Lora', value: 'Lora' },
+  { label: 'Raleway', value: 'Raleway' },
+  { label: 'Nunito', value: 'Nunito' },
+  { label: 'DM Mono', value: 'DM Mono' },
 ]
 
 // ─── Props ────────────────────────────────────────────────────────
@@ -38,8 +57,10 @@ interface RichTextEditorProps {
   placeholder?: string
   /** Modo compacto para o painel lateral (toolbar menor) */
   compact?: boolean
-  /** Modo inline para o canvas (sem bordas, fundo transparente) */
+  /** Modo inline para o canvas (sem bordas, fundo transparente, BubbleMenu only) */
   inline?: boolean
+  /** Variante de toolbar: 'full' (padrão), 'title' (H1-H3 + B/I/U + alinhamento) */
+  variant?: 'full' | 'title'
   /** Classe CSS adicional */
   className?: string
   /** Desabilitar edição */
@@ -76,7 +97,7 @@ function ToolbarSep() {
 // ─── Componente principal ─────────────────────────────────────────
 export function RichTextEditor({
   content, onChange, placeholder = 'Digite o conteúdo...', compact = false, inline = false,
-  className = '', disabled = false,
+  variant = 'full', className = '', disabled = false,
 }: RichTextEditorProps) {
   const isInternalUpdate = useRef(false)
 
@@ -145,14 +166,66 @@ export function RichTextEditor({
     }
   }, [editor])
 
+  const setFont = useCallback((font: string) => {
+    if (!editor) return
+    if (!font) {
+      editor.chain().focus().unsetFontFamily().run()
+    } else {
+      editor.chain().focus().setFontFamily(font).run()
+    }
+  }, [editor])
+
+  /** Detecta a fonte ativa no cursor */
+  const currentFont = editor?.getAttributes('textStyle')?.fontFamily ?? ''
+
   if (!editor) return null
 
-  // ─── Toolbar ────────────────────────────────────────────────────
+  // ─── Seletor de fonte (reutilizado nas toolbars) ─────────────────
+  const fontSelect = (
+    <select
+      value={currentFont}
+      onChange={(e) => setFont(e.target.value)}
+      title="Fonte"
+      className="h-7 px-1.5 text-[11px] bg-bg2 border border-border rounded-md text-text2 cursor-pointer outline-none hover:border-accent/50 transition-colors max-w-[130px]"
+      style={{ fontFamily: currentFont || 'var(--font-sans)' }}
+    >
+      {FONT_FAMILIES.map(f => (
+        <option key={f.value || '_default'} value={f.value} style={{ fontFamily: f.value || 'var(--font-sans)' }}>
+          {f.label}
+        </option>
+      ))}
+    </select>
+  )
+
+  // ─── Toolbar do título (compacta: H1-H3 + B/I/U + alinhamento + fonte) ─
+  const titleToolbar = (
+    <div className="flex items-center gap-0.5 flex-wrap p-1.5 border-b border-border bg-surface/80">
+      {fontSelect}
+      <ToolbarSep />
+      <ToolbarBtn icon={TextHOne} label="Título 1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
+      <ToolbarBtn icon={TextHTwo} label="Título 2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
+      <ToolbarBtn icon={TextHThree} label="Título 3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
+      <ToolbarSep />
+      <ToolbarBtn icon={TextB} label="Negrito (Ctrl+B)" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
+      <ToolbarBtn icon={TextItalic} label="Itálico (Ctrl+I)" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+      <ToolbarBtn icon={TextUnderline} label="Sublinhado (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
+      <ToolbarSep />
+      <ToolbarBtn icon={TextAlignLeft} label="Alinhar esquerda" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()} />
+      <ToolbarBtn icon={TextAlignCenter} label="Centralizar" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()} />
+      <ToolbarBtn icon={TextAlignRight} label="Alinhar direita" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()} />
+    </div>
+  )
+
+  // ─── Toolbar completa ─────────────────────────────────────────
   const toolbar = (
     <div className={`flex items-center gap-0.5 flex-wrap ${compact ? 'p-1.5' : 'p-2'} border-b border-border bg-surface/80`}>
       {/* Undo / Redo */}
       <ToolbarBtn icon={ArrowCounterClockwise} label="Desfazer" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} />
       <ToolbarBtn icon={ArrowClockwise} label="Refazer" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} />
+      <ToolbarSep />
+
+      {/* Fonte */}
+      {fontSelect}
       <ToolbarSep />
 
       {/* Formatação de texto */}
@@ -163,14 +236,10 @@ export function RichTextEditor({
       <ToolbarSep />
 
       {/* Headings */}
-      {!compact && (
-        <>
-          <ToolbarBtn icon={TextHOne} label="Título 1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
-          <ToolbarBtn icon={TextHTwo} label="Título 2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
-          <ToolbarBtn icon={TextHThree} label="Título 3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
-          <ToolbarSep />
-        </>
-      )}
+      <ToolbarBtn icon={TextHOne} label="Título 1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
+      <ToolbarBtn icon={TextHTwo} label="Título 2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
+      <ToolbarBtn icon={TextHThree} label="Título 3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
+      <ToolbarSep />
 
       {/* Listas */}
       <ToolbarBtn icon={ListBullets} label="Lista" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
@@ -214,7 +283,7 @@ export function RichTextEditor({
 
   return (
     <div className={`rich-text-editor rounded-lg border border-border overflow-hidden ${inline ? 'border-transparent bg-transparent' : 'bg-card'} ${className}`}>
-      {!inline && toolbar}
+      {!inline && (variant === 'title' ? titleToolbar : toolbar)}
       <BubbleMenu editor={editor} options={{ placement: 'top', offset: 8 }}>
         <div className="flex items-center gap-0.5 p-1.5 bg-surface border border-border rounded-lg shadow-lg">
           <ToolbarBtn icon={TextB} label="Negrito" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
@@ -240,15 +309,15 @@ export function RichTextEditor({
         editor={editor}
         className={`
           prose prose-sm max-w-none
-          ${inline ? 'px-0 py-0' : compact ? 'px-3 py-2 min-h-[120px]' : 'px-4 py-3 min-h-[200px]'}
+          ${inline ? 'px-0 py-0' : variant === 'title' ? 'px-3 py-1.5' : compact ? 'px-3 py-2 min-h-[120px]' : 'px-4 py-3 min-h-[200px]'}
           text-[13px] leading-relaxed text-text2
           focus-within:outline-none
           [&_.tiptap]:outline-none
           [&_.tiptap_p]:mb-2
-          [&_.tiptap_h1]:font-serif [&_.tiptap_h1]:text-[22px] [&_.tiptap_h1]:font-bold [&_.tiptap_h1]:text-text [&_.tiptap_h1]:mb-3
-          [&_.tiptap_h2]:font-serif [&_.tiptap_h2]:text-[18px] [&_.tiptap_h2]:font-bold [&_.tiptap_h2]:text-text [&_.tiptap_h2]:mb-2
-          [&_.tiptap_h3]:font-serif [&_.tiptap_h3]:text-[15px] [&_.tiptap_h3]:font-bold [&_.tiptap_h3]:text-text [&_.tiptap_h3]:mb-2
-          [&_.tiptap_strong]:text-text [&_.tiptap_strong]:font-semibold
+          [&_.tiptap_h1]:text-[22px] [&_.tiptap_h1]:font-bold [&_.tiptap_h1]:text-text [&_.tiptap_h1]:mb-3
+          [&_.tiptap_h2]:text-[18px] [&_.tiptap_h2]:font-bold [&_.tiptap_h2]:text-text [&_.tiptap_h2]:mb-2
+          [&_.tiptap_h3]:text-[15px] [&_.tiptap_h3]:font-bold [&_.tiptap_h3]:text-text [&_.tiptap_h3]:mb-2
+          [&_.tiptap_strong]:text-text [&_.tiptap_strong]:font-extrabold
           [&_.tiptap_em]:text-text2
           [&_.tiptap_blockquote]:border-l-[3px] [&_.tiptap_blockquote]:border-accent/40 [&_.tiptap_blockquote]:pl-4 [&_.tiptap_blockquote]:italic [&_.tiptap_blockquote]:text-text3
           [&_.tiptap_ul]:list-disc [&_.tiptap_ul]:pl-6 [&_.tiptap_ul]:mb-2
