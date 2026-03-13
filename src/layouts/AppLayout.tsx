@@ -4,11 +4,17 @@ import { Sidebar } from '@/components/Sidebar'
 import { Modals } from '@/components/Modals'
 
 export function AppLayout() {
-  const [theme, setTheme] = useState('dark')
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('la-journey-theme') || 'light'
+    }
+    return 'light'
+  })
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('la-journey-theme', theme)
   }, [theme])
 
   const toggleTheme = () => {

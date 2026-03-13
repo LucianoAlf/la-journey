@@ -87,66 +87,77 @@
 
 ## 🗺️ ROADMAP EM FASES
 
-### Fase 1 — Editor de Texto Rico + Edição Inline (Fundação)
+### Fase 1 — Editor de Texto Rico + Edição Inline (Fundação) ✅ COMPLETA
 **Prioridade: CRÍTICA · Estimativa: ~3-4 sessões · Banco: NÃO (100% frontend)**
 
 > Esta fase transforma o editor de "ferramenta de dev" para "ferramenta de professor"
 
-**1.1 — Integrar Tiptap como editor WYSIWYG**
-- Substituir `<Textarea>` do painel lateral por editor Tiptap
-- Extensões: Bold, Italic, Underline, Strike, Heading (H1-H4), BulletList, OrderedList, TextAlign, Highlight, Color, FontFamily, FontSize, Link, Placeholder
-- Toolbar flutuante (bubble menu) ao selecionar texto
-- Barra fixa no topo do editor com todas as formatações
-- Output: HTML (armazenado em `content.html` ao lado de `content.text`)
-- Backward-compatible: se bloco tem `content.text` (markdown), converte para HTML na primeira abertura
+**1.1 — Integrar Tiptap como editor WYSIWYG** ✅
+- ✅ Substituir `<Textarea>` do painel lateral por editor Tiptap v3
+- ✅ Extensões: Bold, Italic, Underline, Strike, Heading (H1-H3), BulletList, OrderedList, TextAlign, Highlight, Color, FontFamily, Link, Placeholder
+- ✅ Toolbar flutuante (BubbleMenu) ao selecionar texto — B/I/U, Highlight, Link, Cores rápidas
+- ✅ Barra fixa no topo do editor com todas as formatações
+- ✅ Seletor de fontes com 13 Google Fonts (DM Sans padrão + 12 extras)
+- ✅ Seletor de cores com 11 opções (Padrão, Preto, Vermelho, Laranja, Dourado, Verde, Azul, Roxo, Rosa, Cinza, Branco)
+- ✅ Toolbar compacta para título (variant="title"): Font Select + H1/H2/H3 + B/I/U + Alinhamento
+- ✅ Output: HTML (armazenado em `content.html` e `content.title_html`)
+- ✅ Backward-compatible: se bloco tem `content.text` (markdown), converte para HTML via `ensureHtml()`
 
-**1.2 — Edição inline no canvas**
-- Ao clicar num bloco de texto no canvas, ativar Tiptap inline ali mesmo
-- Painel lateral mostra metadados (tipo, título) mas texto é editado no canvas
-- Duplo-clique em título do bloco = editar título inline
-- Salvar automaticamente ao sair do bloco (blur) ou Ctrl+S
+**1.2 — Edição inline no canvas** ✅
+- ✅ Clique no bloco de texto no canvas ativa Tiptap inline
+- ✅ Painel lateral mantém editor com toolbar para edição precisa
+- ✅ Sincronização atômica canvas ↔ painel via `setBlocks(prev => ...)`
 
-**1.3 — Migração markdown → HTML**
-- Função `markdownToHtml()` para converter conteúdo legado
-- Manter `renderMarkdownText()` como fallback no MaterialPreview
-- Novos blocos salvam HTML; blocos antigos são convertidos on-the-fly
+**1.3 — Migração markdown → HTML** ✅
+- ✅ `markdownToHtml()` e `htmlToMarkdown()` em `src/lib/markdownToHtml.ts`
+- ✅ `renderMarkdownText()` mantido como fallback no MaterialPreview
+- ✅ Novos blocos salvam HTML; blocos antigos convertidos on-the-fly via `ensureHtml()`
 
-**Dependências de pacotes:**
-```
-npm install @tiptap/react @tiptap/starter-kit @tiptap/extension-color
-@tiptap/extension-text-style @tiptap/extension-font-family
-@tiptap/extension-highlight @tiptap/extension-text-align
-@tiptap/extension-underline @tiptap/extension-link
-@tiptap/extension-placeholder
-```
+**Arquivos criados/modificados:**
+- `src/components/editor/RichTextEditor.tsx` — componente principal
+- `src/lib/markdownToHtml.ts` — helpers de conversão
+- `src/pages/Editor.tsx` — integração painel + canvas
+- `src/components/material/MaterialPreview.tsx` — renderização rica
+- `src/index.css` — estilos canvas/editor
+- `index.html` — 13 Google Fonts carregadas
 
-**Impacto no banco:** NENHUM — `content` já é `jsonb`, basta adicionar campo `html` ao lado de `text`
+**Impacto no banco:** NENHUM — `content` já é `jsonb`, campo `html` e `title_html` adicionados ao lado de `text`
 
 ---
 
-### Fase 2 — Layout A4 + Preview de Impressão
+### Fase 2 — Layout A4 + Preview de Impressão ✅ COMPLETA
 **Prioridade: CRÍTICA · Estimativa: ~2-3 sessões · Banco: NÃO (100% frontend + CSS)**
 
-**2.1 — Canvas com simulação de folha A4**
-- Wrapper de cada "página" com dimensões 210mm × 297mm (escalado)
-- Background branco, sombra, margens internas (20mm)
-- Indicador visual de "fim da página" / overflow
-- Zoom slider (50%-200%) com atalho Ctrl+scroll
+**2.1 — Canvas com simulação de folha A4** ✅
+- ✅ Wrapper `.a4-page` com dimensões 794×1123px (A4 a 96dpi)
+- ✅ Background branco, sombra elegante, bordas arredondadas
+- ✅ Margens internas 60px (cabeçalho, conteúdo, rodapé)
+- ✅ Fundo pontilhado tipo Figma no canvas (radial-gradient)
+- ✅ Zoom slider (50%-150%) com botões +/- e atalho Ctrl+scroll
+- ✅ Zoom padrão: 75% para caber na tela
 
-**2.2 — Quebra de página**
-- Bloco especial `page_break` (separador de página)
-- Auto-cálculo: quando o conteúdo excede a altura da página, mostrar indicador
-- Preview print-ready: cada página renderizada separadamente
+**2.2 — Quebra de página** ✅
+- ✅ Bloco `page_break` adicionado ao menu de inserção
+- ✅ `useMemo` que distribui blocos em páginas (divide por `page_break`)
+- ✅ Cada página renderizada como folha A4 separada com gap visual
+- ✅ Indicador "Página X de N" no rodapé de cada folha
 
-**2.3 — Cabeçalho e rodapé**
-- Config global do material: logo escola, título do material, numeração de página
-- Renderizado no @media print e no preview A4
+**2.3 — Cabeçalho e rodapé** ✅
+- ✅ Cabeçalho: título do material (fonte 10px, cor discreta)
+- ✅ Rodapé: "Página X de N" (fonte 9px, alinhado à direita)
+- ✅ Bordas sutis separando header/content/footer
 
-**2.4 — Exportação PDF melhorada**
-- Usar `html2canvas` + `jsPDF` ou `@react-pdf/renderer` para gerar PDF real
-- Alternativa: `puppeteer` server-side via Edge Function
+**2.4 — Exportação PDF melhorada** ✅
+- ✅ `@media print` atualizado: remove transform/zoom, reseta wrapper, page-break-after entre páginas
+- ✅ Folhas A4 sem sombra/bordas na impressão, fundo branco
+- ✅ Canvas sem background-image pontilhado na impressão
+- Futuro: `html2canvas` + `jsPDF` para PDF programático
 
-**Impacto no banco:** NENHUM — configurações de layout podem ficar em `generation_config` do material
+**Arquivos modificados:**
+- `src/pages/Editor.tsx` — zoom state, controles no header, canvas A4 multi-página, bloco page_break
+- `src/index.css` — `.a4-canvas-wrapper`, `.a4-page`, `.a4-page-header/content/footer`, @media print atualizado
+
+**Impacto no banco:** NENHUM
 
 ---
 

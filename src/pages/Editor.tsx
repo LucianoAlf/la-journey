@@ -7,6 +7,7 @@ import {
   TextHOne, LineSegment, Image as ImageIcon, Plus, Trash,
   SpinnerGap, DotsSixVertical, PencilSimple, ArrowCounterClockwise,
   Printer, Code, Eye, PencilLine, PianoKeys,
+  MagnifyingGlassPlus, MagnifyingGlassMinus,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +73,7 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType
   tablature:      { label: 'Tablatura', icon: ListNumbers,  bg: 'var(--foundation-soft)',  color: 'var(--foundation)' },
   title:          { label: 'Título',    icon: TextHOne,     bg: 'var(--foundation-soft)',  color: 'var(--foundation)' },
   separator:      { label: 'Separador', icon: LineSegment,  bg: 'var(--border)',           color: 'var(--text3)' },
+  page_break:     { label: 'Quebra de Página', icon: LineSegment, bg: 'var(--border)',      color: 'var(--text3)' },
   image:          { label: 'Imagem',    icon: ImageIcon,    bg: 'var(--accent-soft)',      color: 'var(--accent)' },
   badge:          { label: 'Conquista', icon: PencilCircle, bg: 'var(--verde-soft)',       color: 'var(--verde)' },
 }
@@ -285,6 +287,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   // Edição inline no canvas
   const [inlineEditingBlockId, setInlineEditingBlockId] = useState<string | null>(null)
 
+  // Zoom do canvas A4
+  const [zoom, setZoom] = useState(0.75)
+  const canvasScrollRef = useRef<HTMLDivElement>(null)
+
   // Estados dos editores visuais integrados
   const [notationEditorOpen, setNotationEditorOpen] = useState(false)
   const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
@@ -311,6 +317,19 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     () => blocks.find(b => b.id === selectedBlockId) ?? null,
     [blocks, selectedBlockId],
   )
+
+  /** Distribui blocos em páginas A4 — page_break força nova página */
+  const pages = useMemo(() => {
+    const result: EditorBlock[][] = [[]]
+    for (const block of blocks) {
+      if (block.block_type === 'page_break') {
+        result.push([])
+      } else {
+        result[result.length - 1].push(block)
+      }
+    }
+    return result
+  }, [blocks])
 
   // DnD
   const sensors = useSensors(
@@ -701,6 +720,35 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 mr-2 px-2 py-1 bg-bg2 rounded-md">
+            <Button
+              variant="ghost" size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))}
+              title="Diminuir zoom"
+            >
+              <MagnifyingGlassMinus size={14} />
+            </Button>
+            <input
+              type="range"
+              min={0.5} max={1.5} step={0.05}
+              value={zoom}
+              onChange={e => setZoom(+e.target.value)}
+              className="w-20 h-1 accent-accent cursor-pointer"
+              title={`Zoom: ${Math.round(zoom * 100)}%`}
+            />
+            <Button
+              variant="ghost" size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setZoom(z => Math.min(1.5, +(z + 0.1).toFixed(2)))}
+              title="Aumentar zoom"
+            >
+              <MagnifyingGlassPlus size={14} />
+            </Button>
+            <span className="text-[10px] text-text3 w-8 text-center font-mono">{Math.round(zoom * 100)}%</span>
+          </div>
+
           <Button variant="ghost" size="sm" onClick={handlePrint} title="Imprimir / PDF">
             <Printer size={16} />
           </Button>
@@ -742,7 +790,7 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {['text', 'tip', 'exercise', 'title', 'notation', 'chord_diagram', 'tablature', 'separator'].map(type => {
+              {['text', 'tip', 'exercise', 'title', 'notation', 'chord_diagram', 'tablature', 'separator', 'page_break'].map(type => {
                 const cfg = getBlockConfig(type)
                 const Icon = cfg.icon
                 return (
@@ -766,70 +814,107 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
           </div>
         </div>
 
-        {/* Coluna 2 — Canvas (Preview) */}
-        <div className="editor-canvas" onClick={() => { if (inlineEditingBlockId) setInlineEditingBlockId(null) }}>
-          <div style={{ maxWidth: '680px', margin: '0 auto' }}>
-            {blocks.map(block => {
-              const isTextBlock = ['text', 'tip', 'exercise', 'title'].includes(block.block_type)
-              const isInlineEditing = inlineEditingBlockId === block.id
+        {/* Coluna 2 — Canvas A4 (Preview) */}
+        <div
+          ref={canvasScrollRef}
+          className="editor-canvas"
+          onClick={() => { if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
+          onWheel={(e) => {
+            if (e.ctrlKey) {
+              e.preventDefault()
+              setZoom(z => Math.max(0.5, Math.min(1.5, +(z + (e.deltaY > 0 ? -0.05 : 0.05)).toFixed(2))))
+            }
+          }}
+        >
+          <div
+            className="a4-canvas-wrapper"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top center',
+            }}
+          >
+            {pages.map((pageBlocks, pageIdx) => (
+              <div key={pageIdx} className="a4-page">
+                {/* Cabeçalho */}
+                <div className="a4-page-header">
+                  <span className="text-[10px] text-[#94a3b8] font-medium tracking-wide">
+                    {materialTitle}
+                  </span>
+                </div>
 
-              return (
-                <div
-                  key={block.id}
-                  ref={el => { canvasRefs.current[block.id] = el }}
-                  className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''} ${isInlineEditing ? 'inline-editing' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    selectBlock(block.id)
-                  }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation()
-                    if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
-                    else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
-                    else if (isTextBlock && !isInlineEditing) setInlineEditingBlockId(block.id)
-                  }}
-                >
-                  {isInlineEditing && isTextBlock ? (
-                    <div onClick={e => e.stopPropagation()}>
-                      {block.title && (
-                        <Input
-                          value={block.title ?? ''}
-                          onChange={e => updateSelectedField('title', e.target.value)}
-                          className="font-bold text-[14px] text-text mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                          placeholder="Título do bloco"
-                        />
-                      )}
-                      <RichTextEditor
-                        key={`inline-${block.id}`}
-                        content={ensureHtml((block.content as any)?.html ?? (block.content as any)?.text ?? '')}
-                        onChange={(html) => {
-                          setBlocks(prev => prev.map(b => {
-                            if (b.id !== block.id) return b
-                            return {
-                              ...b,
-                              content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
-                            }
-                          }))
+                {/* Conteúdo dos blocos */}
+                <div className="a4-page-content">
+                  {pageBlocks.map(block => {
+                    const isTextBlock = ['text', 'tip', 'exercise', 'title'].includes(block.block_type)
+                    const isInlineEditing = inlineEditingBlockId === block.id
+
+                    return (
+                      <div
+                        key={block.id}
+                        ref={el => { canvasRefs.current[block.id] = el }}
+                        className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''} ${isInlineEditing ? 'inline-editing' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectBlock(block.id)
                         }}
-                        placeholder="Clique para editar..."
-                        inline
-                      />
-                      <div className="text-[10px] text-text3 mt-2 text-right opacity-60">
-                        Clique fora para sair da edição
+                        onDoubleClick={(e) => {
+                          e.stopPropagation()
+                          if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
+                          else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+                          else if (isTextBlock && !isInlineEditing) setInlineEditingBlockId(block.id)
+                        }}
+                      >
+                        {isInlineEditing && isTextBlock ? (
+                          <div onClick={e => e.stopPropagation()}>
+                            {block.title && (
+                              <Input
+                                value={block.title ?? ''}
+                                onChange={e => updateSelectedField('title', e.target.value)}
+                                className="font-bold text-[14px] text-text mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                                placeholder="Título do bloco"
+                              />
+                            )}
+                            <RichTextEditor
+                              key={`inline-${block.id}`}
+                              content={ensureHtml((block.content as any)?.html ?? (block.content as any)?.text ?? '')}
+                              onChange={(html) => {
+                                setBlocks(prev => prev.map(b => {
+                                  if (b.id !== block.id) return b
+                                  return {
+                                    ...b,
+                                    content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
+                                  }
+                                }))
+                              }}
+                              placeholder="Clique para editar..."
+                              inline
+                            />
+                            <div className="text-[10px] text-text3 mt-2 text-right opacity-60">
+                              Clique fora para sair da edição
+                            </div>
+                          </div>
+                        ) : (
+                          <MaterialPreview blocks={[editorBlockToPreview(block)]} />
+                        )}
                       </div>
+                    )
+                  })}
+
+                  {pageBlocks.length === 0 && pageIdx === 0 && (
+                    <div className="text-center py-16 text-[#94a3b8] text-sm">
+                      Material sem blocos. Adicione blocos usando o painel à esquerda.
                     </div>
-                  ) : (
-                    <MaterialPreview blocks={[editorBlockToPreview(block)]} />
                   )}
                 </div>
-              )
-            })}
 
-            {blocks.length === 0 && (
-              <div className="text-center py-16 text-text3 text-sm">
-                Material sem blocos. Adicione blocos usando o painel à esquerda.
+                {/* Rodapé */}
+                <div className="a4-page-footer">
+                  <span className="text-[9px] text-[#94a3b8]">
+                    Página {pageIdx + 1} de {pages.length}
+                  </span>
+                </div>
               </div>
-            )}
+            ))}
           </div>
         </div>
 
