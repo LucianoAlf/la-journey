@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { FloppyDisk, Trash, X, ArrowCounterClockwise } from '@phosphor-icons/react'
+import { FloppyDisk, Trash, X, ArrowCounterClockwise, PencilSimple, ArrowsOutCardinal, CaretUp, CaretDown } from '@phosphor-icons/react'
 import { NotationRenderer } from '@/components/music/NotationRenderer'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -51,15 +51,25 @@ interface PitchData {
   accidental: string | null
 }
 
+interface OffsetXY {
+  x: number
+  y: number
+}
+
 interface Beat {
   pitches: PitchData[]
   duration: string
   tie: boolean
   cifra: string | null
+  cifra_offset?: OffsetXY
+  annotation: string | null
+  annotation_offset?: OffsetXY
+  lyric: string | null
+  lyric_offset?: OffsetXY
 }
 
 type EditorMode = 'free' | 'metered'
-type InputMode = 'melodic' | 'chord' | 'tie' | 'cifra'
+type InputMode = 'melodic' | 'chord' | 'tie' | 'cifra' | 'annotation' | 'lyric'
 
 export interface NotationSaveData {
   name: string
@@ -116,6 +126,11 @@ function beatsToSaveFormat(beats: Beat[]) {
     accidentals: b.pitches.map(p => p.accidental),
     tie: b.tie || false,
     cifra: b.cifra || null,
+    ...(b.cifra_offset && (b.cifra_offset.x || b.cifra_offset.y) ? { cifra_offset: b.cifra_offset } : {}),
+    annotation: b.annotation || null,
+    ...(b.annotation_offset && (b.annotation_offset.x || b.annotation_offset.y) ? { annotation_offset: b.annotation_offset } : {}),
+    lyric: b.lyric || null,
+    ...(b.lyric_offset && (b.lyric_offset.x || b.lyric_offset.y) ? { lyric_offset: b.lyric_offset } : {}),
   }))
 }
 
@@ -135,6 +150,11 @@ function loadBeatsFromData(data: any): Beat[] {
         duration: dur,
         tie: b.tie ?? false,
         cifra: b.cifra ?? null,
+        ...(b.cifra_offset ? { cifra_offset: b.cifra_offset } : {}),
+        annotation: b.annotation ?? null,
+        ...(b.annotation_offset ? { annotation_offset: b.annotation_offset } : {}),
+        lyric: b.lyric ?? null,
+        ...(b.lyric_offset ? { lyric_offset: b.lyric_offset } : {}),
       }
     })
   } catch {
@@ -233,9 +253,40 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const [cifraTarget, setCifraTarget] = useState<number | null>(null)
   const [cifraInput, setCifraInput] = useState('')
 
+  // Annotation popup
+  const [annotPopupVisible, setAnnotPopupVisible] = useState(false)
+  const [annotPopupPos, setAnnotPopupPos] = useState({ x: 0, y: 0 })
+  const [annotTarget, setAnnotTarget] = useState<number | null>(null)
+  const [annotInput, setAnnotInput] = useState('')
+
+  // Lyric mode
+  const [lyricCursor, setLyricCursor] = useState(0)
+  const [lyricValue, setLyricValue] = useState('')
+  const lyricInputRef = useRef<HTMLInputElement>(null)
+
+  // Seleção de elemento (Fase 1 — interatividade)
+  const [selectedElement, setSelectedElement] = useState<{
+    type: 'note' | 'cifra' | 'annotation' | 'lyric'
+    beatIdx: number
+  } | null>(null)
+  const [hoverBeatIdx, setHoverBeatIdx] = useState<number | null>(null)
+
+  // Drag offsets para cifras/annotations/lyrics
+  const [dragging, setDragging] = useState<{
+    type: 'cifra' | 'annotation' | 'lyric'
+    beatIdx: number
+    startX: number
+    startY: number
+    origOffset: OffsetXY
+  } | null>(null)
+  const [dragPreview, setDragPreview] = useState<OffsetXY | null>(null)
+
   // Preview da última nota
   const [lastNote, setLastNote] = useState<string>('—')
   const [lastNoteInfo, setLastNoteInfo] = useState<string>('Clique na pauta')
+
+  // Posições X reais dos noteheads lidas do SVG (por linha)
+  const [notePositions, setNotePositions] = useState<number[][]>([])
 
   const scale = useMemo(() => getScaleForClef(selectedClef), [selectedClef])
 
@@ -287,7 +338,41 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setLastNote('—')
     setLastNoteInfo('Clique na pauta')
     setCifraPopupVisible(false)
+    setSelectedElement(null)
+    setHoverBeatIdx(null)
   }, [open, notation])
+
+  // Ler posições X reais dos noteheads do SVG após cada render
+  useEffect(() => {
+    // Delay para garantir que VexFlow já renderizou no DOM
+    const timer = requestAnimationFrame(() => {
+      const wrap = wrapRef.current
+      if (!wrap) return
+      const svgs = wrap.querySelectorAll('svg')
+      const positions: number[][] = []
+      svgs.forEach(svg => {
+        const svgRect = svg.getBoundingClientRect()
+        const noteheads = svg.querySelectorAll('.vf-notehead')
+        // Coletar todas as posições X
+        const rawX: number[] = []
+        noteheads.forEach(nh => {
+          const r = nh.getBoundingClientRect()
+          rawX.push(r.left - svgRect.left + r.width / 2)
+        })
+        // Agrupar noteheads de acordes (mesma posição X ±5px = mesmo beat)
+        const grouped: number[] = []
+        rawX.forEach(x => {
+          if (grouped.length === 0 || Math.abs(x - grouped[grouped.length - 1]) > 5) {
+            grouped.push(x)
+          }
+          // Se está perto do último, ignora (faz parte do mesmo acorde)
+        })
+        positions.push(grouped)
+      })
+      setNotePositions(positions)
+    })
+    return () => cancelAnimationFrame(timer)
+  }, [linedNotationData, beats])
 
   // Helper: encontrar qual SVG (linha) está sob o mouse e retornar Y local + índice da linha
   function getSvgInfo(clientY: number): { svgY: number; lineIndex: number } {
@@ -307,6 +392,35 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     return { svgY: VEXFLOW_STAFF_BOTTOM, lineIndex: lastIdx }
   }
 
+  // Helper: encontrar beat global mais próximo do clique
+  const getNearestBeat = useCallback((clientX: number, clientY: number): number | null => {
+    const wrap = wrapRef.current
+    if (!wrap || beats.length === 0) return null
+    const { lineIndex } = getSvgInfo(clientY)
+    const svgs = wrap.querySelectorAll('svg')
+    const svg = svgs[lineIndex]
+    if (!svg) return null
+    const svgRect = svg.getBoundingClientRect()
+    const clickX = clientX - svgRect.left
+    const lineBts = beatLines[lineIndex] || []
+    if (lineBts.length === 0) return null
+    const realPos = notePositions[lineIndex]
+    const total = lineBts.length
+    let bestDist = Infinity
+    let bestBi = 0
+    for (let bi = 0; bi < total; bi++) {
+      // Usa posição real se disponível, senão fallback
+      const nx = realPos && realPos[bi] !== undefined
+        ? realPos[bi]
+        : (total <= 1 ? 316.5 : 60 + 513 * bi / (total - 1))
+      const dist = Math.abs(clickX - nx)
+      if (dist < bestDist) { bestDist = dist; bestBi = bi }
+    }
+    // Só considera "perto" se o mouse está a menos de 25px da nota
+    if (bestDist > 25) return null
+    return lineIndex * notesPerLine + bestBi
+  }, [beats, beatLines, notesPerLine, notePositions])
+
   // Mouse move handler — overlay
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const wrap = wrapRef.current
@@ -316,7 +430,11 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setHoverPos(pos)
     const r = wrap.getBoundingClientRect()
     setHoverMouse({ x: e.clientX - r.left, y: e.clientY - r.top })
-  }, [scale])
+    // Detectar se está sobre uma nota existente (para cursor crosshair)
+    if (inputMode === 'melodic') {
+      setHoverBeatIdx(getNearestBeat(e.clientX, e.clientY))
+    }
+  }, [scale, inputMode, getNearestBeat])
 
   const handleMouseLeave = useCallback(() => {
     setHoverPos(null)
@@ -329,25 +447,46 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     if (!wrap) return
     const { svgY, lineIndex } = getSvgInfo(e.clientY)
 
-    // Cifra mode — encontrar beat mais próximo pelo X (dentro da linha clicada)
-    if (inputMode === 'cifra') {
+    // Cifra ou Annotation mode — encontrar beat mais próximo pelo X
+    if (inputMode === 'cifra' || inputMode === 'annotation') {
       if (beats.length === 0) return
       const svgs = wrap.querySelectorAll('svg')
       const svg = svgs[lineIndex]
       if (!svg) return
       const svgRect = svg.getBoundingClientRect()
       const relX = (e.clientX - svgRect.left) / svgRect.width
-      const lineBeats = beatLines[lineIndex] || []
-      const localBi = Math.min(lineBeats.length - 1, Math.max(0, Math.round(relX * lineBeats.length - 0.5)))
-      // Converter índice local para índice global
+      const lineBts = beatLines[lineIndex] || []
+      const localBi = Math.min(lineBts.length - 1, Math.max(0, Math.round(relX * lineBts.length - 0.5)))
       const globalBi = lineIndex * notesPerLine + localBi
       if (globalBi >= beats.length) return
-      setCifraTarget(globalBi)
       const wr = wrap.getBoundingClientRect()
-      setCifraPopupPos({ x: e.clientX - wr.left - 40, y: e.clientY - wr.top - 50 })
-      setCifraInput(beats[globalBi]?.cifra || '')
-      setCifraPopupVisible(true)
+      const popPos = { x: e.clientX - wr.left - 40, y: e.clientY - wr.top - 50 }
+
+      if (inputMode === 'cifra') {
+        setCifraTarget(globalBi)
+        setCifraPopupPos(popPos)
+        setCifraInput(beats[globalBi]?.cifra || '')
+        setCifraPopupVisible(true)
+        setAnnotPopupVisible(false)
+      } else {
+        setAnnotTarget(globalBi)
+        setAnnotPopupPos(popPos)
+        setAnnotInput(beats[globalBi]?.annotation || '')
+        setAnnotPopupVisible(true)
+        setCifraPopupVisible(false)
+      }
       return
+    }
+
+    // No modo melódico, clique perto de nota existente = selecionar
+    if (inputMode === 'melodic' || inputMode === 'chord' || inputMode === 'tie') {
+      const nearBeat = getNearestBeat(e.clientX, e.clientY)
+      if (nearBeat !== null && inputMode === 'melodic') {
+        setSelectedElement({ type: 'note', beatIdx: nearBeat })
+        return
+      }
+      // Clique em área vazia = desselecionar
+      setSelectedElement(null)
     }
 
     const pos = vexflowYToPos(svgY, scale)
@@ -369,6 +508,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           duration: currentDuration,
           tie: false,
           cifra: null,
+          annotation: null,
+          lyric: null,
         })
         // Tie mode: marca o penúltimo com tie
         if (inputMode === 'tie' && next.length >= 2) {
@@ -383,23 +524,222 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setLastNoteInfo(inputMode === 'chord' ? 'Empilhado' : DURATION_NAMES[currentDuration])
   }, [inputMode, currentAccidental, currentDuration, scale, beats, beatLines, notesPerLine])
 
-  // Double click = remove last beat (simplificado — sem hit-test de nota individual no VexFlow)
-  const handleOverlayDblClick = useCallback((_e: React.MouseEvent<HTMLDivElement>) => {
-    setBeats(prev => prev.length > 0 ? prev.slice(0, -1) : prev)
-  }, [])
+  // Double click = remove nota mais próxima do clique
+  const handleOverlayDblClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const nearBeat = getNearestBeat(e.clientX, e.clientY)
+    if (nearBeat !== null) {
+      setBeats(prev => prev.filter((_, i) => i !== nearBeat))
+      setSelectedElement(null)
+    } else {
+      // Fallback: remove última
+      setBeats(prev => prev.length > 0 ? prev.slice(0, -1) : prev)
+    }
+  }, [getNearestBeat])
 
   // Cifra apply
   const applyCifra = useCallback(() => {
     if (cifraTarget !== null && cifraTarget < beats.length) {
-      setBeats(prev => {
-        const next = [...prev]
-        next[cifraTarget!] = { ...next[cifraTarget!], cifra: cifraInput || null }
-        return next
-      })
+      setBeats(prev => prev.map((b, i) =>
+        i === cifraTarget ? { ...b, cifra: cifraInput || null } : b
+      ))
     }
     setCifraPopupVisible(false)
     setCifraTarget(null)
   }, [cifraTarget, cifraInput, beats.length])
+
+  // Annotation apply
+  const applyAnnotation = useCallback(() => {
+    if (annotTarget !== null && annotTarget < beats.length) {
+      setBeats(prev => prev.map((b, i) =>
+        i === annotTarget ? { ...b, annotation: annotInput || null } : b
+      ))
+    }
+    setAnnotPopupVisible(false)
+    setAnnotTarget(null)
+  }, [annotTarget, annotInput, beats.length])
+
+  // Lyric mode helpers
+  const enterLyricMode = useCallback(() => {
+    setInputMode('lyric')
+    setCifraPopupVisible(false)
+    setAnnotPopupVisible(false)
+    const firstEmpty = beats.findIndex(b => !b.lyric)
+    const cursor = firstEmpty >= 0 ? firstEmpty : 0
+    setLyricCursor(cursor)
+    setLyricValue(beats[cursor]?.lyric || '')
+    setTimeout(() => lyricInputRef.current?.focus(), 50)
+  }, [beats])
+
+  const saveLyric = useCallback((index: number, text: string) => {
+    setBeats(prev => prev.map((b, i) =>
+      i === index ? { ...b, lyric: text || null } : b
+    ))
+  }, [])
+
+  const handleLyricKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      saveLyric(lyricCursor, lyricValue)
+      setInputMode('melodic')
+      return
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      saveLyric(lyricCursor, lyricValue)
+      const prev = Math.max(0, lyricCursor - 1)
+      setLyricCursor(prev)
+      setLyricValue(beats[prev]?.lyric || '')
+      setTimeout(() => lyricInputRef.current?.select(), 20)
+      return
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      saveLyric(lyricCursor, lyricValue)
+      const next = Math.min(beats.length - 1, lyricCursor + 1)
+      setLyricCursor(next)
+      setLyricValue(beats[next]?.lyric || '')
+      setTimeout(() => lyricInputRef.current?.select(), 20)
+      return
+    }
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault()
+      saveLyric(lyricCursor, lyricValue)
+      if (lyricCursor < beats.length - 1) {
+        const next = lyricCursor + 1
+        setLyricCursor(next)
+        setLyricValue(beats[next]?.lyric || '')
+        setTimeout(() => lyricInputRef.current?.select(), 20)
+      }
+      return
+    }
+  }, [lyricCursor, lyricValue, beats, saveLyric])
+
+  // Drag handlers para cifras/annotations/lyrics
+  const handleDragStart = useCallback((type: 'cifra' | 'annotation' | 'lyric', beatIdx: number, e: React.MouseEvent) => {
+    if (inputMode !== 'melodic') return
+    e.preventDefault()
+    e.stopPropagation()
+    const beat = beats[beatIdx]
+    if (!beat) return
+    const key = `${type}_offset` as const
+    const orig = (beat as any)[key] || { x: 0, y: 0 }
+    setDragging({ type, beatIdx, startX: e.clientX, startY: e.clientY, origOffset: { ...orig } })
+    setDragPreview({ ...orig })
+  }, [inputMode, beats])
+
+  const handleDragMove = useCallback((e: React.MouseEvent) => {
+    if (!dragging) return
+    const dx = e.clientX - dragging.startX
+    const dy = e.clientY - dragging.startY
+    setDragPreview({ x: dragging.origOffset.x + dx, y: dragging.origOffset.y + dy })
+  }, [dragging])
+
+  const handleDragEnd = useCallback(() => {
+    if (!dragging || !dragPreview) { setDragging(null); setDragPreview(null); return }
+    const { type, beatIdx } = dragging
+    const key = `${type}_offset` as const
+    const finalOffset = { ...dragPreview }
+    setBeats(prev => prev.map((b, i) =>
+      i === beatIdx ? { ...b, [key]: finalOffset } : b
+    ))
+    setDragging(null)
+    setDragPreview(null)
+  }, [dragging, dragPreview])
+
+  // Deletar elemento selecionado
+  const deleteSelected = useCallback(() => {
+    if (!selectedElement) return
+    const { type, beatIdx } = selectedElement
+    if (type === 'note') {
+      setBeats(prev => prev.filter((_, i) => i !== beatIdx))
+    } else if (type === 'cifra') {
+      setBeats(prev => prev.map((b, i) => i === beatIdx ? { ...b, cifra: null, cifra_offset: undefined } : b))
+    } else if (type === 'annotation') {
+      setBeats(prev => prev.map((b, i) => i === beatIdx ? { ...b, annotation: null, annotation_offset: undefined } : b))
+    } else if (type === 'lyric') {
+      setBeats(prev => prev.map((b, i) => i === beatIdx ? { ...b, lyric: null, lyric_offset: undefined } : b))
+    }
+    setSelectedElement(null)
+  }, [selectedElement])
+
+  // Editar elemento selecionado (abre popup/input inline)
+  const editSelected = useCallback(() => {
+    if (!selectedElement) return
+    const { type, beatIdx } = selectedElement
+    const beat = beats[beatIdx]
+    if (!beat) return
+    if (type === 'cifra') {
+      setCifraTarget(beatIdx)
+      setCifraInput(beat.cifra || '')
+      setCifraPopupVisible(true)
+      setAnnotPopupVisible(false)
+    } else if (type === 'annotation') {
+      setAnnotTarget(beatIdx)
+      setAnnotInput(beat.annotation || '')
+      setAnnotPopupVisible(true)
+      setCifraPopupVisible(false)
+    } else if (type === 'lyric') {
+      setInputMode('lyric')
+      setLyricCursor(beatIdx)
+      setLyricValue(beat.lyric || '')
+      setTimeout(() => lyricInputRef.current?.focus(), 50)
+    }
+    setSelectedElement(null)
+  }, [selectedElement, beats])
+
+  // Mover pitch da nota selecionada (↑/↓)
+  const moveSelectedPitch = useCallback((direction: 1 | -1) => {
+    if (!selectedElement || selectedElement.type !== 'note') return
+    const { beatIdx } = selectedElement
+    setBeats(prev => prev.map((b, i) => {
+      if (i !== beatIdx) return b
+      // Mover cada pitch do beat na mesma direção
+      const newPitches = b.pitches.map(p => {
+        const currentIdx = scale.indexOf(p.pitch)
+        if (currentIdx < 0) return p
+        const newIdx = Math.max(0, Math.min(scale.length - 1, currentIdx + direction))
+        if (newIdx === currentIdx) return p
+        return { ...p, pitch: scale[newIdx], accidental: null }
+      })
+      // Atualizar lyric automaticamente se existir (acompanha a nota)
+      const mainPitch = newPitches[0]
+      const newLyric = b.lyric !== null && b.lyric !== undefined
+        ? displayNote(mainPitch.pitch, mainPitch.accidental).replace(/\d+$/, '')
+        : b.lyric
+      return { ...b, pitches: newPitches, lyric: newLyric }
+    }))
+  }, [selectedElement, scale])
+
+  // Keyboard handler para seleção
+  useEffect(() => {
+    if (!open || !selectedElement) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        deleteSelected()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        setSelectedElement(null)
+      } else if (e.key === 'ArrowUp' && selectedElement.type === 'note') {
+        e.preventDefault()
+        moveSelectedPitch(1)
+      } else if (e.key === 'ArrowDown' && selectedElement.type === 'note') {
+        e.preventDefault()
+        moveSelectedPitch(-1)
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        const next = selectedElement.beatIdx + 1
+        if (next < beats.length) setSelectedElement({ ...selectedElement, beatIdx: next })
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        const prev = selectedElement.beatIdx - 1
+        if (prev >= 0) setSelectedElement({ ...selectedElement, beatIdx: prev })
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open, selectedElement, deleteSelected, moveSelectedPitch, beats.length])
 
   // Undo
   const handleUndo = useCallback(() => {
@@ -411,6 +751,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setBeats([])
     setInputMode('melodic')
     setCifraPopupVisible(false)
+    setAnnotPopupVisible(false)
     setLastNote('—')
     setLastNoteInfo('Clique na pauta')
   }, [])
@@ -421,6 +762,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const totalBeats = beats.reduce((s, b) => s + (DURATION_BEATS[b.duration] || 1), 0)
   const tieCount = beats.filter(b => b.tie).length
   const cifraCount = beats.filter(b => b.cifra).length
+  const lyricCount = beats.filter(b => b.lyric).length
   const clefDisplay = selectedClef === 'treble' ? 'Sol' : selectedClef === 'bass' ? 'Fá' : 'Dó'
 
   const measureCount = useMemo(() => {
@@ -499,6 +841,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       <DialogContent
         className="sm:max-w-[980px] max-h-[90vh] overflow-y-auto bg-surface border-border"
         onInteractOutside={e => e.preventDefault()}
+        onEscapeKeyDown={e => { if (inputMode === 'lyric') e.preventDefault() }}
       >
         <DialogHeader>
           <DialogTitle className="font-serif text-[22px]">
@@ -614,17 +957,23 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           {/* Modo de input */}
           <div className="flex gap-[2px] items-center" style={{ paddingRight: 7, marginRight: 4, borderRight: '1px solid #334155' }}>
             <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Modo</span>
-            <TBtn active={inputMode === 'melodic'} onClick={() => { setInputMode('melodic'); setCifraPopupVisible(false) }} title="Melódico — notas horizontais">
+            <TBtn active={inputMode === 'melodic'} onClick={() => { setInputMode('melodic'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Melódico — notas horizontais">
               <span style={{ fontSize: 10, padding: '0 2px' }}>→ Mel</span>
             </TBtn>
-            <TBtn active={inputMode === 'chord'} color="chord" onClick={() => { setInputMode('chord'); setCifraPopupVisible(false) }} title="Harmônico — empilha notas">
+            <TBtn active={inputMode === 'chord'} color="chord" onClick={() => { setInputMode('chord'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Harmônico — empilha notas">
               <span style={{ fontSize: 10, padding: '0 2px' }}>↕ Ac</span>
             </TBtn>
-            <TBtn active={inputMode === 'tie'} color="tie" onClick={() => { setInputMode('tie'); setCifraPopupVisible(false) }} title="Ligadura">
+            <TBtn active={inputMode === 'tie'} color="tie" onClick={() => { setInputMode('tie'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Ligadura">
               <span style={{ fontSize: 10, padding: '0 2px' }}>⌒ Lig</span>
             </TBtn>
-            <TBtn active={inputMode === 'cifra'} onClick={() => { setInputMode('cifra') }} title="Cifra em cima">
+            <TBtn active={inputMode === 'cifra'} onClick={() => { setInputMode('cifra'); setAnnotPopupVisible(false) }} title="Cifra em cima">
               <span style={{ fontSize: 10, padding: '0 2px' }}>A7</span>
+            </TBtn>
+            <TBtn active={inputMode === 'annotation'} onClick={() => { setInputMode('annotation'); setCifraPopupVisible(false) }} title="Anotação de texto">
+              <span style={{ fontSize: 10, padding: '0 2px' }}>📝 Txt</span>
+            </TBtn>
+            <TBtn active={inputMode === 'lyric'} onClick={enterLyricMode} title="Letra da música — sílabas abaixo das notas">
+              <span style={{ fontSize: 10, padding: '0 2px' }}>🎤 Let</span>
             </TBtn>
           </div>
 
@@ -659,17 +1008,188 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
               <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none' }}>
                 <span style={{
                   fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
-                  color: inputMode === 'chord' ? '#6366F1' : inputMode === 'tie' ? '#F97316' : inputMode === 'cifra' ? '#6366F1' : '#22C55E',
+                  color: inputMode === 'chord' ? '#6366F1' : inputMode === 'tie' ? '#F97316' : inputMode === 'cifra' ? '#6366F1' : inputMode === 'annotation' ? '#94A3B8' : inputMode === 'lyric' ? '#FF2D78' : '#22C55E',
                 }}>
-                  {inputMode === 'chord' ? '↕ ACORDE' : inputMode === 'tie' ? '⌒ LIGADURA' : inputMode === 'cifra' ? 'A7 CIFRA' : '→ MELÓDICO'}
+                  {inputMode === 'chord' ? '↕ ACORDE' : inputMode === 'tie' ? '⌒ LIGADURA' : inputMode === 'cifra' ? 'A7 CIFRA' : inputMode === 'annotation' ? '📝 TEXTO' : inputMode === 'lyric' ? '🎤 LETRA' : '→ MELÓDICO'}
                 </span>
               </div>
 
-              {/* Camada 1: VexFlow multi-line preview (uma pauta por linha) */}
-              <div className="notation-editor-vexflow" style={{ pointerEvents: 'none' }}>
-                {linedNotationData.map((lineData, i) => (
-                  <NotationRenderer key={i} notation={lineData} />
-                ))}
+              {/* Camada 1: VexFlow multi-line preview + cifras/annotations/lyrics overlay */}
+              <div
+                className="notation-editor-vexflow"
+                style={{ pointerEvents: dragging ? 'auto' : 'none', position: 'relative' }}
+                onMouseMove={dragging ? handleDragMove : undefined}
+                onMouseUp={dragging ? handleDragEnd : undefined}
+                onMouseLeave={dragging ? handleDragEnd : undefined}
+              >
+                {linedNotationData.map((lineData, lineIdx) => {
+                  const lineBts = beatLines[lineIdx] || []
+                  const globalOffset = lineIdx * notesPerLine
+                  const hasLyrics = lineBts.some(b => b.lyric) || inputMode === 'lyric'
+                  // Posição X: usa posições reais dos noteheads lidas do SVG
+                  // Fallback para fórmula fixa quando SVG ainda não renderizou
+                  const realPos = notePositions[lineIdx]
+                  const noteXpx = (bi: number) => {
+                    if (realPos && realPos[bi] !== undefined) return realPos[bi]
+                    // Fallback: fórmula fixa (modo livre sem time_sig/key_sig)
+                    const VF_FIRST = 60, VF_LAST = 573
+                    const total = lineBts.length
+                    if (total <= 1) return (VF_FIRST + VF_LAST) / 2
+                    return VF_FIRST + (VF_LAST - VF_FIRST) * bi / (total - 1)
+                  }
+                  return (
+                    <div key={lineIdx} style={{ position: 'relative', marginBottom: hasLyrics ? 20 : 0, overflow: 'visible' }}>
+                      <NotationRenderer notation={lineData} />
+
+                      {/* Highlight de nota selecionada ou hover */}
+                      {lineBts.map((_, bi) => {
+                        const globalIdx = globalOffset + bi
+                        const isSelected = selectedElement?.type === 'note' && selectedElement.beatIdx === globalIdx
+                        const isHovered = hoverBeatIdx === globalIdx && inputMode === 'melodic' && !selectedElement
+                        if (!isSelected && !isHovered) return null
+                        return (
+                          <div
+                            key={`sel-${bi}`}
+                            style={{
+                              position: 'absolute',
+                              left: noteXpx(bi),
+                              top: VEXFLOW_STAFF_TOP - 4,
+                              width: 22, height: VEXFLOW_STAFF_BOTTOM - VEXFLOW_STAFF_TOP + 8,
+                              transform: 'translateX(-50%)',
+                              border: isSelected ? '2px solid #FF2D78' : '1.5px dashed #FF2D7866',
+                              borderRadius: 6,
+                              background: isSelected ? '#FF2D7815' : '#FF2D780A',
+                              zIndex: 4,
+                              pointerEvents: 'none',
+                              transition: 'all .12s',
+                            }}
+                          />
+                        )
+                      })}
+
+                      {/* Cifras e annotations — position absolute, alinhado com notas */}
+                      {lineBts.map((beat, bi) => {
+                        if (!beat.cifra && !beat.annotation) return null
+                        const globalIdx = globalOffset + bi
+                        const isDraggingThis = (t: string) => dragging?.type === t && dragging?.beatIdx === globalIdx
+                        return (
+                          <div key={`ca-${bi}`} style={{ position: 'absolute', left: noteXpx(bi), top: 0, transform: 'translateX(-50%)', zIndex: 5 }}>
+                            {beat.annotation && (() => {
+                              const off = isDraggingThis('annotation') && dragPreview ? dragPreview : (beat.annotation_offset || { x: 0, y: 0 })
+                              return (
+                                <span
+                                  style={{
+                                    display: 'block', fontSize: 9, fontStyle: 'italic', color: '#94A3B8',
+                                    fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap', lineHeight: 1.1,
+                                    transform: `translate(${off.x}px, ${off.y}px)`,
+                                    cursor: inputMode === 'melodic' ? (isDraggingThis('annotation') ? 'grabbing' : 'grab') : 'default',
+                                    opacity: isDraggingThis('annotation') ? 0.7 : 1,
+                                    pointerEvents: inputMode === 'melodic' ? 'auto' : 'none',
+                                    userSelect: 'none',
+                                  }}
+                                  onClick={inputMode === 'melodic' ? (e) => { e.stopPropagation(); setSelectedElement({ type: 'annotation', beatIdx: globalIdx }) } : undefined}
+                                  onMouseDown={inputMode === 'melodic' ? e => handleDragStart('annotation', globalIdx, e) : undefined}
+                                >
+                                  {beat.annotation}
+                                </span>
+                              )
+                            })()}
+                            {beat.cifra && (() => {
+                              const off = isDraggingThis('cifra') && dragPreview ? dragPreview : (beat.cifra_offset || { x: 0, y: 0 })
+                              return (
+                                <span
+                                  style={{
+                                    display: 'block', fontSize: 11, fontWeight: 700, color: '#6366F1',
+                                    fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap', lineHeight: 1.1,
+                                    transform: `translate(${off.x}px, ${off.y}px)`,
+                                    cursor: inputMode === 'melodic' ? (isDraggingThis('cifra') ? 'grabbing' : 'grab') : 'default',
+                                    opacity: isDraggingThis('cifra') ? 0.7 : 1,
+                                    pointerEvents: inputMode === 'melodic' ? 'auto' : 'none',
+                                    userSelect: 'none',
+                                  }}
+                                  onClick={inputMode === 'melodic' ? (e) => { e.stopPropagation(); setSelectedElement({ type: 'cifra', beatIdx: globalIdx }) } : undefined}
+                                  onMouseDown={inputMode === 'melodic' ? e => handleDragStart('cifra', globalIdx, e) : undefined}
+                                >
+                                  {beat.cifra}
+                                </span>
+                              )
+                            })()}
+                          </div>
+                        )
+                      })}
+
+                      {/* Lyrics — logo abaixo da pauta, alinhado com notas */}
+                      {hasLyrics && lineBts.map((beat, bi) => {
+                        const globalIdx = globalOffset + bi
+                        const isActive = inputMode === 'lyric' && lyricCursor === globalIdx
+                        const isDraggingLyric = dragging?.type === 'lyric' && dragging?.beatIdx === globalIdx
+                        const off = isDraggingLyric && dragPreview ? dragPreview : (beat.lyric_offset || { x: 0, y: 0 })
+
+                        return (
+                          <div
+                            key={`lyr-${bi}`}
+                            style={{
+                              position: 'absolute',
+                              left: noteXpx(bi),
+                              top: VEXFLOW_STAFF_BOTTOM + 22,
+                              transform: `translateX(-50%) translate(${off.x}px, ${off.y}px)`,
+                              zIndex: isActive ? 30 : 5,
+                              pointerEvents: (inputMode === 'lyric' || inputMode === 'melodic') ? 'auto' : 'none',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {isActive ? (
+                              <input
+                                ref={lyricInputRef}
+                                value={lyricValue}
+                                onChange={e => setLyricValue(e.target.value)}
+                                onKeyDown={handleLyricKeyDown}
+                                onBlur={() => saveLyric(lyricCursor, lyricValue)}
+                                autoFocus
+                                style={{
+                                  width: 48, textAlign: 'center', fontSize: 11,
+                                  fontFamily: "'DM Sans', sans-serif", color: '#1E293B',
+                                  background: 'transparent', outline: 'none',
+                                  borderBottom: '2px solid #FF2D78', padding: '0 2px',
+                                }}
+                                placeholder="♪"
+                              />
+                            ) : beat.lyric ? (
+                              <span
+                                style={{
+                                  fontSize: 11, fontFamily: "'DM Sans', sans-serif",
+                                  color: '#1E293B', whiteSpace: 'nowrap',
+                                  cursor: inputMode === 'lyric' ? 'pointer' : inputMode === 'melodic' ? (isDraggingLyric ? 'grabbing' : 'grab') : 'default',
+                                  opacity: isDraggingLyric ? 0.7 : 1,
+                                  userSelect: 'none',
+                                }}
+                                onClick={inputMode === 'lyric' ? () => {
+                                  saveLyric(lyricCursor, lyricValue)
+                                  setLyricCursor(globalIdx)
+                                  setLyricValue(beat.lyric || '')
+                                  setTimeout(() => lyricInputRef.current?.focus(), 20)
+                                } : inputMode === 'melodic' ? (e) => { e.stopPropagation(); setSelectedElement({ type: 'lyric', beatIdx: globalIdx }) } : undefined}
+                                onMouseDown={inputMode === 'melodic' ? e => handleDragStart('lyric', globalIdx, e) : undefined}
+                              >
+                                {beat.lyric}
+                              </span>
+                            ) : inputMode === 'lyric' ? (
+                              <span
+                                style={{ fontSize: 11, color: '#CBD5E1', cursor: 'pointer', userSelect: 'none' }}
+                                onClick={() => {
+                                  saveLyric(lyricCursor, lyricValue)
+                                  setLyricCursor(globalIdx)
+                                  setLyricValue('')
+                                  setTimeout(() => lyricInputRef.current?.focus(), 20)
+                                }}
+                              >♪</span>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
               </div>
 
               {/* Camada 2: Overlay de input invisível por cima */}
@@ -677,7 +1197,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 ref={overlayRef}
                 style={{
                   position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                  cursor: 'crosshair', zIndex: 10,
+                  cursor: inputMode === 'lyric' ? 'default' : dragging ? 'grabbing' : hoverBeatIdx !== null ? 'pointer' : 'crosshair', zIndex: 10,
+                  pointerEvents: (inputMode === 'lyric' || dragging) ? 'none' : 'auto',
                 }}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
@@ -686,7 +1207,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
               />
 
               {/* Ghost note tooltip */}
-              {hoverPos !== null && hoverMouse && inputMode !== 'cifra' && (
+              {hoverPos !== null && hoverMouse && inputMode !== 'cifra' && inputMode !== 'annotation' && inputMode !== 'lyric' && (
                 <div
                   style={{
                     position: 'absolute',
@@ -718,7 +1239,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                     left: cifraPopupPos.x,
                     top: cifraPopupPos.y,
                     background: '#1E293B',
-                    border: '2px solid #FF2D78',
+                    border: '2px solid #6366F1',
                     borderRadius: 8,
                     padding: 8,
                     zIndex: 25,
@@ -745,7 +1266,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                     onClick={applyCifra}
                     style={{
                       padding: '4px 8px', border: 'none', borderRadius: 6,
-                      background: '#FF2D78', color: '#fff', fontSize: 11,
+                      background: '#6366F1', color: '#fff', fontSize: 11,
                       cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
                     }}
                   >
@@ -753,16 +1274,197 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                   </button>
                 </div>
               )}
+
+              {/* Annotation popup */}
+              {annotPopupVisible && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: annotPopupPos.x,
+                    top: annotPopupPos.y,
+                    background: '#1E293B',
+                    border: '2px solid #94A3B8',
+                    borderRadius: 8,
+                    padding: 8,
+                    zIndex: 25,
+                    display: 'flex',
+                    gap: 4,
+                    alignItems: 'center',
+                    boxShadow: '0 8px 24px rgba(0,0,0,.5)',
+                  }}
+                >
+                  <input
+                    value={annotInput}
+                    onChange={e => setAnnotInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') applyAnnotation() }}
+                    placeholder="respirar, mf, cresc."
+                    autoFocus
+                    style={{
+                      width: 120, padding: '4px 8px',
+                      border: '1px solid #334155', borderRadius: 6,
+                      background: '#0F172A', color: '#E2E8F0',
+                      fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontStyle: 'italic', outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={applyAnnotation}
+                    style={{
+                      padding: '4px 8px', border: 'none', borderRadius: 6,
+                      background: '#94A3B8', color: '#fff', fontSize: 11,
+                      cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    OK
+                  </button>
+                </div>
+              )}
+
+              {/* Toolbar contextual flutuante para elemento selecionado */}
+              {selectedElement && (() => {
+                const { type, beatIdx } = selectedElement
+                const beat = beats[beatIdx]
+                if (!beat) return null
+                // Calcular posição da toolbar
+                const lineIdx = Math.floor(beatIdx / notesPerLine)
+                const localBi = beatIdx - lineIdx * notesPerLine
+                const lineBts = beatLines[lineIdx] || []
+                const realPos = notePositions[lineIdx]
+                const total = lineBts.length
+                const nx = realPos && realPos[localBi] !== undefined
+                  ? realPos[localBi]
+                  : (total <= 1 ? 316.5 : 60 + 513 * localBi / (total - 1))
+                // Y depende do tipo: nota=acima da pauta, cifra=acima do top, lyric=abaixo da pauta
+                const lineTop = lineIdx * (LINE_RENDER_HEIGHT + (lineBts.some(b => b.lyric) ? 20 : 0))
+                const toolY = type === 'lyric' ? lineTop + VEXFLOW_STAFF_BOTTOM + 40 : lineTop + VEXFLOW_STAFF_TOP - 30
+                const showEdit = type !== 'note'
+                const showMove = type !== 'note'
+                const label = type === 'note'
+                  ? displayNote(beat.pitches[0]?.pitch, beat.pitches[0]?.accidental)
+                  : type === 'cifra' ? beat.cifra
+                  : type === 'annotation' ? beat.annotation
+                  : beat.lyric
+                return (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: nx,
+                      top: toolY,
+                      transform: 'translateX(-50%)',
+                      zIndex: 40,
+                      display: 'flex',
+                      gap: 2,
+                      alignItems: 'center',
+                      background: '#1E293B',
+                      border: '1.5px solid #FF2D78',
+                      borderRadius: 8,
+                      padding: '3px 6px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,.5)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {/* Label do elemento */}
+                    <span style={{ fontSize: 10, color: '#E2E8F0', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, marginRight: 4, maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {label}
+                    </span>
+                    {/* Botões ↑/↓ para mover pitch (só para notas) */}
+                    {type === 'note' && (
+                      <>
+                        <button
+                          onClick={() => moveSelectedPitch(1)}
+                          title="Subir nota (↑)"
+                          style={{
+                            width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: 'transparent', border: '1px solid #475569', borderRadius: 5,
+                            color: '#22D3EE', cursor: 'pointer', transition: '.15s',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#22D3EE33'; e.currentTarget.style.borderColor = '#22D3EE' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#475569' }}
+                        >
+                          <CaretUp size={14} weight="bold" />
+                        </button>
+                        <button
+                          onClick={() => moveSelectedPitch(-1)}
+                          title="Descer nota (↓)"
+                          style={{
+                            width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: 'transparent', border: '1px solid #475569', borderRadius: 5,
+                            color: '#22D3EE', cursor: 'pointer', transition: '.15s',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#22D3EE33'; e.currentTarget.style.borderColor = '#22D3EE' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#475569' }}
+                        >
+                          <CaretDown size={14} weight="bold" />
+                        </button>
+                      </>
+                    )}
+                    {/* Botão Deletar */}
+                    <button
+                      onClick={deleteSelected}
+                      title="Deletar (Delete)"
+                      style={{
+                        width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'transparent', border: '1px solid #475569', borderRadius: 5,
+                        color: '#F87171', cursor: 'pointer', transition: '.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F8717133'; e.currentTarget.style.borderColor = '#F87171' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#475569' }}
+                    >
+                      <Trash size={13} />
+                    </button>
+                    {/* Botão Editar (só para texto) */}
+                    {showEdit && (
+                      <button
+                        onClick={editSelected}
+                        title="Editar"
+                        style={{
+                          width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'transparent', border: '1px solid #475569', borderRadius: 5,
+                          color: '#60A5FA', cursor: 'pointer', transition: '.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#60A5FA33'; e.currentTarget.style.borderColor = '#60A5FA' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#475569' }}
+                      >
+                        <PencilSimple size={13} />
+                      </button>
+                    )}
+                    {/* Botão Mover (ativa drag — só para texto) */}
+                    {showMove && (
+                      <button
+                        onClick={() => {
+                          // Ativa dica visual de que pode arrastar
+                          setSelectedElement(null)
+                        }}
+                        title="Arrastar para reposicionar"
+                        style={{
+                          width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'transparent', border: '1px solid #475569', borderRadius: 5,
+                          color: '#34D399', cursor: 'pointer', transition: '.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#34D39933'; e.currentTarget.style.borderColor = '#34D399' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#475569' }}
+                      >
+                        <ArrowsOutCardinal size={13} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Instruções */}
             <div className="text-[11px] text-text3 text-center leading-relaxed mt-2">
-              <span className="text-accent font-semibold">→ Mel</span> = notas horizontais (melódicas) ·{' '}
-              <span style={{ color: '#6366F1' }}><strong>↕ Ac</strong> = empilha na última posição (harmônico)</span> ·{' '}
-              <span style={{ color: '#F97316' }}><strong>⌒ Lig</strong> = liga nota anterior à próxima</span> ·{' '}
-              <span className="text-accent font-semibold">A7</span> = cifra em cima<br />
+              <span className="text-accent font-semibold">→ Mel</span> = notas ·{' '}
+              <span style={{ color: '#6366F1' }}><strong>↕ Ac</strong> = harmônico</span> ·{' '}
+              <span style={{ color: '#F97316' }}><strong>⌒ Lig</strong> = ligadura</span> ·{' '}
+              <span style={{ color: '#6366F1' }}><strong>A7</strong> = cifra</span> ·{' '}
+              <span style={{ color: '#94A3B8' }}><strong>📝 Txt</strong> = anotação</span> ·{' '}
+              <span className="text-accent font-semibold">🎤 Let</span> = letra<br />
               <span className="text-accent font-semibold">Clique</span> = colocar nota ·{' '}
-              <span className="text-accent font-semibold">Duplo clique</span> = remover nota
+              <span className="text-accent font-semibold">Clique na nota</span> = selecionar ·{' '}
+              <span className="text-accent font-semibold">Duplo clique</span> = remover ·{' '}
+              <span style={{ color: '#22D3EE' }}>↑↓</span> = mover nota ·{' '}
+              <span style={{ color: '#94A3B8' }}>←→</span> = navegar ·{' '}
+              <span style={{ color: '#94A3B8' }}>Del</span> = apagar
             </div>
           </div>
 
@@ -780,6 +1482,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 ['Tempos', totalBeats + ' tempos'],
                 ['Ligaduras', String(tieCount)],
                 ['Cifras', String(cifraCount)],
+                ['Sílabas', String(lyricCount)],
               ].map(([label, value]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '1px 0' }}>
                   <span style={{ color: '#94A3B8' }}>{label}</span>
