@@ -356,6 +356,13 @@
 /* Draggable no modo editor */
 .block-cover .cover-draggable{pointer-events:auto;cursor:move;border-radius:8px;padding:12px 20px;transition:outline .15s,box-shadow .15s}
 .block-cover .cover-draggable:hover{outline:2px dashed rgba(255,45,120,.6);box-shadow:0 0 0 4px rgba(255,45,120,.12)}
+/* Guias de snap (estilo Canva) */
+.cover-snap-guide{position:absolute;z-index:10;pointer-events:none;animation:snap-fade-in .1s ease-out}
+.cover-snap-guide--v{top:0;bottom:0;width:1px;background:rgba(255,45,120,.7);box-shadow:0 0 4px rgba(255,45,120,.4)}
+.cover-snap-guide--h{left:0;right:0;height:1px;background:rgba(255,45,120,.7);box-shadow:0 0 4px rgba(255,45,120,.4)}
+@keyframes snap-fade-in{from{opacity:0}to{opacity:1}}
+.block-cover .cover-logo{z-index:2;pointer-events:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
+.block-cover .cover-logo.cover-draggable{pointer-events:auto;padding:6px;border-radius:8px}
 .block-cover .cover-professor{font-weight:600}
 .block-cover .cover-decoration{position:absolute;pointer-events:none;z-index:0}
 

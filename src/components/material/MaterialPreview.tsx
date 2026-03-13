@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react'
+import React, { useRef, useCallback, useState } from 'react'
 import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
@@ -411,10 +411,13 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const escola = (rd.escola as string) ?? ''
   const data = (rd.data as string) ?? ''
   const coverImageUrl = (rd.cover_image_url as string) ?? ''
+  const logoUrl = (rd.logo_url as string) ?? ''
+  const logoSize = (rd.logo_size as number) ?? 80
 
   // Posições dos grupos (em %)
   const contentPos = (rd.content_pos as { x: number; y: number }) ?? { x: 50, y: 45 }
   const footerPos = (rd.footer_pos as { x: number; y: number }) ?? { x: 50, y: 88 }
+  const logoPos = (rd.logo_pos as { x: number; y: number }) ?? { x: 50, y: 8 }
 
   const coverRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -422,6 +425,18 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     startMouse: { x: number; y: number }
     startPos: { x: number; y: number }
   } | null>(null)
+
+  // Snap-to-grid: guias ativas (estilo Canva)
+  const SNAP_POINTS = [25, 33.3, 50, 66.7, 75]
+  const SNAP_THRESHOLD = 2 // % de proximidade para "grudar"
+  const [activeGuides, setActiveGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null })
+
+  const snapValue = (val: number): { snapped: number; guide: number | null } => {
+    for (const sp of SNAP_POINTS) {
+      if (Math.abs(val - sp) <= SNAP_THRESHOLD) return { snapped: sp, guide: sp }
+    }
+    return { snapped: val, guide: null }
+  }
 
   const handleMouseDown = useCallback((e: React.MouseEvent, field: string, pos: { x: number; y: number }) => {
     if (!editable) return
@@ -434,13 +449,17 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       const rect = coverRef.current.getBoundingClientRect()
       const dx = ((ev.clientX - dragRef.current.startMouse.x) / rect.width) * 100
       const dy = ((ev.clientY - dragRef.current.startMouse.y) / rect.height) * 100
-      const newX = Math.max(5, Math.min(95, dragRef.current.startPos.x + dx))
-      const newY = Math.max(3, Math.min(97, dragRef.current.startPos.y + dy))
-      onPositionChange?.(dragRef.current.field, { x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 })
+      const rawX = Math.max(5, Math.min(95, dragRef.current.startPos.x + dx))
+      const rawY = Math.max(3, Math.min(97, dragRef.current.startPos.y + dy))
+      const sx = snapValue(rawX)
+      const sy = snapValue(rawY)
+      setActiveGuides({ x: sx.guide, y: sy.guide })
+      onPositionChange?.(dragRef.current.field, { x: Math.round(sx.snapped * 10) / 10, y: Math.round(sy.snapped * 10) / 10 })
     }
 
     const handleMouseUp = () => {
       dragRef.current = null
+      setActiveGuides({ x: null, y: null })
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
@@ -467,6 +486,14 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       {/* Overlay escuro quando tem imagem de fundo */}
       {hasImage && <div className="cover-overlay" />}
 
+      {/* Guias de snap (estilo Canva) */}
+      {editable && activeGuides.x !== null && (
+        <div className="cover-snap-guide cover-snap-guide--v" style={{ left: `${activeGuides.x}%` }} />
+      )}
+      {editable && activeGuides.y !== null && (
+        <div className="cover-snap-guide cover-snap-guide--h" style={{ top: `${activeGuides.y}%` }} />
+      )}
+
       {/* Decorações específicas do template */}
       {template === 'colorful' && (
         <div className="cover-decoration" style={{ top: -30, right: -30 }}>
@@ -492,6 +519,28 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
           <div className="cover-deco-1" />
           <div className="cover-deco-2" />
         </>
+      )}
+
+      {/* Logomarca — posição absoluta, arrastável */}
+      {logoUrl && (
+        <div
+          className={`cover-logo ${editable ? 'cover-draggable' : ''}`}
+          style={{
+            position: 'absolute',
+            left: `${logoPos.x}%`,
+            top: `${logoPos.y}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 2,
+          }}
+          onMouseDown={e => handleMouseDown(e, 'logo_pos', logoPos)}
+        >
+          <img
+            src={logoUrl}
+            alt="Logomarca"
+            style={{ height: `${logoSize}px`, width: 'auto', maxWidth: '280px', objectFit: 'contain', pointerEvents: 'none' }}
+            draggable={false}
+          />
+        </div>
       )}
 
       {/* Conteúdo principal — posição absoluta */}

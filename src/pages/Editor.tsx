@@ -806,6 +806,41 @@ Responda APENAS com o prompt melhorado em inglês, otimizado para geração de i
     }
   }, [blocks, materialTitle, materialId])
 
+  // Upload de logomarca para a capa
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+
+  const handleLogoUpload = useCallback(async (file: File) => {
+    if (!selectedBlockId) return
+    const maxSize = 2 * 1024 * 1024
+    if (file.size > maxSize) { toast.error('Logomarca deve ter no máximo 2MB'); return }
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'].includes(file.type)) {
+      toast.error('Formato inválido. Use PNG, JPG, WebP ou SVG'); return
+    }
+    setLogoUploading(true)
+    try {
+      const ext = file.name.split('.').pop() ?? 'png'
+      const filePath = `logos/${materialId}/${selectedBlockId}_${Date.now()}.${ext}`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('content-images')
+        .upload(filePath, file, { contentType: file.type, upsert: true })
+      if (uploadError) throw new Error(uploadError.message)
+      const { data: urlData } = supabase.storage.from('content-images').getPublicUrl(uploadData.path)
+      updateSelectedRenderData('logo_url', urlData.publicUrl)
+      if (!(selectedBlock?.render_data as any)?.logo_pos) {
+        updateSelectedRenderData('logo_pos', { x: 50, y: 8 })
+      }
+      if (!(selectedBlock?.render_data as any)?.logo_size) {
+        updateSelectedRenderData('logo_size', 80)
+      }
+      toast.success('Logomarca enviada!')
+    } catch (e: any) {
+      toast.error('Erro ao enviar logomarca: ' + (e?.message?.slice(0, 60) ?? ''))
+    } finally {
+      setLogoUploading(false)
+    }
+  }, [selectedBlockId, materialId, selectedBlock, updateSelectedRenderData])
+
   // Upload de imagem para bloco 'image'
   const [imageUploading, setImageUploading] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -1807,7 +1842,8 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                 </div>
               </div>
 
-              {/* Título */}
+              {/* Título (esconde para capa — usa campo próprio nos dados da capa) */}
+              {selectedBlock.block_type !== 'cover' && (
               <div className="prop-section">
                 <div className="prop-label">Título</div>
                 <div className="title-editor-compact">
@@ -1834,6 +1870,7 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                   />
                 </div>
               </div>
+              )}
 
               {/* Conteúdo (para text/tip/exercise) */}
               {['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type) && (
@@ -2002,6 +2039,76 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                     <p className="text-[9px] text-text3 mt-1 opacity-60">
                       Descreva como quer a capa. Se vazio, a IA gera automaticamente com base nos dados.
                     </p>
+                  </div>
+                  {/* Logomarca */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Logomarca</label>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = '' }}
+                    />
+                    {(selectedBlock.render_data as any)?.logo_url ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 p-1.5 rounded border border-border bg-bg2">
+                          <img
+                            src={(selectedBlock.render_data as any).logo_url}
+                            alt="Logomarca"
+                            className="h-10 w-auto max-w-[80px] object-contain rounded"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[9px] text-text3 truncate">Logomarca carregada</div>
+                            <div className="text-[9px] text-text3 opacity-60">Arraste na capa para posicionar</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[9px] text-text3 shrink-0">Tamanho:</label>
+                          <input
+                            type="range"
+                            min={30}
+                            max={200}
+                            value={(selectedBlock.render_data as any)?.logo_size ?? 80}
+                            onChange={e => updateSelectedRenderData('logo_size', Number(e.target.value))}
+                            className="flex-1 h-1 accent-accent"
+                          />
+                          <span className="text-[9px] text-text3 w-8 text-right">{(selectedBlock.render_data as any)?.logo_size ?? 80}px</span>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-6 text-[9px] gap-1"
+                            onClick={() => logoInputRef.current?.click()}
+                          >
+                            Trocar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[9px] border-vermelho/30 text-vermelho hover:bg-vermelho/10"
+                            onClick={() => { updateSelectedRenderData('logo_url', null); updateSelectedRenderData('logo_pos', null); updateSelectedRenderData('logo_size', null) }}
+                          >
+                            <Trash size={10} />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full justify-center gap-2 h-7 text-[10px]"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={logoUploading}
+                      >
+                        {logoUploading ? (
+                          <><SpinnerGap size={12} className="animate-spin" /> Enviando...</>
+                        ) : (
+                          <><ImageIcon size={12} /> Enviar Logomarca</>
+                        )}
+                      </Button>
+                    )}
                   </div>
                   <div>
                     <label className="text-[10px] text-text3 block mb-1">Título da capa</label>
