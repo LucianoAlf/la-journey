@@ -1234,21 +1234,208 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
   }, [])
 
   // Exportação
-  const handlePrint = () => window.print()
-  const handleExportHTML = useCallback(() => {
-    const canvasEl = document.querySelector('.editor-canvas')
-    if (!canvasEl) return
+  const handlePrint = useCallback(() => {
+    // Estratégia: criar container temporário com APENAS as páginas A4,
+    // esconder todo o resto, imprimir, e restaurar.
+    // Isso elimina qualquer elemento fantasma que gere página em branco.
+
+    // 1. Salvar tema atual e forçar light para notation SVGs
+    const currentTheme = document.documentElement.getAttribute('data-theme')
+    document.documentElement.setAttribute('data-theme', 'light')
+
+    // 2. Clonar páginas A4 para container temporário
+    const pages = document.querySelectorAll('.a4-page')
+    if (!pages.length) { toast.error('Nenhuma página encontrada'); return }
+
+    const printContainer = document.createElement('div')
+    printContainer.id = 'print-container'
+    pages.forEach(page => {
+      const clone = page.cloneNode(true) as HTMLElement
+      // Limpar UI de edição
+      clone.querySelectorAll('.block-selection-border, .cover-snap-guide, .add-block-btn, button').forEach(el => {
+        if (el.tagName === 'BUTTON') el.remove()
+        if (el.classList?.contains('block-selection-border') || el.classList?.contains('cover-snap-guide')) el.remove()
+      })
+      clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
+      clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'))
+      printContainer.appendChild(clone)
+    })
+
+    // 3. Esconder tudo e mostrar apenas o container de print
+    const appRoot = document.getElementById('root') || document.body.children[0] as HTMLElement
+    if (appRoot) (appRoot as HTMLElement).style.display = 'none'
+    document.body.appendChild(printContainer)
+    document.body.classList.add('printing')
+
+    // 4. Imprimir e restaurar
+    requestAnimationFrame(() => {
+      window.print()
+      // Restaurar
+      document.body.classList.remove('printing')
+      printContainer.remove()
+      if (appRoot) (appRoot as HTMLElement).style.display = ''
+      if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
+      else document.documentElement.removeAttribute('data-theme')
+    })
+  }, [])
+
+  const handleExportHTML = useCallback(async () => {
+    const pagesEl = document.querySelectorAll('.a4-page')
+    if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
+
+    // Converter SVG para PNG base64 (captura visual correto independente de dark/light mode)
+    const svgToDataUrl = async (svgEl: SVGSVGElement): Promise<string> => {
+      return new Promise((resolve) => {
+        try {
+          const clone = svgEl.cloneNode(true) as SVGSVGElement
+          // Forçar fills pretos (VexFlow padrão) — remover qualquer filter
+          clone.style.filter = 'none'
+          clone.querySelectorAll('path').forEach(p => {
+            const f = p.getAttribute('fill')
+            if (!f || f === 'none') p.setAttribute('fill', 'black')
+          })
+          clone.querySelectorAll('rect').forEach(r => {
+            if (!r.getAttribute('fill') || r.getAttribute('fill') === 'none') r.setAttribute('fill', 'black')
+            if (r.getAttribute('stroke')) r.setAttribute('stroke', 'black')
+          })
+          clone.querySelectorAll('line').forEach(l => {
+            if (!l.getAttribute('stroke') || l.getAttribute('stroke') === 'none') l.setAttribute('stroke', 'black')
+          })
+          clone.querySelectorAll('text').forEach(t => {
+            const f = t.getAttribute('fill')
+            if (!f || f === 'none') t.setAttribute('fill', '#333')
+          })
+          const w = parseInt(clone.getAttribute('width') || '500')
+          const h = parseInt(clone.getAttribute('height') || '200')
+          const svgData = new XMLSerializer().serializeToString(clone)
+          const img = new Image()
+          const canvas = document.createElement('canvas')
+          canvas.width = w * 2
+          canvas.height = h * 2
+          const ctx = canvas.getContext('2d')!
+          ctx.scale(2, 2)
+          img.onload = () => {
+            ctx.fillStyle = '#fff'
+            ctx.fillRect(0, 0, w, h)
+            ctx.drawImage(img, 0, 0, w, h)
+            resolve(canvas.toDataURL('image/png'))
+          }
+          img.onerror = () => resolve('')
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData)
+        } catch { resolve('') }
+      })
+    }
+
+    // Clonar conteúdo das páginas A4 e limpar elementos de edição
+    const pagesHtmlParts: string[] = []
+    for (let i = 0; i < pagesEl.length; i++) {
+      const page = pagesEl[i]
+      const clone = page.cloneNode(true) as HTMLElement
+      // Remover bordas de seleção, botões de edição, snap guides
+      clone.querySelectorAll('.block-selection-border, .cover-snap-guide, .add-block-btn, button, [contenteditable]').forEach(el => {
+        if (el.tagName === 'BUTTON') el.remove()
+        if (el.classList?.contains('block-selection-border')) {
+          (el as HTMLElement).style.border = 'none'
+          ;(el as HTMLElement).style.outline = 'none'
+          ;(el as HTMLElement).style.boxShadow = 'none'
+        }
+        if (el.classList?.contains('cover-snap-guide')) el.remove()
+        el.removeAttribute('contenteditable')
+      })
+      // Remover classes de edição
+      clone.querySelectorAll('.cover-draggable').forEach(el => el.classList.remove('cover-draggable'))
+      clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
+
+      // Notação musical: converter SVGs para imagens PNG (garante renderização correta)
+      const notationContainers = clone.querySelectorAll('.notation-container')
+      for (const container of Array.from(notationContainers)) {
+        const origContainer = page.querySelector(`.notation-container:nth-of-type(${Array.from(clone.querySelectorAll('.notation-container')).indexOf(container) + 1})`)
+        // Buscar o SVG original na página (não no clone) para capturar visual correto
+        const svgEl = container.querySelector('svg')
+        // Também buscar na página original pelo data-block ou pela posição
+        if (svgEl) {
+          // Encontrar o SVG original correspondente na página real
+          const allOrigSvgs = page.querySelectorAll('.notation-container svg')
+          const allCloneSvgs = clone.querySelectorAll('.notation-container svg')
+          const svgIndex = Array.from(allCloneSvgs).indexOf(svgEl)
+          const origSvg = allOrigSvgs[svgIndex] as SVGSVGElement | undefined
+          if (origSvg) {
+            const dataUrl = await svgToDataUrl(origSvg)
+            if (dataUrl) {
+              const w = origSvg.getAttribute('width') || '500'
+              const h = origSvg.getAttribute('height') || '200'
+              const imgEl = document.createElement('img')
+              imgEl.src = dataUrl
+              imgEl.style.width = w + 'px'
+              imgEl.style.maxWidth = '100%'
+              imgEl.style.height = 'auto'
+              imgEl.alt = 'Notação musical'
+              svgEl.replaceWith(imgEl)
+            }
+          }
+        }
+        ;(container as HTMLElement).style.background = '#fff'
+      }
+
+      // Page break entre páginas (exceto a última)
+      const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;' : ''
+      pagesHtmlParts.push(`<div style="margin-bottom:40px;${pageBreak}">${clone.innerHTML}</div>`)
+    }
+    const pagesHtml = pagesHtmlParts.join('\n')
+
     const html = `<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${materialTitle}</title>
-<style>body{font-family:'DM Sans',sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#1E293B;line-height:1.7}
-h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
-.canvas-block{margin-bottom:16px;padding:16px 20px}
-.block-selection-border{border:none!important}</style></head>
-<body>${canvasEl.innerHTML}</body></html>`
-    const blob = new Blob([html], { type: 'text/html' })
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${materialTitle || 'Material Didático'}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f8fafc;color:#1E293B;line-height:1.7}
+h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
+h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
+strong{font-weight:600}
+p{margin:0 0 12px}
+.a4-page{max-width:794px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:1123px}
+.a4-page--cover{background:#0f172a;min-height:1123px}
+.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0}
+.a4-page-content{padding:12px 60px;flex:1}
+.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between}
+.canvas-block{padding:10px 16px;margin-bottom:4px}
+.block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
+.block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
+.cover-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.cover-content,.cover-footer,.cover-logo{position:absolute;z-index:1}
+.cover-title{font-size:36px;font-weight:700;line-height:1.2}
+.cover-subtitle{font-size:16px;opacity:.8}
+.cover-instrument{font-size:13px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;font-weight:600}
+.cover-footer{font-size:12px;opacity:.7}
+.cover-professor{font-weight:600}
+img{max-width:100%}
+.notation-container{background:#fff;border-radius:4px;overflow:hidden;margin:8px 0}
+.notation-container svg{filter:none!important;display:block;max-width:100%}
+svg{max-width:100%}
+.block-columns{display:grid;gap:16px;align-items:start}
+.block-column{min-width:0}
+@media print{
+  body{background:#fff}
+  .a4-page{box-shadow:none;page-break-after:always;break-after:page;margin:0}
+  .a4-page:last-child{page-break-after:auto}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  @page{size:A4 portrait;margin:0}
+}
+</style>
+</head>
+<body>
+${pagesHtml}
+</body>
+</html>`
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
+    toast.success('HTML exportado em nova aba')
   }, [materialTitle])
 
   // --- Loading/Error ---

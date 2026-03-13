@@ -445,19 +445,66 @@
 .block-column{min-width:0}
 .block-column>*:last-child{margin-bottom:0}
 
+/* Container de print temporário — criado por handlePrint() */
+#print-container .a4-page { width:100%; height:auto; min-height:0; overflow:visible; box-shadow:none; border-radius:0 }
+#print-container .a4-page--cover { min-height:1123px; background:#0f172a }
+#print-container .a4-page-content { overflow:visible; height:auto }
+#print-container .notation-container { background:white }
+#print-container .notation-container svg { filter:none !important }
+#print-container .canvas-block { border:none; box-shadow:none; padding:12px 0 }
+#print-container .canvas-block.selected { border:none; box-shadow:none }
+#print-container .add-block-btn { display:none }
+
 @media print {
-  .editor-sidebar,.editor-properties,.editor-header,nav,aside,header,[class*="Sidebar"] { display:none !important }
-  .editor-layout { display:block !important; margin:0 !important }
+  /* 1. Esconder sidebar, painel de propriedades, header, nav, container de medição */
+  nav { display:none !important }
+  aside,header,.editor-sidebar,.editor-properties,.editor-header,[class*="Sidebar"],[aria-hidden="true"] { display:none !important }
+
+  /* 2. Resetar TODA a cadeia de containers — do body até o conteúdo A4 */
+  body,html { background:white !important; color:#1E293B !important; height:auto !important; overflow:visible !important }
+  main { margin-left:0 !important; padding:0 !important; height:auto !important; overflow:visible !important; width:100% !important }
+  main > div { height:auto !important; min-height:0 !important; overflow:visible !important; padding:0 !important; max-height:none !important }
+
+  /* 3. Editor: esconder header, zerar wrapper, converter layout grid → bloco */
+  .editor-header { display:none !important; height:0 !important; margin:0 !important; padding:0 !important; border:none !important }
+  .animate-in { margin:0 !important; padding:0 !important }
+  .editor-layout { display:block !important; margin:0 !important; padding:0 !important; height:auto !important; overflow:visible !important }
   .editor-canvas { width:100% !important; margin:0 !important; padding:0 !important; background:white !important; box-shadow:none !important; overflow:visible !important; height:auto !important; background-image:none !important }
-  .a4-canvas-wrapper { transform:none !important; min-height:auto !important; gap:0 !important; padding:0 !important }
-  .a4-page { width:100% !important; min-height:auto !important; box-shadow:none !important; border-radius:0 !important; page-break-after:always }
-  .a4-page:last-child { page-break-after:auto }
+  .a4-canvas-wrapper { transform:none !important; min-height:0 !important; gap:0 !important; padding:0 !important; overflow:visible !important }
+
+  /* 4. Páginas A4: height auto, overflow visível, page-break entre páginas */
+  .a4-page { width:100% !important; height:auto !important; min-height:0 !important; overflow:visible !important; box-shadow:none !important; border-radius:0 !important; page-break-after:always; break-after:page }
+  .a4-page:last-child { page-break-after:auto; break-after:auto }
+  .a4-page--cover { background:#0f172a !important; min-height:1123px !important }
   .a4-page-header { padding:20px 40px 8px !important }
-  .a4-page-content { padding:12px 40px !important }
+  .a4-page-content { padding:12px 40px !important; overflow:visible !important; height:auto !important }
   .a4-page-footer { padding:8px 40px 16px !important }
-  .canvas-block { border:none !important; box-shadow:none !important; page-break-inside:avoid; padding:12px 0 !important }
+
+  /* 5. Blocos: sem borda/seleção, evitar quebra */
+  .canvas-block { border:none !important; box-shadow:none !important; page-break-inside:avoid; break-inside:avoid; padding:12px 0 !important; overflow:visible !important }
   .canvas-block.selected { border:none !important; box-shadow:none !important }
-  .add-block-btn { display:none !important }
-  main { margin-left:0 !important; padding:0 !important; height:auto !important; overflow:visible !important }
-  body { background:white !important; color:#1E293B !important }
+  .block-selection-border { border:none !important; outline:none !important; box-shadow:none !important }
+  .add-block-btn,.cover-draggable:hover,.cover-snap-guide { display:none !important }
+
+  /* 6. Forçar impressão de backgrounds/imagens */
+  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
+  .block-cover--with-image { background-size:cover !important; background-position:center !important }
+  .cover-overlay { background:rgba(0,0,0,.45) !important }
+  .cover-logo img { filter:none !important }
+
+  /* 7. Notação musical: fundo branco, sem filter invert (dark mode) */
+  /* Seletor com alta especificidade para vencer [data-theme="dark"] .notation-container svg */
+  .notation-container { background:white !important; border:1px solid #e2e8f0 !important }
+  .notation-container svg { filter:none !important }
+  [data-theme="dark"] .notation-container svg { filter:none !important }
+  html[data-theme="dark"] .notation-container svg { filter:none !important }
+
+  /* 8. Container de print temporário */
+  #print-container .a4-page { page-break-after:always; break-after:page }
+  #print-container .a4-page:last-child { page-break-after:auto; break-after:auto }
+  #print-container .a4-page--cover { background:#0f172a !important; min-height:1123px !important }
+  #print-container .block-cover--with-image { background-size:cover !important; background-position:center !important }
+  #print-container .cover-overlay { background:rgba(0,0,0,.45) !important }
+
+  @page { size:A4 portrait; margin:0 }
 }

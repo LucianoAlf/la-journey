@@ -60,13 +60,19 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
       isCollapsed ? "w-[var(--sidebar-w-collapsed)]" : "w-[var(--sidebar-w)]"
     )}>
       <div className="flex items-center gap-2.5 p-4 border-b border-sidebar-border overflow-hidden shrink-0 min-h-[68px]">
-        <div className="w-9 h-9 shrink-0 bg-gradient-to-br from-accent to-foundation rounded-[10px] flex items-center justify-center text-[13px] font-extrabold text-white">
-          LA
-        </div>
-        <div className={cn("whitespace-nowrap overflow-hidden transition-all duration-300", isCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto")}>
-          <div className="font-serif text-sm text-text font-semibold">LA <em className="not-italic text-accent">Journey</em></div>
-          <div className="text-[8px] tracking-[2.5px] uppercase text-accent">Ancoragem de Fundamentos</div>
-        </div>
+        {isCollapsed ? (
+          <img
+            src={theme === 'dark' ? '/logos/logo-solo-dark.png' : '/logos/logo-solo-ligth.png'}
+            alt="LA Journey"
+            className="h-9 w-auto shrink-0 object-contain"
+          />
+        ) : (
+          <img
+            src={theme === 'dark' ? '/logos/logo-dark.png' : '/logos/logo-light.png'}
+            alt="LA Journey"
+            className="h-11 w-auto shrink-0 object-contain"
+          />
+        )}
       </div>
 
       <div className="flex-1 py-2.5 overflow-y-auto overflow-x-hidden">
