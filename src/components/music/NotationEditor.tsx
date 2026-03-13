@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { FloppyDisk, Trash, X, ArrowCounterClockwise, PencilSimple, ArrowsOutCardinal, CaretUp, CaretDown } from '@phosphor-icons/react'
+import { FloppyDisk, Trash, X, ArrowCounterClockwise, ArrowClockwise, PencilSimple, ArrowsOutCardinal, CaretUp, CaretDown, Play, Pause, Stop, MagnifyingGlassPlus, MagnifyingGlassMinus } from '@phosphor-icons/react'
+import * as Tone from 'tone'
 import { NotationRenderer } from '@/components/music/NotationRenderer'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -328,6 +329,24 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const [lastNote, setLastNote] = useState<string>('—')
   const [lastNoteInfo, setLastNoteInfo] = useState<string>('Clique na pauta')
 
+  // ── Fase 2: Playback ──
+  const synthRef = useRef<Tone.PolySynth | null>(null)
+  const playTimeoutsRef = useRef<number[]>([])
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [playingBeatIndex, setPlayingBeatIndex] = useState<number | null>(null)
+
+  // ── Fase 2: Undo/Redo ──
+  const MAX_HISTORY = 50
+  const [history, setHistory] = useState<Beat[][]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const historySkipRef = useRef(false) // evita pushHistory quando undo/redo restaura
+
+  // ── Fase 2: Zoom ──
+  const [zoom, setZoom] = useState(100)
+
+  // ── Fase 2: Clipboard ──
+  const [clipboard, setClipboard] = useState<Beat[] | null>(null)
+
   // Largura dinâmica da pauta (medida do container)
   const [staveWidth, setStaveWidth] = useState(700)
 
@@ -389,6 +408,13 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setCifraPopupVisible(false)
     setSelectedElement(null)
     setHoverBeatIdx(null)
+    // Fase 2 reset
+    stopPlayback()
+    setHistory([])
+    setHistoryIndex(-1)
+    historySkipRef.current = false
+    setZoom(100)
+    setClipboard(null)
   }, [open, notation])
 
   // Ler posições X reais dos noteheads do SVG após cada render
@@ -818,10 +844,186 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     return () => window.removeEventListener('keydown', handler)
   }, [open, selectedElement, deleteSelected, moveSelectedPitch, beats.length])
 
-  // Undo
-  const handleUndo = useCallback(() => {
-    setBeats(prev => prev.length > 0 ? prev.slice(0, -1) : prev)
+  // ── Fase 2: Undo/Redo com Stack ──────────────────────────────────
+  const pushHistory = useCallback((currentBeats: Beat[]) => {
+    if (historySkipRef.current) { historySkipRef.current = false; return }
+    setHistory(prev => {
+      const trimmed = prev.slice(0, historyIndex + 1)
+      trimmed.push(JSON.parse(JSON.stringify(currentBeats)))
+      if (trimmed.length > MAX_HISTORY) trimmed.shift()
+      return trimmed
+    })
+    setHistoryIndex(prev => {
+      const newLen = Math.min(prev + 2, MAX_HISTORY)
+      return newLen - 1
+    })
+  }, [historyIndex, MAX_HISTORY])
+
+  // Observar mudanças em beats para auto-pushHistory
+  const prevBeatsRef = useRef<string>('')
+  useEffect(() => {
+    const snap = JSON.stringify(beats)
+    if (snap !== prevBeatsRef.current && prevBeatsRef.current !== '') {
+      pushHistory(beats)
+    }
+    prevBeatsRef.current = snap
+  }, [beats]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const undo = useCallback(() => {
+    if (historyIndex <= 0) return
+    const newIndex = historyIndex - 1
+    historySkipRef.current = true
+    setHistoryIndex(newIndex)
+    setBeats(JSON.parse(JSON.stringify(history[newIndex])))
+  }, [historyIndex, history])
+
+  const redo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return
+    const newIndex = historyIndex + 1
+    historySkipRef.current = true
+    setHistoryIndex(newIndex)
+    setBeats(JSON.parse(JSON.stringify(history[newIndex])))
+  }, [historyIndex, history])
+
+  // ── Fase 2: Playback Sonoro (Tone.js) ──────────────────────────
+  const initSynth = useCallback(() => {
+    if (!synthRef.current) {
+      synthRef.current = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.02, decay: 0.1, sustain: 0.3, release: 0.5 },
+      }).toDestination()
+    }
   }, [])
+
+  const stopPlayback = useCallback(() => {
+    playTimeoutsRef.current.forEach(id => clearTimeout(id))
+    playTimeoutsRef.current = []
+    synthRef.current?.releaseAll()
+    setIsPlaying(false)
+    setPlayingBeatIndex(null)
+  }, [])
+
+  const playAll = useCallback(async () => {
+    if (isPlaying) { stopPlayback(); return }
+    if (beats.length === 0) return
+    await Tone.start()
+    initSynth()
+    setIsPlaying(true)
+
+    const bpm = 120
+    const beatDuration = 60 / bpm
+    const DURATIONS: Record<string, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+
+    let delay = 0
+    const timeouts: number[] = []
+
+    beats.forEach((beat, index) => {
+      const dur = DURATIONS[beat.duration] || 1
+      const seconds = dur * beatDuration * (beat.dotted ? 1.5 : 1)
+
+      // Highlight visual
+      const hlId = window.setTimeout(() => setPlayingBeatIndex(index), delay * 1000)
+      timeouts.push(hlId)
+
+      if (!beat.isRest) {
+        const notes = beat.pitches.map(p => {
+          const parts = p.pitch.split('/')
+          if (parts.length !== 2) return p.pitch
+          let note = parts[0].toUpperCase() + parts[1]
+          if (p.accidental === '#') note = note.replace(/(\d)/, '#$1')
+          if (p.accidental === 'b') note = note.replace(/(\d)/, 'b$1')
+          return note
+        })
+        const playId = window.setTimeout(() => {
+          try { synthRef.current?.triggerAttackRelease(notes, seconds) } catch { /* ignore */ }
+        }, delay * 1000)
+        timeouts.push(playId)
+      }
+
+      delay += seconds
+    })
+
+    // Ao final, parar
+    const endId = window.setTimeout(() => {
+      setIsPlaying(false)
+      setPlayingBeatIndex(null)
+    }, delay * 1000)
+    timeouts.push(endId)
+    playTimeoutsRef.current = timeouts
+  }, [isPlaying, beats, stopPlayback, initSynth])
+
+  // Cleanup do synth ao desmontar
+  useEffect(() => {
+    return () => {
+      playTimeoutsRef.current.forEach(id => clearTimeout(id))
+      synthRef.current?.dispose()
+      synthRef.current = null
+    }
+  }, [])
+
+  // ── Fase 2: Zoom helpers ────────────────────────────────────────
+  const zoomIn = useCallback(() => setZoom(z => Math.min(200, z + 10)), [])
+  const zoomOut = useCallback(() => setZoom(z => Math.max(50, z - 10)), [])
+  const zoomReset = useCallback(() => setZoom(100), [])
+
+  // ── Fase 2: Copy/Paste ──────────────────────────────────────────
+  const copyBeat = useCallback(() => {
+    if (!selectedElement || selectedElement.type !== 'note') return
+    const beat = beats[selectedElement.beatIdx]
+    if (beat) setClipboard([JSON.parse(JSON.stringify(beat))])
+  }, [selectedElement, beats])
+
+  const pasteBeat = useCallback(() => {
+    if (!clipboard) return
+    const insertAt = selectedElement?.type === 'note' ? selectedElement.beatIdx + 1 : beats.length
+    setBeats(prev => {
+      const next = [...prev]
+      next.splice(insertAt, 0, ...clipboard.map(b => ({ ...b })))
+      return next
+    })
+  }, [clipboard, selectedElement, beats.length])
+
+  // ── Fase 2: Keyboard shortcuts globais ──────────────────────────
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      // Ignorar quando está em input/textarea
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+      // Ctrl+Z / Ctrl+Shift+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) redo(); else undo()
+        return
+      }
+      // Ctrl+Y
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault()
+        redo()
+        return
+      }
+      // Ctrl+C
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault()
+        copyBeat()
+        return
+      }
+      // Ctrl+V
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault()
+        pasteBeat()
+        return
+      }
+      // Espaço = Play/Pause (quando não está em modo texto)
+      if (e.key === ' ' && inputMode !== 'lyric' && inputMode !== 'cifra' && inputMode !== 'annotation') {
+        e.preventDefault()
+        playAll()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open, undo, redo, copyBeat, pasteBeat, playAll, inputMode])
 
   // Clear
   const handleClear = useCallback(() => {
@@ -1070,10 +1272,14 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
           <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
 
-          {/* Undo + Barra */}
-          <TBtn active={false} onClick={handleUndo} title="Desfazer">
-            <ArrowCounterClockwise size={14} />
+          {/* Undo / Redo */}
+          <TBtn active={false} onClick={undo} title="Desfazer (Ctrl+Z)">
+            <ArrowCounterClockwise size={14} style={{ opacity: historyIndex <= 0 ? 0.35 : 1 }} />
           </TBtn>
+          <TBtn active={false} onClick={redo} title="Refazer (Ctrl+Y)">
+            <ArrowClockwise size={14} style={{ opacity: historyIndex >= history.length - 1 ? 0.35 : 1 }} />
+          </TBtn>
+
           {editorMode === 'free' && (
             <TBtn active={false} onClick={() => {
               if (beats.length === 0) return
@@ -1087,6 +1293,42 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
               <span style={{ fontSize: 12, fontWeight: 700, padding: '0 2px' }}>|</span>
             </TBtn>
           )}
+
+          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+
+          {/* Play / Stop */}
+          <TBtn active={isPlaying} onClick={playAll} title={isPlaying ? 'Pausar (Espaço)' : 'Tocar (Espaço)'}>
+            {isPlaying ? <Pause size={14} weight="fill" /> : <Play size={14} weight="fill" />}
+          </TBtn>
+          {isPlaying && (
+            <TBtn active={false} onClick={stopPlayback} title="Parar">
+              <Stop size={14} weight="fill" />
+            </TBtn>
+          )}
+
+          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+
+          {/* Zoom */}
+          <TBtn active={false} onClick={zoomOut} title="Diminuir zoom">
+            <MagnifyingGlassMinus size={14} />
+          </TBtn>
+          <button
+            onClick={zoomReset}
+            title="Resetar zoom"
+            style={{
+              minWidth: 34, height: 30, padding: '0 4px',
+              border: '1px solid #334155', borderRadius: 6,
+              background: 'transparent', color: zoom !== 100 ? '#FF2D78' : '#94A3B8',
+              fontSize: 10, fontWeight: 600, cursor: 'pointer',
+              fontFamily: "'DM Mono', monospace",
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            {zoom}%
+          </button>
+          <TBtn active={false} onClick={zoomIn} title="Aumentar zoom">
+            <MagnifyingGlassPlus size={14} />
+          </TBtn>
         </div>
 
         {/* ── Linha 3: VexFlow Preview + Painel lateral ── */}
@@ -1095,7 +1337,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           <div ref={editorColRef}>
             <div
               ref={wrapRef}
-              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '12px 14px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', minHeight: 140, maxHeight: 420 }}
+              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '12px 14px', position: 'relative', overflow: 'auto', minHeight: 140, maxHeight: 420 }}
             >
               {/* Indicador de modo (canto superior direito) */}
               <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none', display: 'flex', gap: 6 }}>
@@ -1113,7 +1355,12 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
               {/* Camada 1: VexFlow multi-line preview + cifras/annotations/lyrics overlay */}
               <div
                 className="notation-editor-vexflow"
-                style={{ pointerEvents: dragging ? 'auto' : 'none', position: 'relative' }}
+                style={{
+                  pointerEvents: dragging ? 'auto' : 'none', position: 'relative',
+                  transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
+                  transformOrigin: 'top left',
+                  width: zoom !== 100 ? `${10000 / zoom}%` : undefined,
+                }}
                 onMouseMove={dragging ? handleDragMove : undefined}
                 onMouseUp={dragging ? handleDragEnd : undefined}
                 onMouseLeave={dragging ? handleDragEnd : undefined}
@@ -1136,6 +1383,29 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                   return (
                     <div key={lineIdx} style={{ position: 'relative', marginBottom: hasLyrics ? 20 : 0, overflow: 'visible' }}>
                       <NotationRenderer notation={lineData} />
+
+                      {/* Highlight de playback — nota sendo tocada */}
+                      {playingBeatIndex !== null && lineBts.map((_, bi) => {
+                        const globalIdx = globalOffset + bi
+                        if (globalIdx !== playingBeatIndex) return null
+                        return (
+                          <div
+                            key={`play-${bi}`}
+                            style={{
+                              position: 'absolute',
+                              left: pctX(noteXpx(bi)),
+                              top: pctY(VEXFLOW_STAFF_TOP - 4),
+                              width: pctX(22), height: pctY(VEXFLOW_STAFF_BOTTOM - VEXFLOW_STAFF_TOP + 8),
+                              transform: 'translateX(-50%)',
+                              background: 'rgba(255, 45, 120, 0.18)',
+                              borderRadius: 4,
+                              zIndex: 3,
+                              pointerEvents: 'none',
+                              transition: 'left 0.05s',
+                            }}
+                          />
+                        )
+                      })}
 
                       {/* Highlight de nota selecionada ou hover */}
                       {lineBts.map((_, bi) => {
@@ -1554,18 +1824,15 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
             {/* Instruções */}
             <div className="text-[11px] text-text3 text-center leading-relaxed mt-2">
-              <span className="text-accent font-semibold">→ Mel</span> = notas ·{' '}
-              <span style={{ color: '#6366F1' }}><strong>↕ Ac</strong> = harmônico</span> ·{' '}
-              <span style={{ color: '#F97316' }}><strong>⌒ Lig</strong> = ligadura</span> ·{' '}
-              <span style={{ color: '#6366F1' }}><strong>A7</strong> = cifra</span> ·{' '}
-              <span style={{ color: '#94A3B8' }}><strong>📝 Txt</strong> = anotação</span> ·{' '}
-              <span className="text-accent font-semibold">🎤 Let</span> = letra<br />
-              <span className="text-accent font-semibold">Clique</span> = colocar nota ·{' '}
-              <span className="text-accent font-semibold">Clique na nota</span> = selecionar ·{' '}
+              <span className="text-accent font-semibold">Clique</span> = nota ·{' '}
               <span className="text-accent font-semibold">Duplo clique</span> = remover ·{' '}
-              <span style={{ color: '#22D3EE' }}>↑↓</span> = mover nota ·{' '}
+              <span style={{ color: '#22D3EE' }}>↑↓</span> = mover ·{' '}
               <span style={{ color: '#94A3B8' }}>←→</span> = navegar ·{' '}
-              <span style={{ color: '#94A3B8' }}>Del</span> = apagar
+              <span style={{ color: '#94A3B8' }}>Del</span> = apagar ·{' '}
+              <span style={{ color: '#94A3B8' }}>Ctrl+Z</span> = desfazer ·{' '}
+              <span style={{ color: '#94A3B8' }}>Ctrl+Y</span> = refazer ·{' '}
+              <span style={{ color: '#94A3B8' }}>Ctrl+C/V</span> = copiar/colar ·{' '}
+              <span className="text-accent font-semibold">Espaço</span> = play/pause
             </div>
           </div>
 
