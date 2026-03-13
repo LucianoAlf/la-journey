@@ -16,6 +16,16 @@ import type { NotationLibraryRow } from '@/services/notationService'
 const TREBLE_RANGE = ['c/4','d/4','e/4','f/4','g/4','a/4','b/4','c/5','d/5','e/5','f/5','g/5','a/5','b/5','c/6']
 const BASS_RANGE = ['e/2','f/2','g/2','a/2','b/2','c/3','d/3','e/3','f/3','g/3','a/3','b/3','c/4','d/4','e/4']
 const ALTO_RANGE = ['d/3','e/3','f/3','g/3','a/3','b/3','c/4','d/4','e/4','f/4','g/4','a/4','b/4','c/5','d/5']
+const PERCUSSION_RANGE = ['c/4','d/4','e/4','f/4','g/4','a/4','b/4','c/5','d/5','e/5','f/5','g/5']
+
+const DRUM_NAMES: Record<string, string> = {
+  'g/5': 'Crash', 'f/5': 'Hi-hat aberto', 'e/5': 'Hi-hat fechado',
+  'd/5': 'Tom alto', 'c/5': 'Caixa', 'b/4': 'Tom médio',
+  'a/4': 'Tom baixo', 'g/4': 'Floor tom', 'f/4': '—',
+  'e/4': '—', 'd/4': 'Bumbo', 'c/4': 'Bumbo 2',
+}
+
+const DRUM_X_NOTEHEADS = new Set(['g/5','f/5','e/5'])
 
 const PT: Record<string, string> = { c:'Dó', d:'Ré', e:'Mi', f:'Fá', g:'Sol', a:'Lá', b:'Si' }
 const DURATION_BEATS: Record<string, number> = { w:4, h:2, q:1, '8':0.5, '16':0.25 }
@@ -25,6 +35,7 @@ const CLEF_OPTIONS = [
   { value: 'treble', label: 'Sol' },
   { value: 'bass', label: 'Fá' },
   { value: 'alto', label: 'Dó' },
+  { value: 'percussion', label: 'Percussão' },
 ]
 const TIME_OPTIONS = ['4/4', '3/4', '2/4', '6/8']
 const KEY_OPTIONS = [
@@ -60,6 +71,10 @@ interface Beat {
   pitches: PitchData[]
   duration: string
   tie: boolean
+  isRest: boolean
+  dotted: boolean
+  notehead?: 'normal' | 'x'
+  barAfter?: boolean
   cifra: string | null
   cifra_offset?: OffsetXY
   annotation: string | null
@@ -96,7 +111,13 @@ interface NotationEditorProps {
 function getScaleForClef(clef: string): string[] {
   if (clef === 'bass') return BASS_RANGE
   if (clef === 'alto') return ALTO_RANGE
+  if (clef === 'percussion') return PERCUSSION_RANGE
   return TREBLE_RANGE
+}
+
+function getBeatDuration(beat: Beat): number {
+  const base = DURATION_BEATS[beat.duration] || 1
+  return beat.dotted ? base * 1.5 : base
 }
 
 
@@ -117,14 +138,20 @@ function autoTags(beats: Beat[], category: string): string[] {
   if (beats.some(b => b.pitches.length > 1)) tags.push('harmônico')
   if (beats.some(b => b.tie)) tags.push('ligadura')
   if (beats.some(b => b.cifra)) tags.push('cifra')
+  if (beats.some(b => b.isRest)) tags.push('pausa')
+  if (beats.some(b => b.dotted)) tags.push('pontuado')
   return tags
 }
 
 function beatsToSaveFormat(beats: Beat[]) {
   return beats.map(b => ({
-    notes: b.pitches.map(p => p.pitch + ':' + b.duration),
+    notes: b.pitches.map(p => p.pitch + ':' + b.duration + (b.dotted ? 'd' : '') + (b.isRest ? 'r' : '')),
     accidentals: b.pitches.map(p => p.accidental),
     tie: b.tie || false,
+    isRest: b.isRest || false,
+    dotted: b.dotted || false,
+    ...(b.notehead && b.notehead !== 'normal' ? { notehead: b.notehead } : {}),
+    ...(b.barAfter ? { barAfter: true } : {}),
     cifra: b.cifra || null,
     ...(b.cifra_offset && (b.cifra_offset.x || b.cifra_offset.y) ? { cifra_offset: b.cifra_offset } : {}),
     annotation: b.annotation || null,
@@ -144,11 +171,17 @@ function loadBeatsFromData(data: any): Beat[] {
         const [pitch] = n.split(':')
         return { pitch, accidental: accidentals[i] ?? null }
       })
-      const dur = notes[0]?.split(':')[1] ?? 'q'
+      // Extrair duração base (remover sufixos 'd' e 'r')
+      const rawDur = notes[0]?.split(':')[1] ?? 'q'
+      const dur = rawDur.replace(/[dr]/g, '')
       return {
         pitches,
         duration: dur,
         tie: b.tie ?? false,
+        isRest: b.isRest ?? rawDur.includes('r'),
+        dotted: b.dotted ?? rawDur.includes('d'),
+        ...(b.notehead ? { notehead: b.notehead } : {}),
+        ...(b.barAfter ? { barAfter: true } : {}),
         cifra: b.cifra ?? null,
         ...(b.cifra_offset ? { cifra_offset: b.cifra_offset } : {}),
         annotation: b.annotation ?? null,
@@ -180,13 +213,15 @@ function lineBeatsToStaveData(
   clef: string,
   keySig: string | undefined,
   timeSig: string | undefined,
+  width = 700,
 ) {
   const notes: string[] = []
   const accidentals: (string | null)[] = []
 
   lineBeats.forEach(beat => {
+    const durSuffix = (beat.dotted ? 'd' : '') + (beat.isRest ? 'r' : '')
     beat.pitches.forEach(p => {
-      notes.push(`${p.pitch}:${beat.duration}`)
+      notes.push(`${p.pitch}:${beat.duration}${durSuffix}`)
       accidentals.push(p.accidental)
     })
   })
@@ -194,14 +229,14 @@ function lineBeatsToStaveData(
   return {
     type: 'staff' as const,
     staves: [{
-      clef: clef as 'treble' | 'bass',
-      key_signature: keySig,
+      clef: clef as 'treble' | 'bass' | 'alto' | 'percussion',
+      key_signature: clef === 'percussion' ? undefined : keySig,
       time_signature: timeSig,
       notes,
       accidentals,
       label: '',
     }],
-    width: 700,
+    width,
     height: 150,
   }
 }
@@ -211,6 +246,11 @@ const VEXFLOW_STAFF_TOP = 40    // Y do topo da pauta no SVG
 const VEXFLOW_LINE_SPACE = 10   // espaçamento entre linhas no VexFlow
 const VEXFLOW_STAFF_BOTTOM = VEXFLOW_STAFF_TOP + 4 * VEXFLOW_LINE_SPACE
 const LINE_RENDER_HEIGHT = 150  // altura de cada linha renderizada
+const VF_VIEWBOX_W = 700        // largura do viewBox do SVG VexFlow
+const VF_VIEWBOX_H = 150        // altura do viewBox do SVG VexFlow
+// Helpers: converter px do viewBox para % (overlay escala junto com o SVG)
+const pctX = (px: number) => `${(px / VF_VIEWBOX_W) * 100}%`
+const pctY = (py: number) => `${(py / VF_VIEWBOX_H) * 100}%`
 
 function vexflowYToPos(y: number, scaleArr: string[]): number {
   // Converter posição Y no SVG para índice na escala
@@ -222,6 +262,7 @@ function vexflowYToPos(y: number, scaleArr: string[]): number {
 // ─── Componente Principal ───────────────────────────────────────────
 export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete }: NotationEditorProps) {
   const isEditing = !!notation
+  const editorColRef = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -231,6 +272,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const [inputMode, setInputMode] = useState<InputMode>('melodic')
   const [currentDuration, setCurrentDuration] = useState('q')
   const [currentAccidental, setCurrentAccidental] = useState<string | null>(null)
+  const [restMode, setRestMode] = useState(false)
+  const [dottedMode, setDottedMode] = useState(false)
   const [hoverPos, setHoverPos] = useState<number | null>(null)
   const [hoverMouse, setHoverMouse] = useState<{ x: number; y: number } | null>(null)
   const [selectedClef, setSelectedClef] = useState('treble')
@@ -285,6 +328,9 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const [lastNote, setLastNote] = useState<string>('—')
   const [lastNoteInfo, setLastNoteInfo] = useState<string>('Clique na pauta')
 
+  // Largura dinâmica da pauta (medida do container)
+  const [staveWidth, setStaveWidth] = useState(700)
+
   // Posições X reais dos noteheads lidas do SVG (por linha)
   const [notePositions, setNotePositions] = useState<number[][]>([])
 
@@ -299,8 +345,9 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       selectedClef,
       i === 0 && selectedKey !== 'C' ? selectedKey : undefined,
       i === 0 && editorMode === 'metered' ? selectedTime : undefined,
+      staveWidth,
     )),
-    [beatLines, selectedClef, selectedKey, editorMode, selectedTime],
+    [beatLines, selectedClef, selectedKey, editorMode, selectedTime, staveWidth],
   )
 
   // Inicializar ao abrir
@@ -333,6 +380,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setInputMode('melodic')
     setCurrentDuration('q')
     setCurrentAccidental(null)
+    setRestMode(false)
+    setDottedMode(false)
     setHoverPos(null)
     setHoverMouse(null)
     setLastNote('—')
@@ -352,12 +401,14 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       const positions: number[][] = []
       svgs.forEach(svg => {
         const svgRect = svg.getBoundingClientRect()
+        const vbW = parseFloat(svg.getAttribute('width') || String(VF_VIEWBOX_W))
+        const scaleFactor = svgRect.width / vbW // CSS escala o SVG → converter de volta para coords do viewBox
         const noteheads = svg.querySelectorAll('.vf-notehead')
-        // Coletar todas as posições X
+        // Coletar todas as posições X (convertidas para coordenadas do viewBox)
         const rawX: number[] = []
         noteheads.forEach(nh => {
           const r = nh.getBoundingClientRect()
-          rawX.push(r.left - svgRect.left + r.width / 2)
+          rawX.push((r.left - svgRect.left + r.width / 2) / scaleFactor)
         })
         // Agrupar noteheads de acordes (mesma posição X ±5px = mesmo beat)
         const grouped: number[] = []
@@ -373,6 +424,21 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     })
     return () => cancelAnimationFrame(timer)
   }, [linedNotationData, beats])
+
+  // Medir largura do container para pauta responsiva
+  // Mede o pai (editorColRef = div 1fr do grid), não o wrap que tem overflow hidden
+  useEffect(() => {
+    const col = editorColRef.current
+    if (!col) return
+    const measure = () => {
+      const w = col.clientWidth - 28 // padding 14px × 2
+      if (w > 200) setStaveWidth(w)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(col)
+    return () => ro.disconnect()
+  }, [open])
 
   // Helper: encontrar qual SVG (linha) está sob o mouse e retornar Y local + índice da linha
   function getSvgInfo(clientY: number): { svgY: number; lineIndex: number } {
@@ -504,9 +570,12 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
         next[next.length - 1] = last
       } else {
         next.push({
-          pitches: [{ pitch, accidental: currentAccidental }],
+          pitches: [{ pitch: restMode ? 'b/4' : pitch, accidental: restMode ? null : currentAccidental }],
           duration: currentDuration,
           tie: false,
+          isRest: restMode,
+          dotted: dottedMode,
+          ...(selectedClef === 'percussion' && DRUM_X_NOTEHEADS.has(pitch) && !restMode ? { notehead: 'x' as const } : {}),
           cifra: null,
           annotation: null,
           lyric: null,
@@ -520,9 +589,17 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       return next
     })
 
-    setLastNote(displayNote(pitch, currentAccidental))
-    setLastNoteInfo(inputMode === 'chord' ? 'Empilhado' : DURATION_NAMES[currentDuration])
-  }, [inputMode, currentAccidental, currentDuration, scale, beats, beatLines, notesPerLine])
+    if (restMode) {
+      setLastNote('𝄽')
+      setLastNoteInfo('Pausa · ' + DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
+    } else if (selectedClef === 'percussion') {
+      setLastNote(DRUM_NAMES[pitch] || pitch)
+      setLastNoteInfo(DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
+    } else {
+      setLastNote(displayNote(pitch, currentAccidental))
+      setLastNoteInfo(inputMode === 'chord' ? 'Empilhado' : DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
+    }
+  }, [inputMode, currentAccidental, currentDuration, scale, beats, beatLines, notesPerLine, restMode, dottedMode, selectedClef])
 
   // Double click = remove nota mais próxima do clique
   const handleOverlayDblClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -757,13 +834,14 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   }, [])
 
   // Info computada
-  const noteCount = beats.reduce((s, b) => s + b.pitches.length, 0)
-  const chordCount = beats.filter(b => b.pitches.length > 1).length
-  const totalBeats = beats.reduce((s, b) => s + (DURATION_BEATS[b.duration] || 1), 0)
+  const noteCount = beats.filter(b => !b.isRest).reduce((s, b) => s + b.pitches.length, 0)
+  const restCount = beats.filter(b => b.isRest).length
+  const chordCount = beats.filter(b => !b.isRest && b.pitches.length > 1).length
+  const totalBeats = beats.reduce((s, b) => s + getBeatDuration(b), 0)
   const tieCount = beats.filter(b => b.tie).length
   const cifraCount = beats.filter(b => b.cifra).length
   const lyricCount = beats.filter(b => b.lyric).length
-  const clefDisplay = selectedClef === 'treble' ? 'Sol' : selectedClef === 'bass' ? 'Fá' : 'Dó'
+  const clefDisplay = selectedClef === 'treble' ? 'Sol' : selectedClef === 'bass' ? 'Fá' : selectedClef === 'percussion' ? 'Perc' : 'Dó'
 
   const measureCount = useMemo(() => {
     if (editorMode !== 'metered') return 0
@@ -839,7 +917,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[980px] max-h-[90vh] overflow-y-auto bg-surface border-border"
+        className="sm:max-w-[1100px] max-h-[90vh] overflow-y-auto bg-surface border-border"
         onInteractOutside={e => e.preventDefault()}
         onEscapeKeyDown={e => { if (inputMode === 'lyric') e.preventDefault() }}
       >
@@ -873,7 +951,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           {/* Clave */}
           <div className="space-y-1 min-w-[80px]">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Clave</span>
-            <Select value={selectedClef} onValueChange={v => { setSelectedClef(v); setBeats([]) }}>
+            <Select value={selectedClef} onValueChange={v => { setSelectedClef(v); setBeats([]); if (v === 'percussion') { setSelectedKey('C'); setCurrentAccidental(null) } }}>
               <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {CLEF_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
@@ -894,16 +972,18 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
             </div>
           )}
 
-          {/* Armadura */}
-          <div className="space-y-1 min-w-[80px]">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Armadura</span>
-            <Select value={selectedKey} onValueChange={setSelectedKey}>
-              <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {KEY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Armadura (esconder em percussão) */}
+          {selectedClef !== 'percussion' && (
+            <div className="space-y-1 min-w-[80px]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Armadura</span>
+              <Select value={selectedKey} onValueChange={setSelectedKey}>
+                <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {KEY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Categoria */}
           <div className="space-y-1 min-w-[100px]">
@@ -928,90 +1008,106 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           </div>
         </div>
 
-        {/* ── Linha 2: Toolbar ── */}
-        <div className="flex gap-[2px] rounded-[9px] mb-2.5 flex-wrap items-center" style={{ padding: '6px 8px', backgroundColor: '#162032' }}>
+        {/* ── Toolbar (linha única) ── */}
+        <div className="flex gap-[2px] items-center rounded-[9px] mb-2.5" style={{ padding: '5px 6px', backgroundColor: '#162032' }}>
           {/* Duração */}
-          <div className="flex gap-[2px] items-center" style={{ paddingRight: 7, marginRight: 4, borderRight: '1px solid #334155' }}>
-            <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Duração</span>
-            {[
-              { key: 'w', label: '𝅝' },
-              { key: 'h', label: '𝅗𝅥' },
-              { key: 'q', label: '♩' },
-              { key: '8', label: '♪' },
-              { key: '16', label: '𝅘𝅥𝅯' },
-            ].map(d => (
-              <TBtn key={d.key} active={currentDuration === d.key} onClick={() => setCurrentDuration(d.key)}>
-                {d.label}
-              </TBtn>
-            ))}
-          </div>
+          {[
+            { key: 'w', label: '𝅝', tip: 'Semibreve' },
+            { key: 'h', label: '�𝅥', tip: 'Mínima' },
+            { key: 'q', label: '♩', tip: 'Semínima' },
+            { key: '8', label: '♪', tip: 'Colcheia' },
+            { key: '16', label: '𝅘𝅥𝅯', tip: 'Semicolcheia' },
+          ].map(d => (
+            <TBtn key={d.key} active={currentDuration === d.key} onClick={() => setCurrentDuration(d.key)} title={d.tip}>
+              {d.label}
+            </TBtn>
+          ))}
+          <TBtn active={restMode} onClick={() => setRestMode(p => !p)} title="Pausa">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>🔇</span>
+          </TBtn>
+          <TBtn active={dottedMode} onClick={() => setDottedMode(p => !p)} title="Ponto de aumento">
+            <span style={{ fontSize: 13, fontWeight: 900, padding: '0 3px', lineHeight: 1 }}>•</span>
+          </TBtn>
 
-          {/* Alteração */}
-          <div className="flex gap-[2px] items-center" style={{ paddingRight: 7, marginRight: 4, borderRight: '1px solid #334155' }}>
-            <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Alteração</span>
-            <TBtn active={currentAccidental === null} onClick={() => setCurrentAccidental(null)}>♮</TBtn>
-            <TBtn active={currentAccidental === '#'} onClick={() => setCurrentAccidental('#')}>♯</TBtn>
-            <TBtn active={currentAccidental === 'b'} onClick={() => setCurrentAccidental('b')}>♭</TBtn>
-          </div>
+          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+
+          {/* Alteração (esconder em percussão) */}
+          {selectedClef !== 'percussion' && (<>
+            <TBtn active={currentAccidental === null} onClick={() => setCurrentAccidental(null)} title="Natural">♮</TBtn>
+            <TBtn active={currentAccidental === '#'} onClick={() => setCurrentAccidental('#')} title="Sustenido">♯</TBtn>
+            <TBtn active={currentAccidental === 'b'} onClick={() => setCurrentAccidental('b')} title="Bemol">♭</TBtn>
+            <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+          </>)}
 
           {/* Modo de input */}
-          <div className="flex gap-[2px] items-center" style={{ paddingRight: 7, marginRight: 4, borderRight: '1px solid #334155' }}>
-            <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Modo</span>
-            <TBtn active={inputMode === 'melodic'} onClick={() => { setInputMode('melodic'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Melódico — notas horizontais">
-              <span style={{ fontSize: 10, padding: '0 2px' }}>→ Mel</span>
-            </TBtn>
-            <TBtn active={inputMode === 'chord'} color="chord" onClick={() => { setInputMode('chord'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Harmônico — empilha notas">
-              <span style={{ fontSize: 10, padding: '0 2px' }}>↕ Ac</span>
-            </TBtn>
-            <TBtn active={inputMode === 'tie'} color="tie" onClick={() => { setInputMode('tie'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Ligadura">
-              <span style={{ fontSize: 10, padding: '0 2px' }}>⌒ Lig</span>
-            </TBtn>
-            <TBtn active={inputMode === 'cifra'} onClick={() => { setInputMode('cifra'); setAnnotPopupVisible(false) }} title="Cifra em cima">
-              <span style={{ fontSize: 10, padding: '0 2px' }}>A7</span>
-            </TBtn>
-            <TBtn active={inputMode === 'annotation'} onClick={() => { setInputMode('annotation'); setCifraPopupVisible(false) }} title="Anotação de texto">
-              <span style={{ fontSize: 10, padding: '0 2px' }}>📝 Txt</span>
-            </TBtn>
-            <TBtn active={inputMode === 'lyric'} onClick={enterLyricMode} title="Letra da música — sílabas abaixo das notas">
-              <span style={{ fontSize: 10, padding: '0 2px' }}>🎤 Let</span>
-            </TBtn>
-          </div>
+          <TBtn active={inputMode === 'melodic'} onClick={() => { setInputMode('melodic'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Melódico">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>→ Mel</span>
+          </TBtn>
+          <TBtn active={inputMode === 'chord'} color="chord" onClick={() => { setInputMode('chord'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Harmônico">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>↕ Ac</span>
+          </TBtn>
+          <TBtn active={inputMode === 'tie'} color="tie" onClick={() => { setInputMode('tie'); setCifraPopupVisible(false); setAnnotPopupVisible(false) }} title="Ligadura">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>⌒ Lig</span>
+          </TBtn>
+          <TBtn active={inputMode === 'cifra'} onClick={() => { setInputMode('cifra'); setAnnotPopupVisible(false) }} title="Cifra">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>A7</span>
+          </TBtn>
+          <TBtn active={inputMode === 'annotation'} onClick={() => { setInputMode('annotation'); setCifraPopupVisible(false) }} title="Anotação">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>📝</span>
+          </TBtn>
+          <TBtn active={inputMode === 'lyric'} onClick={enterLyricMode} title="Letra">
+            <span style={{ fontSize: 10, padding: '0 2px' }}>🎤</span>
+          </TBtn>
+
+          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
 
           {/* Notas por linha */}
-          <div className="flex gap-[2px] items-center" style={{ paddingRight: 7, marginRight: 4, borderRight: '1px solid #334155' }}>
-            <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Notas/linha</span>
-            {NOTES_PER_LINE_OPTIONS.map(n => (
-              <TBtn key={n} active={notesPerLine === n} onClick={() => setNotesPerLine(n)}>
-                <span style={{ fontSize: 10, padding: '0 1px' }}>{n}</span>
-              </TBtn>
-            ))}
-          </div>
-
-          {/* Ferramentas */}
-          <div className="flex gap-[2px] items-center">
-            <span style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginRight: 3, whiteSpace: 'nowrap' }}>Ferramentas</span>
-            <TBtn active={false} onClick={handleUndo} title="Desfazer">
-              <ArrowCounterClockwise size={14} />
+          {NOTES_PER_LINE_OPTIONS.map(n => (
+            <TBtn key={n} active={notesPerLine === n} onClick={() => setNotesPerLine(n)} title={`${n} notas/linha`}>
+              <span style={{ fontSize: 10, padding: '0 1px' }}>{n}</span>
             </TBtn>
-          </div>
+          ))}
+
+          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+
+          {/* Undo + Barra */}
+          <TBtn active={false} onClick={handleUndo} title="Desfazer">
+            <ArrowCounterClockwise size={14} />
+          </TBtn>
+          {editorMode === 'free' && (
+            <TBtn active={false} onClick={() => {
+              if (beats.length === 0) return
+              setBeats(prev => {
+                const next = [...prev]
+                const last = next[next.length - 1]
+                next[next.length - 1] = { ...last, barAfter: !last.barAfter }
+                return next
+              })
+            }} title="Barra de compasso">
+              <span style={{ fontSize: 12, fontWeight: 700, padding: '0 2px' }}>|</span>
+            </TBtn>
+          )}
         </div>
 
         {/* ── Linha 3: VexFlow Preview + Painel lateral ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 14, alignItems: 'start' }}>
           {/* Área do editor: VexFlow multi-line + overlay */}
-          <div>
+          <div ref={editorColRef}>
             <div
               ref={wrapRef}
               style={{ backgroundColor: '#fff', borderRadius: 10, padding: '12px 14px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', minHeight: 140, maxHeight: 420 }}
             >
               {/* Indicador de modo (canto superior direito) */}
-              <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none', display: 'flex', gap: 6 }}>
                 <span style={{
                   fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
                   color: inputMode === 'chord' ? '#6366F1' : inputMode === 'tie' ? '#F97316' : inputMode === 'cifra' ? '#6366F1' : inputMode === 'annotation' ? '#94A3B8' : inputMode === 'lyric' ? '#FF2D78' : '#22C55E',
                 }}>
                   {inputMode === 'chord' ? '↕ ACORDE' : inputMode === 'tie' ? '⌒ LIGADURA' : inputMode === 'cifra' ? 'A7 CIFRA' : inputMode === 'annotation' ? '📝 TEXTO' : inputMode === 'lyric' ? '🎤 LETRA' : '→ MELÓDICO'}
                 </span>
+                {restMode && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: '#F59E0B' }}>🔇 PAUSA</span>}
+                {dottedMode && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: '#A78BFA' }}>• PONTO</span>}
+                {selectedClef === 'percussion' && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: '#FB923C' }}>🥁 PERC</span>}
               </div>
 
               {/* Camada 1: VexFlow multi-line preview + cifras/annotations/lyrics overlay */}
@@ -1052,9 +1148,9 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                             key={`sel-${bi}`}
                             style={{
                               position: 'absolute',
-                              left: noteXpx(bi),
-                              top: VEXFLOW_STAFF_TOP - 4,
-                              width: 22, height: VEXFLOW_STAFF_BOTTOM - VEXFLOW_STAFF_TOP + 8,
+                              left: pctX(noteXpx(bi)),
+                              top: pctY(VEXFLOW_STAFF_TOP - 4),
+                              width: pctX(22), height: pctY(VEXFLOW_STAFF_BOTTOM - VEXFLOW_STAFF_TOP + 8),
                               transform: 'translateX(-50%)',
                               border: isSelected ? '2px solid #FF2D78' : '1.5px dashed #FF2D7866',
                               borderRadius: 6,
@@ -1073,7 +1169,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                         const globalIdx = globalOffset + bi
                         const isDraggingThis = (t: string) => dragging?.type === t && dragging?.beatIdx === globalIdx
                         return (
-                          <div key={`ca-${bi}`} style={{ position: 'absolute', left: noteXpx(bi), top: 0, transform: 'translateX(-50%)', zIndex: 5 }}>
+                          <div key={`ca-${bi}`} style={{ position: 'absolute', left: pctX(noteXpx(bi)), top: 0, transform: 'translateX(-50%)', zIndex: 5 }}>
                             {beat.annotation && (() => {
                               const off = isDraggingThis('annotation') && dragPreview ? dragPreview : (beat.annotation_offset || { x: 0, y: 0 })
                               return (
@@ -1130,8 +1226,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                             key={`lyr-${bi}`}
                             style={{
                               position: 'absolute',
-                              left: noteXpx(bi),
-                              top: VEXFLOW_STAFF_BOTTOM + 22,
+                              left: pctX(noteXpx(bi)),
+                              top: pctY(VEXFLOW_STAFF_BOTTOM + 22),
                               transform: `translateX(-50%) translate(${off.x}px, ${off.y}px)`,
                               zIndex: isActive ? 30 : 5,
                               pointerEvents: (inputMode === 'lyric' || inputMode === 'melodic') ? 'auto' : 'none',
@@ -1224,9 +1320,14 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 >
                   <span style={{
                     fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
-                    color: inputMode === 'chord' ? '#6366F1' : '#FF2D78',
+                    color: restMode ? '#F59E0B' : inputMode === 'chord' ? '#6366F1' : '#FF2D78',
                   }}>
-                    {displayNote(scale[hoverPos], currentAccidental)} · {DURATION_NAMES[currentDuration]}
+                    {restMode
+                      ? `Pausa · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
+                      : selectedClef === 'percussion'
+                        ? `${DRUM_NAMES[scale[hoverPos]] || scale[hoverPos]} · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
+                        : `${displayNote(scale[hoverPos], currentAccidental)} · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
+                    }
                   </span>
                 </div>
               )}
@@ -1475,10 +1576,11 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
               <h3 style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: '#94A3B8', marginBottom: 4 }}>Informações</h3>
               {[
                 ['Notas', String(noteCount)],
+                ['Pausas', String(restCount)],
                 ['Acordes', String(chordCount)],
                 ...(editorMode === 'metered' ? [['Compassos', String(measureCount)]] : []),
                 ['Clave', clefDisplay],
-                ['Armadura', selectedKey],
+                ...(selectedClef !== 'percussion' ? [['Armadura', selectedKey]] : []),
                 ['Tempos', totalBeats + ' tempos'],
                 ['Ligaduras', String(tieCount)],
                 ['Cifras', String(cifraCount)],

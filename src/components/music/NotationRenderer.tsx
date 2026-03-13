@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental } from 'vexflow'
+import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Dot } from 'vexflow'
 
 // --- Tipos ---
 
 interface StaveData {
-  clef?: 'treble' | 'bass'
+  clef?: 'treble' | 'bass' | 'alto' | 'percussion'
   key_signature?: string
   time_signature?: string
   notes?: (string | { key: string; duration: string; label?: string })[]
@@ -41,25 +41,30 @@ const INTERVAL_HEIGHT = 28
 
 function parseNote(noteStr: string | { key: string; duration: string; label?: string }) {
   let key: string
-  let duration: string
+  let rawDuration: string
 
   if (typeof noteStr === 'string') {
     const parts = noteStr.split(':')
     key = parts[0]
-    duration = parts[1] || 'q'
+    rawDuration = parts[1] || 'q'
   } else {
     key = noteStr.key
-    duration = noteStr.duration || 'q'
+    rawDuration = noteStr.duration || 'q'
   }
+
+  // Extrair sufixos: 'd' = dotted, 'r' = rest
+  const isDotted = rawDuration.includes('d')
+  const isRest = rawDuration.includes('r')
+  const duration = rawDuration.replace(/[dr]/g, '') + (isRest ? 'r' : '')
 
   // Extrair acidental: "f#/4" → base="f/4", acc="#"
   // "eb/4" → base="e/4", acc="b"
   // "b/4" → base="b/4", acc=null (B natural)
-  const match = key.match(/^([a-g])(#|b)?\/(\d)$/i)
+  const match = key.match(/^([a-g])(#|b)?\/([\d])$/i)
   const basePitch = match ? `${match[1]}/${match[3]}` : key
   const accidental = match ? match[2] : null
 
-  return { basePitch, duration, accidental }
+  return { basePitch, duration, accidental, isDotted, isRest }
 }
 
 // Cores fixas — VexFlow sempre renderiza no modo "light" (preto sobre branco)
@@ -85,20 +90,25 @@ function renderStave(
   if (notes.length === 0) return
 
   const staveNotes = notes.map((noteStr, i) => {
-    const { basePitch, duration, accidental } = parseNote(noteStr)
+    const { basePitch, duration, accidental, isDotted, isRest } = parseNote(noteStr)
     const note = new StaveNote({
-      keys: [basePitch],
+      keys: [isRest ? 'b/4' : basePitch],
       duration,
       clef: staveData.clef || 'treble',
     })
 
-    // Acidental do próprio parse da nota
-    if (accidental) {
-      note.addModifier(new Accidental(accidental))
+    // Ponto de aumento
+    if (isDotted) {
+      Dot.buildAndAttach([note], { all: true })
     }
-    // Acidental do array explícito (prioridade sobre o parse)
-    else if (staveData.accidentals?.[i]) {
-      note.addModifier(new Accidental(staveData.accidentals[i]!))
+
+    // Acidental (não aplicar em pausas)
+    if (!isRest) {
+      if (accidental) {
+        note.addModifier(new Accidental(accidental))
+      } else if (staveData.accidentals?.[i]) {
+        note.addModifier(new Accidental(staveData.accidentals[i]!))
+      }
     }
 
     return note
@@ -106,13 +116,16 @@ function renderStave(
 
   // Calcular beats totais
   const totalBeats = notes.reduce((sum, n) => {
-    let dur: string
+    let rawDur: string
     if (typeof n === 'string') {
-      dur = n.split(':')[1] || 'q'
+      rawDur = n.split(':')[1] || 'q'
     } else {
-      dur = n.duration || 'q'
+      rawDur = n.duration || 'q'
     }
-    return sum + (DURATION_BEATS[dur] ?? 1)
+    const isDot = rawDur.includes('d')
+    const baseDur = rawDur.replace(/[dr]/g, '')
+    const base = DURATION_BEATS[baseDur] ?? 1
+    return sum + (isDot ? base * 1.5 : base)
   }, 0)
 
   const voice = new Voice({ numBeats: totalBeats, beatValue: 4 })
