@@ -17,18 +17,17 @@ export interface SaveMaterialBlock {
 
 export interface MaterialWithBlocks {
   material_id: string
-  title: string
-  type: string | null
-  status: string | null
+  material_title: string
+  material_type: string | null
+  material_status: string | null
   is_draft: boolean | null
   version: number | null
-  journey_id: string | null
-  stage_id: string | null
-  station_id: string | null
-  school_id: string
+  journey_name: string | null
+  stage_name: string | null
+  station_name: string | null
+  school_name: string | null
   generation_config: Record<string, unknown> | null
-  created_at: string | null
-  updated_at: string | null
+  generated_at: string | null
   // Campos do bloco (cada row = 1 bloco)
   block_id: string | null
   block_type: string | null

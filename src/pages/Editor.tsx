@@ -6,8 +6,9 @@ import {
   Guitar, MusicNotes, Lightbulb, PencilCircle, ListNumbers,
   TextHOne, LineSegment, Image as ImageIcon, Plus, Trash,
   SpinnerGap, DotsSixVertical, PencilSimple, ArrowCounterClockwise,
-  Printer, Code, Eye, PencilLine, PianoKeys,
-  MagnifyingGlassPlus, MagnifyingGlassMinus,
+  Printer, Code, Eye, EyeSlash, PencilLine, PianoKeys,
+  MagnifyingGlassPlus, MagnifyingGlassMinus, Gear, Hash,
+  TextAlignLeft, TextAlignCenter, TextAlignRight,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,42 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 // --- Tipos internos ---
 
+interface PageConfig {
+  header: {
+    enabled: boolean
+    leftText: string   // ex: título do material, nome da escola
+    centerText: string
+    rightText: string
+    showOnFirstPage: boolean
+  }
+  footer: {
+    enabled: boolean
+    leftText: string
+    centerText: string
+    rightText: string  // ex: "Página {n} de {total}"
+    showPageNumber: boolean
+    pageNumberPosition: 'left' | 'center' | 'right'
+  }
+}
+
+const DEFAULT_PAGE_CONFIG: PageConfig = {
+  header: {
+    enabled: true,
+    leftText: '{titulo}',
+    centerText: '',
+    rightText: '',
+    showOnFirstPage: true,
+  },
+  footer: {
+    enabled: true,
+    leftText: '',
+    centerText: '',
+    rightText: '',
+    showPageNumber: true,
+    pageNumberPosition: 'right',
+  },
+}
+
 interface EditorBlock {
   id: string
   block_type: string
@@ -63,6 +100,15 @@ interface EditorBlock {
 }
 
 // --- Helpers ---
+
+/** Resolve placeholders em textos de header/footer */
+function resolvePageText(text: string, ctx: { titulo: string; pagina: number; total: number }): string {
+  if (!text) return ''
+  return text
+    .replace(/\{titulo\}/g, ctx.titulo ?? '')
+    .replace(/\{pagina\}/g, String(ctx.pagina ?? ''))
+    .replace(/\{total\}/g, String(ctx.total ?? ''))
+}
 
 const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType; bg: string; color: string }> = {
   text:           { label: 'Texto',     icon: Article,      bg: 'var(--azul-soft)',       color: 'var(--azul-claro)' },
@@ -291,6 +337,9 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [zoom, setZoom] = useState(0.75)
   const canvasScrollRef = useRef<HTMLDivElement>(null)
 
+  // Configuração de cabeçalho/rodapé da página
+  const [pageConfig, setPageConfig] = useState<PageConfig>(DEFAULT_PAGE_CONFIG)
+
   // Estados dos editores visuais integrados
   const [notationEditorOpen, setNotationEditorOpen] = useState(false)
   const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
@@ -305,7 +354,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (rawData && rawData.length > 0) {
       const { material, blocks: parsed } = parseBlocks(rawData)
       setMaterialMeta(material)
-      setMaterialTitle(material.title)
+      setMaterialTitle(material.material_title)
       setBlocks(parsed)
       if (!selectedBlockId && parsed.length > 0) {
         setSelectedBlockId(parsed[0].id)
@@ -853,9 +902,9 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
           {/* Rodapé info */}
           <div className="mt-3 p-2.5 bg-azul-soft rounded-[var(--radius-sm)] text-[11px] text-text2">
             <strong>{blocks.length} blocos</strong> · v{materialMeta?.version ?? 1}
-            {materialMeta?.updated_at && (
+            {materialMeta?.generated_at && (
               <div className="text-text3 mt-0.5">
-                Atualizado: {new Date(materialMeta.updated_at).toLocaleDateString('pt-BR')}
+                Gerado em: {new Date(materialMeta.generated_at).toLocaleDateString('pt-BR')}
               </div>
             )}
           </div>
@@ -886,7 +935,7 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
         <div
           ref={canvasScrollRef}
           className="editor-canvas"
-          onClick={() => { if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
+          onClick={() => { setSelectedBlockId(null); if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
           onWheel={(e) => {
             if (e.ctrlKey) {
               e.preventDefault()
@@ -901,14 +950,35 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
               transformOrigin: 'top center',
             }}
           >
-            {pages.map((pageBlocks, pageIdx) => (
+            {pages.map((pageBlocks, pageIdx) => {
+              const pageCtx = { titulo: materialTitle, pagina: pageIdx + 1, total: pages.length }
+              const showHeader = pageConfig.header.enabled && (pageConfig.header.showOnFirstPage || pageIdx > 0)
+              const showFooter = pageConfig.footer.enabled
+
+              return (
               <div key={pageIdx} className="a4-page">
                 {/* Cabeçalho */}
-                <div className="a4-page-header">
-                  <span className="text-[10px] text-[#94a3b8] font-medium tracking-wide">
-                    {materialTitle}
-                  </span>
-                </div>
+                {showHeader ? (
+                  <div className="a4-page-header">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-[#94a3b8] font-medium tracking-wide flex-1 text-left truncate">
+                        {resolvePageText(pageConfig.header.leftText, pageCtx)}
+                      </span>
+                      {pageConfig.header.centerText && (
+                        <span className="text-[10px] text-[#94a3b8] font-medium tracking-wide flex-1 text-center truncate">
+                          {resolvePageText(pageConfig.header.centerText, pageCtx)}
+                        </span>
+                      )}
+                      {pageConfig.header.rightText && (
+                        <span className="text-[10px] text-[#94a3b8] font-medium tracking-wide flex-1 text-right truncate">
+                          {resolvePageText(pageConfig.header.rightText, pageCtx)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="a4-page-header" style={{ borderBottom: 'none', padding: '8px 60px 0' }} />
+                )}
 
                 {/* Conteúdo dos blocos */}
                 <div className="a4-page-content">
@@ -976,22 +1046,221 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                 </div>
 
                 {/* Rodapé */}
-                <div className="a4-page-footer">
-                  <span className="text-[9px] text-[#94a3b8]">
-                    Página {pageIdx + 1} de {pages.length}
-                  </span>
-                </div>
+                {showFooter ? (
+                  <div className="a4-page-footer">
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Lado esquerdo */}
+                      <span className="text-[9px] text-[#94a3b8] flex-1 text-left truncate">
+                        {pageConfig.footer.showPageNumber && pageConfig.footer.pageNumberPosition === 'left'
+                          ? `Página ${pageIdx + 1}`
+                          : (pageConfig.footer.pageNumberPosition !== 'left' && pageConfig.footer.leftText
+                              ? resolvePageText(pageConfig.footer.leftText, pageCtx)
+                              : '')}
+                      </span>
+                      {/* Centro */}
+                      <span className="text-[9px] text-[#94a3b8] flex-1 text-center truncate">
+                        {pageConfig.footer.showPageNumber && pageConfig.footer.pageNumberPosition === 'center'
+                          ? `Página ${pageIdx + 1}`
+                          : ''}
+                      </span>
+                      {/* Lado direito */}
+                      <span className="text-[9px] text-[#94a3b8] flex-1 text-right truncate">
+                        {pageConfig.footer.showPageNumber && pageConfig.footer.pageNumberPosition === 'right'
+                          ? `Página ${pageIdx + 1}`
+                          : (pageConfig.footer.pageNumberPosition !== 'right' && pageConfig.footer.leftText
+                              ? resolvePageText(pageConfig.footer.leftText, pageCtx)
+                              : '')}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="a4-page-footer" style={{ borderTop: 'none', padding: '0 60px 8px' }} />
+                )}
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
         {/* Coluna 3 — Propriedades */}
         <div className="editor-properties">
           {!selectedBlock ? (
-            <div className="text-center py-8 text-text3 text-sm">
-              <PencilSimple size={24} className="mx-auto mb-2 text-text3/50" />
-              Selecione um bloco para editar suas propriedades
+            <div className="space-y-4 pb-4">
+              <div className="prop-label mb-1" style={{ color: 'var(--accent)' }}>
+                <Gear size={12} className="inline-block mr-1 mb-0.5" />
+                Configuração da Página
+              </div>
+              <p className="text-[10px] text-text3 -mt-2 mb-3">
+                As alterações aparecem na folha em tempo real.
+              </p>
+
+              {/* === CABEÇALHO === */}
+              <div className="prop-section">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="prop-label mb-0">Cabeçalho</div>
+                  <button
+                    className={`text-[10px] flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
+                      pageConfig.header.enabled
+                        ? 'bg-accent/10 text-accent'
+                        : 'bg-bg2 text-text3 hover:text-text'
+                    }`}
+                    onClick={() => setPageConfig(prev => ({
+                      ...prev,
+                      header: { ...prev.header, enabled: !prev.header.enabled },
+                    }))}
+                  >
+                    {pageConfig.header.enabled
+                      ? <><Eye size={12} /> Visível</>
+                      : <><EyeSlash size={12} /> Oculto</>}
+                  </button>
+                </div>
+
+                {pageConfig.header.enabled && (
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="text-[10px] text-text3 block mb-1">Texto do cabeçalho</label>
+                      <Input
+                        value={pageConfig.header.leftText}
+                        onChange={e => setPageConfig(prev => ({
+                          ...prev,
+                          header: { ...prev.header, leftText: e.target.value },
+                        }))}
+                        placeholder="Ex: {titulo} ou Nome da Escola"
+                        className="h-8 text-[12px]"
+                      />
+                      <p className="text-[9px] text-text3 mt-1">
+                        Use <code className="font-mono text-accent bg-azul-soft px-1 rounded">{'{titulo}'}</code> para inserir o nome do material automaticamente
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 text-[11px] text-text2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={pageConfig.header.showOnFirstPage}
+                        onChange={e => setPageConfig(prev => ({
+                          ...prev,
+                          header: { ...prev.header, showOnFirstPage: e.target.checked },
+                        }))}
+                        className="rounded border-border accent-accent"
+                      />
+                      Mostrar na primeira página
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <hr className="border-border" />
+
+              {/* === RODAPÉ === */}
+              <div className="prop-section">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="prop-label mb-0">Rodapé</div>
+                  <button
+                    className={`text-[10px] flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
+                      pageConfig.footer.enabled
+                        ? 'bg-accent/10 text-accent'
+                        : 'bg-bg2 text-text3 hover:text-text'
+                    }`}
+                    onClick={() => setPageConfig(prev => ({
+                      ...prev,
+                      footer: { ...prev.footer, enabled: !prev.footer.enabled },
+                    }))}
+                  >
+                    {pageConfig.footer.enabled
+                      ? <><Eye size={12} /> Visível</>
+                      : <><EyeSlash size={12} /> Oculto</>}
+                  </button>
+                </div>
+
+                {pageConfig.footer.enabled && (
+                  <div className="space-y-2.5">
+                    <label className="flex items-center gap-2 text-[11px] text-text2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={pageConfig.footer.showPageNumber}
+                        onChange={e => setPageConfig(prev => ({
+                          ...prev,
+                          footer: { ...prev.footer, showPageNumber: e.target.checked },
+                        }))}
+                        className="rounded border-border accent-accent"
+                      />
+                      Mostrar número da página
+                    </label>
+
+                    {pageConfig.footer.showPageNumber && (
+                      <div>
+                        <label className="text-[10px] text-text3 block mb-1">Posição do número</label>
+                        <div className="flex gap-1">
+                          {([
+                            { pos: 'left' as const, label: 'Esquerda', icon: TextAlignLeft },
+                            { pos: 'center' as const, label: 'Centro', icon: TextAlignCenter },
+                            { pos: 'right' as const, label: 'Direita', icon: TextAlignRight },
+                          ]).map(({ pos, label, icon: Icon }) => (
+                            <button
+                              key={pos}
+                              title={label}
+                              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] border transition-colors ${
+                                pageConfig.footer.pageNumberPosition === pos
+                                  ? 'border-accent bg-accent/10 text-accent font-medium'
+                                  : 'border-border text-text3 hover:bg-azul-soft'
+                              }`}
+                              onClick={() => setPageConfig(prev => ({
+                                ...prev,
+                                footer: { ...prev.footer, pageNumberPosition: pos },
+                              }))}
+                            >
+                              <Icon size={12} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-[10px] text-text3 block mb-1">Texto adicional no rodapé</label>
+                      <Input
+                        value={pageConfig.footer.leftText}
+                        onChange={e => setPageConfig(prev => ({
+                          ...prev,
+                          footer: { ...prev.footer, leftText: e.target.value },
+                        }))}
+                        placeholder="Ex: LA Music School"
+                        className="h-8 text-[12px]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <hr className="border-border" />
+
+              {/* Preview ao vivo */}
+              <div className="prop-section">
+                <div className="prop-label mb-2">Preview</div>
+                <div className="border border-border rounded-md bg-white p-3 text-[9px] text-[#94a3b8] space-y-1">
+                  {pageConfig.header.enabled && (
+                    <div className="border-b border-border/50 pb-1 truncate">
+                      {resolvePageText(pageConfig.header.leftText, { titulo: materialTitle || 'Título do Material', pagina: 1, total: pages.length })}
+                    </div>
+                  )}
+                  <div className="text-center text-[8px] text-text3/40 py-2">conteúdo</div>
+                  {pageConfig.footer.enabled && (
+                    <div className="border-t border-border/50 pt-1 flex justify-between">
+                      <span className="truncate">
+                        {pageConfig.footer.leftText
+                          ? resolvePageText(pageConfig.footer.leftText, { titulo: materialTitle || 'Título', pagina: 1, total: pages.length })
+                          : ''}
+                      </span>
+                      <span>
+                        {pageConfig.footer.showPageNumber ? 'Página 1' : ''}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[10px] text-text3 text-center mt-2">
+                Clique em um bloco para editar suas propriedades
+              </div>
             </div>
           ) : (
             <>
