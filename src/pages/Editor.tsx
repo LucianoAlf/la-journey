@@ -6,7 +6,7 @@ import {
   Guitar, MusicNotes, Lightbulb, PencilCircle, ListNumbers,
   TextHOne, LineSegment, Image as ImageIcon, Plus, Trash,
   SpinnerGap, DotsSixVertical, PencilSimple, ArrowCounterClockwise,
-  Printer, Code, Eye,
+  Printer, Code, Eye, PencilLine, PianoKeys,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,14 @@ import {
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
 import { MaterialPreview, type MaterialBlock } from "@/components/material/MaterialPreview";
+import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
+import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
+import type { ChordPositions } from "@/components/music/ChordDiagram";
+import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // --- Tipos internos ---
 
@@ -272,6 +280,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [editingTitle, setEditingTitle] = useState(false)
   const canvasRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
+  // Estados dos editores visuais integrados
+  const [notationEditorOpen, setNotationEditorOpen] = useState(false)
+  const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
+  const [chordEditorOpen, setChordEditorOpen] = useState(false)
+  const [chordEditorBlockId, setChordEditorBlockId] = useState<string | null>(null)
+  const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState())
+  const [chordEditorName, setChordEditorName] = useState('')
+  const [chordEditorStartFret, setChordEditorStartFret] = useState(1)
+
   // Parsear dados vindos da RPC
   useEffect(() => {
     if (rawData && rawData.length > 0) {
@@ -410,6 +427,180 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       toast.error('Erro ao atualizar título')
     }
   }, [materialId, materialTitle])
+
+  // ── Editores visuais integrados ──────────────────────────────────────
+
+  // Helper: converter render_data.notation.staves[].notes (formato VexFlow) → notation_data.beats
+  // Notas VexFlow: "e/4:w", "c/4:q", "d/5:qd", "b/4:qr" etc.
+  // Beats do editor: { notes: ["e/4:w"], accidentals: [null] }
+  const vexNotesToBeats = useCallback((staves: any[]): any => {
+    if (!staves || staves.length === 0) return null
+    // Concatenar notas de todos os staves em uma sequência única
+    const allNotes: string[] = []
+    const allAccidentals: (string | null)[] = []
+    for (const stave of staves) {
+      const notes = (stave.notes ?? []) as string[]
+      const accs = (stave.accidentals ?? []) as (string | null)[]
+      for (let i = 0; i < notes.length; i++) {
+        allNotes.push(notes[i])
+        allAccidentals.push(accs[i] ?? null)
+      }
+    }
+    if (allNotes.length === 0) return null
+    // Cada nota VexFlow vira um beat com 1 pitch
+    const beats = allNotes.map((note, i) => ({
+      notes: [note],
+      accidentals: [allAccidentals[i]],
+    }))
+    return { beats }
+  }, [])
+
+  // Helper: converter render_data de um bloco para um NotationLibraryRow fake para o NotationEditor
+  const blockToNotationRow = useCallback((block: EditorBlock) => {
+    const rd = (block.render_data ?? {}) as any
+    // Primeiro tenta notation_data salvo (com beats completos do editor)
+    // Se não existir, converte notas VexFlow → beats
+    const nd = (block.content as any)?.notation_data
+      ?? rd.notation_data
+      ?? vexNotesToBeats(rd.notation?.staves)
+      ?? null
+    return {
+      id: block.id,
+      name: block.title ?? '',
+      category: 'exercicio',
+      clef: (rd.notation?.staves?.[0]?.clef ?? rd.clef ?? 'treble') as string,
+      key_signature: (rd.notation?.staves?.[0]?.key_signature ?? rd.key_signature ?? 'C') as string,
+      time_signature: (rd.notation?.staves?.[0]?.time_signature ?? rd.time_signature ?? null) as string | null,
+      notation_data: nd,
+      difficulty: 1,
+      tags: [],
+      description: null,
+    }
+  }, [vexNotesToBeats])
+
+  // Abrir editor de notação para um bloco
+  const openNotationEditorForBlock = useCallback((blockId: string) => {
+    setNotationEditorBlockId(blockId)
+    setNotationEditorOpen(true)
+  }, [])
+
+  // Salvar notação de volta no bloco
+  const handleNotationEditorSave = useCallback(async (data: NotationSaveData) => {
+    if (!notationEditorBlockId) return
+    const block = blocks.find(b => b.id === notationEditorBlockId)
+    if (!block) return
+
+    // Reconstruir o render_data.notation a partir dos beats salvos
+    // O NotationEditor salva notation_data: { beats: [...] }
+    // Precisamos gerar o formato staff do NotationRenderer a partir dos beats
+    const beats = data.notation_data?.beats ?? []
+    const notes: string[] = []
+    const accidentals: (string | null)[] = []
+    for (const b of beats) {
+      for (const n of (b.notes ?? [])) {
+        notes.push(n)
+      }
+      for (const a of (b.accidentals ?? [])) {
+        accidentals.push(a)
+      }
+    }
+
+    const staveNotation = {
+      type: 'staff' as const,
+      staves: [{
+        clef: data.clef as 'treble' | 'bass' | 'alto' | 'percussion',
+        key_signature: data.clef === 'percussion' ? undefined : (data.key_signature !== 'C' ? data.key_signature : undefined),
+        time_signature: data.time_signature ?? undefined,
+        notes,
+        accidentals,
+        label: '',
+      }],
+      width: 550,
+      height: 150,
+    }
+
+    const newRenderData = {
+      ...(block.render_data ?? {}),
+      notation: staveNotation,
+      notation_data: data.notation_data,
+      clef: data.clef,
+      key_signature: data.key_signature,
+      time_signature: data.time_signature,
+    }
+
+    // Atualizar localmente
+    setBlocks(prev => prev.map(b =>
+      b.id === notationEditorBlockId ? { ...b, title: data.name || b.title, render_data: newRenderData } : b,
+    ))
+
+    // Persistir no banco
+    try {
+      await updateMaterialBlockRpc({
+        blockId: notationEditorBlockId,
+        title: data.name || block.title,
+        renderData: newRenderData,
+      })
+      toast.success('Notação atualizada no bloco')
+    } catch (e: any) {
+      toast.error('Erro ao salvar notação: ' + (e?.message ?? ''))
+    }
+  }, [notationEditorBlockId, blocks])
+
+  // Abrir editor de acorde para um bloco
+  const openChordEditorForBlock = useCallback((blockId: string) => {
+    const block = blocks.find(b => b.id === blockId)
+    if (!block) return
+    const rd = block.render_data ?? {}
+    const positions: ChordPositions = {
+      fingers: (rd.fingers ?? []) as any[],
+      barres: (rd.barres ?? []) as any[],
+      muted: (rd.muted ?? []) as number[],
+    }
+    const startFret = (rd.position ?? 1) as number
+    setChordEditorState(positionsToState(positions, startFret))
+    setChordEditorName((rd.chord_name ?? block.title ?? '') as string)
+    setChordEditorStartFret(startFret)
+    setChordEditorBlockId(blockId)
+    setChordEditorOpen(true)
+  }, [blocks])
+
+  // Salvar acorde de volta no bloco
+  const handleSaveChordToBlock = useCallback(async () => {
+    if (!chordEditorBlockId) return
+    const block = blocks.find(b => b.id === chordEditorBlockId)
+    if (!block) return
+
+    const positions = stateToPositions(chordEditorState, chordEditorStartFret)
+    const newRenderData = {
+      ...(block.render_data ?? {}),
+      chord_name: chordEditorName,
+      fingers: positions.fingers,
+      barres: positions.barres,
+      muted: positions.muted,
+      position: chordEditorStartFret,
+    }
+
+    setBlocks(prev => prev.map(b =>
+      b.id === chordEditorBlockId ? { ...b, title: chordEditorName || b.title, render_data: newRenderData } : b,
+    ))
+
+    try {
+      await updateMaterialBlockRpc({
+        blockId: chordEditorBlockId,
+        title: chordEditorName || block.title,
+        renderData: newRenderData,
+      })
+      toast.success('Acorde atualizado no bloco')
+      setChordEditorOpen(false)
+    } catch (e: any) {
+      toast.error('Erro ao salvar acorde: ' + (e?.message ?? ''))
+    }
+  }, [chordEditorBlockId, chordEditorState, chordEditorName, chordEditorStartFret, blocks])
+
+  // Helper: bloco tem notação editável?
+  const blockHasNotation = useCallback((block: EditorBlock) => {
+    return block.render_data?.notation || block.render_data?.notation_data || block.render_data?.notes
+  }, [])
 
   // Exportação
   const handlePrint = () => window.print()
@@ -561,6 +752,10 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                 ref={el => { canvasRefs.current[block.id] = el }}
                 className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''}`}
                 onClick={() => selectBlock(block.id)}
+                onDoubleClick={() => {
+                  if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
+                  else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+                }}
               >
                 <MaterialPreview blocks={[editorBlockToPreview(block)]} />
               </div>
@@ -634,25 +829,46 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
                 </div>
               )}
 
-              {/* Notação (read-only) */}
-              {selectedBlock.block_type === 'notation' && (
+              {/* Notação — botão para abrir editor visual */}
+              {(selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
                 <div className="prop-section">
-                  <div className="prop-label">Notação</div>
-                  <div className="p-3 bg-bg2 rounded-md text-[11px] text-text3">
-                    <MusicNotes size={16} className="mb-1" />
-                    Notação VexFlow — edição visual em breve
+                  <div className="prop-label">
+                    {selectedBlock.block_type === 'notation' ? 'Notação' : 'Notação do bloco'}
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10"
+                    onClick={() => openNotationEditorForBlock(selectedBlock.id)}
+                  >
+                    <MusicNotes size={14} weight="bold" />
+                    {selectedBlock.block_type === 'notation' ? 'Editar Notação' : 'Editar Pauta'}
+                  </Button>
+                  {blockHasNotation(selectedBlock) && (
+                    <div className="text-[10px] text-text3 mt-1 text-center">
+                      {(selectedBlock.render_data as any)?.notation?.staves?.[0]?.notes?.length ?? 0} notas · clave {(selectedBlock.render_data as any)?.clef ?? 'Sol'}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Acorde (read-only preview) */}
+              {/* Acorde — botão para abrir editor visual */}
               {selectedBlock.block_type === 'chord_diagram' && (
                 <div className="prop-section">
                   <div className="prop-label">Diagrama</div>
-                  <div className="p-3 bg-bg2 rounded-md text-[11px] text-text3">
-                    <Guitar size={16} className="mb-1" />
-                    Diagrama SVGuitar — edição visual em breve
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10"
+                    onClick={() => openChordEditorForBlock(selectedBlock.id)}
+                  >
+                    <Guitar size={14} weight="bold" /> Editar Acorde
+                  </Button>
+                  {(selectedBlock.render_data as any)?.chord_name && (
+                    <div className="text-[10px] text-text3 mt-1 text-center">
+                      Acorde: {(selectedBlock.render_data as any).chord_name}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -703,6 +919,67 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
           )}
         </div>
       </div>
+
+      {/* ── Modais dos editores visuais integrados ── */}
+
+      {/* NotationEditor — edição de partitura */}
+      <NotationEditor
+        open={notationEditorOpen}
+        onOpenChange={(v) => { setNotationEditorOpen(v); if (!v) setNotationEditorBlockId(null) }}
+        notation={notationEditorBlockId ? blockToNotationRow(blocks.find(b => b.id === notationEditorBlockId)!) as any : null}
+        onSave={handleNotationEditorSave}
+      />
+
+      {/* ChordEditor — edição de diagrama de acorde (wrapper Dialog) */}
+      <Dialog open={chordEditorOpen} onOpenChange={(v) => { setChordEditorOpen(v); if (!v) setChordEditorBlockId(null) }}>
+        <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">
+              Editar <span className="text-accent">Acorde</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-[1fr_200px] gap-6 mt-2">
+            <ChordEditor
+              state={chordEditorState}
+              onChange={setChordEditorState}
+              chordName={chordEditorName}
+              startFret={chordEditorStartFret}
+            />
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="text-[11px] text-text3 uppercase tracking-wider mb-1 block">Nome</label>
+                <Input
+                  value={chordEditorName}
+                  onChange={e => setChordEditorName(e.target.value)}
+                  placeholder="Ex: Am7"
+                  className="text-[13px] h-9"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-text3 uppercase tracking-wider mb-1 block">Traste inicial</label>
+                <Select value={String(chordEditorStartFret)} onValueChange={v => setChordEditorStartFret(Number(v))}>
+                  <SelectTrigger className="h-9 text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}ª casa</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setChordEditorOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveChordToBlock}>
+              <FloppyDisk size={16} /> Salvar Acorde
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
