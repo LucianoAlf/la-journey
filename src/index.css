@@ -295,26 +295,28 @@
 .a4-canvas-wrapper{display:flex;flex-direction:column;align-items:center;gap:32px;padding-bottom:48px}
 .a4-page{
   width:794px;
-  min-height:1123px;
+  height:1123px;
   background:#fff;
   border-radius:4px;
   box-shadow:0 2px 12px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.06);
   display:flex;flex-direction:column;
   position:relative;
+  overflow:hidden;
   color:#1E293B;
   font-family:'DM Sans',sans-serif;
 }
 .a4-page-header{
-  padding:28px 60px 12px;
+  padding:16px 60px 8px;
   border-bottom:1px solid #e2e8f0;
   flex-shrink:0;
 }
 .a4-page-content{
-  padding:20px 60px;
+  padding:12px 60px;
   flex:1;
+  overflow:hidden;
 }
 .a4-page-footer{
-  padding:12px 60px 20px;
+  padding:8px 60px 12px;
   border-top:1px solid #e2e8f0;
   text-align:right;
   flex-shrink:0;
@@ -322,8 +324,8 @@
 .a4-page .canvas-block{
   border-color:transparent;
   border-radius:6px;
-  padding:16px 20px;
-  margin-bottom:8px;
+  padding:10px 16px;
+  margin-bottom:4px;
   cursor:pointer;
 }
 .a4-page .canvas-block:hover{border-color:#cbd5e1;background:#f8fafc}

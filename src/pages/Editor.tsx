@@ -318,18 +318,65 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     [blocks, selectedBlockId],
   )
 
-  /** Distribui blocos em páginas A4 — page_break força nova página */
+  /** Auto-paginação A4: mede blocos e distribui entre páginas */
+  const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
+  const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
+  const measureContainerRef = useRef<HTMLDivElement>(null)
+
+  // Medir blocos no container de medição oculto
+  useEffect(() => {
+    const container = measureContainerRef.current
+    if (!container) return
+
+    const measure = () => {
+      const heights: Record<string, number> = {}
+      const children = container.querySelectorAll<HTMLElement>('[data-block-id]')
+      children.forEach(el => {
+        const id = el.getAttribute('data-block-id')
+        if (id) heights[id] = el.offsetHeight
+      })
+      setBlockHeights(prev => {
+        if (Object.keys(heights).length === 0) return prev
+        const same = Object.keys(heights).length === Object.keys(prev).length &&
+          Object.entries(heights).every(([k, v]) => Math.abs((prev[k] ?? 0) - v) < 2)
+        return same ? prev : heights
+      })
+    }
+
+    const timer = setTimeout(measure, 150)
+    const observer = new ResizeObserver(() => measure())
+    observer.observe(container)
+
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [blocks])
+
+  /** Distribui blocos em páginas A4 respeitando alturas medidas */
   const pages = useMemo(() => {
     const result: EditorBlock[][] = [[]]
+    let currentHeight = 0
+
     for (const block of blocks) {
       if (block.block_type === 'page_break') {
         result.push([])
-      } else {
-        result[result.length - 1].push(block)
+        currentHeight = 0
+        continue
       }
+
+      const h = blockHeights[block.id] ?? 120 // fallback estimado
+      if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
+        result.push([])
+        currentHeight = 0
+      }
+
+      result[result.length - 1].push(block)
+      currentHeight += h
     }
+
     return result
-  }, [blocks])
+  }, [blocks, blockHeights])
 
   // DnD
   const sensors = useSensors(
@@ -812,6 +859,27 @@ h1,h2,h3{font-family:'Playfair Display',serif}strong{font-weight:600}
               </div>
             )}
           </div>
+        </div>
+
+        {/* Container de medição oculto — mede alturas reais dos blocos */}
+        <div
+          ref={measureContainerRef}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: '-9999px',
+            top: 0,
+            width: '674px', // 794 - 60*2 (padding A4 content)
+            overflow: 'visible',
+            visibility: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          {blocks.filter(b => b.block_type !== 'page_break').map(block => (
+            <div key={block.id} data-block-id={block.id} style={{ padding: '10px 16px', marginBottom: '4px' }}>
+              <MaterialPreview blocks={[editorBlockToPreview(block)]} />
+            </div>
+          ))}
         </div>
 
         {/* Coluna 2 — Canvas A4 (Preview) */}
