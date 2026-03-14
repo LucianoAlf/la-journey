@@ -172,6 +172,198 @@ export async function batchImportFromCifraClub(
   return result as BatchImportResponse
 }
 
+// --- Songsterr Integration ---
+
+export interface SongsterrTrack {
+  instrument: string
+  name: string
+  category: 'guitar' | 'bass' | 'drums' | 'vocals' | 'keys' | 'other'
+  friendly: string
+  views: number
+  difficulty: number | null
+  hash: string
+}
+
+export interface SongsterrSearchResult {
+  songId: number
+  artist: string
+  title: string
+  hasChords: boolean
+  hasPlayer: boolean
+  instruments: string[]
+  guitarCount: number
+  bassCount: number
+  drumsCount: number
+  tracksCount: number
+  maxDifficulty: number
+  url: string
+  tracks: SongsterrTrack[]
+}
+
+export interface SongsterrImportData {
+  title: string
+  artist: string
+  songsterr_id: number
+  instruments: string[]
+  difficulty: number
+  cifra_source: string
+  source_url: string
+  hasChords: boolean
+  hasPlayer: boolean
+  tracks: SongsterrTrack[]
+  tracksCount: number
+  // Dados enriquecidos (preenchidos pelo songsterr-enrich)
+  key?: string | null
+  bpm?: number | null
+  tuning?: string | null
+  chords?: string[]
+  cifra_content?: string
+  youtube_videos?: string[]
+  tags?: string[]
+}
+
+export async function searchSongsterr(query: string): Promise<SongsterrSearchResult[]> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/songsterr-search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+    },
+    body: JSON.stringify({ query }),
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(result.error || `Erro ${response.status} ao buscar no Songsterr`)
+  }
+
+  return result.results as SongsterrSearchResult[]
+}
+
+export async function importFromSongsterr(songId: number): Promise<SongsterrImportData> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/songsterr-import`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+    },
+    body: JSON.stringify({ songId }),
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(result.error || `Erro ${response.status} ao importar do Songsterr`)
+  }
+
+  return result as SongsterrImportData
+}
+
+/**
+ * Enriquece uma música do Songsterr extraindo cifra, acordes, tom, BPM,
+ * vídeos YouTube e tags da página de chords.
+ * Modelo "Adquirir e Reter": importa uma vez, salva no banco.
+ */
+export async function enrichFromSongsterr(
+  songId: number,
+  artist: string,
+  title: string
+): Promise<SongsterrImportData> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  // 1. Buscar metadados básicos
+  const importRes = await fetch(`${supabaseUrl}/functions/v1/songsterr-import`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+    },
+    body: JSON.stringify({ songId }),
+  })
+  const importData = await importRes.json()
+  if (!importRes.ok) {
+    throw new Error(importData.error || `Erro ${importRes.status} ao importar metadados`)
+  }
+
+  // 2. Enriquecer com cifra, acordes, tom, BPM, vídeos
+  const enrichRes = await fetch(`${supabaseUrl}/functions/v1/songsterr-enrich`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+    },
+    body: JSON.stringify({ songId, artist, title }),
+  })
+  const enrichData = await enrichRes.json()
+  if (!enrichRes.ok) {
+    // Se enriquecimento falhar, retorna dados básicos mesmo assim
+    console.warn('Enriquecimento falhou:', enrichData.error)
+    return importData as SongsterrImportData
+  }
+
+  // 3. Mesclar dados básicos + enriquecidos
+  return {
+    ...importData,
+    key: enrichData.key || null,
+    bpm: enrichData.bpm || null,
+    tuning: enrichData.tuning || null,
+    chords: enrichData.chords || [],
+    cifra_content: enrichData.cifra_content || '',
+    youtube_videos: enrichData.youtube_videos || [],
+    tags: enrichData.tags || [],
+  } as SongsterrImportData
+}
+
+export async function saveSongsterrToRepertoire(data: SongsterrImportData) {
+  // Verificar se já existe com mesmo songsterr_id
+  const { data: existing } = await supabase
+    .from('repertoire')
+    .select('id')
+    .eq('songsterr_id', data.songsterr_id)
+    .maybeSingle()
+
+  if (existing) {
+    throw new Error(`"${data.title}" já está no repertório`)
+  }
+
+  // Montar youtube_url a partir do primeiro vídeo disponível
+  const youtubeUrl = data.youtube_videos?.length
+    ? `https://www.youtube.com/watch?v=${data.youtube_videos[0]}`
+    : null
+
+  const { data: saved, error } = await supabase
+    .from('repertoire')
+    .insert({
+      title: data.title,
+      artist: data.artist,
+      songsterr_id: data.songsterr_id,
+      instruments: data.instruments,
+      difficulty: data.difficulty,
+      cifra_source: 'songsterr',
+      source_url: data.source_url,
+      curation_status: 'draft',
+      // Dados enriquecidos
+      key: data.key || null,
+      bpm: data.bpm || null,
+      chords: data.chords || [],
+      cifra_content: data.cifra_content || null,
+      youtube_url: youtubeUrl,
+    })
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return saved
+}
+
 export async function saveCifraToRepertoire(cifra: CifraData, instruments: string[] = []) {
   const { data, error } = await supabase
     .from('repertoire')

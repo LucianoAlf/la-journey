@@ -27,7 +27,9 @@ import { getChordsByNames, updateChord, createChord, type Chord } from "@/servic
 import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@/services/chordAutoFillService"
 import { updateSong } from "@/services/repertoireService"
 import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
+import { TransposeControl } from "@/components/repertoire/TransposeControl"
 import { generatePdfFromElement } from "@/services/pdfService"
+import { transposeCifraContent, transposeChords, shouldUseFlats, transposeKey } from "@/lib/transpose"
 import type { Tables, Database } from "@/lib/database.types"
 import type { Json } from "@/lib/database.types"
 
@@ -395,6 +397,9 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
   const [showPiano, setShowPiano] = useState(true)
   const [showTab, setShowTab] = useState(true)
 
+  // Transposição de tonalidade
+  const [transposeSemitones, setTransposeSemitones] = useState(0)
+
   // PDF
   const printRef = useRef<HTMLDivElement>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
@@ -726,6 +731,27 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     cifra_content: '', lyrics: '',
   })
 
+  // Resetar transposição quando a música muda
+  useEffect(() => {
+    setTransposeSemitones(0)
+  }, [song?.id])
+
+  // Cifra e acordes transpostos (derivados, sem salvar no banco)
+  const useFlats = useMemo(() => shouldUseFlats(song?.key ?? null), [song?.key])
+
+  const transposedCifra = useMemo(() => {
+    if (!song?.cifra_content || transposeSemitones === 0) return song?.cifra_content ?? ''
+    return transposeCifraContent(song.cifra_content, transposeSemitones, useFlats)
+  }, [song?.cifra_content, transposeSemitones, useFlats])
+
+  const transposedChords = useMemo(() => {
+    if (!(song?.chords?.length) || transposeSemitones === 0) return song?.chords ?? []
+    return transposeChords(song.chords, transposeSemitones, useFlats)
+  }, [song?.chords, transposeSemitones, useFlats])
+
+  // Buscar diagramas dos acordes transpostos (quando transpõe, buscar novos diagramas)
+  const chordsForLibrary = transposeSemitones === 0 ? (song?.chords ?? []) : transposedChords
+
   // Sincronizar formulário quando a música muda
   useEffect(() => {
     if (song) {
@@ -745,21 +771,21 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     }
   }, [song?.id, open])
 
-  // Buscar acordes da chord_library quando abrir a ficha
+  // Buscar acordes da chord_library quando abrir a ficha (ou quando transpõe)
   useEffect(() => {
-    if (!open || !song || !(song.chords?.length)) {
+    if (!open || !song || chordsForLibrary.length === 0) {
       setLibraryChords([])
       return
     }
     let cancelled = false
     setLoadingChords(true)
     // Buscar todos os instrumentos (guitar + piano)
-    getChordsByNames(song.chords)
+    getChordsByNames(chordsForLibrary)
       .then(data => { if (!cancelled) setLibraryChords(data) })
       .catch(() => { if (!cancelled) setLibraryChords([]) })
       .finally(() => { if (!cancelled) setLoadingChords(false) })
     return () => { cancelled = true }
-  }, [open, song?.id, song?.chords])
+  }, [open, song?.id, chordsForLibrary])
 
   const handleSave = useCallback(async () => {
     if (!song) return
@@ -916,10 +942,10 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                     {(song.chords ?? []).length > 0 && (
                       <div className="mb-4">
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-2">
-                          Acordes ({(song.chords ?? []).length})
+                          Acordes ({transposedChords.length})
                         </h3>
                         <div className="flex gap-1.5 flex-wrap items-center">
-                          {(song.chords ?? []).map(chord => (
+                          {transposedChords.map(chord => (
                             <span
                               key={chord}
                               className="font-mono text-[12px] font-bold px-2.5 py-1 rounded-lg bg-[var(--azul-escuro)]/20 text-[var(--azul-claro)] border border-[var(--azul-escuro)]/10"
@@ -948,6 +974,17 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                             }
                           </Button>
                         )}
+                      </div>
+                    )}
+
+                    {/* Transposição de tonalidade */}
+                    {(song.chords ?? []).length > 0 && song.cifra_content && (
+                      <div className="mb-3">
+                        <TransposeControl
+                          originalKey={song.key}
+                          semitones={transposeSemitones}
+                          onChange={setTransposeSemitones}
+                        />
                       </div>
                     )}
 
@@ -1016,12 +1053,12 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                           Violão
                           {guitarChords.length > 0 && (
                             <span className="ml-2 text-text3/60">
-                              ({guitarChords.length} de {(song.chords ?? []).length} na biblioteca)
+                              ({guitarChords.length} de {transposedChords.length} na biblioteca)
                             </span>
                           )}
                         </h3>
                         <div className="flex flex-wrap gap-3">
-                          {(song.chords ?? []).map(chordName => {
+                          {transposedChords.map(chordName => {
                             const lib = guitarChordMap.get(chordName)
                             if (lib && lib.positions && typeof lib.positions === 'object') {
                               const pos = lib.positions as any
@@ -1083,11 +1120,11 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-3">
                           Teclado
                           <span className="ml-2 text-text3/60">
-                            ({pianoChords.length} de {(song.chords ?? []).length} na biblioteca)
+                            ({pianoChords.length} de {transposedChords.length} na biblioteca)
                           </span>
                         </h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                          {(song.chords ?? []).map(chordName => {
+                          {transposedChords.map(chordName => {
                             const lib = pianoChordMap.get(chordName)
                             if (lib && lib.positions && typeof lib.positions === 'object') {
                               const pos = lib.positions as any
@@ -1152,7 +1189,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                     {/* Cifra formatada */}
                     {song.cifra_content ? (
                       <div className="rounded-xl bg-card border border-border p-5">
-                        <CifraContentView content={song.cifra_content} onTabDoubleClick={openTabEditor} hideTabs={!showTab} />
+                        <CifraContentView content={transposedCifra} onTabDoubleClick={openTabEditor} hideTabs={!showTab} />
                       </div>
                     ) : (
                       <div className="text-center py-12 text-text3">

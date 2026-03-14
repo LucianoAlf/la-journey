@@ -19,6 +19,7 @@ import { useRepertoire } from "@/hooks/useRepertoire";
 import { deleteSong } from "@/services/repertoireService";
 import { RepertoireModal } from "@/components/modals/RepertoireModal";
 import { CifraClubImportModal } from "@/components/modals/CifraClubImportModal";
+import { SongsterrImportModal } from "@/components/modals/SongsterrImportModal";
 import { RepertoireSheet } from "@/components/repertoire/RepertoireSheet";
 import type { Tables } from "@/lib/database.types";
 
@@ -203,6 +204,12 @@ function SongCard({ song, onEdit, onDelete, onPreview }: {
             Cifra Club
           </div>
         )}
+        {song.cifra_source === 'songsterr' && (
+          <div className="flex items-center gap-1 text-[10px] text-text3">
+            <Guitar size={10} weight="fill" className="text-orange-400" />
+            Songsterr
+          </div>
+        )}
       </div>
 
       {/* Ações no hover */}
@@ -242,6 +249,7 @@ export function Repertorio() {
   const { data: songs, loading, error, refetch } = useRepertoire();
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [songsterrModalOpen, setSongsterrModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Repertoire | null>(null);
   const [previewSong, setPreviewSong] = useState<Repertoire | null>(null);
   const [search, setSearch] = useState('');
@@ -274,7 +282,8 @@ export function Repertorio() {
       const matchesCuration = filterCuration === 'todos' || (s.curation_status ?? 'draft') === filterCuration;
       const matchesOrigin = filterOrigin === 'todos' ||
         (filterOrigin === 'cifra_club' && s.cifra_source === 'cifra_club') ||
-        (filterOrigin === 'manual' && s.cifra_source !== 'cifra_club');
+        (filterOrigin === 'songsterr' && s.cifra_source === 'songsterr') ||
+        (filterOrigin === 'manual' && s.cifra_source !== 'cifra_club' && s.cifra_source !== 'songsterr');
       return matchesSearch && matchesGenre && matchesDifficulty && matchesCuration && matchesOrigin;
     });
   }, [songs, search, filterGenre, filterDifficulty, filterCuration, filterOrigin]);
@@ -285,7 +294,8 @@ export function Repertorio() {
     const genres = new Set(songs.map(s => s.genre).filter(Boolean))
     const avgDiff = songs.reduce((sum, s) => sum + (s.difficulty ?? 1), 0) / songs.length
     const cifraClub = songs.filter(s => s.cifra_source === 'cifra_club').length
-    return { total: songs.length, genres: genres.size, avgDiff: Math.round(avgDiff * 10) / 10, cifraClub, manual: songs.length - cifraClub }
+    const songsterr = songs.filter(s => s.cifra_source === 'songsterr').length
+    return { total: songs.length, genres: genres.size, avgDiff: Math.round(avgDiff * 10) / 10, cifraClub, songsterr, manual: songs.length - cifraClub - songsterr }
   }, [songs])
 
   // --- Gêneros únicos para o filtro ---
@@ -370,6 +380,9 @@ export function Repertorio() {
           <Button variant="ghost" size="sm" onClick={() => setImportModalOpen(true)}>
             <Lightning size={16} weight="fill" className="text-amber-400" /> Importar Cifra Club
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSongsterrModalOpen(true)}>
+            <Guitar size={16} weight="fill" className="text-orange-400" /> Importar Songsterr
+          </Button>
           <Button onClick={handleNew}>
             <Plus size={16} /> Nova Música
           </Button>
@@ -385,7 +398,7 @@ export function Repertorio() {
           barColor="bg-[#2D5A8E]"
           iconBg="bg-[#2D5A8E]/15"
           iconColor="text-[#4A7DC0]"
-          sub={`${kpis.cifraClub} importada${kpis.cifraClub !== 1 ? 's' : ''} · ${kpis.manual} manual`}
+          sub={`${kpis.cifraClub + kpis.songsterr} importada${(kpis.cifraClub + kpis.songsterr) !== 1 ? 's' : ''} · ${kpis.manual} manual`}
         />
         <KpiCard
           label="Gêneros"
@@ -406,13 +419,13 @@ export function Repertorio() {
           sub="de 1 a 5 estrelas"
         />
         <KpiCard
-          label="Cifra Club"
-          value={kpis.cifraClub}
+          label="Importadas"
+          value={kpis.cifraClub + kpis.songsterr}
           icon={<Lightning size={18} weight="fill" />}
           barColor="bg-[#FF2D78]"
           iconBg="bg-[#FF2D78]/15"
           iconColor="text-[#FF2D78]"
-          sub={kpis.total > 0 ? `${Math.round(kpis.cifraClub / kpis.total * 100)}% do total` : '—'}
+          sub={kpis.total > 0 ? `${kpis.cifraClub} Cifra Club · ${kpis.songsterr} Songsterr` : '—'}
         />
       </div>
 
@@ -538,6 +551,7 @@ export function Repertorio() {
                 {([
                   { key: 'todos', label: 'Todos' },
                   { key: 'cifra_club', label: 'Cifra Club' },
+                  { key: 'songsterr', label: 'Songsterr' },
                   { key: 'manual', label: 'Manual' },
                 ] as const).map(({ key, label }) => (
                   <button
@@ -550,6 +564,7 @@ export function Repertorio() {
                     }`}
                   >
                     {key === 'cifra_club' && <Lightning size={11} weight="fill" className="text-amber-400" />}
+                    {key === 'songsterr' && <Guitar size={11} weight="fill" className="text-orange-400" />}
                     {label}
                   </button>
                 ))}
@@ -615,6 +630,9 @@ export function Repertorio() {
                       <div className="flex items-center gap-2">
                         {song.cifra_source === 'cifra_club' && (
                           <Lightning size={12} weight="fill" className="text-amber-400 flex-shrink-0" />
+                        )}
+                        {song.cifra_source === 'songsterr' && (
+                          <Guitar size={12} weight="fill" className="text-orange-400 flex-shrink-0" />
                         )}
                         <span className="font-semibold text-[13px] text-text">{song.title}</span>
                       </div>
@@ -737,6 +755,12 @@ export function Repertorio() {
       <CifraClubImportModal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
+        onSuccess={refetch}
+      />
+
+      <SongsterrImportModal
+        open={songsterrModalOpen}
+        onClose={() => setSongsterrModalOpen(false)}
         onSuccess={refetch}
       />
 
