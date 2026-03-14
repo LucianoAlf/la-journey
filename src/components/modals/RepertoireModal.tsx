@@ -236,6 +236,7 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
             <CifraEditor
               value={form.cifra_content}
               onChange={val => setForm(prev => ({ ...prev, cifra_content: val }))}
+              originalKey={form.key || null}
               minHeight={300}
             />
           </TabsContent>

@@ -39,6 +39,10 @@ interface PianoKeyboardProps {
   hand?: 'rh' | 'lh'
   /** Escala do SVG */
   scale?: number
+  /** Forçar tema (ignora detecção automática) — útil para PDF */
+  forceTheme?: 'light' | 'dark'
+  /** Cor dos textos (label, dedilhado) — útil para PDF com fundo branco */
+  labelColor?: string
   className?: string
 }
 
@@ -109,10 +113,12 @@ export function PianoKeyboard({
   showLabels = true,
   hand = 'rh',
   scale = 1,
+  forceTheme,
+  labelColor,
   className,
 }: PianoKeyboardProps) {
-  const theme = useTheme()
-  const isDark = theme === 'dark'
+  const detectedTheme = useTheme()
+  const isDark = forceTheme ? forceTheme === 'dark' : detectedTheme === 'dark'
   const effectiveRange = range || calculateRange(keys)
   const fingering = hand === 'rh' ? fingeringRH : fingeringLH
 
@@ -150,7 +156,7 @@ export function PianoKeyboard({
   return (
     <div className={className}>
       {label && (
-        <div className="text-center font-semibold text-sm mb-1">{label}</div>
+        <div className="text-center font-semibold text-sm mb-1" style={labelColor ? { color: labelColor } : undefined}>{label}</div>
       )}
       <svg
         viewBox={`0 0 ${rendered.svg.width} ${rendered.svg.height}`}
@@ -200,7 +206,7 @@ export function PianoKeyboard({
         })}
       </svg>
       {showLabels && fingering && fingering.length > 0 && (
-        <div className="text-center text-[10px] text-text3 mt-1 font-mono">
+        <div className="text-center text-[10px] text-text3 mt-1 font-mono" style={labelColor ? { color: labelColor } : undefined}>
           {hand === 'rh' ? 'MD' : 'ME'}: {fingering.join('-')}
         </div>
       )}

@@ -16,10 +16,12 @@ export interface ChordDiagramProps {
   position?: number
   /** Tamanho: 'compact' para inline, 'full' para editor/biblioteca */
   size?: 'compact' | 'full'
+  /** Forçar tema (ignora detecção automática) — útil para PDF */
+  forceTheme?: 'light' | 'dark'
 }
 
-function getStyle() {
-  const isDark = typeof document !== 'undefined' && (document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.classList.contains('dark'))
+function getStyle(forcedDark?: boolean) {
+  const isDark = forcedDark ?? (typeof document !== 'undefined' && (document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.classList.contains('dark')))
   return {
     backgroundColor: 'transparent',
     color: isDark ? '#e2e8f0' : '#1a1a2e',
@@ -49,9 +51,10 @@ function useTheme() {
   return theme
 }
 
-export function ChordDiagram({ name, positions, position = 1, size = 'full' }: ChordDiagramProps) {
+export function ChordDiagram({ name, positions, position = 1, size = 'full', forceTheme }: ChordDiagramProps) {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useTheme()
+  const effectiveIsDark = forceTheme ? forceTheme === 'dark' : theme === 'dark'
 
   useEffect(() => {
     if (!ref.current) return
@@ -63,7 +66,7 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full' }: C
       ...(positions.muted ?? []).map(s => [s, 'x'] as [number, 'x']),
     ]
 
-    const style = getStyle()
+    const style = getStyle(effectiveIsDark)
 
     // Injetar cor da pestana em cada barre (senão herda fingerColor rosa)
     const barreColor = style.barreChordStrokeColor
@@ -105,7 +108,7 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full' }: C
         })
       }
     }
-  }, [name, positions, position, size, theme])
+  }, [name, positions, position, size, theme, forceTheme, effectiveIsDark])
 
   const dimensions = size === 'compact'
     ? { width: 90, height: 120 }

@@ -243,6 +243,34 @@ function MyComponent() {
 }
 ```
 
+## chord_library — Padrão de Auto-Fill
+
+A tabela `chord_library` é alimentada por 3 fontes:
+1. **Seeds iniciais** (migration 006) — acordes básicos com tags pedagógicas
+2. **Auto-fill** (`chordAutoFillService.ts`) — busca posições no `@tombatossals/chords-db` (violão, 529 acordes/2.069 posições) e gera via teoria musical (piano, ~30 tipos)
+3. **Criação manual** — via ChordEditor/KeyboardEditor no CifraEditor ou RepertoireSheet
+
+```typescript
+// src/services/libraryService.ts
+export async function createChord(data: {
+  name: string           // "E/G#", "Bsus4", "Am7"
+  instrument: 'guitar' | 'piano'
+  positions: any         // ChordPositions (violão) ou PianoPositions (piano)
+  difficulty: number
+  tags?: string[]        // ['auto-preenchido'] para auto-fill
+}): Promise<Chord>
+
+export async function getChordsByNames(
+  names: string[],
+  instrument?: 'guitar' | 'piano'
+): Promise<Chord[]>
+```
+
+**IMPORTANTE**: O parser `parseChordName()` em `chordAutoFillService.ts` converte nomes pt-BR para o formato do chords-db:
+- `B4` → suffix `sus4` (atalho brasileiro)
+- `E/G#` → suffix `/G#` (slash chord)
+- `Fm7(11)` → suffix `m7` (remove parênteses)
+
 ## 22 Tables Reference
 
 | Domain | Tables |

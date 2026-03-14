@@ -12,8 +12,8 @@
 | A | Songsterr — Importação de Metadados | COMPLETA | 100% |
 | B | Editor de Cifra do Zero | COMPLETA | 100% |
 | A+ | Songsterr — Importação de Conteúdo (Acordes + Cifra) | COMPLETA | 95% |
-| E1 | Transposição de Tonalidade | COMPLETA | 95% |
-| E2 | Parser ChordPro e Integração | PENDENTE | 0% |
+| E1 | Transposição de Tonalidade | COMPLETA | 100% |
+| E2 | Parser ChordPro e Integração | COMPLETA | 100% |
 | C | Music AI / Backing Tracks | PENDENTE | 0% |
 | E3 | AlphaTab — Renderizador de Tablaturas | PENDENTE | 0% |
 | E4 | Enriquecer Biblioteca de Acordes | PENDENTE | 0% |
@@ -114,7 +114,7 @@ Objetivo: Widget de transposição (+/- semitons) no editor e na sheet, igual Ci
 | E1.2 | ✅ | `src/lib/transpose.ts` — transposeChord(), transposeCifraContent(), transposeChords(), transposeKey(), detectKey(), shouldUseFlats(), semitoneLabel(). Lib própria leve (sem dependência pesada). Regex robusta: suporta Bb5, B4, F#m7(11), E/G#, etc. |
 | E1.3 | ✅ | `src/components/repertoire/TransposeControl.tsx` — botões -/+ com Phosphor Icons, badge de semitons, display tonalidade, botão reset, limites -11/+11 |
 | E1.4 | ✅ | Integrado no RepertoireSheet.tsx — cifra transposta em tempo real, acordes transpostos, diagramas violão/teclado buscam novos acordes da biblioteca, tablatura NÃO alterada (correto) |
-| E1.5 | ⏳ | Falta integrar no CifraEditor.tsx (modo preview) — prioridade baixa |
+| E1.5 | ✅ | TransposeControl integrado no CifraEditor.tsx — Preview/Split mostram cifra transposta, diagramas buscam acordes transpostos na biblioteca |
 | E1.6 | ✅ | Testado: Eduardo e Mônica (E→F, +1): Bb5→B5, B4→C4, F#m7(11)→Gm7(11), E/G#→F/A |
 
 ### Resultado
@@ -132,12 +132,25 @@ Objetivo: Suporte nativo ao formato ChordPro — parse, renderização e import/
 
 | Etapa | Tipo | Descrição | Dificuldade |
 |-------|------|-----------|-------------|
-| E2.1 | Lib | Criar src/lib/chordpro.ts: parseChordPro(), chordProToPlainText(), plainTextToChordPro(), extractMetadata(), extractChords() | Média |
-| E2.2 | Feature | No CifraEditor, toggle "Formato": ChordsOverWords / ChordPro | Média |
-| E2.3 | Feature | Import de arquivos .cho/.chordpro/.pro via drag and drop ou file picker | Baixa |
-| E2.4 | Feature | Export: botão "Exportar ChordPro" que gera .cho para download | Baixa |
-| E2.5 | Edge Function | chordpro-batch-import — recebe array de textos ChordPro, parse e insere no repertoire | Média |
-| E2.6 | Modal | Aba "ChordPro" no modal unificado de importação (Fase D) | Baixa |
+| E2.1 | ✅ | `src/lib/chordpro.ts` — chordProToPlainText(), plainTextToChordPro(), isChordProFormat(), extractChordsFromChordPro(), extractChordProMetadata(). Converte bidirecional ChordPro ↔ ChordsOverWords. Suporta diretivas {title}, {key}, {soc/eoc}, {comment}, seções, acordes inline. |
+| E2.2 | ✅ | Dropdown "ChordPro" na toolbar do CifraEditor com 3 opções: Importar .cho, Copiar ChordPro, Baixar .cho. Auto-detecção no paste (isChordProFormat). |
+| E2.3 | ✅ | Import de arquivos .cho/.chordpro/.pro/.txt via file picker com auto-conversão |
+| E2.4 | ✅ | Export: copiar para clipboard + download arquivo .cho |
+| E2.5 | ⏳ | Edge Function chordpro-batch-import (futuro — Fase D) |
+| E2.6 | ⏳ | Aba "ChordPro" no modal unificado (futuro — Fase D) |
+| E2.7 | ✅ | Auto-Fill de acordes no CifraEditor: botão ⚡ identifica faltantes, busca no chords-db (violão) e gera via teoria musical (piano), cria no banco. |
+| E2.8 | ✅ | Fix parser `parseChordName`: slash chords (E/G# → suffix="/G#"), atalhos BR (B4→sus4, G2→sus2), parênteses (Fm7(11)→Fm7). Agora aproveita 100% dos 529 acordes / 2.069 posições do chords-db. |
+| E2.9 | ✅ | Duplo-clique nos diagramas de violão e teclado no CifraEditor abre modal de edição (ChordEditor/KeyboardEditor). Teclados padronizados com range fixo [C4, C6]. |
+
+### Auditoria de Fontes de Acordes (14/03/2026)
+
+| Fonte | Tipo | Cobertura | Detalhes |
+|-------|------|-----------|----------|
+| `@tombatossals/chords-db` | Violão (estática) | **529 acordes, 2.069 posições, 63 suffixes** | Inclui slash chords (/G#, m/C), sus, dim, aug, 7th, 9th, 11th, 13th, add, alt |
+| `PIANO_INTERVALS` | Piano (teoria) | ~30 tipos + slash chords | Gera MIDI na oitava 4, slash adiciona baixo na oitava 3 |
+| `chord_library` (Supabase) | Cache persistente | ~80+ registros (cresce) | Alimentada pelo auto-fill, tag "auto-preenchido" |
+
+**REGRA**: O chords-db tem 2.069 posições — SEMPRE buscar lá antes de declarar "não encontrado".
 
 ---
 

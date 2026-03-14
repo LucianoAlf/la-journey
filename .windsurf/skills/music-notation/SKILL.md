@@ -304,6 +304,56 @@ notes :q 1/1 2/1 3/1 4/1 | 1/2 2/2 3/2 4/2 | 1/3 2/3 3/3 4/3
 }
 ```
 
+## 4. Chord Auto-Fill — chordAutoFillService.ts
+
+### Fontes de dados (CRÍTICO — memorizar!)
+
+| Fonte | Tipo | Cobertura | Arquivo |
+|-------|------|-----------|---------|
+| `@tombatossals/chords-db` | Violão | **529 acordes, 2.069 posições** | `guitar.json` |
+| `PIANO_INTERVALS` | Piano (teoria musical) | ~30 tipos de acorde | inline no service |
+| `chord_library` (Supabase) | Cache persistente | Cresce conforme uso | tabela no banco |
+
+### chords-db — 63 suffixes disponíveis
+```
+Normais: major, minor, dim, dim7, sus2, sus4, 7sus4, alt, aug, 6, 69, 7, 7b5,
+  aug7, 9, 9b5, aug9, 7b9, 7#9, 11, 9#11, 13, maj7, maj7b5, maj7#5, maj9,
+  maj11, maj13, m6, m7, m7b5, m9, m69, m11, mmaj7, mmaj7b5, mmaj9, mmaj11,
+  add9, madd9, 7sg, 5 (gerado programaticamente)
+Slash maiores: /A, /B, /Bb, /C, /C#, /D, /D#, /E, /F, /F#, /G, /G#
+Slash menores: m/B, m/C, m/C#, m/D, m/D#, m/E, m/F, m/F#, m/G, m/G#
+```
+
+### parseChordName — Mapeamentos pt-BR → chords-db
+```typescript
+// Atalhos brasileiros
+"B4"    → key="B", suffix="sus4"   // "4" mapeia para sus4
+"G2"    → key="G", suffix="sus2"   // "2" mapeia para sus2
+"C7M"   → key="C", suffix="maj7"
+"E/G#"  → key="E", suffix="/G#"   // slash chord com baixo
+"Am/C"  → key="A", suffix="m/C"   // slash menor com baixo
+"Fm7(11)" → key="F", suffix="m7"  // parênteses removidos
+"Dsus4/F#" → key="D", suffix="sus4" // slash com qualificador → ignora baixo
+```
+
+### Acesso ao chords-db
+```typescript
+import guitarDb from '@tombatossals/chords-db/lib/guitar.json'
+
+// keyToJsonKey: C→C, C#→Csharp, F#→Fsharp, etc.
+const chordsForKey = guitarDb.chords[keyToJsonKey(parsed.key)]
+const match = chordsForKey.find(c => c.suffix === parsed.suffix)
+// match.positions[0] → primeira posição (mais fácil)
+```
+
+### Fluxo do Auto-Fill
+1. `parseChordName("E/G#")` → `{ key: "E", suffix: "/G#" }`
+2. `lookupGuitarChord()` → busca no chords-db → retorna posições SVGuitar
+3. `generatePianoChord()` → PIANO_INTERVALS + baixo na oitava 3 se slash
+4. `createChord()` → salva no `chord_library` (Supabase) com tag "auto-preenchido"
+
+### REGRA: NUNCA declarar acorde como "não encontrado" sem antes verificar o chords-db!
+
 ## Common Pitfalls
 
 1. **SVGuitar string numbering** — String 1 = thinnest (high E). Different from some guitar convention.
@@ -312,3 +362,5 @@ notes :q 1/1 2/1 3/1 4/1 | 1/2 2/2 3/2 4/2 | 1/3 2/3 3/3 4/3
 4. **SVG vs Canvas** — Always use `Renderer.Backends.SVG` for PDF export compatibility
 5. **VexTab parsing** — Wrap in try/catch, invalid notation crashes the renderer
 6. **Dark mode** — Override stroke/fill colors via config, don't use CSS filters
+7. **Chord parsing** — "B4" em cifra brasileira = Bsus4, NÃO é "B + 4". "E/G#" é slash chord, NÃO ignorar a barra.
+8. **chords-db tem 2.069 posições** — Sempre buscar lá antes de gerar programaticamente ou declarar "não encontrado"

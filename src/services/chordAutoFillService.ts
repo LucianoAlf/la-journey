@@ -72,7 +72,17 @@ const NOTE_MAP: Record<string, string> = {
   'B': 'B', 'Si': 'B',
 }
 
-/** Sufixos de acordes: mapeia variações comuns → suffix do chords-db */
+/** 
+ * Sufixos de acordes: mapeia variações comuns → suffix do chords-db
+ * 
+ * O chords-db (@tombatossals) contém 529 acordes / 2069 posições com 63 suffixes:
+ * - Normais: major, minor, dim, dim7, sus2, sus4, 7sus4, alt, aug, 6, 69, 7, 7b5,
+ *   aug7, 9, 9b5, aug9, 7b9, 7#9, 11, 9#11, 13, maj7, maj7b5, maj7#5, maj9,
+ *   maj11, maj13, m6, m7, m7b5, m9, m69, m11, mmaj7, mmaj7b5, mmaj9, mmaj11,
+ *   add9, madd9, 7sg, 5 (gerado programaticamente)
+ * - Slash chords: /A, /B, /Bb, /C, /C#, /D, /D#, /E, /F, /F#, /G, /G#
+ * - Slash menores: m/B, m/C, m/C#, m/D, m/D#, m/E, m/F, m/F#, m/G, m/G#
+ */
 const SUFFIX_MAP: Record<string, string> = {
   // Maiores
   '': 'major',
@@ -92,6 +102,7 @@ const SUFFIX_MAP: Record<string, string> = {
   '7+': 'maj7',
   'maj7': 'maj7',
   'M7': 'maj7',
+  '7sg': '7sg',
 
   // Menores com sétima
   'm7': 'm7',
@@ -114,11 +125,16 @@ const SUFFIX_MAP: Record<string, string> = {
   '+7': 'aug7',
 
   // Suspensas
-  'sus': 'sus',
+  'sus': 'sus4',
   'sus2': 'sus2',
   'sus4': 'sus4',
   '7sus4': '7sus4',
   '7sus': '7sus4',
+  '7sus2': '7sus4',
+
+  // Atalhos numéricos brasileiros (B4 = Bsus4, C2 = Csus2)
+  '4': 'sus4',
+  '2': 'sus2',
 
   // Power chords
   '5': '5',
@@ -128,6 +144,7 @@ const SUFFIX_MAP: Record<string, string> = {
   'm6': 'm6',
   '69': '69',
   '6/9': '69',
+  'm69': 'm69',
 
   // Nonas
   '9': '9',
@@ -154,41 +171,49 @@ const SUFFIX_MAP: Record<string, string> = {
   'aug9': 'aug9',
   '9#11': '9#11',
   'mmaj7': 'mmaj7',
+  'mmaj7b5': 'mmaj7b5',
   'mmaj9': 'mmaj9',
   'mmaj11': 'mmaj11',
+  'maj7b5': 'maj7b5',
+  'maj7#5': 'maj7#5',
   'alt': 'alt',
   'add11': 'add11',
 }
 
 /**
- * Extrai nota base e sufixo de um nome de acorde
- * Ex: "C7M" → { note: "C", suffix: "maj7" }
- * Ex: "Am7" → { note: "A", suffix: "m7" }
- * Ex: "Bm"  → { note: "B", suffix: "minor" }
- * Ex: "E5"  → { note: "E", suffix: "5" }
- * Ex: "F#m" → { note: "F#", suffix: "minor" }
+ * Extrai nota base e sufixo de um nome de acorde.
+ * 
+ * Suporta:
+ * - Acordes simples: "C", "Am7", "F#m", "Bm7b5"
+ * - Cifras brasileiras: "C7M" → maj7, "B4" → sus4, "C2" → sus2
+ * - Slash chords (inversões): "E/G#" → key=E, suffix="/G#"
+ * - Slash menores: "Am/C" → key=A, suffix="m/C"
+ * - Extensões entre parênteses: "Fm7(11)" → Fm7, "A7(#9)" → A7#9
+ * 
+ * Fontes de dados:
+ * - Violão: @tombatossals/chords-db (529 acordes, 2069 posições, 63 suffixes)
+ * - Piano: fórmulas de teoria musical (PIANO_INTERVALS)
  */
 export function parseChordName(name: string): { key: string; suffix: string } | null {
-  const trimmed = name.trim()
+  let trimmed = name.trim()
   if (!trimmed) return null
 
+  // Remover parênteses — mesclar extensão: "Fm7(11)" → "Fm711", "A7(#9)" → "A7#9"
+  trimmed = trimmed.replace(/\(([^)]*)\)/, '$1')
+
   // Tentar extrair a nota base (ordem importa: tentar notas longas primeiro)
-  // Ordenar as chaves do NOTE_MAP por tamanho decrescente
   const noteKeys = Object.keys(NOTE_MAP).sort((a, b) => b.length - a.length)
 
-  let noteStr = ''
   let dbKey = ''
   let rest = ''
 
   for (const nk of noteKeys) {
     if (trimmed.startsWith(nk)) {
-      // Verificar que o próximo caractere não é letra minúscula (ex: "Em" → E + m, não "Em" como nota)
       const after = trimmed.slice(nk.length)
-      // Se nk não tem # ou b no final, e a próxima letra é # ou b, pular
+      // Se a próxima letra é # ou b, a nota é mais longa — pular
       if (after.length > 0 && (after[0] === '#' || after[0] === 'b') && !nk.endsWith('#') && !nk.endsWith('b')) {
         continue
       }
-      noteStr = nk
       dbKey = NOTE_MAP[nk]
       rest = after
       break
@@ -197,32 +222,62 @@ export function parseChordName(name: string): { key: string; suffix: string } | 
 
   if (!dbKey) return null
 
-  // Mapear o sufixo restante
-  // Tentar match exato primeiro, depois parciais
-  const suffixKeys = Object.keys(SUFFIX_MAP).sort((a, b) => b.length - a.length)
+  // Slash chords: "E/G#" → rest = "/G#"
+  // O chords-db guarda como suffix "/G#" e "m/G#" etc.
+  // Se rest contém "/", verificar se é um slash chord válido no chords-db
+  if (rest.includes('/')) {
+    // Pode ser "m/C#" (menor com baixo) ou "/G#" (maior com baixo) ou "sus4/F#"
+    const slashIdx = rest.indexOf('/')
+    const beforeSlash = rest.slice(0, slashIdx)
+    const bassNote = rest.slice(slashIdx) // inclui a barra: "/G#"
 
-  for (const sk of suffixKeys) {
-    if (rest === sk) {
-      return { key: dbKey, suffix: SUFFIX_MAP[sk] }
+    // Slash chord menor: "m/C" → suffix = "m/C"
+    if (beforeSlash === 'm') {
+      return { key: dbKey, suffix: `m${bassNote}` }
     }
+
+    // Slash chord maior puro: "/G#" → suffix = "/G#"
+    if (beforeSlash === '') {
+      return { key: dbKey, suffix: bassNote }
+    }
+
+    // Slash chord com qualificador antes: "sus4/F#" → tratar como suffix composto
+    // O chords-db não tem esses, então mapear o beforeSlash normalmente
+    // e ignorar o baixo (usar o acorde base)
+    const mappedBefore = SUFFIX_MAP[beforeSlash]
+    if (mappedBefore) {
+      return { key: dbKey, suffix: mappedBefore }
+    }
+
+    // Último recurso: tentar sem o baixo
+    rest = beforeSlash
   }
 
-  // Tentar variações comuns pt-BR
-  // "7M" no final de cifras brasileiras = maj7
+  // Match exato no SUFFIX_MAP
+  if (rest in SUFFIX_MAP) {
+    return { key: dbKey, suffix: SUFFIX_MAP[rest] }
+  }
+
+  // Variações pt-BR
   if (rest === '7M' || rest === '7+') return { key: dbKey, suffix: 'maj7' }
   if (rest === '7m') return { key: dbKey, suffix: 'm7' }
 
-  // Se não encontrou, tentar o sufixo mais próximo
+  // Match parcial (sufixo mais longo primeiro)
+  const suffixKeys = Object.keys(SUFFIX_MAP).sort((a, b) => b.length - a.length)
+  for (const sk of suffixKeys) {
+    if (sk && rest === sk) {
+      return { key: dbKey, suffix: SUFFIX_MAP[sk] }
+    }
+  }
   for (const sk of suffixKeys) {
     if (sk && rest.startsWith(sk)) {
       return { key: dbKey, suffix: SUFFIX_MAP[sk] }
     }
   }
 
-  // Último recurso: sem sufixo = major
+  // Sem sufixo = major
   if (rest === '') return { key: dbKey, suffix: 'major' }
 
-  // Não encontrado
   return null
 }
 
@@ -460,13 +515,30 @@ function autoFingeringRH(noteCount: number): number[] {
 }
 
 /**
- * Gera um acorde de piano usando teoria musical
+ * Gera um acorde de piano usando teoria musical.
+ * 
+ * Suporta slash chords (E/G#): gera o acorde base (E major) e adiciona
+ * a nota do baixo (G#) uma oitava abaixo se necessário.
  */
 export function generatePianoChord(chordName: string): PianoPositions | null {
   const parsed = parseChordName(chordName)
   if (!parsed) return null
 
-  const intervals = PIANO_INTERVALS[parsed.suffix]
+  // Slash chords: suffix pode ser "/G#" ou "m/C"
+  // Separar acorde base do baixo
+  let baseSuffix = parsed.suffix
+  let bassNoteKey: string | null = null
+
+  const slashMatch = parsed.suffix.match(/^(m?)\/(.+)$/)
+  if (slashMatch) {
+    baseSuffix = slashMatch[1] === 'm' ? 'minor' : 'major'
+    // Normalizar a nota do baixo para o formato do NOTE_TO_MIDI
+    const rawBass = slashMatch[2]
+    // Mapear nota do baixo (pode ser C#, Bb, etc.)
+    bassNoteKey = NOTE_MAP[rawBass] ?? rawBass
+  }
+
+  const intervals = PIANO_INTERVALS[baseSuffix]
   if (!intervals) return null
 
   const baseMidi = NOTE_TO_MIDI[parsed.key]
@@ -474,14 +546,28 @@ export function generatePianoChord(chordName: string): PianoPositions | null {
 
   // Gerar notas na oitava 4 (MIDI 60-71 base)
   const midiNotes = intervals.map(interval => baseMidi + interval)
+
+  // Se é slash chord, adicionar a nota do baixo uma oitava abaixo
+  if (bassNoteKey) {
+    const bassMidi = NOTE_TO_MIDI[bassNoteKey]
+    if (bassMidi !== undefined) {
+      // Baixo na oitava 3 (uma oitava abaixo do acorde)
+      const bassInOctave3 = bassMidi - 12
+      // Inserir no início se não estiver já
+      if (!midiNotes.includes(bassInOctave3)) {
+        midiNotes.unshift(bassInOctave3)
+      }
+    }
+  }
+
   const keys = midiNotes.map(midiToNoteName)
   const fingeringRh = autoFingeringRH(keys.length)
 
   // Determinar tipo e qualidade para metadados
-  let type = 'acorde'
-  let quality = parsed.suffix === 'major' ? 'maior' :
-    parsed.suffix === 'minor' ? 'menor' :
-    parsed.suffix
+  const type = 'acorde'
+  const quality = baseSuffix === 'major' ? 'maior' :
+    baseSuffix === 'minor' ? 'menor' :
+    baseSuffix
 
   return {
     keys,
@@ -491,8 +577,8 @@ export function generatePianoChord(chordName: string): PianoPositions | null {
     fingering_lh: [],
     type,
     quality,
-    octave_start: 4,
-    octave_count: 1,
+    octave_start: bassNoteKey ? 3 : 4,
+    octave_count: bassNoteKey ? 3 : 2,
   }
 }
 
@@ -551,7 +637,7 @@ export function autoFillChords(
             keys: [], root: '', octave: 4,
             fingering_rh: [], fingering_lh: [],
             type: '', quality: '',
-            octave_start: 4, octave_count: 1,
+            octave_start: 4, octave_count: 2,
           },
           found: false,
           source: 'nao-encontrado',

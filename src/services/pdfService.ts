@@ -20,13 +20,13 @@ export async function generatePdfFromElement(
 
   // Capturar o elemento como canvas
   const canvas = await html2canvas(element, {
-    scale: 1.5, // Boa qualidade sem arquivo gigante
+    scale: 3, // Alta resolução para diagramas e textos nítidos
     useCORS: true,
     backgroundColor: '#ffffff',
     logging: false,
   })
 
-  const imgData = canvas.toDataURL('image/jpeg', 0.85)
+  const imgData = canvas.toDataURL('image/png')
   const imgWidth = canvas.width
   const imgHeight = canvas.height
 
@@ -48,7 +48,7 @@ export async function generatePdfFromElement(
 
   // Se o conteúdo cabe em uma página
   if (scaledHeight <= printableHeight) {
-    pdf.addImage(imgData, 'JPEG', margin, margin, printableWidth, scaledHeight)
+    pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, scaledHeight)
   } else {
     // Múltiplas páginas: fatiar o canvas
     const sliceHeight = printableHeight / ratio // altura em pixels do canvas por página
@@ -71,9 +71,9 @@ export async function generatePdfFromElement(
           0, yOffset, imgWidth, currentSliceHeight,
           0, 0, imgWidth, currentSliceHeight
         )
-        const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.85)
+        const sliceData = sliceCanvas.toDataURL('image/png')
         const scaledSliceHeight = currentSliceHeight * ratio
-        pdf.addImage(sliceData, 'JPEG', margin, margin, printableWidth, scaledSliceHeight)
+        pdf.addImage(sliceData, 'PNG', margin, margin, printableWidth, scaledSliceHeight)
       }
 
       yOffset += currentSliceHeight

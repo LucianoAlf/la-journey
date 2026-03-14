@@ -410,8 +410,8 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     setShowPrintable(true)
     setGeneratingPdf(true)
 
-    // Aguardar renderização do componente printable
-    await new Promise(r => setTimeout(r, 600))
+    // Aguardar renderização do componente printable + carregamento da logo
+    await new Promise(r => setTimeout(r, 1000))
 
     try {
       const el = printRef.current
@@ -622,28 +622,54 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
       })
   }, [tabEditorBlockIdx, song, onSaved])
 
+  // Resetar transposição quando a música muda
+  useEffect(() => {
+    setTransposeSemitones(0)
+  }, [song?.id])
+
+  // Cifra e acordes transpostos (derivados, sem salvar no banco)
+  const useFlats = useMemo(() => shouldUseFlats(song?.key ?? null), [song?.key])
+
+  const transposedCifra = useMemo(() => {
+    if (!song?.cifra_content || transposeSemitones === 0) return song?.cifra_content ?? ''
+    return transposeCifraContent(song.cifra_content, transposeSemitones, useFlats)
+  }, [song?.cifra_content, transposeSemitones, useFlats])
+
+  const transposedChords = useMemo(() => {
+    if (!(song?.chords?.length) || transposeSemitones === 0) return song?.chords ?? []
+    return transposeChords(song.chords, transposeSemitones, useFlats)
+  }, [song?.chords, transposeSemitones, useFlats])
+
+  // Buscar diagramas dos acordes transpostos (quando transpõe, buscar novos diagramas)
+  const chordsForLibrary = useMemo(() => {
+    return transposeSemitones === 0 ? (song?.chords ?? []) : transposedChords
+  }, [song?.chords, transposeSemitones, transposedChords])
+
+  // Chave estável para evitar loop infinito no useEffect de busca de acordes
+  const chordsKey = useMemo(() => chordsForLibrary.join(','), [chordsForLibrary])
+
   // --- Auto-preenchimento de acordes faltantes ---
   const [autoFilling, setAutoFilling] = useState(false)
 
   const missingGuitarChords = useMemo(() => {
-    if (!song?.chords?.length) return []
-    return (song.chords ?? []).filter(name => !guitarChordMap.has(name))
-  }, [song?.chords, guitarChordMap])
+    if (!transposedChords.length) return []
+    return transposedChords.filter(name => !guitarChordMap.has(name))
+  }, [transposedChords, guitarChordMap])
 
   const missingPianoChords = useMemo(() => {
-    if (!song?.chords?.length) return []
-    return (song.chords ?? []).filter(name => {
+    if (!transposedChords.length) return []
+    return transposedChords.filter(name => {
       const lib = pianoChordMap.get(name)
       if (!lib) return true
       const pos = lib.positions as any
       return !(pos?.keys?.length > 0)
     })
-  }, [song?.chords, pianoChordMap])
+  }, [transposedChords, pianoChordMap])
 
   const totalMissing = missingGuitarChords.length + missingPianoChords.length
 
   const handleAutoFillChords = useCallback(async () => {
-    if (!song?.chords?.length) return
+    if (!transposedChords.length) return
     setAutoFilling(true)
 
     try {
@@ -656,8 +682,14 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
       let createdPiano = 0
       const errors: string[] = []
 
+      // Acordes já na biblioteca (evitar duplicatas)
+      const existingNames = new Set(
+        libraryChords.map(c => `${c.name}::${c.instrument}`)
+      )
+
       // Criar acordes de violão na biblioteca
       for (const result of guitarResults) {
+        if (existingNames.has(`${result.chordName}::guitar`)) continue
         try {
           const posWithPosition = {
             ...result.positions,
@@ -678,6 +710,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
 
       // Criar acordes de piano na biblioteca
       for (const result of pianoResults) {
+        if (existingNames.has(`${result.chordName}::piano`)) continue
         try {
           await createChord({
             name: result.chordName,
@@ -698,8 +731,8 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
           description: `🎸 ${createdGuitar} violão · 🎹 ${createdPiano} piano`,
         })
         window.dispatchEvent(new Event('chord-library-updated'))
-        // Recarregar acordes no sheet
-        getChordsByNames(song.chords)
+        // Recarregar acordes no sheet (usar transposedChords, não song.chords)
+        getChordsByNames(transposedChords)
           .then(data => setLibraryChords(data))
           .catch(() => {})
       }
@@ -722,7 +755,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     } finally {
       setAutoFilling(false)
     }
-  }, [song?.chords, missingGuitarChords, missingPianoChords, guitarChordMap, pianoChordMap])
+  }, [transposedChords, missingGuitarChords, missingPianoChords, guitarChordMap, pianoChordMap])
 
   // Estado do formulário de edição
   const [form, setForm] = useState<EditForm>({
@@ -730,27 +763,6 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     curation_status: 'draft', youtube_url: '', chords: '',
     cifra_content: '', lyrics: '',
   })
-
-  // Resetar transposição quando a música muda
-  useEffect(() => {
-    setTransposeSemitones(0)
-  }, [song?.id])
-
-  // Cifra e acordes transpostos (derivados, sem salvar no banco)
-  const useFlats = useMemo(() => shouldUseFlats(song?.key ?? null), [song?.key])
-
-  const transposedCifra = useMemo(() => {
-    if (!song?.cifra_content || transposeSemitones === 0) return song?.cifra_content ?? ''
-    return transposeCifraContent(song.cifra_content, transposeSemitones, useFlats)
-  }, [song?.cifra_content, transposeSemitones, useFlats])
-
-  const transposedChords = useMemo(() => {
-    if (!(song?.chords?.length) || transposeSemitones === 0) return song?.chords ?? []
-    return transposeChords(song.chords, transposeSemitones, useFlats)
-  }, [song?.chords, transposeSemitones, useFlats])
-
-  // Buscar diagramas dos acordes transpostos (quando transpõe, buscar novos diagramas)
-  const chordsForLibrary = transposeSemitones === 0 ? (song?.chords ?? []) : transposedChords
 
   // Sincronizar formulário quando a música muda
   useEffect(() => {
@@ -785,7 +797,8 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
       .catch(() => { if (!cancelled) setLibraryChords([]) })
       .finally(() => { if (!cancelled) setLoadingChords(false) })
     return () => { cancelled = true }
-  }, [open, song?.id, chordsForLibrary])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, song?.id, chordsKey])
 
   const handleSave = useCallback(async () => {
     if (!song) return
@@ -861,6 +874,12 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
               {song.key && (
                 <span className="font-mono text-[12px] font-bold px-2.5 py-1 rounded-lg bg-[var(--azul-escuro)]/25 text-[var(--azul-claro)]">
                   Tom: {song.key}
+                </span>
+              )}
+              {/* BPM */}
+              {song.bpm && (
+                <span className="font-mono text-[12px] font-bold px-2.5 py-1 rounded-lg bg-[var(--azul-escuro)]/25 text-[var(--rosa)]">
+                  {song.bpm} BPM
                 </span>
               )}
               {/* Gênero */}
@@ -1146,6 +1165,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                                             fingeringRH={fingeringRh.length > 0 ? fingeringRh : undefined}
                                             label={chordName}
                                             showLabels={fingeringRh.length > 0}
+                                            range={['C4', 'C6']}
                                             scale={0.8}
                                             className="w-full"
                                           />
@@ -1222,10 +1242,11 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                         <MetaItem label="Título" value={song.title} />
                         <MetaItem label="Artista" value={song.artist ?? '—'} />
                         <MetaItem label="Tom" value={song.key ?? '—'} mono />
+                        <MetaItem label="BPM" value={song.bpm ? `${song.bpm}` : '—'} mono />
                         <MetaItem label="Gênero" value={song.genre ?? '—'} />
                         <MetaItem label="Dificuldade" value={diffConfig.label} />
                         <MetaItem label="Curadoria" value={curationConfig.label} />
-                        <MetaItem label="Origem" value={song.cifra_source === 'cifra_club' ? 'Cifra Club' : 'Manual'} />
+                        <MetaItem label="Origem" value={song.cifra_source === 'cifra_club' ? 'Cifra Club' : song.cifra_source === 'songsterr' ? 'Songsterr' : 'Manual'} />
                         <MetaItem label="Acordes" value={`${(song.chords ?? []).length} acordes`} />
                         {song.created_at && (
                           <MetaItem label="Cadastrado em" value={new Date(song.created_at).toLocaleDateString('pt-BR')} />
@@ -1503,11 +1524,11 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
             ref={printRef}
             title={song.title}
             artist={song.artist}
-            tom={song.key ?? undefined}
-            chords={song.chords ?? []}
+            tom={transposeSemitones !== 0 ? transposeKey(song.key ?? '', transposeSemitones, useFlats) : (song.key ?? undefined)}
+            chords={transposedChords}
             guitarChordMap={guitarChordMap}
             pianoChordMap={pianoChordMap}
-            cifraContent={song.cifra_content}
+            cifraContent={transposedCifra}
             showGuitar={showGuitar}
             showPiano={showPiano}
             showTab={showTab}

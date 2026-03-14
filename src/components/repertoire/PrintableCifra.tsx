@@ -43,15 +43,23 @@ export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
           lineHeight: '1.5',
         }}
       >
-        {/* Cabeçalho */}
-        <div style={{ borderBottom: '2px solid #e5e7eb', paddingBottom: '12px', marginBottom: '16px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0, color: '#111' }}>
-            {title}
-          </h1>
-          <p style={{ fontSize: '15px', color: '#555', margin: '4px 0 0 0' }}>
-            {artist}
-            {tom && <span style={{ marginLeft: '16px', fontSize: '13px', color: '#888' }}>Tom: {tom}</span>}
-          </p>
+        {/* Cabeçalho com logo da escola */}
+        <div style={{ borderBottom: '2px solid #e5e7eb', paddingBottom: '12px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0, color: '#111' }}>
+              {title}
+            </h1>
+            <p style={{ fontSize: '15px', color: '#555', margin: '4px 0 0 0' }}>
+              {artist}
+              {tom && <span style={{ marginLeft: '16px', fontSize: '13px', color: '#888' }}>Tom: {tom}</span>}
+            </p>
+          </div>
+          <img
+            src="/logos/logo-escola.png"
+            alt="LA Music School"
+            style={{ height: '44px', objectFit: 'contain' }}
+            crossOrigin="anonymous"
+          />
         </div>
 
         {/* Acordes badges */}
@@ -101,6 +109,7 @@ export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
                       }}
                       position={pos.position ?? 1}
                       size="compact"
+                      forceTheme="light"
                     />
                   </div>
                 )
@@ -138,6 +147,8 @@ export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
                       fingeringRH={fingeringRh.length > 0 ? fingeringRh : undefined}
                       label={chordName}
                       showLabels={fingeringRh.length > 0}
+                      forceTheme="light"
+                      labelColor="#1a1a1a"
                       scale={0.7}
                       className="w-full"
                     />
@@ -212,11 +223,20 @@ export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
           </div>
         )}
 
-        {/* Rodapé */}
-        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '20px', paddingTop: '8px', textAlign: 'center' }}>
+        {/* Rodapé com branding LA Journey */}
+        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '20px', paddingTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '9px', color: '#aaa' }}>
-            Gerado por LA Journey — Plataforma de Material Didático Musical
+            Material exclusivo — reprodução não autorizada
           </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '8px', color: '#bbb' }}>Powered by</span>
+            <img
+              src="/logos/logo-light.png"
+              alt="LA Journey"
+              style={{ height: '16px', objectFit: 'contain', opacity: 0.7 }}
+              crossOrigin="anonymous"
+            />
+          </div>
         </div>
       </div>
     )

@@ -3,7 +3,9 @@ import {
   TextAlignLeft, MusicNotes, Guitar,
   ArrowsOutSimple, ClipboardText,
   Eye, PencilSimple, Eraser,
-  ArrowUUpLeft, ArrowUUpRight, Trash
+  ArrowUUpLeft, ArrowUUpRight, Trash,
+  Code, ArrowsClockwise, FileArrowDown, FileArrowUp,
+  WarningCircle, PianoKeys, Lightning, SpinnerGap
 } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,7 +18,23 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ChordDiagram, type ChordPositions } from '@/components/music/ChordDiagram'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
-import { getChordsByNames } from '@/services/libraryService'
+import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from '@/components/music/ChordEditor'
+import { KeyboardEditor, type PianoChordData } from '@/components/music/KeyboardEditor'
+import { getChordsByNames, updateChord, createChord, type Chord } from '@/services/libraryService'
+import { autoFillChordsFound } from '@/services/chordAutoFillService'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { toast } from 'sonner'
+import { TransposeControl } from '@/components/repertoire/TransposeControl'
+import { transposeCifraContent, transposeChords, shouldUseFlats } from '@/lib/transpose'
+import {
+  chordProToPlainText,
+  plainTextToChordPro,
+  isChordProFormat,
+  type ChordProMetadata,
+} from '@/lib/chordpro'
 
 // ============================================================
 // Hook: Undo/Redo com histórico de estados
@@ -173,6 +191,8 @@ interface CifraEditorProps {
   value: string
   /** Callback quando o texto muda */
   onChange: (value: string) => void
+  /** Tonalidade original da música (para TransposeControl) */
+  originalKey?: string | null
   /** Altura mínima do editor */
   minHeight?: number
   /** Se está em modo somente leitura */
@@ -184,6 +204,7 @@ interface CifraEditorProps {
 export function CifraEditor({
   value,
   onChange,
+  originalKey = null,
   minHeight = 300,
   readOnly = false,
   className = '',
@@ -193,6 +214,7 @@ export function CifraEditor({
   const [cursorLine, setCursorLine] = useState(0)
   const [showGuitar, setShowGuitar] = useState(true)
   const [showPiano, setShowPiano] = useState(true)
+  const [semitones, setSemitones] = useState(0)
 
   // Undo/Redo
   const { undo, redo, canUndo, canRedo } = useUndoRedo(value, onChange)
@@ -200,36 +222,265 @@ export function CifraEditor({
   // Acordes extraídos automaticamente
   const detectedChords = useMemo(() => extractChordsFromCifra(value), [value])
 
+  // Transposição
+  const useFlats = shouldUseFlats(originalKey)
+  const transposedChords = useMemo(
+    () => transposeChords(detectedChords, semitones, useFlats),
+    [detectedChords, semitones, useFlats]
+  )
+  const transposedContent = useMemo(
+    () => transposeCifraContent(value, semitones, useFlats),
+    [value, semitones, useFlats]
+  )
+  // Acordes que serão usados para buscar diagramas (transpostos se houver transposição)
+  const chordsForDiagrams = semitones !== 0 ? transposedChords : detectedChords
+
   // Contadores de linhas
   const lineCount = useMemo(() => value.split('\n').length, [value])
 
   // Buscar diagramas de acordes da chord_library (guitar + piano)
-  const [guitarChordMap, setGuitarChordMap] = useState<Map<string, any>>(new Map())
-  const [pianoChordMap, setPianoChordMap] = useState<Map<string, any>>(new Map())
+  // Guardar Chord completo para poder abrir o editor
+  const [guitarChordMap, setGuitarChordMap] = useState<Map<string, Chord>>(new Map())
+  const [pianoChordMap, setPianoChordMap] = useState<Map<string, Chord>>(new Map())
   const prevChordsKeyRef = useRef('')
 
-  useEffect(() => {
-    const key = detectedChords.sort().join(',')
-    if (!key || key === prevChordsKeyRef.current) return
-    prevChordsKeyRef.current = key
-
-    getChordsByNames(detectedChords).then(data => {
-      const guitar = new Map<string, any>()
-      const piano = new Map<string, any>()
+  const reloadChords = useCallback(() => {
+    if (chordsForDiagrams.length === 0) return
+    getChordsByNames(chordsForDiagrams).then(data => {
+      const guitar = new Map<string, Chord>()
+      const piano = new Map<string, Chord>()
       for (const chord of data) {
         if (!chord.positions || typeof chord.positions !== 'object') continue
         if (chord.instrument === 'guitar') {
-          guitar.set(chord.name, chord.positions)
+          guitar.set(chord.name, chord)
         } else if ((chord.instrument as string) === 'piano') {
-          piano.set(chord.name, chord.positions)
+          piano.set(chord.name, chord)
         }
       }
       setGuitarChordMap(guitar)
       setPianoChordMap(piano)
     }).catch(() => {})
-  }, [detectedChords])
+  }, [chordsForDiagrams])
+
+  useEffect(() => {
+    const key = [...chordsForDiagrams].sort().join(',')
+    if (!key || key === prevChordsKeyRef.current) return
+    prevChordsKeyRef.current = key
+    reloadChords()
+  }, [chordsForDiagrams, reloadChords])
 
   const hasAnyDiagram = guitarChordMap.size > 0 || pianoChordMap.size > 0
+
+  // --- Editor de acorde de violão (ChordEditor modal) ---
+  const [chordEditorOpen, setChordEditorOpen] = useState(false)
+  const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState())
+  const [chordEditorName, setChordEditorName] = useState('')
+  const [chordEditorStartFret, setChordEditorStartFret] = useState(1)
+  const [chordEditorId, setChordEditorId] = useState<string | null>(null)
+
+  const openChordEditor = useCallback((chord: Chord) => {
+    const pos = (chord.positions ?? { fingers: [], barres: [], muted: [] }) as any
+    const sf = pos.position && pos.position > 0
+      ? pos.position
+      : (() => {
+          const frets = [
+            ...(pos.fingers ?? []).map((f: any) => f[1]).filter((f: number) => f > 0),
+            ...(pos.barres ?? []).map((b: any) => b.fret),
+          ]
+          const minFret = frets.length > 0 ? Math.min(...frets) : 1
+          return minFret > 0 ? minFret : 1
+        })()
+    setChordEditorState(positionsToState(pos as ChordPositions, sf))
+    setChordEditorName(chord.name)
+    setChordEditorStartFret(sf)
+    setChordEditorId(chord.id)
+    setChordEditorOpen(true)
+  }, [])
+
+  const openChordEditorForNew = useCallback((chordName: string) => {
+    setChordEditorState(createEmptyState())
+    setChordEditorName(chordName)
+    setChordEditorStartFret(1)
+    setChordEditorId(null)
+    setChordEditorOpen(true)
+  }, [])
+
+  const handleSaveChordEditor = useCallback(async () => {
+    const positions = stateToPositions(chordEditorState, chordEditorStartFret)
+    const positionsWithPosition = { ...positions, position: chordEditorStartFret }
+    try {
+      if (chordEditorId) {
+        await updateChord(chordEditorId, {
+          name: chordEditorName,
+          positions: positionsWithPosition as any,
+        })
+        toast.success(`Acorde "${chordEditorName}" atualizado!`)
+      } else {
+        await createChord({
+          name: chordEditorName,
+          instrument: 'guitar' as any,
+          positions: positionsWithPosition as any,
+          difficulty: 1,
+          tags: [],
+        })
+        toast.success(`Acorde "${chordEditorName}" criado!`)
+        window.dispatchEvent(new Event('chord-library-updated'))
+      }
+      setChordEditorOpen(false)
+      prevChordsKeyRef.current = '' // forçar reload
+      reloadChords()
+    } catch (e: any) {
+      toast.error('Erro ao salvar acorde: ' + (e?.message ?? ''))
+    }
+  }, [chordEditorId, chordEditorState, chordEditorName, chordEditorStartFret, reloadChords])
+
+  // --- Editor de teclado (KeyboardEditor modal) ---
+  const [keyboardEditorOpen, setKeyboardEditorOpen] = useState(false)
+  const [keyboardEditorChord, setKeyboardEditorChord] = useState<any>(null)
+
+  const openKeyboardEditor = useCallback((chord: Chord) => {
+    setKeyboardEditorChord({
+      id: chord.id,
+      name: chord.name,
+      instrument: 'piano',
+      difficulty: chord.difficulty,
+      positions: chord.positions,
+    })
+    setKeyboardEditorOpen(true)
+  }, [])
+
+  const openKeyboardEditorForNew = useCallback((chordName: string) => {
+    setKeyboardEditorChord({
+      id: null,
+      name: chordName,
+      instrument: 'piano',
+      difficulty: 1,
+      positions: {},
+    })
+    setKeyboardEditorOpen(true)
+  }, [])
+
+  const handleSaveKeyboard = useCallback(async (data: PianoChordData) => {
+    try {
+      if (keyboardEditorChord?.id) {
+        await updateChord(keyboardEditorChord.id, {
+          name: data.name,
+          positions: data.positions as any,
+        })
+        toast.success(`Teclado "${data.name}" atualizado!`)
+      } else {
+        await createChord({
+          name: data.name,
+          instrument: 'piano' as any,
+          positions: data.positions as any,
+          difficulty: 1,
+          tags: [],
+        })
+        toast.success(`Teclado "${data.name}" criado!`)
+        window.dispatchEvent(new Event('chord-library-updated'))
+      }
+      setKeyboardEditorOpen(false)
+      prevChordsKeyRef.current = '' // forçar reload
+      reloadChords()
+    } catch (e: any) {
+      toast.error('Erro ao salvar teclado: ' + (e?.message ?? ''))
+    }
+  }, [keyboardEditorChord, reloadChords])
+
+  // --- Auto-preenchimento de acordes faltantes ---
+  const [autoFilling, setAutoFilling] = useState(false)
+
+  const missingGuitarChords = useMemo(() => {
+    if (!chordsForDiagrams.length) return []
+    return chordsForDiagrams.filter(name => !guitarChordMap.has(name))
+  }, [chordsForDiagrams, guitarChordMap])
+
+  const missingPianoChords = useMemo(() => {
+    if (!chordsForDiagrams.length) return []
+    return chordsForDiagrams.filter(name => {
+      const lib = pianoChordMap.get(name)
+      if (!lib) return true
+      const pos = lib.positions as any
+      return !(pos?.keys?.length > 0)
+    })
+  }, [chordsForDiagrams, pianoChordMap])
+
+  const totalMissing = missingGuitarChords.length + missingPianoChords.length
+
+  const handleAutoFillChords = useCallback(async () => {
+    if (!chordsForDiagrams.length) return
+    setAutoFilling(true)
+
+    try {
+      const guitarResults = autoFillChordsFound(missingGuitarChords, ['guitar'])
+      const pianoResults = autoFillChordsFound(missingPianoChords, ['piano'])
+
+      let createdGuitar = 0
+      let createdPiano = 0
+      const errors: string[] = []
+
+      // Evitar duplicatas
+      const existingNames = new Set<string>()
+      guitarChordMap.forEach((_, k) => existingNames.add(`${k}::guitar`))
+      pianoChordMap.forEach((_, k) => existingNames.add(`${k}::piano`))
+
+      for (const result of guitarResults) {
+        if (existingNames.has(`${result.chordName}::guitar`)) continue
+        try {
+          const posWithPosition = { ...result.positions, position: result.baseFret ?? 1 }
+          await createChord({
+            name: result.chordName,
+            instrument: 'guitar' as any,
+            positions: posWithPosition as any,
+            difficulty: 1,
+            tags: ['auto-preenchido'],
+          })
+          createdGuitar++
+        } catch (e: any) {
+          errors.push(`${result.chordName} (violão): ${e?.message ?? 'erro'}`)
+        }
+      }
+
+      for (const result of pianoResults) {
+        if (existingNames.has(`${result.chordName}::piano`)) continue
+        try {
+          await createChord({
+            name: result.chordName,
+            instrument: 'piano' as any,
+            positions: result.positions as any,
+            difficulty: 1,
+            tags: ['auto-preenchido'],
+          })
+          createdPiano++
+        } catch (e: any) {
+          errors.push(`${result.chordName} (piano): ${e?.message ?? 'erro'}`)
+        }
+      }
+
+      const total = createdGuitar + createdPiano
+      if (total > 0) {
+        toast.success(`${total} acorde${total > 1 ? 's' : ''} criado${total > 1 ? 's' : ''} automaticamente!`, {
+          description: `🎸 ${createdGuitar} violão · 🎹 ${createdPiano} piano`,
+        })
+        window.dispatchEvent(new Event('chord-library-updated'))
+        prevChordsKeyRef.current = ''
+        reloadChords()
+      }
+
+      const notFound = (missingGuitarChords.length - createdGuitar) + (missingPianoChords.length - createdPiano)
+      if (notFound > 0) {
+        toast.info(`${notFound} acorde${notFound > 1 ? 's' : ''} não encontrado${notFound > 1 ? 's' : ''} no banco automático`, {
+          description: 'Use duplo clique para criar manualmente',
+        })
+      }
+
+      if (errors.length > 0) console.warn('Erros ao auto-preencher:', errors)
+    } catch (e: any) {
+      toast.error('Erro ao preencher acordes: ' + (e?.message ?? ''))
+    } finally {
+      setAutoFilling(false)
+    }
+  }, [chordsForDiagrams, missingGuitarChords, missingPianoChords, guitarChordMap, pianoChordMap, reloadChords])
 
   // Inserir texto na posição do cursor
   const insertAtCursor = useCallback((text: string) => {
@@ -292,7 +543,7 @@ export function CifraEditor({
     insertAtCursor('\n' + TAB_TEMPLATE + '\n')
   }, [insertAtCursor])
 
-  // Colar e parsear cifra
+  // Colar e parsear cifra (com auto-detecção de ChordPro)
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     if (readOnly) return
 
@@ -303,11 +554,66 @@ export function CifraEditor({
     if (value.trim() === '') {
       e.preventDefault()
       const pasted = e.clipboardData.getData('text/plain')
-      const parsed = parsePastedCifra(pasted)
-      onChange(parsed)
+
+      // Auto-detectar formato ChordPro e converter para ChordsOverWords
+      if (isChordProFormat(pasted)) {
+        const { content } = chordProToPlainText(pasted)
+        onChange(content)
+      } else {
+        const parsed = parsePastedCifra(pasted)
+        onChange(parsed)
+      }
     }
     // Se já tem conteúdo, deixar o comportamento padrão
   }, [value, onChange, readOnly])
+
+  // Converter conteúdo atual para ChordPro e copiar para clipboard
+  const handleExportChordPro = useCallback(() => {
+    const chordPro = plainTextToChordPro(value, {
+      title: undefined,
+      key: originalKey ?? undefined,
+    })
+    navigator.clipboard.writeText(chordPro)
+  }, [value, originalKey])
+
+  // Exportar como arquivo .cho
+  const handleDownloadChordPro = useCallback(() => {
+    const chordPro = plainTextToChordPro(value, {
+      key: originalKey ?? undefined,
+    })
+    const blob = new Blob([chordPro], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'cifra.cho'
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [value, originalKey])
+
+  // Importar arquivo ChordPro (.cho, .chordpro, .pro, .txt)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const handleImportChordPro = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      if (!text) return
+      if (isChordProFormat(text)) {
+        const { content } = chordProToPlainText(text)
+        onChange(content)
+      } else {
+        const parsed = parsePastedCifra(text)
+        onChange(parsed)
+      }
+    }
+    reader.readAsText(file)
+    // Limpar input para permitir reimportar o mesmo arquivo
+    e.target.value = ''
+  }, [onChange])
 
   // Limpar conteúdo
   const handleClear = useCallback(() => {
@@ -542,6 +848,64 @@ export function CifraEditor({
           {/* Separador */}
           <div className="w-px h-4 bg-border mx-0.5" />
 
+          {/* ChordPro: Import/Export */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[11px] gap-1 text-text2 hover:text-text"
+                  >
+                    <Code size={14} />
+                    ChordPro
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Importar/Exportar formato ChordPro</p>
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="start" className="min-w-[200px]">
+              <DropdownMenuItem
+                onClick={handleImportChordPro}
+                className="text-xs gap-2"
+              >
+                <FileArrowUp size={14} className="text-accent" />
+                Importar arquivo .cho
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleExportChordPro}
+                className="text-xs gap-2"
+                disabled={!value.trim()}
+              >
+                <ClipboardText size={14} className="text-blue-400" />
+                Copiar como ChordPro
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleDownloadChordPro}
+                className="text-xs gap-2"
+                disabled={!value.trim()}
+              >
+                <FileArrowDown size={14} className="text-emerald-400" />
+                Baixar arquivo .cho
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* Input hidden para import de arquivo */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".cho,.chordpro,.pro,.txt"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          {/* Separador */}
+          <div className="w-px h-4 bg-border mx-0.5" />
+
           {/* Undo */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -601,8 +965,15 @@ export function CifraEditor({
             </Tooltip>
           )}
 
-          {/* Informações */}
+          {/* Transposição + Informações */}
           <div className="ml-auto flex items-center gap-2">
+            {originalKey && detectedChords.length > 0 && (
+              <TransposeControl
+                originalKey={originalKey}
+                semitones={semitones}
+                onChange={setSemitones}
+              />
+            )}
             {detectedChords.length > 0 && (
               <div className="flex items-center gap-1">
                 <MusicNotes size={12} className="text-accent/60" />
@@ -624,7 +995,7 @@ export function CifraEditor({
             <span className="text-[10px] text-text3 uppercase tracking-wider font-semibold shrink-0">
               Acordes ({detectedChords.length}):
             </span>
-            {detectedChords.map(chord => {
+            {chordsForDiagrams.map((chord, idx) => {
               const inGuitar = guitarChordMap.has(chord)
               const inPiano = pianoChordMap.has(chord)
               const inLibrary = inGuitar || inPiano
@@ -637,7 +1008,7 @@ export function CifraEditor({
                       ? 'hover:bg-accent/20 hover:text-accent border-accent/20'
                       : 'opacity-60 hover:bg-yellow-500/20 hover:text-yellow-400'
                   }`}
-                  onClick={() => insertChord(chord)}
+                  onClick={() => insertChord(detectedChords[idx])}
                   title={inLibrary ? 'Na biblioteca — clique para inserir' : 'Não encontrado na biblioteca'}
                 >
                   {chord}
@@ -684,32 +1055,88 @@ export function CifraEditor({
             </div>
           )}
 
+          {/* Botão auto-preencher acordes faltantes */}
+          {totalMissing > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-[11px] h-7 border-accent/30 text-accent hover:bg-accent/10 hover:text-accent"
+              onClick={handleAutoFillChords}
+              disabled={autoFilling}
+            >
+              {autoFilling ? (
+                <SpinnerGap size={14} className="animate-spin" />
+              ) : (
+                <Lightning size={14} weight="fill" />
+              )}
+              {autoFilling
+                ? 'Preenchendo...'
+                : `Preencher ${totalMissing} acorde${totalMissing > 1 ? 's' : ''} faltante${totalMissing > 1 ? 's' : ''}`
+              }
+            </Button>
+          )}
+
           {/* Mini-diagramas de violão */}
           {showGuitar && guitarChordMap.size > 0 && (
             <div className="space-y-1">
               <div className="text-[10px] text-text3 uppercase tracking-wider font-semibold">
                 Violão
                 <span className="ml-1 text-text3/50 normal-case tracking-normal">
-                  ({guitarChordMap.size} de {detectedChords.length} na biblioteca)
+                  ({guitarChordMap.size} de {chordsForDiagrams.length} na biblioteca)
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-card/50 border border-border/50">
-                {detectedChords.map(chordName => {
-                  const pos = guitarChordMap.get(chordName)
-                  if (!pos?.fingers) return null
+                {chordsForDiagrams.map(chordName => {
+                  const lib = guitarChordMap.get(chordName)
+                  if (lib) {
+                    const pos = lib.positions as any
+                    if (!pos?.fingers) return null
+                    return (
+                      <TooltipProvider key={chordName} delayDuration={400}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className="text-center cursor-pointer rounded-lg hover:bg-accent/10 transition-colors"
+                              onDoubleClick={() => openChordEditor(lib)}
+                            >
+                              <ChordDiagram
+                                name={chordName}
+                                positions={{
+                                  fingers: pos.fingers ?? [],
+                                  barres: pos.barres ?? [],
+                                  muted: pos.muted ?? [],
+                                }}
+                                position={pos.position ?? 1}
+                                size="compact"
+                              />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="text-xs">Duplo clique para editar</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )
+                  }
+                  // Acorde não encontrado — duplo clique para criar
                   return (
-                    <div key={chordName} className="text-center">
-                      <ChordDiagram
-                        name={chordName}
-                        positions={{
-                          fingers: pos.fingers ?? [],
-                          barres: pos.barres ?? [],
-                          muted: pos.muted ?? [],
-                        }}
-                        position={pos.position ?? 1}
-                        size="compact"
-                      />
-                    </div>
+                    <TooltipProvider key={chordName} delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="w-[80px] h-[100px] rounded-lg border border-dashed border-border flex flex-col items-center justify-center gap-1 text-text3/50 cursor-pointer hover:border-accent/40 hover:text-accent/70 transition-colors"
+                            onDoubleClick={() => openChordEditorForNew(chordName)}
+                          >
+                            <WarningCircle size={14} />
+                            <span className="font-mono text-[10px] font-bold">{chordName}</span>
+                            <span className="text-[7px]">Sem diagrama</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs">Duplo clique para criar "{chordName}"</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )
                 })}
               </div>
@@ -722,25 +1149,61 @@ export function CifraEditor({
               <div className="text-[10px] text-text3 uppercase tracking-wider font-semibold">
                 Teclado
                 <span className="ml-1 text-text3/50 normal-case tracking-normal">
-                  ({pianoChordMap.size} de {detectedChords.length} na biblioteca)
+                  ({pianoChordMap.size} de {chordsForDiagrams.length} na biblioteca)
                 </span>
               </div>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-2 rounded-lg bg-card/50 border border-border/50">
-                {detectedChords.map(chordName => {
-                  const pos = pianoChordMap.get(chordName)
-                  if (!pos) return null
-                  const keys = (pos.keys ?? []) as string[]
-                  if (keys.length === 0) return null
-                  const fingeringRh = (pos.fingering_rh ?? []) as number[]
+                {chordsForDiagrams.map(chordName => {
+                  const lib = pianoChordMap.get(chordName)
+                  if (lib) {
+                    const pos = lib.positions as any
+                    const keys = (pos?.keys ?? []) as string[]
+                    if (keys.length === 0) return null
+                    const fingeringRh = (pos?.fingering_rh ?? []) as number[]
+                    return (
+                      <TooltipProvider key={chordName} delayDuration={400}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className="rounded-lg bg-card border border-border p-2 cursor-pointer hover:bg-accent/10 transition-colors"
+                              onDoubleClick={() => openKeyboardEditor(lib)}
+                            >
+                              <PianoKeyboard
+                                keys={keys}
+                                fingeringRH={fingeringRh.length > 0 ? fingeringRh : undefined}
+                                label={chordName}
+                                showLabels={fingeringRh.length > 0}
+                                range={['C4', 'C6']}
+                                scale={0.8}
+                              />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="text-xs">Duplo clique para editar</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )
+                  }
+                  // Acorde não encontrado — duplo clique para criar
                   return (
-                    <div key={chordName} className="rounded-lg bg-card border border-border p-2">
-                      <PianoKeyboard
-                        keys={keys}
-                        fingeringRH={fingeringRh.length > 0 ? fingeringRh : undefined}
-                        label={chordName}
-                        scale={0.8}
-                      />
-                    </div>
+                    <TooltipProvider key={chordName} delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="rounded-lg bg-card border border-dashed border-border p-2 flex flex-col items-center justify-center gap-1 text-text3/50 cursor-pointer hover:border-accent/40 hover:text-accent/70 transition-colors min-h-[80px]"
+                            onDoubleClick={() => openKeyboardEditorForNew(chordName)}
+                          >
+                            <PianoKeys size={16} />
+                            <span className="font-mono text-[10px] font-bold">{chordName}</span>
+                            <span className="text-[7px]">Sem teclado</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs">Duplo clique para criar "{chordName}"</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )
                 })}
               </div>
@@ -780,7 +1243,7 @@ export function CifraEditor({
 
         {/* Modo: somente preview */}
         <TabsContent value="preview" className="mt-2">
-          <PreviewPane content={value} minHeight={minHeight} />
+          <PreviewPane content={transposedContent} minHeight={minHeight} />
         </TabsContent>
 
         {/* Modo: split (editor + preview lado a lado) */}
@@ -797,7 +1260,7 @@ export function CifraEditor({
               readOnly={readOnly}
               placeholder="Cole uma cifra aqui ou comece a digitar..."
             />
-            <PreviewPane content={value} minHeight={minHeight} />
+            <PreviewPane content={transposedContent} minHeight={minHeight} />
           </div>
         </TabsContent>
       </Tabs>
@@ -811,6 +1274,63 @@ export function CifraEditor({
           </p>
         </div>
       )}
+
+      {/* ====== MODAL: Editor de Acorde (Violão) ====== */}
+      <Dialog open={chordEditorOpen} onOpenChange={setChordEditorOpen}>
+        <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">
+              Editar <span className="text-accent">Acorde</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-[1fr_200px] gap-6 mt-2">
+            <ChordEditor
+              state={chordEditorState}
+              onChange={setChordEditorState}
+              chordName={chordEditorName}
+              startFret={chordEditorStartFret}
+            />
+            <div className="flex flex-col gap-4">
+              <div>
+                <Label className="text-[11px] text-text3 uppercase tracking-wider mb-1 block">Nome do acorde</Label>
+                <Input
+                  value={chordEditorName}
+                  onChange={e => setChordEditorName(e.target.value)}
+                  placeholder="Ex: Am7"
+                  className="text-[13px] h-9"
+                />
+              </div>
+              <div>
+                <Label className="text-[11px] text-text3 uppercase tracking-wider mb-1 block">Traste inicial</Label>
+                <Select value={String(chordEditorStartFret)} onValueChange={v => setChordEditorStartFret(Number(v))}>
+                  <SelectTrigger className="h-9 text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}ª casa</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setChordEditorOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveChordEditor}>Salvar Acorde</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ====== MODAL: Editor de Teclado (Piano) ====== */}
+      <KeyboardEditor
+        open={keyboardEditorOpen}
+        onOpenChange={(v) => { setKeyboardEditorOpen(v); if (!v) setKeyboardEditorChord(null) }}
+        chord={keyboardEditorChord}
+        onSave={handleSaveKeyboard}
+      />
     </div>
   )
 }
