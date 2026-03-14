@@ -73,7 +73,9 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
     settings.player.enablePlayer = true
     settings.player.enableCursor = true
     settings.player.enableAnimatedBeatCursor = true
-    settings.player.soundFont = window.location.origin + '/soundfont/sonivox.sf2'
+    settings.player.soundFont = window.location.origin + '/soundfont/generaluser-gs.sf2'
+    settings.player.scrollOffsetY = -30
+    settings.player.scrollMode = alphaTabModule.ScrollMode.Continuous
 
     // Detectar tema e aplicar cores
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
@@ -100,6 +102,12 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
 
     const api = new alphaTabModule.AlphaTabApi(mainRef.current, settings)
     apiRef.current = api
+
+    // Configurar scroll element para o viewport (acompanhar cursor durante playback)
+    if (viewportRef.current) {
+      api.settings.player.scrollElement = viewportRef.current
+      api.updateSettings()
+    }
 
     if (tex) {
       api.tex(tex)

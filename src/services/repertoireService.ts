@@ -322,6 +322,31 @@ export async function enrichFromSongsterr(
   } as SongsterrImportData
 }
 
+/**
+ * Baixa os dados de tablatura do Songsterr (revisões JSON de cada track)
+ * e salva no Supabase Storage. Retorna a URL pública do arquivo.
+ */
+export async function downloadGpFromSongsterr(
+  songId: number,
+  repertoireId?: string
+): Promise<{ publicUrl: string; tracksCount: number }> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/songsterr-gp-download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ songId, repertoireId }),
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(result.error || `Erro ${response.status} ao baixar GP do Songsterr`)
+  }
+
+  return { publicUrl: result.publicUrl, tracksCount: result.tracksCount }
+}
+
 export async function saveSongsterrToRepertoire(data: SongsterrImportData) {
   // Verificar se já existe com mesmo songsterr_id
   const { data: existing } = await supabase
@@ -361,6 +386,14 @@ export async function saveSongsterrToRepertoire(data: SongsterrImportData) {
     .single()
 
   if (error) handleError(error)
+
+  // Após salvar, tentar baixar tablatura GP do Songsterr em background
+  if (saved?.id && data.songsterr_id) {
+    downloadGpFromSongsterr(data.songsterr_id, saved.id).catch((err) => {
+      console.warn('[GP Download] Falha ao baixar tablatura:', err?.message)
+    })
+  }
+
   return saved
 }
 

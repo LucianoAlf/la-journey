@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# SoundFonts grandes (servir via CDN em produção)
+public/soundfont/generaluser-gs.sf2
+public/soundfont/fluidr3-gm.sf2

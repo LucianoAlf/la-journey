@@ -258,6 +258,34 @@
   filter: none !important;
 }
 
+/* ALPHATAB — Cursor de playback (estilo Songsterr verde) */
+.at-cursor-bar {
+  background: rgba(34, 197, 94, 0.12);
+}
+.at-cursor-beat {
+  background: rgba(34, 197, 94, 0.85);
+  width: 3px;
+  border-radius: 2px;
+}
+.at-selection div {
+  background: rgba(34, 197, 94, 0.1);
+}
+.at-highlight * {
+  fill: #22c55e;
+  stroke: #22c55e;
+}
+/* Dark mode: cursor mais brilhante */
+[data-theme="dark"] .at-cursor-bar {
+  background: rgba(34, 197, 94, 0.15);
+}
+[data-theme="dark"] .at-cursor-beat {
+  background: rgba(74, 222, 128, 0.9);
+}
+[data-theme="dark"] .at-highlight * {
+  fill: #4ade80;
+  stroke: #4ade80;
+}
+
 /* EDITOR */
 .editor-layout{display:grid;grid-template-columns:260px 1fr 300px;gap:0;height:100vh;margin:-28px;overflow:hidden}
 .editor-sidebar{border-right:1px solid var(--border);padding:16px;overflow-y:auto;background:var(--surface)}

@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState, useCallback, useRef } from "react"
 import {
   MusicNote, Guitar, PianoKeys, MicrophoneStage, Lightning,
   Star, YoutubeLogo, Link as LinkIcon, PencilSimple, ArrowSquareOut, WarningCircle,
-  FloppyDisk, SpinnerGap, Trash, Eye, EyeSlash, FilePdf
+  FloppyDisk, SpinnerGap, Trash, Eye, EyeSlash, FilePdf, UploadSimple, MusicNotesSimple
 } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
@@ -26,6 +26,7 @@ import { TablatureEditor } from "@/components/music/TablatureEditor"
 import { getChordsByNames, updateChord, createChord, type Chord } from "@/services/libraryService"
 import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@/services/chordAutoFillService"
 import { updateSong } from "@/services/repertoireService"
+import { uploadGpFile, deleteGpFile, updateGpFileUrl } from "@/services/gpFileService"
 import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
 import { TransposeControl } from "@/components/repertoire/TransposeControl"
 import { ChordSuggestions } from "@/components/repertoire/ChordSuggestions"
@@ -766,6 +767,8 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     curation_status: 'draft', youtube_url: '', chords: '',
     cifra_content: '', lyrics: '', gp_file_url: '',
   })
+  const [uploadingGp, setUploadingGp] = useState(false)
+  const gpInputRef = useRef<HTMLInputElement>(null)
 
   // Sincronizar formulário quando a música muda
   useEffect(() => {
@@ -803,6 +806,44 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, song?.id, chordsKey])
+
+  // Upload de arquivo Guitar Pro
+  const handleGpUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !song) return
+    setUploadingGp(true)
+    try {
+      // Se já tem um arquivo, remover o antigo
+      if (form.gp_file_url && form.gp_file_url.includes('supabase')) {
+        await deleteGpFile(form.gp_file_url).catch(() => {})
+      }
+      const publicUrl = await uploadGpFile(file, song.id)
+      await updateGpFileUrl(song.id, publicUrl)
+      updateField('gp_file_url', publicUrl)
+      toast.success('Arquivo GP enviado com sucesso!')
+      onSaved?.() // Recarregar dados
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao enviar arquivo GP')
+    } finally {
+      setUploadingGp(false)
+      if (gpInputRef.current) gpInputRef.current.value = ''
+    }
+  }, [song, form.gp_file_url])
+
+  const handleRemoveGp = useCallback(async () => {
+    if (!song) return
+    try {
+      if (form.gp_file_url && form.gp_file_url.includes('supabase')) {
+        await deleteGpFile(form.gp_file_url).catch(() => {})
+      }
+      await updateGpFileUrl(song.id, null)
+      updateField('gp_file_url', '')
+      toast.success('Arquivo GP removido')
+      onSaved?.()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao remover arquivo GP')
+    }
+  }, [song, form.gp_file_url])
 
   const handleSave = useCallback(async () => {
     if (!song) return
@@ -1418,12 +1459,64 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-[11px] text-text3">URL do Arquivo GP (tablatura)</Label>
+                          <Label className="text-[11px] text-text3">Arquivo Guitar Pro (tablatura)</Label>
+                          <input
+                            ref={gpInputRef}
+                            type="file"
+                            accept=".gp,.gp3,.gp4,.gp5,.gpx,.gp7,.musicxml,.mxl"
+                            onChange={handleGpUpload}
+                            className="hidden"
+                          />
+                          {form.gp_file_url ? (
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
+                              <MusicNotesSimple size={16} className="text-green-400 shrink-0" />
+                              <span className="text-[11px] text-green-300 truncate flex-1 font-mono">
+                                {form.gp_file_url.includes('supabase')
+                                  ? decodeURIComponent(form.gp_file_url.split('/').pop() || 'arquivo.gp')
+                                  : form.gp_file_url}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-green-400 hover:text-accent hover:bg-accent/10"
+                                onClick={() => gpInputRef.current?.click()}
+                                disabled={uploadingGp}
+                                title="Trocar arquivo"
+                              >
+                                {uploadingGp ? <SpinnerGap size={12} className="animate-spin" /> : <UploadSimple size={12} />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-text3 hover:text-red-400 hover:bg-red-400/10"
+                                onClick={handleRemoveGp}
+                                title="Remover arquivo GP"
+                              >
+                                <Trash size={12} />
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => gpInputRef.current?.click()}
+                              disabled={uploadingGp}
+                              className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-border hover:border-accent/40 hover:bg-accent/5 transition-colors text-text3 disabled:opacity-50"
+                            >
+                              {uploadingGp ? (
+                                <SpinnerGap size={16} className="animate-spin text-accent" />
+                              ) : (
+                                <UploadSimple size={16} />
+                              )}
+                              <span className="text-[11px]">
+                                {uploadingGp ? 'Enviando...' : 'Enviar arquivo .gp, .gpx, .gp7, .musicxml'}
+                              </span>
+                            </button>
+                          )}
                           <Input
                             value={form.gp_file_url}
                             onChange={e => updateField('gp_file_url', e.target.value)}
-                            placeholder="https://... (.gp, .gpx, .gp7, .musicxml)"
-                            className="h-9 text-[13px] font-mono"
+                            placeholder="Ou cole uma URL direta do arquivo GP"
+                            className="h-7 text-[10px] font-mono text-text3/70"
                           />
                         </div>
                         <div className="space-y-1.5">
