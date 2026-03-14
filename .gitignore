@@ -10,3 +10,6 @@ coverage/
 # SoundFonts grandes (servir via CDN em produção)
 public/soundfont/generaluser-gs.sf2
 public/soundfont/fluidr3-gm.sf2
+
+# Dados externos de ingestão (clonados temporariamente)
+scripts/guitar-chords-db-json/
