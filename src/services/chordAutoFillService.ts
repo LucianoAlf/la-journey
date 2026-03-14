@@ -658,3 +658,102 @@ export function autoFillChordsFound(
 ): AutoFillResult[] {
   return autoFillChords(chordNames, instruments).filter(r => r.found)
 }
+
+// ── Pré-popular banco com TODOS os acordes do chords-db ─────────────────
+
+/** Mapa reverso de jsonKey → nota legível (Csharp → C#) */
+const JSON_KEY_TO_NOTE: Record<string, string> = {
+  'C': 'C', 'Csharp': 'C#',
+  'D': 'D', 'Eb': 'Eb',
+  'E': 'E', 'F': 'F',
+  'Fsharp': 'F#', 'G': 'G',
+  'Ab': 'Ab', 'A': 'A',
+  'Bb': 'Bb', 'B': 'B',
+}
+
+/** Mapa de suffix do chords-db → nome legível do acorde em pt-BR */
+function suffixToChordName(noteKey: string, suffix: string): string {
+  if (suffix === 'major') return noteKey
+  if (suffix === 'minor') return `${noteKey}m`
+  // Slash chords: /G# → noteKey/G#, m/C → noteKeym/C
+  if (suffix.startsWith('/')) return `${noteKey}${suffix}`
+  if (suffix.startsWith('m/')) return `${noteKey}${suffix}`
+  // Tudo o resto: Am7 → A + m7, Cmaj7 → C + maj7
+  return `${noteKey}${suffix}`
+}
+
+/**
+ * Calcula a dificuldade estimada com base no sufixo do acorde
+ */
+function estimateDifficulty(suffix: string): number {
+  if (suffix === 'major' || suffix === 'minor' || suffix === '5') return 1
+  if (suffix === 'sus2' || suffix === 'sus4' || suffix === '7' || suffix === 'm7') return 2
+  if (suffix === 'dim' || suffix === 'aug' || suffix === '6' || suffix === 'm6' || suffix === 'maj7' || suffix === 'add9') return 3
+  if (suffix.includes('/')) return 3 // slash chords
+  if (suffix.includes('9') || suffix.includes('11') || suffix.includes('13')) return 4
+  return 3
+}
+
+export interface PopulationStats {
+  totalGuitar: number
+  totalPiano: number
+  guitarChords: Array<{ name: string; instrument: 'guitar'; positions: any; difficulty: number; tags: string[] }>
+  pianoChords: Array<{ name: string; instrument: 'piano'; positions: any; difficulty: number; tags: string[] }>
+}
+
+/**
+ * Gera TODOS os acordes do chords-db (violão) e os equivalentes de piano,
+ * prontos para inserção em batch no banco chord_library.
+ * 
+ * Retorna ~529 acordes de violão + ~360 de piano (limitado pelo PIANO_INTERVALS).
+ */
+export function generateAllChordsForPopulation(): PopulationStats {
+  const guitarChords: PopulationStats['guitarChords'] = []
+  const pianoChords: PopulationStats['pianoChords'] = []
+  const pianoSeen = new Set<string>()
+
+  // Iterar todos os keys do chords-db
+  for (const [jsonKey, chordsArray] of Object.entries(guitarDb.chords as Record<string, ChordsDbChord[]>)) {
+    const noteKey = JSON_KEY_TO_NOTE[jsonKey]
+    if (!noteKey) continue
+
+    for (const chord of chordsArray) {
+      // Nome legível do acorde
+      const chordName = suffixToChordName(noteKey, chord.suffix)
+
+      // Violão: converter primeira posição
+      if (chord.positions.length > 0) {
+        const converted = convertChordsDbToOurFormat(chord.positions[0])
+        guitarChords.push({
+          name: chordName,
+          instrument: 'guitar',
+          positions: converted.positions,
+          difficulty: estimateDifficulty(chord.suffix),
+          tags: ['chords-db', 'auto-popular'],
+        })
+      }
+
+      // Piano: gerar se temos intervalos e não é duplicata
+      if (!pianoSeen.has(chordName)) {
+        pianoSeen.add(chordName)
+        const pianoResult = generatePianoChord(chordName)
+        if (pianoResult) {
+          pianoChords.push({
+            name: chordName,
+            instrument: 'piano',
+            positions: pianoResult,
+            difficulty: estimateDifficulty(chord.suffix),
+            tags: ['teoria-musical', 'auto-popular'],
+          })
+        }
+      }
+    }
+  }
+
+  return {
+    totalGuitar: guitarChords.length,
+    totalPiano: pianoChords.length,
+    guitarChords,
+    pianoChords,
+  }
+}

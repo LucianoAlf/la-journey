@@ -28,6 +28,7 @@ import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@
 import { updateSong } from "@/services/repertoireService"
 import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
 import { TransposeControl } from "@/components/repertoire/TransposeControl"
+import { ChordSuggestions } from "@/components/repertoire/ChordSuggestions"
 import { generatePdfFromElement } from "@/services/pdfService"
 import { transposeCifraContent, transposeChords, shouldUseFlats, transposeKey } from "@/lib/transpose"
 import type { Tables, Database } from "@/lib/database.types"
@@ -993,6 +994,11 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                             }
                           </Button>
                         )}
+
+                        {/* Sugestões pedagógicas */}
+                        <ChordSuggestions
+                          knownChords={transposedChords}
+                        />
                       </div>
                     )}
 

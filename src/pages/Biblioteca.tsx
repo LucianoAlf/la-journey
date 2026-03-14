@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash, Database, Lightning } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect } from "react";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
@@ -18,7 +18,8 @@ import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
 import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
 import { TablatureEditor } from "@/components/music/TablatureEditor";
-import { createChord, updateChord, deleteChord } from "@/services/libraryService";
+import { createChord, updateChord, deleteChord, insertChordsBatch } from "@/services/libraryService";
+import { generateAllChordsForPopulation } from "@/services/chordAutoFillService";
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
 import { createTablature, updateTablature, deleteTablature, type TablatureLibraryRow } from "@/services/notationService";
 import { useNotations, useTablatures } from "@/hooks/useNotations";
@@ -111,6 +112,7 @@ export function Biblioteca() {
     return () => window.removeEventListener('chord-library-updated', handler);
   }, [refetchChords]);
   const [chordSearch, setChordSearch] = useState('');
+  const [populating, setPopulating] = useState(false);
   const [diffFilter, setDiffFilter] = useState('todos');
 
   // Estado da aba Notação
@@ -154,6 +156,31 @@ export function Biblioteca() {
     refetchChords();
     window.dispatchEvent(new Event('chord-library-updated'));
   };
+
+  // Pré-popular banco com TODOS os acordes do chords-db
+  const handlePopulateChords = async () => {
+    setPopulating(true)
+    try {
+      const stats = generateAllChordsForPopulation()
+      const allChords = [...stats.guitarChords, ...stats.pianoChords]
+
+      const inserted = await insertChordsBatch(allChords, (done, total) => {
+        console.log(`Populando: ${done}/${total}`)
+      })
+
+      toast.success(
+        `Biblioteca populada! ${inserted} acordes novos inseridos ` +
+        `(${stats.totalGuitar} violão + ${stats.totalPiano} piano gerados)`
+      )
+      refetchChords()
+      window.dispatchEvent(new Event('chord-library-updated'))
+    } catch (err) {
+      console.error('Erro ao popular acordes:', err)
+      toast.error('Erro ao popular biblioteca de acordes')
+    } finally {
+      setPopulating(false)
+    }
+  }
 
   // CRUD Notação
   const handleSaveNotation = async (data: NotationSaveData) => {
@@ -294,8 +321,8 @@ export function Biblioteca() {
 
         <TabsContent value="acordes">
           <div>
-            {/* Filtro de instrumento */}
-            <div className="flex gap-2 mb-4">
+            {/* Filtro de instrumento + botão popular */}
+            <div className="flex items-center gap-2 mb-4">
               {INSTRUMENTS.map(inst => {
                 const Icon = inst.icon
                 const active = instrument === inst.value
@@ -314,6 +341,22 @@ export function Biblioteca() {
                   </button>
                 )
               })}
+              <div className="ml-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePopulateChords}
+                  disabled={populating}
+                  className="gap-1.5 text-[12px]"
+                >
+                  {populating ? (
+                    <SpinnerGap size={14} className="animate-spin" />
+                  ) : (
+                    <Database size={14} />
+                  )}
+                  {populating ? 'Populando...' : 'Popular Biblioteca'}
+                </Button>
+              </div>
             </div>
 
             <div className="card mb-4">

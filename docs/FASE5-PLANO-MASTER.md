@@ -202,24 +202,32 @@ Objetivo: Renderizar tablaturas Guitar Pro com player MIDI interativo.
 
 ---
 
-## FASE E4 — Enriquecer Biblioteca de Acordes (NOVA)
+## FASE E4 — Enriquecer Biblioteca de Acordes (✅ COMPLETA)
 
-Objetivo: Ampliar a chord_library com posições de bases open source.
+Objetivo: Ampliar a chord_library com posições de bases open source + sugestões pedagógicas.
 
 ### Fontes
-- szaza/guitar-chords-db-json: ~100.000 posições de acordes
-- tombatossals/chords-db: violão + ukulele com dedilhado
-- spyroskantarelis/chordonomicon: 666.000 progressões de músicas reais
+- tombatossals/chords-db: 529 acordes únicos, 2.069 posições (violão) ← USAMOS
+- PIANO_INTERVALS: ~30 tipos de acorde via teoria musical (piano)
+- spyroskantarelis/chordonomicon: 666.000 progressões (futuro, via Spotify API)
 
 ### Etapas
 
-| Etapa | Tipo | Descrição | Dificuldade |
-|-------|------|-----------|-------------|
-| E4.1 | Pesquisa | Auditar chord_library atual — quantos acordes, quais faltam | Baixa |
-| E4.2 | Script | Script Node.js para converter guitar-chords-db-json para nosso formato | Média |
-| E4.3 | Migration | Inserir acordes faltantes na chord_library | Média |
-| E4.4 | Feature | Mapeamento automático: transpor acorde busca diagrama na library | Baixa |
-| E4.5 | Futuro | Usar Chordonomicon para sugestões pedagógicas (músicas com mesma progressão) | Baixa |
+| Etapa | Tipo | Descrição | Status |
+|-------|------|-----------|--------|
+| E4.1 | Pesquisa | Auditar chord_library — 3 fontes, 63 suffixes, 529 acordes | ✅ Completa |
+| E4.2a | Migration | Constraint UNIQUE (name, instrument) na chord_library | ✅ Completa |
+| E4.2b | Service | `generateAllChordsForPopulation()` — itera chords-db + gera piano | ✅ Completa |
+| E4.3 | Feature | Botão "Popular Biblioteca" na aba Acordes — batch upsert 954 acordes | ✅ Completa |
+| E4.4 | Automático | Transposição → diagramas: já funciona com banco populado (537 violão + 417 piano) | ✅ Completa |
+| E4.5a | Migration | RPCs `suggest_repertoire` e `suggest_repertoire_partial` | ✅ Completa |
+| E4.5b | Service | `suggestRepertoireService.ts` — cruza acordes dominados × repertório | ✅ Completa |
+| E4.5c | Componente | `ChordSuggestions.tsx` — painel expansível no RepertoireSheet | ✅ Completa |
+
+### Resultado
+- **chord_library**: de 39 → 954 acordes (537 violão + 417 piano)
+- **Sugestões pedagógicas**: "Pronto para tocar" (100% match) + "Quase lá" (parcial com acordes faltantes)
+- **Transposição**: diagramas automáticos para qualquer tonalidade (cobertura total do chords-db)
 
 ---
 
