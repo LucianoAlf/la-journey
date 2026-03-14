@@ -233,13 +233,17 @@ Cada elemento renderizado tem um ID único no banco de dados e é armazenado com
 
 ### 6.5 🎵 Módulo de Repertório
 
-Gestão e sugestão de músicas por nível de dificuldade.
+Gestão, importação e sugestão de músicas por nível de dificuldade. Modelo **"Adquirir e Reter"**: conteúdo é importado UMA VEZ e salvo no banco local — sem dependência externa em runtime.
 
 **Funcionalidades:**
-- Base de repertório organizada por: instrumento, nível de dificuldade (1-5), acordes utilizados, gênero musical, tonalidade
-- Integração com Cifra Club API para importação de cifras (uso interno, curadoria obrigatória)
-- Geração de "fichas de repertório" com: sequência de acordes (sem letra, por questão de direitos autorais), diagramas dos acordes utilizados, nível de dificuldade, sugestão de ritmo, link do YouTube / QR code para referência
-- Sugestões automáticas de repertório baseadas no nível do aluno na jornada
+- Base de repertório organizada por: instrumento, nível de dificuldade (1-5), acordes utilizados, gênero musical, tonalidade, BPM
+- Importação via **Songsterr** — busca, metadados (instrumentos, tracks, dificuldade), extração de cifra completa com acordes+letra, tom, BPM, afinação, vídeos YouTube e tags via 3 Edge Functions (`songsterr-search`, `songsterr-import`, `songsterr-enrich`)
+- Importação via **Cifra Club** — busca de artista/música, scraping de cifra com acordes e letra via Edge Function (`cifra-club-search`, `cifra-club-import`)
+- **Editor de cifra do zero** (CifraEditor) — 3 modos (Editar/Preview/Split), toolbar com inserção de seções (9 tipos), acordes (6 categorias), tabs, Undo/Redo, parser de cifra colada com auto-detecção de acordes
+- **Transposição de tonalidade** em tempo real — widget +/- semitons, display de tom original/novo, diagramas de acordes atualizam automaticamente (violão + teclado)
+- Mini-diagramas de acordes em tempo real — violão (SVGuitar) e teclado (componente SVG) exibidos conforme os acordes da cifra
+- Geração de "fichas de repertório" com: sequência de acordes, diagramas dos acordes utilizados, nível de dificuldade, sugestão de ritmo, link do YouTube / QR code para referência
+- Sugestões automáticas de repertório baseadas no nível do aluno na jornada (futuro: RPC `suggest_repertoire`)
 - Possibilidade de músicas autorais/de domínio público para materiais comercializáveis
 
 ### 6.6 📊 Monitoramento da Jornada do Aluno
@@ -328,12 +332,13 @@ Painel de gerenciamento de APIs e serviços conectados à plataforma.
 - **SVGuitar + VexFlow + VexTab** — Renderização de diagramas de acordes, notação na pauta, tablatura
 - **Gemini API (Google)** — Geração de imagens reais para materiais: instrumentos, anatomia vocal, cenas musicais históricas, ilustrações didáticas
 - **Supabase** — PostgreSQL, Auth, Storage (PDFs/SVGs/imagens), Edge Functions, Realtime
-- **Cifra Club API** — Importação de cifras para curadoria interna (uso interno, não redistribuição)
+- **Songsterr** — Busca, metadados, extração de cifra/acordes/tom/BPM/vídeos YouTube via 3 Edge Functions (`songsterr-search`, `songsterr-import`, `songsterr-enrich`). Extração do Redux state inline da página de chords, sem headless browser.
+- **Cifra Club** — Busca de artista/música, scraping de cifra com acordes e letra via Edge Functions (`cifra-club-search`, `cifra-club-import`). Uso interno com curadoria obrigatória, não redistribuição.
 - **Groq (Llama/Mistral)** — Agente Monitor Pedagógico: análise de progresso, detecção de desvios, classificação de baixo custo
 
 **Integrações futuras:**
-- **Suno API** — Geração de backing tracks personalizados por tonalidade/estilo
-- **Moises API** — Separação de instrumentos em áudio para prática
+- **Music AI / Suno API / Moises API** — Separação de stems, detecção de acordes/BPM/tom, backing tracks personalizados
+- **AlphaTab** — Renderizador de tablaturas Guitar Pro com player MIDI interativo (GPX/GP5/MusicXML)
 - **IPres Net** — Impressão sob demanda (envio direto de PDFs para gráfica)
 
 ---
@@ -346,7 +351,7 @@ Painel de gerenciamento de APIs e serviços conectados à plataforma.
 |--------|-----------|
 | Frontend | React + TypeScript + Vite |
 | Estilização | Tailwind CSS + shadcn/ui |
-| Ícones | Phosphor Icons (premium) |
+| Ícones | Phosphor Icons (`@phosphor-icons/react`) |
 | Backend / BaaS | Supabase (PostgreSQL, Auth, Storage, Edge Functions, Realtime) |
 | Geração PDF | Puppeteer / React-PDF (server-side via Edge Functions ou worker) |
 | Renderização Musical | SVGuitar (acordes), VexFlow (notação), VexTab (tablatura) |
@@ -354,11 +359,11 @@ Painel de gerenciamento de APIs e serviços conectados à plataforma.
 | IA — Imagens | Gemini API (Google) para geração de imagens reais (instrumentos, anatomia, cenas históricas) |
 | IA — Agentes secundários | Modelos open source (Llama/Mistral via Groq) para tarefas de classificação e parsing de menor custo |
 | WhatsApp | UAZAPI (infraestrutura já existente) |
-| Repertório | Cifra Club API (scraping, uso interno com curadoria) |
-| Áudio (futuro) | Suno API / Moises API para backing tracks |
+| Repertório | Songsterr (API + Redux state scraping) + Cifra Club (scraping) — uso interno, modelo "Adquirir e Reter" |
+| Áudio (futuro) | Music AI / Suno API / Moises API para backing tracks e separação de stems |
 | Distribuição | PWA (MVP) → React Native (futuro) |
-| Desenvolvimento | Claude Code + Windsurf |
-| Prototipagem | HTML aqui (Claude) → Google AI Studio / Windsurf |
+| Desenvolvimento | Claude (backend/banco via MCP) + Windsurf Cascade (frontend/UI) |
+| Prototipagem | HTML (Claude) → Google AI Studio / Windsurf Cascade |
 
 ### 7.2 Arquitetura de Agentes de IA
 
@@ -421,12 +426,13 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 - `school-logos` — Logos das escolas (público)
 - `generated-materials` — PDFs e HTMLs gerados (privado, RLS)
 - `content-images` — Imagens de conteúdo e geradas por IA (privado, RLS)
+- `audio-tracks` — Stems de áudio e backing tracks (privado, RLS)
 
 ---
 
 ## 8. Schema do Banco de Dados (Supabase / PostgreSQL)
 
-**Total: 22 tabelas | 24 enums | ~60 RLS policies | 3 storage buckets**
+**Total: 23 tabelas | 24 enums | ~60 RLS policies | 4 storage buckets**
 
 **Projeto Supabase:**
 - Nome: LA Journey
@@ -442,6 +448,21 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 4. `004_operations_editor_communication` — 7 tabelas (inclui material_blocks e whatsapp_templates)
 5. `005_fix_rls_performance_and_missing_indexes` — Otimização de performance RLS
 6. `006_create_auth_user_alf` — Usuário Auth do Alf para RLS funcionar desde o dia 1
+7. `007_fix_rls_infinite_recursion` — Correção de recursão infinita em policies RLS
+8. `008_fix_all_remaining_rls_policies` — Correção de todas as policies RLS restantes
+9. `009_enable_pgvector_and_rag_infrastructure` — pgvector + embeddings para RAG
+10. `010_add_chord_library_update_delete_policies` — Policies CRUD para chord_library
+11. `011_create_teoria_complementar_journey` — Jornada Teoria Musical Complementar
+12. `012_add_get_station_blocks_function` — RPC para buscar blocos por estação
+13. `013_add_vexflow_render_data_to_blocks` — Dados VexFlow nos blocos de conteúdo
+14. `014_add_save_material_and_editor_functions` — RPCs para salvar material e editor
+15. `015_add_piano_cavaquinho_to_enum` — Novos instrumentos no enum
+16. `016_seed_piano_chords_and_scale_positions` — Acordes de piano e posições de escala
+17. `017_create_notation_library` — Biblioteca de notação musical
+18. `018_add_new_material_block_types` — Novos tipos de bloco (chord_grid, keyboard, keyboard_grid, page_break, rhythm, cover)
+19. `019_add_lyrics_and_cifra_content_to_repertoire` — Colunas lyrics, cifra_content, source_url
+20. `020_add_repertoire_extended_columns` — Colunas bpm, capo, time_signature, songsterr_id (unique), sections
+21. `021_create_backing_tracks_table` — Tabela backing_tracks + RLS + bucket audio-tracks
 
 ### 8.1 Gestão da Escola
 
@@ -629,11 +650,32 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | difficulty | int | 1-5 |
 | instruments | text[] | Instrumentos aplicáveis |
 | chord_structure | jsonb | Estrutura (intro, verso, refrão, etc. com acordes) |
-| cifra_source | text | Fonte (cifra_club, manual, dominio_publico) |
+| cifra_source | text | Fonte (cifra_club, songsterr, manual, dominio_publico) |
 | is_public_domain | boolean | Se é domínio público |
-| youtube_url | text | Link de referência |
+| youtube_url | text | Link de referência YouTube |
 | curation_status | enum | draft, review, approved |
 | backing_track_url | text | URL do backing track (se disponível) |
+| lyrics | text | Letra da música |
+| cifra_content | text | Cifra completa com acordes alinhados sobre a letra |
+| source_url | text | URL original da fonte (Songsterr, Cifra Club, etc.) |
+| bpm | int | Batidas por minuto |
+| capo | int | Capotraste (0 = sem capo) |
+| time_signature | text | Fórmula de compasso (ex: "4/4", "3/4") |
+| songsterr_id | int (unique) | ID da música no Songsterr |
+| sections | jsonb | Seções da música (intro, verso, refrão, etc.) |
+| embedding | vector | Embedding semântico para busca por similaridade (pgvector) |
+
+**backing_tracks** — Stems de áudio separados por instrumento
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| id | uuid (PK) | Identificador |
+| repertoire_id | uuid (FK → repertoire) | Música de referência |
+| stem_type | text | Tipo: vocals, drums, bass, guitar, piano, other, full, backing_vocals |
+| storage_path | text | Caminho no bucket audio-tracks do Supabase Storage |
+| duration_seconds | int | Duração em segundos |
+| source | text | Origem: music_ai, manual, youtube |
+| metadata | jsonb | Metadados adicionais |
+| created_at | timestamptz | Data de criação |
 
 ### 8.4 Materiais Gerados
 
@@ -853,7 +895,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - **Tema:** Dark mode (primário) + Light mode
 - **Metáfora visual:** Jornada, mapa, âncora, montanha
 - **Tipografia:** Playfair Display (serif, títulos e destaques) + DM Sans (UI geral, corpo) + DM Mono (código, tablatura, exercícios)
-- **Ícones:** Phosphor Icons (CDN: `@phosphor-icons/web@2.1.1`)
+- **Ícones:** Phosphor Icons (`@phosphor-icons/react`) — SOMENTE esta lib, nunca Lucide/Heroicons
 - **Emojis:** Uso estratégico e moderado em pontos de destaque
 
 ### 11.2 Paleta de Cores
@@ -895,7 +937,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | 05 | Base Curada | `/conteudo` | Tabela de conteúdos, 3 tabs (Lista/Por Tópico/Fila Curadoria), workflow de status |
 | 06 | Biblioteca Musical | `/biblioteca` | 4 tabs: Acordes (SVGuitar), Escalas (VexFlow), Notação, Imagens IA (Gemini) |
 | 07 | Alunos | `/alunos` | Lista com filtros, alertas de risco, progress bars, 5 tabs de status |
-| 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, integração Cifra Club |
+| 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, importação Songsterr + Cifra Club, editor de cifra, transposição |
 | 09 | Turmas | `/turmas` | 8 turmas incluindo Baby Class/Kids/Heart, professor/horário/jornada |
 | 10 | Visão Professor | `/professor` | Chamada diária, presença/ausência, tópicos por aluno, avaliação estrelas |
 | 11 | Gamificação | `/gamificacao` | KPIs, grid conquistas, leaderboard |
@@ -930,19 +972,24 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 
 ### Fase 1 — Fundação (Semanas 1-3) ✅ CONCLUÍDA
 - [x] Setup do projeto (Supabase, repo, CI/CD)
-- [x] Schema do banco de dados (22 tabelas, 23 enums, RLS multi-tenant)
+- [x] Schema do banco de dados (23 tabelas, 24 enums, RLS multi-tenant, 21 migrations)
 - [x] Seed de dados (LA Music School, 6 usuários, 8 alunos, jornada completa)
 - [x] Prototipagem da UI (HTML 1.077 linhas, 15 páginas funcionais)
-- [x] Conversão para React + TypeScript (Windsurf)
+- [x] Conversão para React + TypeScript (Windsurf Cascade)
+- [x] Fix de recursão infinita e performance em RLS policies
+- [x] pgvector + infraestrutura RAG habilitada
 - [ ] Auth e multi-tenancy (Supabase Auth com JWT customizado)
 - [ ] Conectar frontend ao Supabase (services, hooks, queries reais)
 
-### Fase 2 — Motor de Conteúdo (Semanas 4-6)
-- [ ] Base de conteúdo curado: estrutura + interface de cadastro
-- [ ] Biblioteca de acordes (chord_library) com SVGuitar — renderização real
-- [ ] Biblioteca de escalas com VexFlow — renderização real
-- [ ] Componentes de renderização musical (SVG inline)
-- [ ] Seed de conteúdo: Violão Foundation (Fundamentos 1 e 2) com content_blocks
+### Fase 2 — Motor de Conteúdo (Semanas 4-6) 🔄 EM PROGRESSO
+- [x] Biblioteca de acordes (chord_library) com SVGuitar — 200+ acordes violão + piano
+- [x] Biblioteca de escalas com VexFlow — renderização real + posições
+- [x] Biblioteca de notação musical (notation_library)
+- [x] Componentes de renderização musical (SVGuitar, VexFlow, VexTab, componente teclado SVG)
+- [x] Seed de conteúdo: Violão Foundation (Fundamentos 1 e 2) com content_blocks
+- [x] Editor de Material block-based funcional (18 tipos de bloco, drag-and-drop, contenteditable)
+- [x] Novos tipos de bloco: chord_grid, keyboard, keyboard_grid, page_break, rhythm, cover
+- [ ] Base de conteúdo curado: interface de cadastro para professores N4
 - [ ] Integração Gemini API para geração de imagens didáticas
 
 ### Fase 3 — Construtor de Jornada (Semanas 7-8)
@@ -955,26 +1002,36 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [ ] Pipeline de geração (agentes IA + renderização + blocos)
 - [ ] Personalização com identidade visual da escola
 - [ ] Geração de apostila completa por módulo → array de material_blocks
-- [ ] Editor de Material block-based (3 painéis, contenteditable, drag-and-drop)
 - [ ] Trocar imagem (Gemini), trocar acorde (chord_library), reordenar blocos
 - [ ] Versionamento de material (rascunho → publicado)
 - [ ] Exportação PDF via Puppeteer / React-PDF
 
-### Fase 5 — Monitoramento + Gamificação (Semanas 13-15)
+### Fase 5 — Repertório e Conteúdo Musical (Semanas 13-15) 
+- [x] Importação Songsterr: busca, metadados, cifra/acordes/tom/BPM/vídeos (3 Edge Functions)
+- [x] Importação Cifra Club: busca artista/música, scraping cifra com acordes e letra (2 Edge Functions)
+- [x] Editor de cifra do zero (CifraEditor): 3 modos, toolbar completa, parser de cifra colada
+- [x] Transposição de tonalidade em tempo real (+/- semitons, diagramas auto-atualizam)
+- [x] Mini-diagramas de acordes: violão (SVGuitar) + teclado (SVG) em tempo real
+- [x] RepertoireSheet: visualização completa com cifra, acordes, YouTube, metadados
+- [x] Tabela backing_tracks + bucket audio-tracks criados
+- [ ] Parser ChordPro completo e integração no editor
+- [ ] AlphaTab: renderizador de tablaturas Guitar Pro (.gp/.gpx)
+- [ ] Enriquecer biblioteca de acordes (bases open source)
+
+### Fase 6 — Monitoramento + Gamificação (Semanas 16-18)
 - [ ] Dashboard do professor (Visão Professor — chamada diária)
 - [ ] Registro de presença e progresso por aula (lesson_logs)
 - [ ] Sistema de achievements/badges com desbloqueio automático
 - [ ] Barra de progresso visual do aluno na jornada
 - [ ] Alertas automáticos (faltas, estagnação, aluno adiantado)
 
-### Fase 6 — WhatsApp + Repertório (Semanas 16-18)
+### Fase 7 — WhatsApp + Automações (Semanas 19-21)
 - [ ] Integração UAZAPI (WhatsApp Business)
 - [ ] Templates de mensagem configuráveis por escola (whatsapp_templates)
 - [ ] Notificações automáticas (faltas, materiais, progresso)
-- [ ] Módulo de repertório com fichas e diagramas de acordes
-- [ ] Backing tracks (integração Suno/Moises - básico)
+- [ ] Backing tracks (integração Music AI / Suno / Moises)
 
-### Fase 7 — Polish + Lançamento Beta (Semanas 19-20)
+### Fase 8 — Polish + Lançamento Beta (Semanas 22-24)
 - [ ] Curadoria de conteúdo para todos os instrumentos do MVP
 - [ ] Testes internos com professores LA Music (N4)
 - [ ] Ajustes de UX baseados em feedback
@@ -1001,7 +1058,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | Risco | Impacto | Mitigação |
 |-------|---------|-----------|
 | IA gera conteúdo musical incorreto | Alto | Base curada + curadoria obrigatória por N4 + exercícios baseados em templates validados |
-| Dependência do Cifra Club API (scraping) | Médio | Uso apenas interno, base própria como fallback, curadoria de repertório |
+| Dependência de fontes externas (Songsterr/Cifra Club) | Médio | Modelo "Adquirir e Reter" (importa 1x, salva no banco), múltiplas fontes redundantes, base própria como fallback |
 | Direitos autorais de repertório | Alto | Cifras sem letra, músicas de domínio público para material vendável, links externos para referência |
 | Custo de IA elevado com escala | Médio | Modelos open source para tarefas simples, caching agressivo, geração por lote |
 | Resistência dos professores | Médio | LA Educa como canal de treinamento, onboarding guiado, professores N4 como champions |
@@ -1015,8 +1072,8 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | **Luciano Alf** | Idealizador, arquiteto de produto, desenvolvedor principal, conteúdo pedagógico (8-10h/dia) |
 | **Hugo** | Coordenador de tecnologia — mantém projetos existentes (MusicFinance, SonoraMente, etc.) |
 | **Professores N4 (Renan, Kinho, Peterson, Jeyson, Juliana)** | Curadoria de conteúdo, validação pedagógica, testes |
-| **Claude (Anthropic)** | Arquitetura, PRD, backend (Supabase/banco/RLS), prototipagem HTML |
-| **Windsurf** | Frontend React+TypeScript, conversão de protótipos, integração Supabase |
+| **Claude (Anthropic)** | Arquitetura, PRD, backend (Supabase/banco/RLS/seeds/Edge Functions), prototipagem HTML |
+| **Windsurf Cascade** | Frontend React+TypeScript, componentes UI, services/hooks, integração Supabase, routing |
 | **Google AI Studio (Gemini)** | Conversão HTML→React, geração de imagens didáticas |
 
 ---
@@ -1026,7 +1083,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | Ambiente | Ferramenta | Função |
 |----------|-----------|--------|
 | Backend | Claude (claude.ai) + MCP Supabase | Schema, migrations, RLS, seeds, Edge Functions |
-| Frontend | Windsurf + MCP Supabase | React+TS, componentes, integração, routing |
+| Frontend | Windsurf Cascade + MCP Supabase | React+TS, componentes, services, hooks, routing |
 | Protótipo UI | Claude (claude.ai) | HTML single-file (1.077 linhas, 15 páginas) |
 | Conversão | Google AI Studio | HTML → React components |
 | Banco de dados | Supabase Dashboard | Visualização, SQL editor, logs |
