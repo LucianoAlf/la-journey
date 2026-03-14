@@ -18,6 +18,20 @@ export async function getChords(instrument?: Database['public']['Enums']['chord_
   return data
 }
 
+export async function getChordsByNames(names: string[], instrument?: Database['public']['Enums']['chord_instrument']) {
+  if (!names.length) return []
+  let query = supabase
+    .from('chord_library')
+    .select('*')
+    .in('name', names)
+
+  if (instrument) query = query.eq('instrument', instrument)
+
+  const { data, error } = await query
+  if (error) handleError(error)
+  return data ?? []
+}
+
 export async function getScales() {
   const { data, error } = await supabase
     .from('scale_library')

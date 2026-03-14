@@ -9,7 +9,7 @@ import {
   Printer, Code, Eye, EyeSlash, PencilLine, PianoKeys,
   MagnifyingGlassPlus, MagnifyingGlassMinus, Gear, Hash,
   TextAlignLeft, TextAlignCenter, TextAlignRight,
-  BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera,
+  BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera, DownloadSimple,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1235,79 +1235,135 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
 
   // Exportação
   const handlePrint = useCallback(() => {
-    // Estratégia: criar container temporário com APENAS as páginas A4,
-    // esconder todo o resto, imprimir, e restaurar.
-    // Isso elimina qualquer elemento fantasma que gere página em branco.
-
-    // 1. Salvar tema atual e forçar light para notation SVGs
+    // 1. Salvar tema e forçar light (remove filter:invert das notações SVG)
     const currentTheme = document.documentElement.getAttribute('data-theme')
     document.documentElement.setAttribute('data-theme', 'light')
 
-    // 2. Clonar páginas A4 para container temporário
-    const pages = document.querySelectorAll('.a4-page')
-    if (!pages.length) { toast.error('Nenhuma página encontrada'); return }
-
-    const printContainer = document.createElement('div')
-    printContainer.id = 'print-container'
-    pages.forEach(page => {
-      const clone = page.cloneNode(true) as HTMLElement
-      // Limpar UI de edição
-      clone.querySelectorAll('.block-selection-border, .cover-snap-guide, .add-block-btn, button').forEach(el => {
-        if (el.tagName === 'BUTTON') el.remove()
-        if (el.classList?.contains('block-selection-border') || el.classList?.contains('cover-snap-guide')) el.remove()
-      })
-      clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
-      clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'))
-      printContainer.appendChild(clone)
+    // 2. Esconder elementos que geram espaço ANTES das páginas A4
+    // (o @media print faz isso, mas precisamos fazer ANTES para o Chrome calcular layout correto)
+    const hideEls: HTMLElement[] = []
+    document.querySelectorAll<HTMLElement>(
+      'nav, .editor-header, .editor-sidebar, .editor-properties, [aria-hidden="true"]'
+    ).forEach(el => {
+      hideEls.push(el)
+      el.dataset.printPrevDisplay = el.style.display
+      el.style.display = 'none'
     })
 
-    // 3. Esconder tudo e mostrar apenas o container de print
-    const appRoot = document.getElementById('root') || document.body.children[0] as HTMLElement
-    if (appRoot) (appRoot as HTMLElement).style.display = 'none'
-    document.body.appendChild(printContainer)
-    document.body.classList.add('printing')
+    // 3. Resetar containers (margin/padding/height) para layout de print
+    const mainEl = document.querySelector('main') as HTMLElement | null
+    const mainDiv = mainEl?.querySelector(':scope > div') as HTMLElement | null
+    const editorLayout = document.querySelector('.editor-layout') as HTMLElement | null
+    const editorCanvas = document.querySelector('.editor-canvas') as HTMLElement | null
+    const canvasWrapper = document.querySelector('.a4-canvas-wrapper') as HTMLElement | null
+    const animateIn = document.querySelector('.animate-in') as HTMLElement | null
 
-    // 4. Imprimir e restaurar
-    requestAnimationFrame(() => {
+    const saved: { el: HTMLElement; css: string }[] = []
+    const apply = (el: HTMLElement | null, css: string) => {
+      if (!el) return
+      saved.push({ el, css: el.getAttribute('style') || '' })
+      el.style.cssText += ';' + css
+    }
+    apply(mainEl, 'margin-left:0!important;padding:0!important;height:auto!important;overflow:visible!important;width:100%!important')
+    apply(mainDiv, 'height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important;max-height:none!important')
+    apply(animateIn, 'margin:0!important;padding:0!important')
+    apply(editorLayout, 'display:block!important;margin:0!important;padding:0!important;height:auto!important;overflow:visible!important')
+    apply(editorCanvas, 'width:100%!important;margin:0!important;padding:0!important;background:white!important;box-shadow:none!important;overflow:visible!important;height:auto!important;background-image:none!important')
+    apply(canvasWrapper, 'transform:none!important;min-height:0!important;gap:0!important;padding:0!important;overflow:visible!important;flex-direction:column!important')
+
+    // Resetar .a4-page
+    document.querySelectorAll<HTMLElement>('.a4-page').forEach(p => {
+      saved.push({ el: p, css: p.getAttribute('style') || '' })
+      p.style.cssText += ';width:100%!important;height:auto!important;min-height:0!important;overflow:visible!important;box-shadow:none!important;border-radius:0!important'
+    })
+    // Capa precisa de min-height
+    document.querySelectorAll<HTMLElement>('.a4-page--cover').forEach(p => {
+      p.style.cssText += ';min-height:1123px!important;background:#0f172a!important'
+    })
+
+    // 4. Dar tempo ao browser re-renderizar, depois imprimir
+    setTimeout(() => {
       window.print()
-      // Restaurar
-      document.body.classList.remove('printing')
-      printContainer.remove()
-      if (appRoot) (appRoot as HTMLElement).style.display = ''
+      // 5. Restaurar tudo
+      hideEls.forEach(el => {
+        el.style.display = el.dataset.printPrevDisplay || ''
+        delete el.dataset.printPrevDisplay
+      })
+      saved.forEach(({ el, css }) => el.setAttribute('style', css))
       if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
       else document.documentElement.removeAttribute('data-theme')
-    })
+    }, 150)
+  }, [])
+
+  // Cache de fontes VexFlow (Bravura/Academico) para embarcar no SVG exportado
+  const vexflowFontCacheRef = useRef<{ bravura?: string; academico?: string }>({})
+
+  const loadVexFlowFonts = useCallback(async () => {
+    if (vexflowFontCacheRef.current.bravura) return vexflowFontCacheRef.current
+    try {
+      // VexFlow embarca as fontes SMuFL como data URLs Base64 nos módulos JS
+      // Precisamos extraí-las para embarcar dentro dos SVGs serializados
+      // IMPORTANTE: usar URL absoluta (/node_modules/...) — bare specifiers não resolvem no browser
+      const [bravuraMod, academicoMod] = await Promise.all([
+        // @ts-ignore — URL absoluta funciona no browser, sem declaração de tipo
+        import(/* @vite-ignore */ '/node_modules/vexflow/build/esm/src/fonts/bravura.js').catch(() => null),
+        // @ts-ignore — URL absoluta funciona no browser, sem declaração de tipo
+        import(/* @vite-ignore */ '/node_modules/vexflow/build/esm/src/fonts/academico.js').catch(() => null),
+      ])
+      vexflowFontCacheRef.current = {
+        bravura: (bravuraMod as any)?.Bravura ?? undefined,
+        academico: (academicoMod as any)?.Academico ?? undefined,
+      }
+    } catch { /* fallback sem fontes */ }
+    return vexflowFontCacheRef.current
   }, [])
 
   const handleExportHTML = useCallback(async () => {
     const pagesEl = document.querySelectorAll('.a4-page')
     if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
 
-    // Converter SVG para PNG base64 (captura visual correto independente de dark/light mode)
+    // Aguardar fontes do browser + carregar dados Base64 do VexFlow
+    await document.fonts.ready
+    const vfFonts = await loadVexFlowFonts()
+
+    // Converter SVG VexFlow para PNG — com fontes SMuFL embarcadas no SVG
     const svgToDataUrl = async (svgEl: SVGSVGElement): Promise<string> => {
       return new Promise((resolve) => {
         try {
           const clone = svgEl.cloneNode(true) as SVGSVGElement
-          // Forçar fills pretos (VexFlow padrão) — remover qualquer filter
           clone.style.filter = 'none'
-          clone.querySelectorAll('path').forEach(p => {
-            const f = p.getAttribute('fill')
-            if (!f || f === 'none') p.setAttribute('fill', 'black')
-          })
-          clone.querySelectorAll('rect').forEach(r => {
-            if (!r.getAttribute('fill') || r.getAttribute('fill') === 'none') r.setAttribute('fill', 'black')
-            if (r.getAttribute('stroke')) r.setAttribute('stroke', 'black')
-          })
-          clone.querySelectorAll('line').forEach(l => {
-            if (!l.getAttribute('stroke') || l.getAttribute('stroke') === 'none') l.setAttribute('stroke', 'black')
-          })
-          clone.querySelectorAll('text').forEach(t => {
-            const f = t.getAttribute('fill')
-            if (!f || f === 'none') t.setAttribute('fill', '#333')
-          })
+          if (!clone.getAttribute('fill')) clone.setAttribute('fill', 'black')
+          if (!clone.getAttribute('stroke')) clone.setAttribute('stroke', 'black')
+          clone.querySelectorAll('text').forEach(t => { if (!t.getAttribute('fill')) t.setAttribute('fill', '#333') })
+          if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+
+          // CRÍTICO: Embarcar fontes Bravura/Academico dentro do SVG via @font-face
+          // Sem isso, o SVG serializado perde acesso às fontes SMuFL do VexFlow
+          let fontFaceCSS = ''
+          if (vfFonts.bravura) {
+            fontFaceCSS += `@font-face{font-family:'Bravura';src:url('${vfFonts.bravura}') format('woff2');font-weight:normal;font-style:normal;}`
+          }
+          if (vfFonts.academico) {
+            fontFaceCSS += `@font-face{font-family:'Academico';src:url('${vfFonts.academico}') format('woff2');font-weight:normal;font-style:normal;}`
+          }
+          if (fontFaceCSS) {
+            let defs = clone.querySelector('defs')
+            if (!defs) {
+              defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
+              clone.insertBefore(defs, clone.firstChild)
+            }
+            const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+            styleEl.textContent = fontFaceCSS
+            defs.appendChild(styleEl)
+          }
+
           const w = parseInt(clone.getAttribute('width') || '500')
           const h = parseInt(clone.getAttribute('height') || '200')
           const svgData = new XMLSerializer().serializeToString(clone)
+          // CRÍTICO: usar Blob URL (mesma origem) em vez de data: URL
+          // data: URLs bloqueiam @font-face dentro do SVG — Blob URLs permitem
+          const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+          const blobUrl = URL.createObjectURL(blob)
           const img = new Image()
           const canvas = document.createElement('canvas')
           canvas.width = w * 2
@@ -1318,11 +1374,12 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
             ctx.fillStyle = '#fff'
             ctx.fillRect(0, 0, w, h)
             ctx.drawImage(img, 0, 0, w, h)
+            URL.revokeObjectURL(blobUrl)
             resolve(canvas.toDataURL('image/png'))
           }
-          img.onerror = () => resolve('')
-          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData)
-        } catch { resolve('') }
+          img.onerror = () => { URL.revokeObjectURL(blobUrl); resolve('') }
+          img.src = blobUrl
+        } catch (e) { resolve('') }
       })
     }
 
@@ -1437,6 +1494,176 @@ ${pagesHtml}
     window.open(url, '_blank')
     toast.success('HTML exportado em nova aba')
   }, [materialTitle])
+
+  const handleDownloadPDF = useCallback(async () => {
+    toast.info('Preparando PDF...')
+
+    // Mudar tema para light temporariamente para SVGs corretos
+    const currentTheme = document.documentElement.getAttribute('data-theme')
+    document.documentElement.setAttribute('data-theme', 'light')
+    await new Promise(r => setTimeout(r, 150))
+
+    // Aguardar fontes + carregar dados Base64 do VexFlow
+    await document.fonts.ready
+    const vfFonts = await loadVexFlowFonts()
+
+    const pagesEl = document.querySelectorAll('.a4-page')
+    if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
+
+    // Converter SVG VexFlow para PNG — com fontes SMuFL embarcadas
+    const svgToImg = async (svgEl: SVGSVGElement): Promise<string> => {
+      return new Promise((resolve) => {
+        try {
+          const cl = svgEl.cloneNode(true) as SVGSVGElement
+          cl.style.filter = 'none'
+          if (!cl.getAttribute('fill')) cl.setAttribute('fill', 'black')
+          if (!cl.getAttribute('stroke')) cl.setAttribute('stroke', 'black')
+          cl.querySelectorAll('text').forEach(t => { if (!t.getAttribute('fill')) t.setAttribute('fill', '#333') })
+          if (!cl.getAttribute('xmlns')) cl.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+
+          // Embarcar fontes Bravura/Academico Base64 dentro do SVG
+          let fontFaceCSS = ''
+          if (vfFonts.bravura) fontFaceCSS += `@font-face{font-family:'Bravura';src:url('${vfFonts.bravura}') format('woff2');}`
+          if (vfFonts.academico) fontFaceCSS += `@font-face{font-family:'Academico';src:url('${vfFonts.academico}') format('woff2');}`
+          if (fontFaceCSS) {
+            let defs = cl.querySelector('defs')
+            if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); cl.insertBefore(defs, cl.firstChild) }
+            const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+            styleEl.textContent = fontFaceCSS
+            defs.appendChild(styleEl)
+          }
+
+          const w = parseInt(cl.getAttribute('width') || '500')
+          const h = parseInt(cl.getAttribute('height') || '200')
+          const svgData = new XMLSerializer().serializeToString(cl)
+          // Blob URL permite @font-face dentro do SVG (data: URL não permite)
+          const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+          const blobUrl = URL.createObjectURL(svgBlob)
+          const img = new Image()
+          const canvas = document.createElement('canvas')
+          canvas.width = w * 2; canvas.height = h * 2
+          const ctx = canvas.getContext('2d')!
+          ctx.scale(2, 2)
+          img.onload = () => { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h); URL.revokeObjectURL(blobUrl); resolve(canvas.toDataURL('image/png')) }
+          img.onerror = () => { URL.revokeObjectURL(blobUrl); resolve('') }
+          img.src = blobUrl
+        } catch (e) { resolve('') }
+      })
+    }
+
+    // Clonar e limpar páginas
+    const pagesHtmlParts: string[] = []
+    for (let i = 0; i < pagesEl.length; i++) {
+      const page = pagesEl[i]
+      const clone = page.cloneNode(true) as HTMLElement
+      clone.querySelectorAll('.block-selection-border, .cover-snap-guide, .add-block-btn, button, [contenteditable]').forEach(el => {
+        if (el.tagName === 'BUTTON') el.remove()
+        if (el.classList?.contains('block-selection-border') || el.classList?.contains('cover-snap-guide')) el.remove()
+        el.removeAttribute('contenteditable')
+      })
+      clone.querySelectorAll('.cover-draggable').forEach(el => el.classList.remove('cover-draggable'))
+      clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
+
+      // Converter SVGs de notação para imagens PNG
+      const allOrigSvgs = page.querySelectorAll('.notation-container svg')
+      const allCloneSvgs = clone.querySelectorAll('.notation-container svg')
+      for (let s = 0; s < allCloneSvgs.length; s++) {
+        const origSvg = allOrigSvgs[s] as SVGSVGElement | undefined
+        if (origSvg) {
+          const dataUrl = await svgToImg(origSvg)
+          if (dataUrl) {
+            const w = origSvg.getAttribute('width') || '500'
+            const imgEl = document.createElement('img')
+            imgEl.src = dataUrl
+            imgEl.style.width = w + 'px'
+            imgEl.style.maxWidth = '100%'
+            imgEl.style.height = 'auto'
+            imgEl.alt = 'Notação musical'
+            allCloneSvgs[s].replaceWith(imgEl)
+          }
+        }
+      }
+      clone.querySelectorAll('.notation-container').forEach(el => { (el as HTMLElement).style.background = '#fff' })
+
+      const isCover = clone.classList.contains('a4-page--cover')
+      const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;break-after:page;' : ''
+      const coverBg = isCover ? 'background:#0f172a;min-height:1123px;' : ''
+      pagesHtmlParts.push(`<div class="${clone.className}" style="${coverBg}${pageBreak}">${clone.innerHTML}</div>`)
+    }
+
+    // Restaurar tema
+    if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
+    else document.documentElement.removeAttribute('data-theme')
+
+    const pagesHtml = pagesHtmlParts.join('\n')
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>${materialTitle || 'Material Didático'} — PDF</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#fff;color:#1E293B;line-height:1.7}
+h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
+h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
+strong{font-weight:600} p{margin:0 0 12px}
+.a4-page{width:794px;margin:0 auto;background:#fff;overflow:hidden}
+.a4-page--cover{background:#0f172a;min-height:1123px}
+.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0}
+.a4-page-content{padding:12px 60px;flex:1}
+.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between}
+.canvas-block{padding:10px 16px;margin-bottom:4px}
+.block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
+.block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
+.cover-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.cover-content,.cover-footer,.cover-logo{position:absolute;z-index:1}
+.cover-title{font-family:'DM Sans',sans-serif;font-size:36px;font-weight:700;line-height:1.2;margin:0 0 16px;width:100%}
+.cover-subtitle{font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.5;max-width:480px;margin:0 auto;opacity:.8}
+.cover-instrument{font-family:'DM Sans',sans-serif;font-size:13px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;font-weight:600}
+.cover-content{z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:90%;max-width:90%;color:#fff;text-align:center}
+.cover-footer{font-size:12px;opacity:.7;color:#fff;text-align:center}
+.cover-professor{font-weight:600}
+.cover-logo{z-index:2}
+.cover-logo img{filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
+.a4-page--cover .a4-page-content{padding:0}
+.a4-page--cover .canvas-block{padding:0;margin:0;border:none}
+img{max-width:100%}
+.notation-container{background:#fff;border-radius:4px;border:1px solid #e2e8f0;overflow:hidden;margin:8px 0;padding:16px}
+.notation-container img{display:block;max-width:100%}
+.block-columns{display:grid;gap:16px;align-items:start}
+.block-column{min-width:0}
+.block-cover--geometric{background:#0f172a;position:relative;overflow:hidden}
+.block-cover--geometric .cover-deco-1,.block-cover--geometric .cover-deco-2,.block-cover--geometric .cover-deco-3{position:absolute;border-radius:50%}
+.block-cover--geometric .cover-deco-1{width:300px;height:300px;background:rgba(30,58,138,.7);top:-60px;right:-60px}
+.block-cover--geometric .cover-deco-2{width:120px;height:120px;background:rgba(71,85,105,.5);bottom:-30px;left:-30px}
+.block-cover--geometric .cover-deco-3{width:80px;height:80px;background:rgba(120,113,108,.4);top:55%;right:20%;transform:rotate(45deg);border-radius:8px}
+.block-cover--minimal{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);position:relative;overflow:hidden}
+.block-cover--waves{background:linear-gradient(180deg,#0c4a6e 0%,#164e63 50%,#155e75 100%);position:relative;overflow:hidden}
+#print-btn{position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);font-family:'DM Sans',sans-serif}
+#print-btn:hover{background:#1d4ed8}
+@media print{
+  body{background:#fff;margin:0;padding:0}
+  #print-btn{display:none!important}
+  .a4-page{box-shadow:none;page-break-after:always;break-after:page;margin:0;width:100%}
+  .a4-page:last-child{page-break-after:auto}
+  .a4-page--cover{background:#0f172a!important;min-height:100vh}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  @page{size:A4 portrait;margin:0}
+}
+</style>
+</head>
+<body>
+<button id="print-btn" onclick="window.print()">Salvar como PDF (Ctrl+P)</button>
+${pagesHtml}
+</body>
+</html>`
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    toast.success('PDF aberto em nova aba — use "Salvar como PDF" no diálogo de impressão')
+  }, [materialTitle, loadVexFlowFonts])
 
   // --- Loading/Error ---
   if (loading) {
@@ -2821,6 +3048,9 @@ ${pagesHtml}
               <div className="prop-section">
                 <div className="prop-label">Exportar material</div>
                 <div className="flex flex-col gap-1.5">
+                  <Button variant="ghost" size="sm" className="w-full justify-center" onClick={handleDownloadPDF}>
+                    <DownloadSimple size={14} /> Baixar PDF
+                  </Button>
                   <Button variant="ghost" size="sm" className="w-full justify-center" onClick={handlePrint}>
                     <FilePdf size={14} /> Imprimir / PDF
                   </Button>

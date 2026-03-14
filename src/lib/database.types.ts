@@ -746,6 +746,7 @@ export type Database = {
           backing_track_url: string | null
           chord_structure: Json | null
           chords: string[] | null
+          cifra_content: string | null
           cifra_source: string | null
           created_at: string | null
           curation_status: Database["public"]["Enums"]["curation_status"] | null
@@ -755,7 +756,9 @@ export type Database = {
           instruments: string[] | null
           is_public_domain: boolean | null
           key: string | null
+          lyrics: string | null
           school_id: string | null
+          source_url: string | null
           title: string
           updated_at: string | null
           youtube_url: string | null
@@ -765,6 +768,7 @@ export type Database = {
           backing_track_url?: string | null
           chord_structure?: Json | null
           chords?: string[] | null
+          cifra_content?: string | null
           cifra_source?: string | null
           created_at?: string | null
           curation_status?:
@@ -776,7 +780,9 @@ export type Database = {
           instruments?: string[] | null
           is_public_domain?: boolean | null
           key?: string | null
+          lyrics?: string | null
           school_id?: string | null
+          source_url?: string | null
           title: string
           updated_at?: string | null
           youtube_url?: string | null
@@ -786,6 +792,7 @@ export type Database = {
           backing_track_url?: string | null
           chord_structure?: Json | null
           chords?: string[] | null
+          cifra_content?: string | null
           cifra_source?: string | null
           created_at?: string | null
           curation_status?:
@@ -797,7 +804,9 @@ export type Database = {
           instruments?: string[] | null
           is_public_domain?: boolean | null
           key?: string | null
+          lyrics?: string | null
           school_id?: string | null
+          source_url?: string | null
           title?: string
           updated_at?: string | null
           youtube_url?: string | null

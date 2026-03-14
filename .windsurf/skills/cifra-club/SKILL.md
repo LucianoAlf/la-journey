@@ -9,25 +9,50 @@ description: "Guide for integrating Cifra Club into the LA Journey platform. Use
 
 Cifra Club (cifraclub.com.br) is Brazil's largest chord/tab platform with 400k+ songs. LA Journey integrates with Cifra Club to import chord charts for the repertoire module.
 
-**IMPORTANT LEGAL NOTES:**
+**IMPORTANT NOTES:**
 - There is NO official Cifra Club API — this is web scraping for internal use only
-- We import **chord progressions only** (not lyrics — copyright issue)
+- We import the **complete cifra** including lyrics, chords, and tablature
+- Lyrics are stored for internal curation and repertoire use (NOT included in printed/PDF materials for sale)
 - Curated content: every import goes through curation (draft → review → approved)
 - Field `cifra_source: 'cifra_club'` marks origin for audit purposes
-- Songs with `is_public_domain: false` cannot have lyrics in generated materials
+- The `cifra_content` field stores the full original text (chords + lyrics + tabs) exactly as on Cifra Club
+- The `lyrics` field stores cleaned lyrics text (without chords/tabs) for search and display
+- Professors curate imported cifras to fix common errors found on Cifra Club
 
 ## Architecture
 
 ```
-Frontend (Repertório page)
-  → User pastes Cifra Club URL or searches artist/song
-  → Calls Supabase Edge Function
-  → Edge Function scrapes cifraclub.com.br
-  → Parses and extracts chord data (NO lyrics)
-  → Returns structured JSON
-  → Frontend displays preview for curator
-  → Curator approves → saves to repertoire table
+Frontend (Repertório page → CifraClubImportModal)
+  → ETAPA 1: User types artist/song name (e.g. "Legião Urbana")
+  → Calls Edge Function: cifra-club-search
+    → slugify(query) → fetch cifraclub.com.br/{slug}/
+    → Scrapes artist page HTML → extracts song list (href + alt titles)
+    → Returns JSON: { results: [{title, artist, url, slug}], mode }
+  → ETAPA 2: Frontend shows list of songs → user selects one
+  → Calls Edge Function: cifra-club-import
+    → Scrapes song page → parses complete cifra
+    → Returns: title, artist, key, chords, chord_structure, difficulty, genre,
+               youtube_url, source_url, cifra_content, lyrics
+  → ETAPA 3: Frontend shows preview (Cifra Completa | Dados & Ajustes tabs)
+  → Curator adjusts difficulty/genre/instruments → saves to repertoire table
+  → FALLBACK: User can paste direct URL instead of searching by name
 ```
+
+### Edge Functions
+
+| Function | Purpose | Input | Output |
+|----------|---------|-------|--------|
+| `cifra-club-search` | Search artist/songs | `{query}` or `{artist, song}` | `{results: SearchResult[], mode}` |
+| `cifra-club-import` | Import full cifra | `{url}` | `CifraData` with all fields |
+
+### Search Modes (cifra-club-search)
+
+| Mode | Description |
+|------|-------------|
+| `artist_songs` | Query matched an artist page → full song list |
+| `direct` | Exact artist+song URL exists |
+| `filtered` | Artist found + song name filtered results |
+| `not_found` | No match for any combination |
 
 ## URL Patterns
 
@@ -310,7 +335,7 @@ async function linkChordsToLibrary(chords: string[]) {
 1. **Rate limit scraping** — max 1 request per 2 seconds to cifraclub.com.br
 2. **Cache responses** — store raw HTML in Supabase Storage for 24h to avoid re-fetching
 3. **User-Agent** — always identify as LAJourney internal tool
-4. **No lyrics** — NEVER store or display song lyrics (copyright violation)
+4. **Lyrics for internal use** — lyrics are stored for curation and internal repertoire display, but NOT included in printed/PDF materials for commercial sale
 5. **Curated only** — all imports go through curation workflow (draft → review → approved)
 6. **Fallback** — if Cifra Club changes structure, have manual entry as fallback
 7. **Batch import** — for initial seeding, import artist's top songs one at a time with delays

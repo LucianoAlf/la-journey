@@ -64,13 +64,13 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
           <img
             src={theme === 'dark' ? '/logos/logo-solo-dark.png' : '/logos/logo-solo-ligth.png'}
             alt="LA Journey"
-            className="h-9 w-auto shrink-0 object-contain"
+            className="h-8 w-auto shrink-0 object-contain"
           />
         ) : (
           <img
             src={theme === 'dark' ? '/logos/logo-dark.png' : '/logos/logo-light.png'}
             alt="LA Journey"
-            className="h-11 w-auto shrink-0 object-contain"
+            className="h-10 w-auto shrink-0 object-contain"
           />
         )}
       </div>
