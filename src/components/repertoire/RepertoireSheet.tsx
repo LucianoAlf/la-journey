@@ -1,19 +1,34 @@
-import { useMemo, useEffect, useState } from "react"
+import { useMemo, useEffect, useState, useCallback, useRef } from "react"
 import {
   MusicNote, Guitar, PianoKeys, MicrophoneStage, Lightning,
-  Star, YoutubeLogo, Link as LinkIcon, PencilSimple, ArrowSquareOut, WarningCircle
+  Star, YoutubeLogo, Link as LinkIcon, PencilSimple, ArrowSquareOut, WarningCircle,
+  FloppyDisk, SpinnerGap, Trash, Eye, EyeSlash, FilePdf
 } from "@phosphor-icons/react"
+import { toast } from "sonner"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { ChordDiagram } from "@/components/music/ChordDiagram"
+import type { ChordPositions } from "@/components/music/ChordDiagram"
+import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor"
 import { PianoKeyboard } from "@/components/music/PianoKeyboard"
-import { getChordsByNames, type Chord } from "@/services/libraryService"
-import type { Tables } from "@/lib/database.types"
+import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor"
+import { TablatureEditor } from "@/components/music/TablatureEditor"
+import { getChordsByNames, updateChord, createChord, type Chord } from "@/services/libraryService"
+import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@/services/chordAutoFillService"
+import { updateSong } from "@/services/repertoireService"
+import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
+import { generatePdfFromElement } from "@/services/pdfService"
+import type { Tables, Database } from "@/lib/database.types"
 import type { Json } from "@/lib/database.types"
 
 type Repertoire = Tables<'repertoire'>
@@ -81,51 +96,197 @@ function InstrumentBadge({ instrument }: { instrument: string }) {
   )
 }
 
-// Renderiza o conteúdo da cifra com syntax highlighting
-function CifraContentView({ content }: { content: string }) {
-  const lines = content.split('\n')
+// Detecta se uma linha é de tablatura
+const TAB_LINE_RE = /^\s*[EBADGe]\|/
+
+// Renderiza uma linha de tablatura com label de corda colorido e números destacados
+function TabLine({ line }: { line: string }) {
+  // Extrair label da corda (ex: "E|", "B|") e o conteúdo
+  const match = line.match(/^(\s*)([EBADGe])(\|)(.*)$/)
+  if (!match) return <div className="text-blue-400/60">{line}</div>
+
+  const [, indent, stringLabel, pipe, rest] = match
+
+  // Colorir números dos trastes no conteúdo
+  const highlighted = rest.replace(/(\d+)/g, '<n>$1</n>')
+  const parts = highlighted.split(/(<n>\d+<\/n>)/)
 
   return (
-    <div className="font-mono text-[12px] leading-[1.7] whitespace-pre-wrap">
-      {lines.map((line, i) => {
-        const trimmed = line.trim()
-        // Seção [Intro], [Verso], etc
-        if (/^\[.*\]/.test(trimmed)) {
-          return (
-            <div key={i} className="text-accent font-bold mt-4 mb-1 text-[13px]">
-              {trimmed}
+    <div className="flex">
+      <span className="text-text3/40 whitespace-pre">{indent}</span>
+      <span className="text-emerald-400 font-bold w-[1ch] text-center">{stringLabel}</span>
+      <span className="text-text3/30">{pipe}</span>
+      <span className="text-blue-400/50">
+        {parts.map((part, j) => {
+          const numMatch = part.match(/^<n>(\d+)<\/n>$/)
+          if (numMatch) {
+            return (
+              <span key={j} className="text-[#FF2D78] font-bold">
+                {numMatch[1]}
+              </span>
+            )
+          }
+          return <span key={j}>{part}</span>
+        })}
+      </span>
+    </div>
+  )
+}
+
+// Bloco visual de tablatura agrupado
+function TabBlock({ lines, label, onDoubleClick }: { lines: string[]; label?: string; onDoubleClick?: () => void }) {
+  return (
+    <TooltipProvider delayDuration={400}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={`my-2 rounded-lg bg-[var(--bg2)] border border-border/50 overflow-hidden ${
+              onDoubleClick ? 'cursor-pointer hover:border-accent/30 transition-colors' : ''
+            }`}
+            onDoubleClick={onDoubleClick}
+          >
+            {label && (
+              <div className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-[1px] text-text3/60">
+                {label}
+              </div>
+            )}
+            <div className="px-3 py-2 overflow-x-auto">
+              <pre className="font-mono text-[11px] leading-[1.5] whitespace-pre">
+                {lines.map((line, i) => (
+                  <TabLine key={i} line={line} />
+                ))}
+              </pre>
             </div>
-          )
-        }
-        // Linha de tablatura (E|---, B|---, etc)
-        if (/^\s*[EBADGe]\|/.test(line) || /^\s*\|/.test(trimmed)) {
-          return (
-            <div key={i} className="text-blue-400/70">
-              {line}
-            </div>
-          )
-        }
-        // Linha só de acordes
-        const chordPattern = /^[A-G][#b]?(?:m|M|maj|min|dim|aug|sus[24]?|add[249]?|[0-9])*(?:\/[A-G][#b]?)?$/
-        const tokens = trimmed.split(/\s+/)
-        const chordRatio = tokens.filter(t => chordPattern.test(t) || t === '|').length / (tokens.length || 1)
-        if (chordRatio > 0.5 && trimmed.length > 0) {
-          return (
-            <div key={i} className="text-accent font-semibold">
-              {line}
-            </div>
-          )
-        }
-        // Linha vazia
-        if (!trimmed) {
-          return <div key={i} className="h-2" />
-        }
-        // Letra normal
-        return (
-          <div key={i} className="text-text">
-            {line}
           </div>
-        )
+        </TooltipTrigger>
+        {onDoubleClick && (
+          <TooltipContent side="bottom">
+            <p className="text-xs">Duplo clique para editar tablatura</p>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+// Pré-processa linhas para agrupar blocos de tablatura
+type CifraBlock =
+  | { type: 'section'; text: string }
+  | { type: 'chord'; text: string }
+  | { type: 'lyric'; text: string }
+  | { type: 'empty' }
+  | { type: 'tab'; lines: string[]; label?: string }
+
+function parseCifraBlocks(content: string): CifraBlock[] {
+  const lines = content.split('\n')
+  const blocks: CifraBlock[] = []
+  let i = 0
+
+  const chordPattern = /^[A-G][#b]?(?:m|M|maj|min|dim|aug|sus[24]?|add[249]?|[0-9])*(?:\/[A-G][#b]?)?$/
+
+  while (i < lines.length) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // Agrupar linhas consecutivas de tablatura
+    if (TAB_LINE_RE.test(line)) {
+      const tabLines: string[] = []
+      // Olhar a linha anterior para possível label de acorde
+      let label: string | undefined
+      if (blocks.length > 0) {
+        const prev = blocks[blocks.length - 1]
+        if (prev.type === 'chord') {
+          label = prev.text.trim()
+          blocks.pop() // Remover o label avulso, vai dentro do TabBlock
+        }
+      }
+      while (i < lines.length && TAB_LINE_RE.test(lines[i])) {
+        tabLines.push(lines[i])
+        i++
+      }
+      blocks.push({ type: 'tab', lines: tabLines, label })
+      continue
+    }
+
+    // Seção [Intro], [Verso], etc
+    if (/^\[.*\]/.test(trimmed)) {
+      blocks.push({ type: 'section', text: trimmed })
+      i++
+      continue
+    }
+
+    // Linha vazia
+    if (!trimmed) {
+      blocks.push({ type: 'empty' })
+      i++
+      continue
+    }
+
+    // Linha de acordes
+    const tokens = trimmed.split(/\s+/)
+    const chordRatio = tokens.filter(t => chordPattern.test(t) || t === '|').length / (tokens.length || 1)
+    if (chordRatio > 0.5) {
+      blocks.push({ type: 'chord', text: line })
+      i++
+      continue
+    }
+
+    // Letra normal
+    blocks.push({ type: 'lyric', text: line })
+    i++
+  }
+
+  return blocks
+}
+
+// Renderiza o conteúdo da cifra com syntax highlighting e tablatura estilizada
+function CifraContentView({ content, onTabDoubleClick, hideTabs = false }: { content: string; onTabDoubleClick?: (lines: string[], label: string | undefined, tabIdx: number) => void; hideTabs?: boolean }) {
+  const blocks = useMemo(() => parseCifraBlocks(content), [content])
+
+  // Contar índice de blocos tab para identificar qual está sendo editado
+  let tabCounter = -1
+
+  return (
+    <div className="font-mono text-[12px] leading-[1.7]">
+      {blocks.map((block, i) => {
+        switch (block.type) {
+          case 'section': {
+            // Ocultar seções de tablatura ([Tab - ...]) quando hideTabs está ativo
+            if (hideTabs && /^\[Tab\b/i.test(block.text.trim())) return null
+            return (
+              <div key={i} className="text-accent font-bold mt-4 mb-1 text-[13px]">
+                {block.text}
+              </div>
+            )
+          }
+          case 'tab': {
+            tabCounter++
+            if (hideTabs) return null
+            const idx = tabCounter
+            return (
+              <TabBlock
+                key={i}
+                lines={block.lines}
+                label={block.label}
+                onDoubleClick={onTabDoubleClick ? () => onTabDoubleClick(block.lines, block.label, idx) : undefined}
+              />
+            )
+          }
+          case 'chord':
+            return (
+              <div key={i} className="text-accent font-semibold whitespace-pre">
+                {block.text}
+              </div>
+            )
+          case 'empty':
+            return <div key={i} className="h-2" />
+          case 'lyric':
+            return (
+              <div key={i} className="text-text whitespace-pre-wrap">
+                {block.text}
+              </div>
+            )
+        }
       })}
     </div>
   )
@@ -199,16 +360,390 @@ function YouTubeEmbed({ url }: { url: string }) {
 
 // --- Componente principal ---
 
+type CurationStatus = Database['public']['Enums']['curation_status']
+
+interface EditForm {
+  title: string
+  artist: string
+  key: string
+  genre: string
+  difficulty: number
+  curation_status: CurationStatus
+  youtube_url: string
+  chords: string
+  cifra_content: string
+  lyrics: string
+}
+
 interface RepertoireSheetProps {
   song: Repertoire | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onEdit?: (song: Repertoire) => void
+  /** Callback após salvar edição — usado para recarregar a lista */
+  onSaved?: () => void
 }
 
-export function RepertoireSheet({ song, open, onOpenChange, onEdit }: RepertoireSheetProps) {
+export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: RepertoireSheetProps) {
   const [libraryChords, setLibraryChords] = useState<Chord[]>([])
   const [loadingChords, setLoadingChords] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState('cifra')
+
+  // Filtros de visibilidade das seções na cifra
+  const [showGuitar, setShowGuitar] = useState(true)
+  const [showPiano, setShowPiano] = useState(true)
+  const [showTab, setShowTab] = useState(true)
+
+  // PDF
+  const printRef = useRef<HTMLDivElement>(null)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [showPrintable, setShowPrintable] = useState(false)
+
+  const handleGeneratePdf = useCallback(async () => {
+    if (!song) return
+    setShowPrintable(true)
+    setGeneratingPdf(true)
+
+    // Aguardar renderização do componente printable
+    await new Promise(r => setTimeout(r, 600))
+
+    try {
+      const el = printRef.current
+      if (!el) throw new Error('Elemento de impressão não encontrado')
+
+      const filename = `${song.title} - ${song.artist}`.replace(/[^a-zA-Z0-9À-ÿ\s\-_]/g, '').trim()
+      await generatePdfFromElement(el, { filename, margin: 8 })
+      toast.success('PDF gerado com sucesso!')
+    } catch (e: any) {
+      toast.error('Erro ao gerar PDF: ' + (e?.message ?? ''))
+    } finally {
+      setGeneratingPdf(false)
+      setShowPrintable(false)
+    }
+  }, [song, showGuitar, showPiano, showTab])
+
+  // Separar acordes de violão e piano (antes dos handlers que dependem)
+  const guitarChords = useMemo(() => libraryChords.filter(c => c.instrument === 'guitar'), [libraryChords])
+  const pianoChords = useMemo(() => libraryChords.filter(c => (c.instrument as string) === 'piano'), [libraryChords])
+  const guitarChordMap = useMemo(() => new Map(guitarChords.map(c => [c.name, c])), [guitarChords])
+  const pianoChordMap = useMemo(() => new Map(pianoChords.map(c => [c.name, c])), [pianoChords])
+
+  // --- Editor de acorde de violão (ChordEditor modal) ---
+  const [chordEditorOpen, setChordEditorOpen] = useState(false)
+  const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState())
+  const [chordEditorName, setChordEditorName] = useState('')
+  const [chordEditorStartFret, setChordEditorStartFret] = useState(1)
+  const [chordEditorId, setChordEditorId] = useState<string | null>(null) // id na chord_library
+
+  const openChordEditor = useCallback((chord: Chord) => {
+    const pos = (chord.positions ?? { fingers: [], barres: [], muted: [] }) as any
+    // Usar position salvo no banco (baseFret) se existir, senão calcular pelo minFret
+    const sf = pos.position && pos.position > 0
+      ? pos.position
+      : (() => {
+          const frets = [
+            ...(pos.fingers ?? []).map((f: any) => f[1]).filter((f: number) => f > 0),
+            ...(pos.barres ?? []).map((b: any) => b.fret),
+          ]
+          const minFret = frets.length > 0 ? Math.min(...frets) : 1
+          return minFret > 0 ? minFret : 1
+        })()
+    setChordEditorState(positionsToState(pos as ChordPositions, sf))
+    setChordEditorName(chord.name)
+    setChordEditorStartFret(sf)
+    setChordEditorId(chord.id)
+    setChordEditorOpen(true)
+  }, [])
+
+  // Abrir editor para CRIAR novo acorde (grid vazia, nome pré-preenchido)
+  const openChordEditorForNew = useCallback((chordName: string) => {
+    setChordEditorState(createEmptyState())
+    setChordEditorName(chordName)
+    setChordEditorStartFret(1)
+    setChordEditorId(null) // null = criação
+    setChordEditorOpen(true)
+  }, [])
+
+  const handleSaveChordEditor = useCallback(async () => {
+    const positions = stateToPositions(chordEditorState, chordEditorStartFret)
+    const positionsWithPosition = { ...positions, position: chordEditorStartFret }
+    try {
+      if (chordEditorId) {
+        // Atualizar acorde existente
+        await updateChord(chordEditorId, {
+          name: chordEditorName,
+          positions: positionsWithPosition as any,
+        })
+        toast.success(`Acorde "${chordEditorName}" atualizado na biblioteca!`)
+      } else {
+        // Criar novo acorde na biblioteca
+        await createChord({
+          name: chordEditorName,
+          instrument: 'guitar' as any,
+          positions: positionsWithPosition as any,
+          difficulty: 1,
+          tags: [],
+        })
+        toast.success(`Acorde "${chordEditorName}" criado na biblioteca!`)
+        // Disparar evento para outras páginas (Biblioteca Musical)
+        window.dispatchEvent(new Event('chord-library-updated'))
+      }
+      setChordEditorOpen(false)
+      // Recarregar acordes no sheet
+      if (song?.chords?.length) {
+        getChordsByNames(song.chords)
+          .then(data => setLibraryChords(data))
+          .catch(() => {})
+      }
+    } catch (e: any) {
+      toast.error('Erro ao salvar acorde: ' + (e?.message ?? ''))
+    }
+  }, [chordEditorId, chordEditorState, chordEditorName, chordEditorStartFret, song?.chords])
+
+  // --- Editor de teclado (KeyboardEditor modal) ---
+  const [keyboardEditorOpen, setKeyboardEditorOpen] = useState(false)
+  const [keyboardEditorChord, setKeyboardEditorChord] = useState<any>(null)
+
+  const openKeyboardEditor = useCallback((chord: Chord) => {
+    const pos = chord.positions as any
+    setKeyboardEditorChord({
+      id: chord.id,
+      name: chord.name,
+      instrument: 'piano',
+      difficulty: chord.difficulty,
+      positions: pos,
+    })
+    setKeyboardEditorOpen(true)
+  }, [])
+
+  // Abrir editor de teclado para CRIAR novo acorde (vazio, nome pré-preenchido)
+  const openKeyboardEditorForNew = useCallback((chordName: string) => {
+    setKeyboardEditorChord({
+      id: null, // null = criação
+      name: chordName,
+      instrument: 'piano',
+      difficulty: 1,
+      positions: {},
+    })
+    setKeyboardEditorOpen(true)
+  }, [])
+
+  const handleSaveKeyboard = useCallback(async (data: PianoChordData) => {
+    try {
+      if (keyboardEditorChord?.id) {
+        // Atualizar acorde existente
+        await updateChord(keyboardEditorChord.id, {
+          name: data.name,
+          positions: data.positions as any,
+        })
+        toast.success(`Teclado "${data.name}" atualizado na biblioteca!`)
+      } else {
+        // Criar novo acorde de piano na biblioteca
+        await createChord({
+          name: data.name,
+          instrument: 'piano' as any,
+          positions: data.positions as any,
+          difficulty: data.difficulty ?? 1,
+          tags: data.tags ?? [],
+        })
+        toast.success(`Teclado "${data.name}" criado na biblioteca!`)
+        window.dispatchEvent(new Event('chord-library-updated'))
+      }
+      setKeyboardEditorOpen(false)
+      // Recarregar acordes
+      if (song?.chords?.length) {
+        getChordsByNames(song.chords)
+          .then(d => setLibraryChords(d))
+          .catch(() => {})
+      }
+    } catch (e: any) {
+      toast.error('Erro ao salvar teclado: ' + (e?.message ?? ''))
+    }
+  }, [keyboardEditorChord, song?.chords])
+
+  // --- Editor de tablatura (TablatureEditor modal) ---
+  const [tabEditorOpen, setTabEditorOpen] = useState(false)
+  const [tabEditorLines, setTabEditorLines] = useState<string[]>([])
+  const [tabEditorLabel, setTabEditorLabel] = useState('')
+  const [tabEditorBlockIdx, setTabEditorBlockIdx] = useState<number | null>(null) // índice no array de CifraBlocks
+
+  const openTabEditor = useCallback((lines: string[], label: string | undefined, blockIdx: number) => {
+    setTabEditorLines(lines)
+    setTabEditorLabel(label ?? '')
+    setTabEditorBlockIdx(blockIdx)
+    setTabEditorOpen(true)
+  }, [])
+
+  const handleSaveTab = useCallback((newLines: string[], newLabel: string) => {
+    if (tabEditorBlockIdx === null || !song?.cifra_content) return
+    // Reconstruir o cifra_content substituindo o bloco de tab editado
+    const blocks = parseCifraBlocks(song.cifra_content)
+    let tabCount = -1
+    const outputLines: string[] = []
+
+    for (const block of blocks) {
+      if (block.type === 'tab') {
+        tabCount++
+        if (tabCount === tabEditorBlockIdx) {
+          // Substituir este bloco
+          if (newLabel) outputLines.push(newLabel)
+          outputLines.push(...newLines)
+        } else {
+          if (block.label) outputLines.push(block.label)
+          outputLines.push(...block.lines)
+        }
+      } else if (block.type === 'section') {
+        outputLines.push(block.text)
+      } else if (block.type === 'chord') {
+        outputLines.push(block.text)
+      } else if (block.type === 'lyric') {
+        outputLines.push(block.text)
+      } else if (block.type === 'empty') {
+        outputLines.push('')
+      }
+    }
+
+    const newContent = outputLines.join('\n')
+    // Salvar no banco
+    updateSong(song.id, { cifra_content: newContent })
+      .then(() => {
+        toast.success('Tablatura atualizada!')
+        setTabEditorOpen(false)
+        onSaved?.()
+      })
+      .catch((e: any) => {
+        toast.error('Erro ao salvar tablatura: ' + (e?.message ?? ''))
+      })
+  }, [tabEditorBlockIdx, song, onSaved])
+
+  // --- Auto-preenchimento de acordes faltantes ---
+  const [autoFilling, setAutoFilling] = useState(false)
+
+  const missingGuitarChords = useMemo(() => {
+    if (!song?.chords?.length) return []
+    return (song.chords ?? []).filter(name => !guitarChordMap.has(name))
+  }, [song?.chords, guitarChordMap])
+
+  const missingPianoChords = useMemo(() => {
+    if (!song?.chords?.length) return []
+    return (song.chords ?? []).filter(name => {
+      const lib = pianoChordMap.get(name)
+      if (!lib) return true
+      const pos = lib.positions as any
+      return !(pos?.keys?.length > 0)
+    })
+  }, [song?.chords, pianoChordMap])
+
+  const totalMissing = missingGuitarChords.length + missingPianoChords.length
+
+  const handleAutoFillChords = useCallback(async () => {
+    if (!song?.chords?.length) return
+    setAutoFilling(true)
+
+    try {
+      // Buscar acordes faltantes de violão
+      const guitarResults = autoFillChordsFound(missingGuitarChords, ['guitar'])
+      // Buscar acordes faltantes de piano
+      const pianoResults = autoFillChordsFound(missingPianoChords, ['piano'])
+
+      let createdGuitar = 0
+      let createdPiano = 0
+      const errors: string[] = []
+
+      // Criar acordes de violão na biblioteca
+      for (const result of guitarResults) {
+        try {
+          const posWithPosition = {
+            ...result.positions,
+            position: result.baseFret ?? 1,
+          }
+          await createChord({
+            name: result.chordName,
+            instrument: 'guitar' as any,
+            positions: posWithPosition as any,
+            difficulty: 1,
+            tags: ['auto-preenchido'],
+          })
+          createdGuitar++
+        } catch (e: any) {
+          errors.push(`${result.chordName} (violão): ${e?.message ?? 'erro'}`)
+        }
+      }
+
+      // Criar acordes de piano na biblioteca
+      for (const result of pianoResults) {
+        try {
+          await createChord({
+            name: result.chordName,
+            instrument: 'piano' as any,
+            positions: result.positions as any,
+            difficulty: 1,
+            tags: ['auto-preenchido'],
+          })
+          createdPiano++
+        } catch (e: any) {
+          errors.push(`${result.chordName} (piano): ${e?.message ?? 'erro'}`)
+        }
+      }
+
+      const total = createdGuitar + createdPiano
+      if (total > 0) {
+        toast.success(`${total} acorde${total > 1 ? 's' : ''} criado${total > 1 ? 's' : ''} automaticamente!`, {
+          description: `🎸 ${createdGuitar} violão · 🎹 ${createdPiano} piano`,
+        })
+        window.dispatchEvent(new Event('chord-library-updated'))
+        // Recarregar acordes no sheet
+        getChordsByNames(song.chords)
+          .then(data => setLibraryChords(data))
+          .catch(() => {})
+      }
+
+      const notFound = guitarResults.length === 0 && pianoResults.length === 0
+        ? missingGuitarChords.length + missingPianoChords.length
+        : (missingGuitarChords.length - createdGuitar) + (missingPianoChords.length - createdPiano)
+
+      if (notFound > 0) {
+        toast.info(`${notFound} acorde${notFound > 1 ? 's' : ''} não encontrado${notFound > 1 ? 's' : ''} no banco automático`, {
+          description: 'Use duplo clique para criar manualmente',
+        })
+      }
+
+      if (errors.length > 0) {
+        console.warn('Erros ao auto-preencher:', errors)
+      }
+    } catch (e: any) {
+      toast.error('Erro ao preencher acordes: ' + (e?.message ?? ''))
+    } finally {
+      setAutoFilling(false)
+    }
+  }, [song?.chords, missingGuitarChords, missingPianoChords, guitarChordMap, pianoChordMap])
+
+  // Estado do formulário de edição
+  const [form, setForm] = useState<EditForm>({
+    title: '', artist: '', key: '', genre: '', difficulty: 1,
+    curation_status: 'draft', youtube_url: '', chords: '',
+    cifra_content: '', lyrics: '',
+  })
+
+  // Sincronizar formulário quando a música muda
+  useEffect(() => {
+    if (song) {
+      setForm({
+        title: song.title ?? '',
+        artist: song.artist ?? '',
+        key: song.key ?? '',
+        genre: song.genre ?? '',
+        difficulty: song.difficulty ?? 1,
+        curation_status: (song.curation_status ?? 'draft') as CurationStatus,
+        youtube_url: song.youtube_url ?? '',
+        chords: (song.chords ?? []).join(', '),
+        cifra_content: song.cifra_content ?? '',
+        lyrics: song.lyrics ?? '',
+      })
+      setActiveTab('cifra')
+    }
+  }, [song?.id, open])
 
   // Buscar acordes da chord_library quando abrir a ficha
   useEffect(() => {
@@ -226,18 +761,46 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
     return () => { cancelled = true }
   }, [open, song?.id, song?.chords])
 
+  const handleSave = useCallback(async () => {
+    if (!song) return
+    setSaving(true)
+    try {
+      const chordsArr = form.chords
+        .split(',')
+        .map(c => c.trim())
+        .filter(Boolean)
+
+      await updateSong(song.id, {
+        title: form.title,
+        artist: form.artist || null,
+        key: form.key || null,
+        genre: form.genre || null,
+        difficulty: form.difficulty,
+        curation_status: form.curation_status,
+        youtube_url: form.youtube_url || null,
+        chords: chordsArr.length > 0 ? chordsArr : null,
+        cifra_content: form.cifra_content || null,
+        lyrics: form.lyrics || null,
+      })
+      toast.success('Ficha atualizada com sucesso!')
+      onSaved?.()
+    } catch (e: any) {
+      toast.error('Erro ao salvar: ' + (e?.message ?? 'Erro desconhecido'))
+    } finally {
+      setSaving(false)
+    }
+  }, [song, form, onSaved])
+
+  const updateField = useCallback(<K extends keyof EditForm>(field: K, value: EditForm[K]) => {
+    setForm(prev => ({ ...prev, [field]: value }))
+  }, [])
+
   if (!song) return null
 
   const diff = song.difficulty ?? 1
   const diffConfig = DIFFICULTY_CONFIG[diff] ?? DIFFICULTY_CONFIG[1]
   const curationConfig = CURATION_CONFIG[song.curation_status ?? 'draft'] ?? CURATION_CONFIG.draft
   const genreColors = GENRE_COLORS[song.genre ?? ''] ?? 'bg-slate-500/15 text-slate-400'
-
-  // Separar acordes de violão e piano
-  const guitarChords = libraryChords.filter(c => c.instrument === 'guitar')
-  const pianoChords = libraryChords.filter(c => (c.instrument as string) === 'piano')
-  const guitarChordMap = new Map(guitarChords.map(c => [c.name, c]))
-  const pianoChordMap = new Map(pianoChords.map(c => [c.name, c]))
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -335,11 +898,14 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
 
           {/* ====== CONTEÚDO ====== */}
           <div className="flex-1 min-h-0">
-            <Tabs defaultValue="cifra" className="flex flex-col h-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
               <TabsList className="mx-6 mt-4 mb-0 bg-[var(--bg2)] rounded-lg w-fit">
                 <TabsTrigger value="cifra" className="text-[12px]">Cifra Completa</TabsTrigger>
                 <TabsTrigger value="info" className="text-[12px]">Informações</TabsTrigger>
                 {song.lyrics && <TabsTrigger value="letra" className="text-[12px]">Letra</TabsTrigger>}
+                <TabsTrigger value="editar" className="text-[12px] gap-1">
+                  <PencilSimple size={12} /> Editar
+                </TabsTrigger>
               </TabsList>
 
               {/* Tab: Cifra completa */}
@@ -352,7 +918,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-2">
                           Acordes ({(song.chords ?? []).length})
                         </h3>
-                        <div className="flex gap-1.5 flex-wrap">
+                        <div className="flex gap-1.5 flex-wrap items-center">
                           {(song.chords ?? []).map(chord => (
                             <span
                               key={chord}
@@ -362,11 +928,89 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
                             </span>
                           ))}
                         </div>
+                        {/* Botão auto-preencher acordes faltantes */}
+                        {totalMissing > 0 && !loadingChords && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 gap-1.5 text-[11px] h-7 border-accent/30 text-accent hover:bg-accent/10 hover:text-accent"
+                            onClick={handleAutoFillChords}
+                            disabled={autoFilling}
+                          >
+                            {autoFilling ? (
+                              <SpinnerGap size={14} className="animate-spin" />
+                            ) : (
+                              <Lightning size={14} weight="fill" />
+                            )}
+                            {autoFilling
+                              ? 'Preenchendo...'
+                              : `Preencher ${totalMissing} acorde${totalMissing > 1 ? 's' : ''} faltante${totalMissing > 1 ? 's' : ''}`
+                            }
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Filtros de visibilidade */}
+                    {(song.chords ?? []).length > 0 && (
+                      <div className="flex items-center gap-1.5 mb-4">
+                        <span className="text-[10px] text-text3/60 uppercase tracking-wider mr-1">Exibir:</span>
+                        <button
+                          onClick={() => setShowGuitar(v => !v)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                            showGuitar
+                              ? 'bg-accent/15 text-accent border-accent/30'
+                              : 'bg-transparent text-text3/50 border-border hover:border-text3/30'
+                          }`}
+                        >
+                          {showGuitar ? <Eye size={13} /> : <EyeSlash size={13} />}
+                          Violão
+                        </button>
+                        <button
+                          onClick={() => setShowPiano(v => !v)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                            showPiano
+                              ? 'bg-accent/15 text-accent border-accent/30'
+                              : 'bg-transparent text-text3/50 border-border hover:border-text3/30'
+                          }`}
+                        >
+                          {showPiano ? <Eye size={13} /> : <EyeSlash size={13} />}
+                          Teclado
+                        </button>
+                        <button
+                          onClick={() => setShowTab(v => !v)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                            showTab
+                              ? 'bg-accent/15 text-accent border-accent/30'
+                              : 'bg-transparent text-text3/50 border-border hover:border-text3/30'
+                          }`}
+                        >
+                          {showTab ? <Eye size={13} /> : <EyeSlash size={13} />}
+                          Tablatura
+                        </button>
+
+                        {/* Botão Gerar PDF */}
+                        <div className="ml-auto">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-[11px] h-7 border-accent/30 text-accent hover:bg-accent/10"
+                            onClick={handleGeneratePdf}
+                            disabled={generatingPdf}
+                          >
+                            {generatingPdf ? (
+                              <SpinnerGap size={13} className="animate-spin" />
+                            ) : (
+                              <FilePdf size={13} weight="fill" />
+                            )}
+                            {generatingPdf ? 'Gerando...' : 'Gerar PDF'}
+                          </Button>
+                        </div>
                       </div>
                     )}
 
                     {/* Diagramas SVGuitar */}
-                    {(song.chords ?? []).length > 0 && !loadingChords && (
+                    {showGuitar && (song.chords ?? []).length > 0 && !loadingChords && (
                       <div className="mb-4">
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-3">
                           Violão
@@ -382,33 +1026,48 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
                             if (lib && lib.positions && typeof lib.positions === 'object') {
                               const pos = lib.positions as any
                               return (
-                                <div key={chordName} className="text-center">
-                                  <ChordDiagram
-                                    name={chordName}
-                                    positions={{
-                                      fingers: pos.fingers ?? [],
-                                      barres: pos.barres ?? [],
-                                      muted: pos.muted ?? [],
-                                    }}
-                                    position={pos.position ?? 1}
-                                    size="compact"
-                                  />
-                                </div>
+                                <TooltipProvider key={chordName} delayDuration={400}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="text-center cursor-pointer rounded-lg hover:bg-[var(--azul-soft)] transition-colors"
+                                        onDoubleClick={() => openChordEditor(lib)}
+                                      >
+                                        <ChordDiagram
+                                          name={chordName}
+                                          positions={{
+                                            fingers: pos.fingers ?? [],
+                                            barres: pos.barres ?? [],
+                                            muted: pos.muted ?? [],
+                                          }}
+                                          position={pos.position ?? 1}
+                                          size="compact"
+                                        />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      <p className="text-xs">Duplo clique para editar</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               )
                             }
-                            // Acorde não encontrado na biblioteca
+                            // Acorde não encontrado na biblioteca — duplo clique para criar
                             return (
                               <TooltipProvider key={chordName} delayDuration={200}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <div className="w-[90px] h-[120px] rounded-lg border border-dashed border-border flex flex-col items-center justify-center gap-1 text-text3/50">
+                                    <div
+                                      className="w-[90px] h-[120px] rounded-lg border border-dashed border-border flex flex-col items-center justify-center gap-1 text-text3/50 cursor-pointer hover:border-accent/40 hover:text-accent/70 transition-colors"
+                                      onDoubleClick={() => openChordEditorForNew(chordName)}
+                                    >
                                       <WarningCircle size={16} />
                                       <span className="font-mono text-[11px] font-bold">{chordName}</span>
                                       <span className="text-[8px]">Sem diagrama</span>
                                     </div>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p className="text-xs">Acorde "{chordName}" não cadastrado na Biblioteca Musical</p>
+                                    <p className="text-xs">Duplo clique para criar acorde "{chordName}"</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -419,33 +1078,69 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
                     )}
 
                     {/* Diagramas de Teclado */}
-                    {pianoChords.length > 0 && (
+                    {showPiano && (song.chords ?? []).length > 0 && (
                       <div className="mb-4">
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-3">
                           Teclado
                           <span className="ml-2 text-text3/60">
-                            ({pianoChords.length} acorde{pianoChords.length !== 1 ? 's' : ''})
+                            ({pianoChords.length} de {(song.chords ?? []).length} na biblioteca)
                           </span>
                         </h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {(song.chords ?? []).map(chordName => {
                             const lib = pianoChordMap.get(chordName)
-                            if (!lib || !lib.positions || typeof lib.positions !== 'object') return null
-                            const pos = lib.positions as any
-                            const keys = (pos.keys ?? []) as string[]
-                            if (keys.length === 0) return null
-                            const fingeringRh = (pos.fingering_rh ?? []) as number[]
+                            if (lib && lib.positions && typeof lib.positions === 'object') {
+                              const pos = lib.positions as any
+                              const keys = (pos.keys ?? []) as string[]
+                              if (keys.length === 0) {
+                                // Acorde existe mas sem teclas — tratar como faltante
+                              } else {
+                                const fingeringRh = (pos.fingering_rh ?? []) as number[]
+                                return (
+                                  <TooltipProvider key={chordName} delayDuration={400}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div
+                                          className="rounded-lg bg-card border border-border p-3 cursor-pointer hover:bg-[var(--azul-soft)] transition-colors"
+                                          onDoubleClick={() => openKeyboardEditor(lib)}
+                                        >
+                                          <PianoKeyboard
+                                            keys={keys}
+                                            fingeringRH={fingeringRh.length > 0 ? fingeringRh : undefined}
+                                            label={chordName}
+                                            showLabels={fingeringRh.length > 0}
+                                            scale={0.8}
+                                            className="w-full"
+                                          />
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom">
+                                        <p className="text-xs">Duplo clique para editar</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )
+                              }
+                            }
+                            // Acorde não encontrado na biblioteca (piano) — duplo clique para criar
                             return (
-                              <div key={chordName} className="rounded-lg bg-card border border-border p-3">
-                                <PianoKeyboard
-                                  keys={keys}
-                                  fingeringRH={fingeringRh.length > 0 ? fingeringRh : undefined}
-                                  label={chordName}
-                                  showLabels={fingeringRh.length > 0}
-                                  scale={0.8}
-                                  className="w-full"
-                                />
-                              </div>
+                              <TooltipProvider key={chordName} delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="rounded-lg bg-card border border-dashed border-border p-3 flex flex-col items-center justify-center gap-1 text-text3/50 cursor-pointer hover:border-accent/40 hover:text-accent/70 transition-colors min-h-[100px]"
+                                      onDoubleClick={() => openKeyboardEditorForNew(chordName)}
+                                    >
+                                      <PianoKeys size={20} />
+                                      <span className="font-mono text-[12px] font-bold">{chordName}</span>
+                                      <span className="text-[9px]">Sem diagrama</span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs">Duplo clique para criar acorde "{chordName}" no teclado</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             )
                           })}
                         </div>
@@ -457,7 +1152,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
                     {/* Cifra formatada */}
                     {song.cifra_content ? (
                       <div className="rounded-xl bg-card border border-border p-5">
-                        <CifraContentView content={song.cifra_content} />
+                        <CifraContentView content={song.cifra_content} onTabDoubleClick={openTabEditor} hideTabs={!showTab} />
                       </div>
                     ) : (
                       <div className="text-center py-12 text-text3">
@@ -521,10 +1216,284 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit }: Repertoire
                   </ScrollArea>
                 </TabsContent>
               )}
+
+              {/* Tab: Editar */}
+              <TabsContent value="editar" className="flex-1 min-h-0 mt-0 px-0">
+                <ScrollArea className="h-[calc(100vh-280px)]">
+                  <div className="px-6 py-4 space-y-6">
+
+                    {/* Metadados principais */}
+                    <div className="space-y-3">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3">
+                        Dados da Música
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">Título *</Label>
+                          <Input
+                            value={form.title}
+                            onChange={e => updateField('title', e.target.value)}
+                            placeholder="Nome da música"
+                            className="h-9 text-[13px]"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">Artista</Label>
+                          <Input
+                            value={form.artist}
+                            onChange={e => updateField('artist', e.target.value)}
+                            placeholder="Nome do artista"
+                            className="h-9 text-[13px]"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">Tom</Label>
+                          <Input
+                            value={form.key}
+                            onChange={e => updateField('key', e.target.value)}
+                            placeholder="Ex: Am, C, G"
+                            className="h-9 text-[13px] font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">Gênero</Label>
+                          <Input
+                            value={form.genre}
+                            onChange={e => updateField('genre', e.target.value)}
+                            placeholder="Ex: Rock, MPB, Pop"
+                            className="h-9 text-[13px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Dificuldade e Curadoria */}
+                    <div className="space-y-3">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3">
+                        Classificação
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">Dificuldade</Label>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map(n => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => updateField('difficulty', n)}
+                                className="p-1 hover:scale-110 transition-transform"
+                              >
+                                <Star
+                                  size={20}
+                                  weight={n <= form.difficulty ? 'fill' : 'regular'}
+                                  className={n <= form.difficulty ? 'text-amber-400' : 'text-text3/30'}
+                                />
+                              </button>
+                            ))}
+                            <span className="ml-2 text-[11px] text-text3 self-center">
+                              {DIFFICULTY_CONFIG[form.difficulty]?.label ?? ''}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">Status de curadoria</Label>
+                          <Select
+                            value={form.curation_status}
+                            onValueChange={v => updateField('curation_status', v as CurationStatus)}
+                          >
+                            <SelectTrigger className="h-9 text-[13px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="draft">Rascunho</SelectItem>
+                              <SelectItem value="review">Em Revisão</SelectItem>
+                              <SelectItem value="approved">Aprovado</SelectItem>
+                              <SelectItem value="published">Publicado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* YouTube e Acordes */}
+                    <div className="space-y-3">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3">
+                        Mídia e Acordes
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">URL do YouTube</Label>
+                          <Input
+                            value={form.youtube_url}
+                            onChange={e => updateField('youtube_url', e.target.value)}
+                            placeholder="https://youtube.com/watch?v=..."
+                            className="h-9 text-[13px] font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">
+                            Acordes <span className="text-text3/50">(separados por vírgula)</span>
+                          </Label>
+                          <Input
+                            value={form.chords}
+                            onChange={e => updateField('chords', e.target.value)}
+                            placeholder="C, Am, F, G"
+                            className="h-9 text-[13px] font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Cifra */}
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-text3">
+                        Cifra Completa <span className="text-text3/50">(inclui tablatura, acordes, seções)</span>
+                      </Label>
+                      <Textarea
+                        value={form.cifra_content}
+                        onChange={e => updateField('cifra_content', e.target.value)}
+                        placeholder="Cole aqui a cifra completa..."
+                        className="min-h-[200px] font-mono text-[11px] leading-[1.5] resize-y"
+                      />
+                    </div>
+
+                    {/* Letra */}
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-text3">
+                        Letra <span className="text-text3/50">(sem acordes)</span>
+                      </Label>
+                      <Textarea
+                        value={form.lyrics}
+                        onChange={e => updateField('lyrics', e.target.value)}
+                        placeholder="Cole aqui a letra da música..."
+                        className="min-h-[150px] text-[13px] leading-[1.7] resize-y"
+                      />
+                    </div>
+
+                    {/* Botão Salvar */}
+                    <div className="flex justify-end gap-3 pt-2 pb-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setActiveTab('cifra')}
+                        disabled={saving}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSave}
+                        disabled={saving || !form.title.trim()}
+                        className="gap-1.5"
+                      >
+                        {saving ? (
+                          <SpinnerGap size={14} className="animate-spin" />
+                        ) : (
+                          <FloppyDisk size={14} />
+                        )}
+                        {saving ? 'Salvando...' : 'Salvar Alterações'}
+                      </Button>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </TabsContent>
             </Tabs>
           </div>
         </div>
       </SheetContent>
+
+      {/* ====== MODAL: Editor de Acorde (Violão) ====== */}
+      <Dialog open={chordEditorOpen} onOpenChange={setChordEditorOpen}>
+        <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[22px]">
+              Editar <span className="text-accent">Acorde</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-[1fr_200px] gap-6 mt-2">
+            <ChordEditor
+              state={chordEditorState}
+              onChange={setChordEditorState}
+              chordName={chordEditorName}
+              startFret={chordEditorStartFret}
+            />
+            <div className="flex flex-col gap-4">
+              <div>
+                <Label className="text-[11px] text-text3 uppercase tracking-wider mb-1 block">Nome do acorde</Label>
+                <Input
+                  value={chordEditorName}
+                  onChange={e => setChordEditorName(e.target.value)}
+                  placeholder="Ex: Am7"
+                  className="text-[13px] h-9"
+                />
+              </div>
+              <div>
+                <Label className="text-[11px] text-text3 uppercase tracking-wider mb-1 block">Traste inicial</Label>
+                <Select value={String(chordEditorStartFret)} onValueChange={v => setChordEditorStartFret(Number(v))}>
+                  <SelectTrigger className="h-9 text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}ª casa</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setChordEditorOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveChordEditor}>
+              <FloppyDisk size={16} /> {chordEditorId ? 'Salvar Acorde' : 'Criar Acorde'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ====== Container oculto para geração de PDF ====== */}
+      {showPrintable && song && (
+        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1 }}>
+          <PrintableCifra
+            ref={printRef}
+            title={song.title}
+            artist={song.artist}
+            tom={song.key ?? undefined}
+            chords={song.chords ?? []}
+            guitarChordMap={guitarChordMap}
+            pianoChordMap={pianoChordMap}
+            cifraContent={song.cifra_content}
+            showGuitar={showGuitar}
+            showPiano={showPiano}
+            showTab={showTab}
+          />
+        </div>
+      )}
+
+      {/* ====== MODAL: Editor de Teclado (Piano) ====== */}
+      <KeyboardEditor
+        open={keyboardEditorOpen}
+        onOpenChange={(v) => { setKeyboardEditorOpen(v); if (!v) setKeyboardEditorChord(null) }}
+        chord={keyboardEditorChord}
+        onSave={handleSaveKeyboard}
+      />
+
+      {/* ====== MODAL: Editor de Tablatura ====== */}
+      <TablatureEditor
+        open={tabEditorOpen}
+        onOpenChange={setTabEditorOpen}
+        initialLines={tabEditorLines}
+        initialLabel={tabEditorLabel}
+        onSave={handleSaveTab}
+      />
     </Sheet>
   )
 }

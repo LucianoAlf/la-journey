@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect } from "react";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
@@ -17,9 +17,11 @@ import { PianoKeyboard } from "@/components/music/PianoKeyboard";
 import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
 import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
+import { TablatureEditor } from "@/components/music/TablatureEditor";
 import { createChord, updateChord, deleteChord } from "@/services/libraryService";
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
-import { useNotations } from "@/hooks/useNotations";
+import { createTablature, updateTablature, deleteTablature, type TablatureLibraryRow } from "@/services/notationService";
+import { useNotations, useTablatures } from "@/hooks/useNotations";
 
 
 /** Converte notas de escala para formato VexFlow */
@@ -100,6 +102,7 @@ export function Biblioteca() {
   const { data: chords, loading: chordsLoading, refetch: refetchChords } = useChords(instrument as any);
   const { data: scales, loading: scalesLoading } = useScales();
   const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
+  const { data: tablatures, loading: tablaturesLoading, refetch: refetchTablatures } = useTablatures();
 
   // Refetch automático quando um novo acorde é salvo via modal
   useEffect(() => {
@@ -170,6 +173,58 @@ export function Biblioteca() {
     refetchNotations();
   };
 
+  // Estado da aba Tablatura
+  const [tabSearch, setTabSearch] = useState('');
+  const [tabDiffFilter, setTabDiffFilter] = useState('todos');
+  const [tabEditorOpen, setTabEditorOpen] = useState(false);
+  const [editingTab, setEditingTab] = useState<TablatureLibraryRow | null>(null);
+
+  const handleSaveTab = async (lines: string[], label: string) => {
+    try {
+      if (editingTab) {
+        await updateTablature(editingTab.id, {
+          name: label || editingTab.name,
+          notation_data: { lines, label, columns: lines.length > 0 ? undefined : 8 },
+        });
+        toast.success('Tablatura atualizada!');
+      } else {
+        await createTablature({
+          name: label || 'Nova Tablatura',
+          notation_data: { lines, label },
+          difficulty: 1,
+        });
+        toast.success('Tablatura criada!');
+      }
+      refetchTablatures();
+      setTabEditorOpen(false);
+      setEditingTab(null);
+    } catch (e: any) {
+      toast.error('Erro ao salvar tablatura: ' + (e?.message ?? ''));
+    }
+  };
+
+  const handleDeleteTab = async (id: string) => {
+    try {
+      await deleteTablature(id);
+      toast.success('Tablatura excluída');
+      refetchTablatures();
+    } catch (e: any) {
+      toast.error('Erro ao excluir: ' + (e?.message ?? ''));
+    }
+  };
+
+  const filteredTablatures = useMemo(() => {
+    let list = (tablatures ?? []) as TablatureLibraryRow[]
+    if (tabSearch) {
+      const q = tabSearch.toLowerCase()
+      list = list.filter(t => t.name.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q))
+    }
+    if (tabDiffFilter !== 'todos') {
+      list = list.filter(t => t.difficulty === Number(tabDiffFilter))
+    }
+    return list
+  }, [tablatures, tabSearch, tabDiffFilter])
+
   const filteredChords = useMemo(() => {
     let list = chords ?? []
     if (chordSearch) {
@@ -205,7 +260,7 @@ export function Biblioteca() {
             Biblioteca <em className="not-italic text-accent">Musical</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {(notations ?? []).length} notações
+            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {(notations ?? []).length} notações · {(tablatures ?? []).length} tablaturas
           </p>
         </div>
         <Button onClick={() => {
@@ -214,6 +269,9 @@ export function Biblioteca() {
           } else if (activeTab === 'notacao') {
             setEditingNotation(null);
             setNotationEditorOpen(true);
+          } else if (activeTab === 'tablatura') {
+            setEditingTab(null);
+            setTabEditorOpen(true);
           } else if (instrument === 'piano') {
             setEditingPianoChord(null);
             setPianoEditorOpen(true);
@@ -221,7 +279,7 @@ export function Biblioteca() {
             openModal('modal-acorde');
           }
         }}>
-          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : 'Novo Acorde'}
+          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : 'Novo Acorde'}
         </Button>
       </div>
 
@@ -230,6 +288,7 @@ export function Biblioteca() {
           <TabsTrigger value="acordes">🎸 Acordes ({(chords ?? []).length})</TabsTrigger>
           <TabsTrigger value="escalas">📊 Escalas ({(scales ?? []).length})</TabsTrigger>
           <TabsTrigger value="notacao">🎵 Notação ({(notations ?? []).length})</TabsTrigger>
+          <TabsTrigger value="tablatura">🎼 Tablatura ({(tablatures ?? []).length})</TabsTrigger>
           <TabsTrigger value="imagens">🖼 Imagens IA</TabsTrigger>
         </TabsList>
 
@@ -542,6 +601,142 @@ export function Biblioteca() {
           </div>
         </TabsContent>
 
+        <TabsContent value="tablatura">
+          <div>
+            {/* Filtros */}
+            <div className="card mb-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Buscar tablatura</Label>
+                  <Input placeholder="Ex: Intro, Solo, Riff..." value={tabSearch} onChange={e => setTabSearch(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Dificuldade</Label>
+                  <Select value={tabDiffFilter} onValueChange={setTabDiffFilter}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="1">1 — Fácil</SelectItem>
+                      <SelectItem value="2">2 — Intermediário</SelectItem>
+                      <SelectItem value="3">3 — Avançado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {tablaturesLoading ? (
+              <div className="flex items-center justify-center h-40 gap-2 text-text2">
+                <SpinnerGap size={20} className="animate-spin" /> Carregando tablaturas...
+              </div>
+            ) : filteredTablatures.length === 0 ? (
+              <div className="card p-8 text-center text-text3">
+                <Warning size={20} className="inline mr-1" /> Nenhuma tablatura encontrada.
+                <p className="text-xs mt-2">Clique em "Nova Tablatura" para criar a primeira.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {filteredTablatures.map(tab => {
+                  const nd = tab.notation_data as { lines?: string[]; label?: string } | null
+                  const lines = (nd?.lines ?? []) as string[]
+                  const label = nd?.label
+                  const noteCount = lines.reduce((sum, line) => {
+                    const nums = line.match(/\d+/g)
+                    return sum + (nums?.length ?? 0)
+                  }, 0)
+
+                  return (
+                    <div
+                      key={tab.id}
+                      className="card p-4 hover:border-accent/30 transition-colors cursor-pointer group relative"
+                      onClick={() => {
+                        setEditingTab(tab);
+                        setTabEditorOpen(true);
+                      }}
+                    >
+                      {/* Botão excluir */}
+                      <button
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-vermelho/10 text-text3 hover:text-vermelho"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Excluir tablatura "${tab.name}"?`)) {
+                            handleDeleteTab(tab.id);
+                          }
+                        }}
+                        title="Excluir tablatura"
+                      >
+                        <Trash size={14} />
+                      </button>
+
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-bold text-[14px] text-text truncate">{tab.name}</div>
+                        <Badge variant="secondary" className="text-[9px] ml-2 flex-shrink-0">
+                          Nível {tab.difficulty}
+                        </Badge>
+                      </div>
+
+                      {/* Preview da tablatura */}
+                      {lines.length > 0 ? (
+                        <div className="rounded-lg bg-[var(--bg2)] border border-border/50 overflow-hidden">
+                          {label && (
+                            <div className="px-3 pt-1.5 text-[9px] font-semibold uppercase tracking-[1px] text-text3/60">
+                              {label}
+                            </div>
+                          )}
+                          <div className="px-3 py-1.5 overflow-x-auto">
+                            <pre className="font-mono text-[10px] leading-[1.4] whitespace-pre text-text2">
+                              {lines.map((line, i) => {
+                                const match = line.match(/^(\s*)([EBADGe])(\|)(.*)$/)
+                                if (!match) return <div key={i}>{line}</div>
+                                const [, indent, stringLabel, pipe, rest] = match
+                                return (
+                                  <div key={i} className="flex">
+                                    <span className="text-emerald-400 font-bold w-[1ch] text-center">{stringLabel}</span>
+                                    <span className="text-text3/30">{pipe}</span>
+                                    <span className="text-blue-400/40">
+                                      {rest.split(/(\d+)/).map((part, j) =>
+                                        /^\d+$/.test(part)
+                                          ? <span key={j} className="text-[#FF2D78] font-bold">{part}</span>
+                                          : <span key={j}>{part}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </pre>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-[60px] flex items-center justify-center text-text3 text-[11px]">
+                          <Guitar size={16} className="mr-1" /> Tablatura vazia
+                        </div>
+                      )}
+
+                      <div className="text-[11px] text-text3 mt-2">
+                        <Guitar size={12} className="inline mr-1" weight="fill" />
+                        {noteCount} nota{noteCount !== 1 ? 's' : ''} · {lines.length} corda{lines.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  )
+                })}
+                {/* Card "Adicionar" */}
+                <div
+                  className="card text-center p-4 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors"
+                  onClick={() => {
+                    setEditingTab(null);
+                    setTabEditorOpen(true);
+                  }}
+                >
+                  <div className="h-[130px] flex items-center justify-center">
+                    <div className="text-[28px] text-text3">+</div>
+                  </div>
+                  <div className="text-sm text-text2">Adicionar</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
         <TabsContent value="imagens">
           <div>
             <div className="flex items-center gap-2.5 py-3.5 px-5 bg-foundation-soft border border-[rgba(99,102,241,0.2)] rounded-[var(--radius)] mb-4">
@@ -588,6 +783,15 @@ export function Biblioteca() {
         notation={editingNotation}
         onSave={handleSaveNotation}
         onDelete={handleDeleteNotation}
+      />
+
+      {/* TablatureEditor — modal de tablatura */}
+      <TablatureEditor
+        open={tabEditorOpen}
+        onOpenChange={(v) => { setTabEditorOpen(v); if (!v) setEditingTab(null); }}
+        initialLines={editingTab?.notation_data?.lines ?? []}
+        initialLabel={editingTab?.notation_data?.label ?? editingTab?.name ?? ''}
+        onSave={handleSaveTab}
       />
     </div>
   );

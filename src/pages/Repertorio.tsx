@@ -745,6 +745,7 @@ export function Repertorio() {
         open={!!previewSong}
         onOpenChange={(open) => { if (!open) setPreviewSong(null) }}
         onEdit={(song) => { setPreviewSong(null); handleEdit(song) }}
+        onSaved={() => { refetch(); setPreviewSong(null) }}
       />
     </div>
   );
