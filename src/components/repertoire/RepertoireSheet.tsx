@@ -953,7 +953,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                 <TabsTrigger value="cifra" className="text-[12px]">Cifra Completa</TabsTrigger>
                 <TabsTrigger value="info" className="text-[12px]">Informações</TabsTrigger>
                 {song.lyrics && <TabsTrigger value="letra" className="text-[12px]">Letra</TabsTrigger>}
-                {((song as any).gp_file_url || song.songsterr_id) && (
+                {(song as any).gp_file_url && (
                   <TabsTrigger value="tablatura" className="text-[12px]">Tablatura</TabsTrigger>
                 )}
                 <TabsTrigger value="editar" className="text-[12px] gap-1">
@@ -1289,11 +1289,11 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
               )}
 
               {/* Tab: Tablatura (AlphaTab) */}
-              {((song as any).gp_file_url || song.songsterr_id) && (
+              {(song as any).gp_file_url && (
                 <TabsContent value="tablatura" className="flex-1 min-h-0 mt-0 px-0">
                   <div className="px-6 py-4">
                     <AlphaTabPlayer
-                      fileUrl={(song as any).gp_file_url || undefined}
+                      fileUrl={(song as any).gp_file_url}
                       minHeight={500}
                     />
                   </div>

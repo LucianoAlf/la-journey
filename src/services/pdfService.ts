@@ -6,6 +6,8 @@ export interface PdfOptions {
   filename: string
   /** Margem em mm */
   margin?: number
+  /** Escala de captura (padrão 3 para cifras, usar 2 para tablaturas grandes) */
+  scale?: number
 }
 
 /**
@@ -16,11 +18,11 @@ export async function generatePdfFromElement(
   element: HTMLElement,
   options: PdfOptions
 ): Promise<void> {
-  const { filename, margin = 10 } = options
+  const { filename, margin = 10, scale = 3 } = options
 
   // Capturar o elemento como canvas
   const canvas = await html2canvas(element, {
-    scale: 3, // Alta resolução para diagramas e textos nítidos
+    scale,
     useCORS: true,
     backgroundColor: '#ffffff',
     logging: false,
