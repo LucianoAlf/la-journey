@@ -176,29 +176,33 @@ Custo: ~$25/mês (Music AI API)
 
 ---
 
-## FASE E3 — AlphaTab: Renderizador de Tablaturas (NOVA)
+## FASE E3 — AlphaTab: Renderizador de Tablaturas (✅ CORE COMPLETO)
 
 Objetivo: Renderizar tablaturas Guitar Pro com player MIDI interativo.
 
-### Biblioteca: AlphaTab (@coderline/alphatab + @coderline/alphatab-vite), Licença MPL-2.0
+### Biblioteca: AlphaTab (@coderline/alphatab), Licença MPL-2.0
 
-### Capacidades
-- Renderiza GP3-GP7, MusicXML com notação padrão + tablatura
-- Player MIDI embutido com cursor visual (igual Songsterr)
-- Controle de velocidade (0.25x a 2x), seleção de tracks, loop de seção
-- NÃO tem componente React pronto — precisa integração manual via refs
+### Implementado
+- **E3.1** ✅ npm install @coderline/alphatab
+- **E3.2** ✅ Assets (Bravura font + SONiVOX soundfont) copiados para public/font/ e public/soundfont/
+- **E3.3** ✅ `src/components/music/AlphaTabPlayer.tsx` — wrapper React completo:
+  - Renderiza GP3-GP7, MusicXML com notação padrão + tablatura
+  - Player MIDI com cursor visual, Play/Pause/Stop
+  - Controle de velocidade (0.25x a 2x), seletor de track
+  - Metrônomo, loop, barra de progresso, timer
+  - Loading overlay, tratamento de erros, estado vazio
+  - `useWorkers: false` necessário (workers não resolvem fontes corretamente com Vite)
+- **E3.4** ✅ Nova aba "Tablatura" no RepertoireSheet (condicional: só aparece se `gp_file_url` ou `songsterr_id` existir)
+- **E3.6** ✅ Migration: coluna `gp_file_url text` na tabela `repertoire`
+- **Campo gp_file_url** no formulário de edição da ficha (aba Editar > Mídia e Acordes)
+- **Teste**: Canon Rock (117KB) renderiza perfeitamente com tablatura, pauta e números de fret
 
-### Etapas
+### Pendentes (opcionais)
 
 | Etapa | Tipo | Descrição | Dificuldade |
 |-------|------|-----------|-------------|
-| E3.1 | Dependência | npm install @coderline/alphatab @coderline/alphatab-vite | Trivial |
-| E3.2 | Config | Adicionar plugin alphaTab() no vite.config.ts | Trivial |
-| E3.3 | Componente | AlphaTabPlayer.tsx — wrapper React com controles play/pause/stop, velocidade, seletor de track, cursor | Alta |
-| E3.4 | Integração | Nova aba "Tablatura" no RepertoireSheet para músicas com arquivo GP | Média |
-| E3.5 | Edge Function | songsterr-tab-download — busca dados de tablatura do Songsterr | Alta |
-| E3.6 | Migration | Coluna gp_file_url (text) na tabela repertoire | Trivial |
-| E3.7 | Feature | Upload manual de arquivos .gp/.gp5/.gpx/.musicxml no editor | Média |
+| E3.5 | Edge Function | songsterr-tab-download — buscar arquivo GP do Songsterr via songsterr_id | Alta |
+| E3.7 | Feature | Upload de arquivos .gp/.gpx/.musicxml para Supabase Storage | Média |
 
 ---
 

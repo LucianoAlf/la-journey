@@ -29,6 +29,7 @@ import { updateSong } from "@/services/repertoireService"
 import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
 import { TransposeControl } from "@/components/repertoire/TransposeControl"
 import { ChordSuggestions } from "@/components/repertoire/ChordSuggestions"
+import { AlphaTabPlayer } from "@/components/music/AlphaTabPlayer"
 import { generatePdfFromElement } from "@/services/pdfService"
 import { transposeCifraContent, transposeChords, shouldUseFlats, transposeKey } from "@/lib/transpose"
 import type { Tables, Database } from "@/lib/database.types"
@@ -376,6 +377,7 @@ interface EditForm {
   chords: string
   cifra_content: string
   lyrics: string
+  gp_file_url: string
 }
 
 interface RepertoireSheetProps {
@@ -762,7 +764,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
   const [form, setForm] = useState<EditForm>({
     title: '', artist: '', key: '', genre: '', difficulty: 1,
     curation_status: 'draft', youtube_url: '', chords: '',
-    cifra_content: '', lyrics: '',
+    cifra_content: '', lyrics: '', gp_file_url: '',
   })
 
   // Sincronizar formulário quando a música muda
@@ -779,6 +781,7 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
         chords: (song.chords ?? []).join(', '),
         cifra_content: song.cifra_content ?? '',
         lyrics: song.lyrics ?? '',
+        gp_file_url: (song as any).gp_file_url ?? '',
       })
       setActiveTab('cifra')
     }
@@ -821,7 +824,8 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
         chords: chordsArr.length > 0 ? chordsArr : null,
         cifra_content: form.cifra_content || null,
         lyrics: form.lyrics || null,
-      })
+        gp_file_url: form.gp_file_url || null,
+      } as any)
       toast.success('Ficha atualizada com sucesso!')
       onSaved?.()
     } catch (e: any) {
@@ -949,6 +953,9 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                 <TabsTrigger value="cifra" className="text-[12px]">Cifra Completa</TabsTrigger>
                 <TabsTrigger value="info" className="text-[12px]">Informações</TabsTrigger>
                 {song.lyrics && <TabsTrigger value="letra" className="text-[12px]">Letra</TabsTrigger>}
+                {((song as any).gp_file_url || song.songsterr_id) && (
+                  <TabsTrigger value="tablatura" className="text-[12px]">Tablatura</TabsTrigger>
+                )}
                 <TabsTrigger value="editar" className="text-[12px] gap-1">
                   <PencilSimple size={12} /> Editar
                 </TabsTrigger>
@@ -1281,6 +1288,18 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                 </TabsContent>
               )}
 
+              {/* Tab: Tablatura (AlphaTab) */}
+              {((song as any).gp_file_url || song.songsterr_id) && (
+                <TabsContent value="tablatura" className="flex-1 min-h-0 mt-0 px-0">
+                  <div className="px-6 py-4">
+                    <AlphaTabPlayer
+                      fileUrl={(song as any).gp_file_url || undefined}
+                      minHeight={500}
+                    />
+                  </div>
+                </TabsContent>
+              )}
+
               {/* Tab: Editar */}
               <TabsContent value="editar" className="flex-1 min-h-0 mt-0 px-0">
                 <ScrollArea className="h-[calc(100vh-280px)]">
@@ -1395,6 +1414,15 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                             value={form.youtube_url}
                             onChange={e => updateField('youtube_url', e.target.value)}
                             placeholder="https://youtube.com/watch?v=..."
+                            className="h-9 text-[13px] font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">URL do Arquivo GP (tablatura)</Label>
+                          <Input
+                            value={form.gp_file_url}
+                            onChange={e => updateField('gp_file_url', e.target.value)}
+                            placeholder="https://... (.gp, .gpx, .gp7, .musicxml)"
                             className="h-9 text-[13px] font-mono"
                           />
                         </div>
