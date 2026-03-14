@@ -1,10 +1,11 @@
 # 🎵 LA Journey — Product Requirements Document (PRD)
 
-**Versão:** 2.0  
-**Data:** 12 de março de 2026  
+**Versão:** 3.0  
+**Data:** 14 de março de 2026  
 **Autor:** Luciano Alf · LA Music  
 **Classificação:** Confidencial  
 **Changelog v2:** Inclusão do Editor de Material (block-based), módulos Gestão de Turmas, Visão do Professor e Integrações, novas tabelas (material_blocks, class_students, whatsapp_templates), arquitetura multi-tenant (RLS), Gemini API para imagens, tipografia atualizada.
+**Changelog v3:** AlphaTab integrado como player de tablatura interativo com MIDI. Pipeline Songsterr→GP completo (Edge Function + conversor frontend). Mixer de volumes por track. Upload de arquivos GP com auto-preenchimento de metadados via ScoreLoader. SoundFont GeneralUser GS (30MB). Modal dedicado "Importar GP" (GpImportModal). Nova coluna `gp_file_url` no repertoire. Bucket `gp-files` no Storage.
 
 ---
 
@@ -335,10 +336,10 @@ Painel de gerenciamento de APIs e serviços conectados à plataforma.
 - **Songsterr** — Busca, metadados, extração de cifra/acordes/tom/BPM/vídeos YouTube via 3 Edge Functions (`songsterr-search`, `songsterr-import`, `songsterr-enrich`). Extração do Redux state inline da página de chords, sem headless browser.
 - **Cifra Club** — Busca de artista/música, scraping de cifra com acordes e letra via Edge Functions (`cifra-club-search`, `cifra-club-import`). Uso interno com curadoria obrigatória, não redistribuição.
 - **Groq (Llama/Mistral)** — Agente Monitor Pedagógico: análise de progresso, detecção de desvios, classificação de baixo custo
+- **AlphaTab** (@coderline/alphatab) — Player de tablatura Guitar Pro com MIDI, mixer de volumes por track (volume/solo/mute), cursor animado, scroll automático. Suporta .gp/.gpx/.gp7/.musicxml + conversão de JSON Songsterr in-memory. SoundFont GeneralUser GS (30MB, 270 instrumentos). Componente `AlphaTabPlayer.tsx` + modal `GpImportModal.tsx` com auto-preenchimento via `ScoreLoader.loadScoreFromBytes()`.
 
 **Integrações futuras:**
 - **Music AI / Suno API / Moises API** — Separação de stems, detecção de acordes/BPM/tom, backing tracks personalizados
-- **AlphaTab** — Renderizador de tablaturas Guitar Pro com player MIDI interativo (GPX/GP5/MusicXML)
 - **IPres Net** — Impressão sob demanda (envio direto de PDFs para gráfica)
 
 ---
@@ -359,7 +360,9 @@ Painel de gerenciamento de APIs e serviços conectados à plataforma.
 | IA — Imagens | Gemini API (Google) para geração de imagens reais (instrumentos, anatomia, cenas históricas) |
 | IA — Agentes secundários | Modelos open source (Llama/Mistral via Groq) para tarefas de classificação e parsing de menor custo |
 | WhatsApp | UAZAPI (infraestrutura já existente) |
-| Repertório | Songsterr (API + Redux state scraping) + Cifra Club (scraping) — uso interno, modelo "Adquirir e Reter" |
+| Repertório | Songsterr (API + Redux state scraping) + Cifra Club (scraping) + Upload GP direto — uso interno, modelo "Adquirir e Reter" |
+| Tablatura interativa | AlphaTab (@coderline/alphatab) — player MIDI, mixer multi-track, cursor animado, SoundFont GeneralUser GS |
+| Áudio MIDI | SoundFont GeneralUser GS (30MB) — 270 instrumentos, qualidade profissional |
 | Áudio (futuro) | Music AI / Suno API / Moises API para backing tracks e separação de stems |
 | Distribuição | PWA (MVP) → React Native (futuro) |
 | Desenvolvimento | Claude (backend/banco via MCP) + Windsurf Cascade (frontend/UI) |
@@ -427,6 +430,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 - `generated-materials` — PDFs e HTMLs gerados (privado, RLS)
 - `content-images` — Imagens de conteúdo e geradas por IA (privado, RLS)
 - `audio-tracks` — Stems de áudio e backing tracks (privado, RLS)
+- `gp-files` — Arquivos Guitar Pro (.gp/.gpx/.gp7/.musicxml) enviados por professores (privado, RLS)
 
 ---
 
@@ -663,6 +667,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | time_signature | text | Fórmula de compasso (ex: "4/4", "3/4") |
 | songsterr_id | int (unique) | ID da música no Songsterr |
 | sections | jsonb | Seções da música (intro, verso, refrão, etc.) |
+| gp_file_url | text | URL do arquivo Guitar Pro no Storage (bucket gp-files) |
 | embedding | vector | Embedding semântico para busca por similaridade (pgvector) |
 
 **backing_tracks** — Stems de áudio separados por instrumento
@@ -937,7 +942,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | 05 | Base Curada | `/conteudo` | Tabela de conteúdos, 3 tabs (Lista/Por Tópico/Fila Curadoria), workflow de status |
 | 06 | Biblioteca Musical | `/biblioteca` | 4 tabs: Acordes (SVGuitar), Escalas (VexFlow), Notação, Imagens IA (Gemini) |
 | 07 | Alunos | `/alunos` | Lista com filtros, alertas de risco, progress bars, 5 tabs de status |
-| 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, importação Songsterr + Cifra Club, editor de cifra, transposição |
+| 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, importação Songsterr + Cifra Club + GP, editor de cifra, transposição, tablatura interativa com player MIDI |
 | 09 | Turmas | `/turmas` | 8 turmas incluindo Baby Class/Kids/Heart, professor/horário/jornada |
 | 10 | Visão Professor | `/professor` | Chamada diária, presença/ausência, tópicos por aluno, avaliação estrelas |
 | 11 | Gamificação | `/gamificacao` | KPIs, grid conquistas, leaderboard |
@@ -1006,7 +1011,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [ ] Versionamento de material (rascunho → publicado)
 - [ ] Exportação PDF via Puppeteer / React-PDF
 
-### Fase 5 — Repertório e Conteúdo Musical (Semanas 13-15) 
+### Fase 5 — Repertório e Conteúdo Musical (Semanas 13-15) ✅ CONCLUÍDA
 - [x] Importação Songsterr: busca, metadados, cifra/acordes/tom/BPM/vídeos (3 Edge Functions)
 - [x] Importação Cifra Club: busca artista/música, scraping cifra com acordes e letra (2 Edge Functions)
 - [x] Editor de cifra do zero (CifraEditor): 3 modos, toolbar completa, parser de cifra colada
@@ -1014,8 +1019,14 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [x] Mini-diagramas de acordes: violão (SVGuitar) + teclado (SVG) em tempo real
 - [x] RepertoireSheet: visualização completa com cifra, acordes, YouTube, metadados
 - [x] Tabela backing_tracks + bucket audio-tracks criados
+- [x] AlphaTab: player de tablatura interativo com MIDI, cursor animado, scroll automático
+- [x] SoundFont GeneralUser GS (30MB, 270 instrumentos) integrado
+- [x] Pipeline Songsterr→GP: Edge Function baixa JSON do CDN, conversor frontend gera Score in-memory
+- [x] Mixer de volumes por track: volume individual, solo, mute (até 11 tracks testado)
+- [x] Upload de arquivos GP: bucket gp-files no Storage, service + UI no RepertoireSheet
+- [x] Modal "Importar GP" dedicado: drag & drop → parse AlphaTab → auto-preencher metadados → salvar
 - [ ] Parser ChordPro completo e integração no editor
-- [ ] AlphaTab: renderizador de tablaturas Guitar Pro (.gp/.gpx)
+- [ ] Modal unificado de importação (Cifra Club + Songsterr + GP num só lugar)
 - [ ] Enriquecer biblioteca de acordes (bases open source)
 
 ### Fase 6 — Monitoramento + Gamificação (Semanas 16-18)

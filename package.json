@@ -32,7 +32,6 @@
     "@tiptap/pm": "^3.20.1",
     "@tiptap/react": "^3.20.1",
     "@tiptap/starter-kit": "^3.20.1",
-    "@tombatossals/chords-db": "^0.5.1",
     "@vitejs/plugin-react": "^5.0.4",
     "chordsheetjs": "^14.0.0",
     "class-variance-authority": "^0.7.1",
@@ -61,6 +60,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@tombatossals/chords-db": "^0.5.1",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

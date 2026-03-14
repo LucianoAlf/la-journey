@@ -1,9 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import * as alphaTabModule from '@coderline/alphatab'
-import { SpinnerGap, Gauge, FilePdf, Play, Pause, Stop, Metronome, Repeat, SpeakerHigh, SpeakerSlash } from '@phosphor-icons/react'
+import { SpinnerGap, Gauge, FilePdf, Play, Pause, Stop, Metronome, Repeat, SpeakerHigh, SpeakerSlash, Faders, SpeakerSimpleHigh, SpeakerSimpleSlash } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { generatePdfFromElement } from '@/services/pdfService'
+import { convertSongsterrToScore } from '@/lib/songsterr-converter'
 import { toast } from 'sonner'
 
 type PlayerState = 'stopped' | 'playing' | 'paused'
@@ -56,6 +57,12 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
   const [loopOn, setLoopOn] = useState(false)
   const [muted, setMuted] = useState(false)
 
+  // Mixer states
+  const [mixerOpen, setMixerOpen] = useState(false)
+  const [trackVolumes, setTrackVolumes] = useState<Record<number, number>>({})
+  const [trackMutes, setTrackMutes] = useState<Record<number, boolean>>({})
+  const [trackSolos, setTrackSolos] = useState<Record<number, boolean>>({})
+
   // Inicializar AlphaTab
   useEffect(() => {
     if (!mainRef.current || (!fileUrl && !tex)) return
@@ -94,11 +101,14 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
       res.scoreInfoColor = new alphaTabModule.model.Color(40, 40, 55, 255)
     }
 
-    if (fileUrl) {
+    const isSongsterrJson = fileUrl?.includes('.songsterr.json') ?? false
+
+    if (fileUrl && !isSongsterrJson) {
       settings.core.file = fileUrl
     } else if (tex) {
       settings.core.tex = true
     }
+    // Se for .songsterr.json, NÃO setamos settings.core.file — carregamos manualmente
 
     const api = new alphaTabModule.AlphaTabApi(mainRef.current, settings)
     apiRef.current = api
@@ -113,12 +123,44 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
       api.tex(tex)
     }
 
+    // Songsterr JSON: fetch → converter → renderScore in-memory
+    if (isSongsterrJson && fileUrl) {
+      fetch(fileUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        })
+        .then((bundle) => {
+          console.log('[AlphaTab] Convertendo Songsterr JSON →', bundle.title, bundle.artist)
+          const score = convertSongsterrToScore(bundle)
+          console.log('[AlphaTab] Score gerado:', score.tracks.length, 'tracks,', score.masterBars.length, 'compassos')
+          api.renderScore(score)
+        })
+        .catch((err) => {
+          console.error('[AlphaTab] Erro ao converter Songsterr JSON:', err)
+          setError(`Erro ao converter tablatura: ${err?.message || err}`)
+          setLoading(false)
+        })
+    }
+
     // Score carregado
     api.scoreLoaded.on((score: alphaTabModule.model.Score) => {
       setSongTitle(score.title || '')
       setSongArtist(score.artist || '')
       setTracks(score.tracks)
       setActiveTrackIndex(0)
+      // Inicializar volumes do mixer (100% para todas)
+      const vols: Record<number, number> = {}
+      const muts: Record<number, boolean> = {}
+      const sols: Record<number, boolean> = {}
+      score.tracks.forEach((_: any, i: number) => {
+        vols[i] = 1
+        muts[i] = false
+        sols[i] = false
+      })
+      setTrackVolumes(vols)
+      setTrackMutes(muts)
+      setTrackSolos(sols)
     })
 
     // Render finalizado
@@ -211,6 +253,29 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
     setMuted(next)
     apiRef.current.masterVolume = next ? 0 : 1
   }, [muted])
+
+  // Mixer: alterar volume de uma track
+  const handleTrackVolume = useCallback((trackIndex: number, volume: number) => {
+    if (!apiRef.current || !tracks[trackIndex]) return
+    setTrackVolumes(prev => ({ ...prev, [trackIndex]: volume }))
+    apiRef.current.changeTrackVolume([tracks[trackIndex]], volume)
+  }, [tracks])
+
+  // Mixer: toggle mute de uma track
+  const handleTrackMute = useCallback((trackIndex: number) => {
+    if (!apiRef.current || !tracks[trackIndex]) return
+    const next = !trackMutes[trackIndex]
+    setTrackMutes(prev => ({ ...prev, [trackIndex]: next }))
+    apiRef.current.changeTrackMute([tracks[trackIndex]], next)
+  }, [tracks, trackMutes])
+
+  // Mixer: toggle solo de uma track
+  const handleTrackSolo = useCallback((trackIndex: number) => {
+    if (!apiRef.current || !tracks[trackIndex]) return
+    const next = !trackSolos[trackIndex]
+    setTrackSolos(prev => ({ ...prev, [trackIndex]: next }))
+    apiRef.current.changeTrackSolo([tracks[trackIndex]], next)
+  }, [tracks, trackSolos])
 
   // Gerar PDF da tablatura — expande container temporariamente para captura completa
   const handleGeneratePdf = useCallback(async () => {
@@ -345,9 +410,95 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
         <div ref={mainRef} className="at-main" style={{ width: '100%', minHeight }} />
       </div>
 
+      {/* ====== Mixer de tracks (expansível) ====== */}
+      {!loading && !error && mixerOpen && tracks.length > 0 && (
+        <div className="border-t border-border bg-background/90 backdrop-blur-sm px-3 py-2 max-h-[200px] overflow-y-auto">
+          <div className="space-y-1">
+            {tracks.map((track, i) => {
+              const vol = trackVolumes[i] ?? 1
+              const isMuted = trackMutes[i] ?? false
+              const isSolo = trackSolos[i] ?? false
+              const isActive = i === activeTrackIndex
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 px-2 py-1 rounded-lg transition-colors ${
+                    isActive ? 'bg-accent/10 border border-accent/20' : 'hover:bg-surface-hover'
+                  }`}
+                >
+                  {/* Nome da track (clicável para trocar visualização) */}
+                  <button
+                    className={`text-[11px] font-medium truncate w-[130px] text-left ${
+                      isActive ? 'text-accent' : 'text-text2 hover:text-text'
+                    }`}
+                    onClick={() => handleTrackChange(i)}
+                    title={track.name || `Track ${i + 1}`}
+                  >
+                    {track.name || `Track ${i + 1}`}
+                  </button>
+
+                  {/* Botão Solo */}
+                  <button
+                    className={`text-[9px] font-bold w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                      isSolo
+                        ? 'bg-yellow-500/90 text-black'
+                        : 'bg-border/50 text-text3 hover:bg-border'
+                    }`}
+                    onClick={() => handleTrackSolo(i)}
+                    title={isSolo ? 'Desativar solo' : 'Solo'}
+                  >
+                    S
+                  </button>
+
+                  {/* Botão Mute */}
+                  <button
+                    className={`text-[9px] font-bold w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                      isMuted
+                        ? 'bg-red-500/90 text-white'
+                        : 'bg-border/50 text-text3 hover:bg-border'
+                    }`}
+                    onClick={() => handleTrackMute(i)}
+                    title={isMuted ? 'Desmutar' : 'Mutar'}
+                  >
+                    M
+                  </button>
+
+                  {/* Ícone volume */}
+                  <button
+                    className="text-text3 hover:text-text flex-shrink-0"
+                    onClick={() => handleTrackMute(i)}
+                    title={isMuted ? 'Desmutar' : 'Mutar'}
+                  >
+                    {isMuted ? <SpeakerSimpleSlash size={13} /> : <SpeakerSimpleHigh size={13} />}
+                  </button>
+
+                  {/* Slider de volume */}
+                  <input
+                    type="range"
+                    min={0}
+                    max={1.6}
+                    step={0.05}
+                    value={vol}
+                    onChange={e => handleTrackVolume(i, parseFloat(e.target.value))}
+                    className="flex-1 h-1 accent-accent cursor-pointer"
+                    title={`Volume: ${Math.round(vol * 100)}%`}
+                    style={{ minWidth: 60 }}
+                  />
+
+                  {/* Porcentagem */}
+                  <span className="text-[9px] text-text3 font-mono w-8 text-right">
+                    {Math.round(vol * 100)}%
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ====== Player MIDI — barra inferior fixa ====== */}
       {!loading && !error && (
-        <div className="border-t border-border bg-background/80 backdrop-blur-sm px-3 py-2 space-y-1.5">
+        <div className="border-t border-border bg-background/80 backdrop-blur-sm px-3 py-1 space-y-0.5">
           {/* Barra de progresso */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-text3 font-mono w-10 text-right">{currentTime}</span>
@@ -366,7 +517,7 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-full"
+              className="h-7 w-7 rounded-full"
               onClick={handlePlayPause}
               disabled={!playerReady}
               title={playerState === 'playing' ? 'Pausar' : 'Tocar'}
@@ -448,11 +599,24 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
               <Repeat size={14} />
             </Button>
 
+            {/* Mixer toggle */}
+            {tracks.length > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-7 w-7 ml-auto ${mixerOpen ? 'text-accent bg-accent/10' : 'text-text3'}`}
+                onClick={() => setMixerOpen(prev => !prev)}
+                title={mixerOpen ? 'Fechar mixer' : 'Abrir mixer de volumes'}
+              >
+                <Faders size={14} />
+              </Button>
+            )}
+
             {/* Volume / Mute */}
             <Button
               variant="ghost"
               size="icon"
-              className={`h-7 w-7 ml-auto ${muted ? 'text-red-400' : 'text-text3'}`}
+              className={`h-7 w-7 ${tracks.length <= 1 ? 'ml-auto' : ''} ${muted ? 'text-red-400' : 'text-text3'}`}
               onClick={handleMuteToggle}
               title={muted ? 'Ativar som' : 'Mutar'}
             >

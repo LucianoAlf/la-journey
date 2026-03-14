@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { FloppyDisk, MusicNotes, ListBullets, NotePencil } from '@phosphor-icons/react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { FloppyDisk, MusicNotes, ListBullets, NotePencil, UploadSimple, MusicNotesSimple, Trash, SpinnerGap } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createSong, updateSong } from '@/services/repertoireService'
+import { uploadGpFile, updateGpFileUrl } from '@/services/gpFileService'
 import { CifraEditor, extractChordsFromCifra } from '@/components/repertoire/CifraEditor'
 import type { Tables } from '@/lib/database.types'
 
@@ -35,8 +36,12 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const isEditing = !!song
-
   const [activeTab, setActiveTab] = useState<'dados' | 'cifra'>('dados')
+
+  // Upload GP
+  const gpInputRef = useRef<HTMLInputElement>(null)
+  const [gpFile, setGpFile] = useState<File | null>(null)
+  const [uploadingGp, setUploadingGp] = useState(false)
 
   useEffect(() => {
     if (song) {
@@ -54,6 +59,7 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
       setForm(emptyForm)
     }
     setActiveTab('dados')
+    setGpFile(null)
   }, [song, open])
 
   // Auto-extrair acordes da cifra quando o campo de acordes está vazio
@@ -89,13 +95,31 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
         cifra_source: form.cifra_content ? 'manual' : (isEditing ? (song?.cifra_source ?? null) : null),
       }
 
+      let savedSongId: string | null = null
       if (isEditing && song) {
         await updateSong(song.id, payload)
+        savedSongId = song.id
         toast.success('Música atualizada!')
       } else {
-        await createSong(payload)
+        const created = await createSong(payload)
+        savedSongId = created?.id ?? null
         toast.success('Música adicionada!')
       }
+
+      // Upload GP se selecionado
+      if (gpFile && savedSongId) {
+        try {
+          setUploadingGp(true)
+          const url = await uploadGpFile(gpFile, savedSongId)
+          await updateGpFileUrl(savedSongId, url)
+          toast.success('Arquivo GP enviado com sucesso!')
+        } catch (gpErr: any) {
+          toast.error('Música salva, mas erro no upload GP: ' + (gpErr?.message ?? ''))
+        } finally {
+          setUploadingGp(false)
+        }
+      }
+
       onSuccess()
       onClose()
     } catch (error: any) {
@@ -228,6 +252,47 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
                 value={form.chords}
                 onChange={e => setForm(prev => ({ ...prev, chords: e.target.value }))}
               />
+            </div>
+
+            {/* Upload de arquivo Guitar Pro */}
+            <div className="space-y-1.5 mb-4">
+              <Label>Arquivo Guitar Pro (tablatura)</Label>
+              <input
+                ref={gpInputRef}
+                type="file"
+                accept=".gp,.gp3,.gp4,.gp5,.gpx,.gp7,.musicxml,.mxl"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) setGpFile(f)
+                  e.target.value = ''
+                }}
+                className="hidden"
+              />
+              {gpFile ? (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <MusicNotesSimple size={16} className="text-green-400 shrink-0" />
+                  <span className="text-[12px] text-green-300 truncate flex-1">{gpFile.name}</span>
+                  <span className="text-[10px] text-text3">{(gpFile.size / 1024).toFixed(0)} KB</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-text3 hover:text-red-400"
+                    onClick={() => setGpFile(null)}
+                  >
+                    <Trash size={12} />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => gpInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-border hover:border-accent/40 hover:bg-accent/5 transition-colors text-text3"
+                >
+                  <UploadSimple size={16} />
+                  <span className="text-[12px]">Enviar arquivo .gp, .gpx, .gp7, .musicxml</span>
+                </button>
+              )}
+              <p className="text-[10px] text-text3/60">Baixou do Songsterr Plus? Suba o arquivo aqui para ter tablatura completa com player.</p>
             </div>
           </TabsContent>
 

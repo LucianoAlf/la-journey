@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import {
   Lightning, Plus, PencilSimple, Trash, SpinnerGap, Warning,
   Eye, MusicNote, Guitar, PianoKeys, MicrophoneStage, Rows, Table as TableIcon,
-  MagnifyingGlass, Funnel, Star
+  MagnifyingGlass, Funnel, Star, FileArrowUp
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { RepertoireModal } from "@/components/modals/RepertoireModal";
 import { CifraClubImportModal } from "@/components/modals/CifraClubImportModal";
 import { SongsterrImportModal } from "@/components/modals/SongsterrImportModal";
 import { RepertoireSheet } from "@/components/repertoire/RepertoireSheet";
+import { GpImportModal } from "@/components/modals/GpImportModal";
 import type { Tables } from "@/lib/database.types";
 
 type Repertoire = Tables<'repertoire'>
@@ -250,6 +251,7 @@ export function Repertorio() {
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [songsterrModalOpen, setSongsterrModalOpen] = useState(false);
+  const [gpModalOpen, setGpModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Repertoire | null>(null);
   const [previewSong, setPreviewSong] = useState<Repertoire | null>(null);
   const [search, setSearch] = useState('');
@@ -382,6 +384,9 @@ export function Repertorio() {
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setSongsterrModalOpen(true)}>
             <Guitar size={16} weight="fill" className="text-orange-400" /> Importar Songsterr
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setGpModalOpen(true)}>
+            <FileArrowUp size={16} weight="fill" className="text-green-400" /> Importar GP
           </Button>
           <Button onClick={handleNew}>
             <Plus size={16} /> Nova Música
@@ -761,6 +766,12 @@ export function Repertorio() {
       <SongsterrImportModal
         open={songsterrModalOpen}
         onClose={() => setSongsterrModalOpen(false)}
+        onSuccess={refetch}
+      />
+
+      <GpImportModal
+        open={gpModalOpen}
+        onClose={() => setGpModalOpen(false)}
         onSuccess={refetch}
       />
 
