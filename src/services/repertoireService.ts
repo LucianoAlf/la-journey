@@ -122,6 +122,56 @@ export async function importFromCifraClub(url: string): Promise<CifraData> {
   return result as CifraData
 }
 
+// --- Batch Import (múltiplas músicas de uma vez) ---
+
+export interface BatchImportResult {
+  url: string
+  status: 'success' | 'error' | 'duplicate'
+  title?: string
+  artist?: string
+  error?: string
+  id?: string
+}
+
+export interface BatchImportResponse {
+  results: BatchImportResult[]
+  summary: {
+    total: number
+    success: number
+    duplicates: number
+    errors: number
+  }
+}
+
+export async function batchImportFromCifraClub(
+  urls: string[],
+  instruments: string[] = []
+): Promise<BatchImportResponse> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) throw new Error('Autenticação necessária')
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/cifra-club-batch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ urls, instruments }),
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(result.error || `Erro ${response.status} na importação em lote`)
+  }
+
+  return result as BatchImportResponse
+}
+
 export async function saveCifraToRepertoire(cifra: CifraData, instruments: string[] = []) {
   const { data, error } = await supabase
     .from('repertoire')

@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import {
   Lightning, MagnifyingGlass, SpinnerGap,
   MicrophoneStage, Check, X, Plus, MusicNotes, ListBullets,
-  ArrowLeft, Link as LinkIcon, CaretRight
+  ArrowLeft, Link as LinkIcon, CaretRight, CheckSquare, Square, Stack
 } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,8 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { searchCifraClub, importFromCifraClub, saveCifraToRepertoire } from '@/services/repertoireService'
-import type { CifraData, CifraSearchResult } from '@/services/repertoireService'
+import { searchCifraClub, importFromCifraClub, saveCifraToRepertoire, batchImportFromCifraClub } from '@/services/repertoireService'
+import type { CifraData, CifraSearchResult, BatchImportResult } from '@/services/repertoireService'
 
 interface CifraClubImportModalProps {
   open: boolean
@@ -104,6 +104,10 @@ export function CifraClubImportModal({ open, onClose, onSuccess }: CifraClubImpo
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>(['Violão'])
   const [editDifficulty, setEditDifficulty] = useState<number>(1)
   const [editGenre, setEditGenre] = useState<string>('')
+  // Seleção múltipla para importação em lote
+  const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set())
+  const [batchImporting, setBatchImporting] = useState(false)
+  const [batchResults, setBatchResults] = useState<BatchImportResult[] | null>(null)
 
   // Buscar por nome
   const handleSearch = useCallback(async () => {
@@ -202,6 +206,56 @@ export function CifraClubImportModal({ open, onClose, onSuccess }: CifraClubImpo
     setSelectedInstruments(['Violão'])
     setEditDifficulty(1)
     setEditGenre('')
+    setSelectedUrls(new Set())
+    setBatchResults(null)
+    setBatchImporting(false)
+  }
+
+  // Importação em lote
+  const handleBatchImport = async () => {
+    if (selectedUrls.size === 0) {
+      toast.error('Selecione pelo menos uma música')
+      return
+    }
+    setBatchImporting(true)
+    setBatchResults(null)
+    try {
+      const urls = Array.from(selectedUrls)
+      const response = await batchImportFromCifraClub(urls, selectedInstruments)
+      setBatchResults(response.results)
+      const { success, duplicates, errors } = response.summary
+      if (success > 0) {
+        toast.success(`${success} música${success > 1 ? 's' : ''} importada${success > 1 ? 's' : ''} com sucesso!`)
+        onSuccess()
+      }
+      if (duplicates > 0) {
+        toast.info(`${duplicates} já existia${duplicates > 1 ? 'm' : ''} no repertório`)
+      }
+      if (errors > 0) {
+        toast.error(`${errors} falha${errors > 1 ? 's' : ''} na importação`)
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro na importação em lote')
+    } finally {
+      setBatchImporting(false)
+    }
+  }
+
+  const toggleSelectUrl = (url: string) => {
+    setSelectedUrls(prev => {
+      const next = new Set(prev)
+      if (next.has(url)) next.delete(url)
+      else next.add(url)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedUrls.size === filteredResults.length) {
+      setSelectedUrls(new Set())
+    } else {
+      setSelectedUrls(new Set(filteredResults.map(r => r.url)))
+    }
   }
 
   const handleBack = () => {
@@ -209,6 +263,8 @@ export function CifraClubImportModal({ open, onClose, onSuccess }: CifraClubImpo
       setPreview(null)
       setStep(searchResults.length > 0 ? 'results' : 'search')
     } else if (step === 'results') {
+      setBatchResults(null)
+      setSelectedUrls(new Set())
       setStep('search')
     }
   }
@@ -235,7 +291,7 @@ export function CifraClubImportModal({ open, onClose, onSuccess }: CifraClubImpo
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[800px] bg-surface border-border max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className={`sm:max-w-[800px] bg-surface border-border max-h-[90vh] overflow-hidden flex flex-col ${step !== 'search' ? 'h-[85vh]' : ''}`}>
         <DialogHeader className="shrink-0">
           <DialogTitle className="font-serif text-[22px] flex items-center gap-2">
             <Lightning size={22} weight="fill" className="text-yellow-400" />
@@ -339,14 +395,29 @@ export function CifraClubImportModal({ open, onClose, onSuccess }: CifraClubImpo
                   <> de <span className="font-semibold text-accent">{searchResults[0].artist}</span></>
                 )}
               </p>
-              {searchResults.length > 10 && (
-                <Input
-                  placeholder="Filtrar por nome..."
-                  value={resultFilter}
-                  onChange={e => setResultFilter(e.target.value)}
-                  className="w-48 h-7 text-xs"
-                />
-              )}
+              <div className="flex items-center gap-2">
+                {searchResults.length > 10 && (
+                  <Input
+                    placeholder="Filtrar por nome..."
+                    value={resultFilter}
+                    onChange={e => setResultFilter(e.target.value)}
+                    className="w-40 h-7 text-xs"
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleSelectAll}
+                  className="h-7 text-[11px] text-text3 hover:text-text gap-1"
+                >
+                  {selectedUrls.size === filteredResults.length && filteredResults.length > 0 ? (
+                    <CheckSquare size={14} weight="fill" className="text-accent" />
+                  ) : (
+                    <Square size={14} />
+                  )}
+                  {selectedUrls.size > 0 ? `${selectedUrls.size} selecionada${selectedUrls.size > 1 ? 's' : ''}` : 'Selecionar'}
+                </Button>
+              </div>
             </div>
 
             {loading && (
@@ -356,31 +427,121 @@ export function CifraClubImportModal({ open, onClose, onSuccess }: CifraClubImpo
               </div>
             )}
 
-            {!loading && (
-              <ScrollArea className="flex-1 h-[380px]">
+            {batchImporting && (
+              <div className="flex items-center justify-center py-8 gap-2 text-text3">
+                <SpinnerGap size={20} className="animate-spin" />
+                <span className="text-sm">Importando {selectedUrls.size} música{selectedUrls.size > 1 ? 's' : ''}...</span>
+              </div>
+            )}
+
+            {!loading && !batchImporting && (
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent">
                 <div className="space-y-1">
-                  {filteredResults.map((result, i) => (
-                    <button
-                      key={`${result.slug}-${i}`}
-                      onClick={() => handleSelectSong(result)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent hover:border-accent/30 hover:bg-accent/5 text-left transition-all group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                        <MusicNotes size={16} className="text-accent" />
+                  {filteredResults.map((result, i) => {
+                    const isSelected = selectedUrls.has(result.url)
+                    const batchStatus = batchResults?.find(r => r.url === result.url)
+                    return (
+                      <div
+                        key={`${result.slug}-${i}`}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left transition-all group ${
+                          batchStatus?.status === 'success'
+                            ? 'border-green-500/30 bg-green-500/5'
+                            : batchStatus?.status === 'duplicate'
+                            ? 'border-yellow-500/30 bg-yellow-500/5'
+                            : batchStatus?.status === 'error'
+                            ? 'border-red-500/30 bg-red-500/5'
+                            : isSelected
+                            ? 'border-accent/30 bg-accent/5'
+                            : 'border-transparent hover:border-accent/20 hover:bg-accent/5'
+                        }`}
+                      >
+                        {/* Checkbox para seleção em lote */}
+                        <button
+                          onClick={() => toggleSelectUrl(result.url)}
+                          className="shrink-0 p-0.5"
+                          disabled={!!batchStatus}
+                        >
+                          {batchStatus?.status === 'success' ? (
+                            <Check size={16} weight="bold" className="text-green-400" />
+                          ) : batchStatus?.status === 'duplicate' ? (
+                            <Check size={16} weight="bold" className="text-yellow-400" />
+                          ) : batchStatus?.status === 'error' ? (
+                            <X size={16} weight="bold" className="text-red-400" />
+                          ) : isSelected ? (
+                            <CheckSquare size={16} weight="fill" className="text-accent" />
+                          ) : (
+                            <Square size={16} className="text-text3 group-hover:text-text2" />
+                          )}
+                        </button>
+
+                        {/* Conteúdo clicável → preview individual */}
+                        <button
+                          onClick={() => handleSelectSong(result)}
+                          className="flex-1 flex items-center gap-3 min-w-0"
+                          disabled={!!batchStatus}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                            <MusicNotes size={14} className="text-accent" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-text truncate group-hover:text-accent transition-colors">
+                              {result.title}
+                            </p>
+                            <p className="text-[11px] text-text3 truncate">
+                              {result.artist}
+                              {batchStatus?.status === 'success' && ' · Importada ✓'}
+                              {batchStatus?.status === 'duplicate' && ' · Já existe'}
+                              {batchStatus?.status === 'error' && ` · ${batchStatus.error}`}
+                            </p>
+                          </div>
+                        </button>
+
+                        <CaretRight size={14} className="text-text3 group-hover:text-accent shrink-0 transition-colors" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text truncate group-hover:text-accent transition-colors">
-                          {result.title}
-                        </p>
-                        <p className="text-[11px] text-text3 truncate">
-                          {result.artist}
-                        </p>
-                      </div>
-                      <CaretRight size={14} className="text-text3 group-hover:text-accent shrink-0 transition-colors" />
-                    </button>
-                  ))}
+                    )
+                  })}
                 </div>
-              </ScrollArea>
+              </div>
+            )}
+
+            {/* Footer com botão de importação em lote */}
+            {selectedUrls.size > 0 && !batchResults && (
+              <div className="shrink-0 flex items-center justify-between pt-3 border-t border-border mt-2">
+                <p className="text-text3 text-[11px]">
+                  <span className="text-accent font-semibold">{selectedUrls.size}</span> música{selectedUrls.size > 1 ? 's' : ''} selecionada{selectedUrls.size > 1 ? 's' : ''}
+                  {selectedUrls.size > 20 && <span className="text-yellow-400"> (máx. 20 por vez)</span>}
+                </p>
+                <Button
+                  onClick={handleBatchImport}
+                  disabled={batchImporting}
+                  className="gap-1.5"
+                >
+                  {batchImporting ? (
+                    <SpinnerGap size={14} className="animate-spin" />
+                  ) : (
+                    <Stack size={14} weight="fill" />
+                  )}
+                  {batchImporting ? 'Importando...' : `Importar ${Math.min(selectedUrls.size, 20)} música${selectedUrls.size > 1 ? 's' : ''}`}
+                </Button>
+              </div>
+            )}
+
+            {/* Resumo após importação em lote */}
+            {batchResults && (
+              <div className="shrink-0 flex items-center justify-between pt-3 border-t border-border mt-2">
+                <p className="text-text3 text-[11px]">
+                  <span className="text-green-400 font-semibold">{batchResults.filter(r => r.status === 'success').length}</span> importadas
+                  {batchResults.filter(r => r.status === 'duplicate').length > 0 && (
+                    <> · <span className="text-yellow-400">{batchResults.filter(r => r.status === 'duplicate').length}</span> duplicadas</>
+                  )}
+                  {batchResults.filter(r => r.status === 'error').length > 0 && (
+                    <> · <span className="text-red-400">{batchResults.filter(r => r.status === 'error').length}</span> erros</>
+                  )}
+                </p>
+                <Button variant="ghost" size="sm" onClick={handleClose}>
+                  Fechar
+                </Button>
+              </div>
             )}
           </div>
         )}
