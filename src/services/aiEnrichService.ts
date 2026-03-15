@@ -93,6 +93,36 @@ REGRAS IMPORTANTES:
 - Se não souber um campo com certeza, omita-o do JSON (não invente)`
 }
 
+// ─── Parse robusto de JSON da IA ─────────────────────────
+
+function parseAIJson(text: string): EnrichmentResult {
+  // Limpar markdown wrapping
+  let cleaned = text
+    .replace(/```json\s*/g, '')
+    .replace(/```\s*/g, '')
+    .trim()
+
+  // Tentar parse direto
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    // Fallback: extrair o JSON entre { e } (ignorar lixo antes/depois)
+    const start = cleaned.indexOf('{')
+    const end = cleaned.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      cleaned = cleaned.slice(start, end + 1)
+      try {
+        return JSON.parse(cleaned)
+      } catch {
+        // Último recurso: tentar corrigir newlines literais em strings
+        const fixed = cleaned.replace(/(?<="[^"]*)\n(?=[^"]*")/g, '\\n')
+        return JSON.parse(fixed)
+      }
+    }
+    throw new Error(`Resposta da IA não é JSON válido: ${text.slice(0, 200)}`)
+  }
+}
+
 // ─── Enriquecer música com IA ───────────────────────────
 
 export async function enrichSongWithAI(song: Repertoire): Promise<{
@@ -113,24 +143,44 @@ export async function enrichSongWithAI(song: Repertoire): Promise<{
     }
   }
 
-  const prompt = buildEnrichPrompt(song, missingFields)
+  // Separar campos curtos (metadata) e longos (lyrics/cifra) para evitar JSON quebrado
+  const shortFields = missingFields.filter(f => f !== 'lyrics' && f !== 'cifra_content')
+  const longFields = missingFields.filter(f => f === 'lyrics' || f === 'cifra_content')
 
-  const aiResult = await generateText(
-    prompt,
-    AI_CONFIG.musicalCode,
-    'Você é um assistente de classificação musical. Responda SOMENTE com JSON válido.'
-  )
-
-  // Parse JSON da resposta
   let parsed: EnrichmentResult = {}
-  try {
-    const cleaned = aiResult.text
-      .replace(/```json\s*/g, '')
-      .replace(/```\s*/g, '')
-      .trim()
-    parsed = JSON.parse(cleaned)
-  } catch {
-    throw new Error(`Resposta da IA não é JSON válido: ${aiResult.text.slice(0, 200)}`)
+  let totalLatency = 0
+  let totalTokens = 0
+
+  // Fase 1: campos curtos (sempre)
+  if (shortFields.length > 0) {
+    const prompt = buildEnrichPrompt(song, shortFields)
+    const aiResult = await generateText(
+      prompt,
+      AI_CONFIG.musicalCode,
+      'Você é um especialista em música. Responda SOMENTE com JSON válido, sem markdown.'
+    )
+    totalLatency += aiResult.latencyMs
+    totalTokens += aiResult.tokensUsed ?? 0
+    parsed = parseAIJson(aiResult.text)
+  }
+
+  // Fase 2: campos longos (lyrics/cifra) em chamada separada
+  if (longFields.length > 0) {
+    const prompt = buildEnrichPrompt(song, longFields)
+    const aiResult = await generateText(
+      prompt,
+      AI_CONFIG.musicalCode,
+      'Você é um especialista em música. Responda SOMENTE com JSON válido. Para lyrics e cifra_content, use \\n para quebras de linha dentro das strings JSON.'
+    )
+    totalLatency += aiResult.latencyMs
+    totalTokens += aiResult.tokensUsed ?? 0
+    try {
+      const longParsed = parseAIJson(aiResult.text)
+      parsed = { ...parsed, ...longParsed }
+    } catch {
+      // Se falhar os campos longos, continua com os curtos que já parsearam
+      console.warn('[Enrich] Falha ao parsear campos longos, seguindo com campos curtos')
+    }
   }
 
   // Gerar preview antes/depois
@@ -182,8 +232,8 @@ export async function enrichSongWithAI(song: Repertoire): Promise<{
     result: parsed,
     preview: preview.filter(p => p.changed),
     missingFields,
-    latencyMs: aiResult.latencyMs,
-    tokensUsed: aiResult.tokensUsed,
+    latencyMs: totalLatency,
+    tokensUsed: totalTokens,
   }
 }
 
