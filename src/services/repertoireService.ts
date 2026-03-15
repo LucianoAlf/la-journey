@@ -397,6 +397,47 @@ export async function saveSongsterrToRepertoire(data: SongsterrImportData) {
   return saved
 }
 
+export async function saveChordProToRepertoire(parsed: {
+  title: string
+  artist: string | null
+  chords: string[]
+  key: string | null
+  genre: string | null
+  difficulty: number
+  cifra_content: string
+  lyrics: string | null
+  bpm: number | null
+  capo: number
+  time_signature: string
+  sections: Array<{ name: string; startLine: number }>
+}, instruments: string[] = []) {
+  const { data, error } = await supabase
+    .from('repertoire')
+    .insert({
+      title: parsed.title,
+      artist: parsed.artist,
+      chords: parsed.chords,
+      key: parsed.key,
+      genre: parsed.genre,
+      difficulty: parsed.difficulty,
+      instruments,
+      cifra_source: 'chordpro',
+      cifra_content: parsed.cifra_content,
+      lyrics: parsed.lyrics,
+      bpm: parsed.bpm,
+      capo: parsed.capo,
+      time_signature: parsed.time_signature,
+      sections: parsed.sections,
+      is_public_domain: true,
+      curation_status: 'draft',
+    })
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return data
+}
+
 export async function saveCifraToRepertoire(cifra: CifraData, instruments: string[] = []) {
   const { data, error } = await supabase
     .from('repertoire')

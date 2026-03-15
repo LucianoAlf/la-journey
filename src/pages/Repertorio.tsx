@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Lightning, Plus, PencilSimple, Trash, SpinnerGap, Warning,
   Eye, MusicNote, Guitar, PianoKeys, MicrophoneStage, Rows, Table as TableIcon,
-  MagnifyingGlass, Funnel, Star, FileArrowUp
+  MagnifyingGlass, Funnel, Star, SortAscending, SortDescending,
+  ArrowsDownUp, FileArrowUp, FileText, X, ChartDonut
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,10 +20,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useRepertoire } from "@/hooks/useRepertoire";
 import { deleteSong } from "@/services/repertoireService";
 import { RepertoireModal } from "@/components/modals/RepertoireModal";
-import { CifraClubImportModal } from "@/components/modals/CifraClubImportModal";
-import { SongsterrImportModal } from "@/components/modals/SongsterrImportModal";
 import { RepertoireSheet } from "@/components/repertoire/RepertoireSheet";
-import { GpImportModal } from "@/components/modals/GpImportModal";
+import { UnifiedImportModal } from "@/components/modals/UnifiedImportModal";
+import { RepertorioDashboard } from "@/components/repertoire/RepertorioDashboard";
 import type { Tables } from "@/lib/database.types";
 
 type Repertoire = Tables<'repertoire'>
@@ -229,14 +230,17 @@ function SongCard({ song, onEdit, onDelete, onPreview }: {
           </AlertDialogTrigger>
           <AlertDialogContent className="bg-surface border-border">
             <AlertDialogHeader>
-              <AlertDialogTitle>Excluir música?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Tem certeza que deseja excluir <strong>{song.title}</strong>? Esta ação não pode ser desfeita.
+              <AlertDialogTitle className="text-text">Excluir música?</AlertDialogTitle>
+              <AlertDialogDescription className="text-text2">
+                Tem certeza que deseja excluir <strong className="text-text">{song.title}</strong>? Esta ação não pode ser desfeita.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => onDelete()}>Excluir</AlertDialogAction>
+              <AlertDialogCancel className="border-border text-text2 hover:bg-surface">Cancelar</AlertDialogCancel>
+              <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white" onClick={() => onDelete()}>
+                <Trash size={14} />
+                Excluir
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -245,34 +249,113 @@ function SongCard({ song, onEdit, onDelete, onPreview }: {
   )
 }
 
+// --- Tipos de ordenação ---
+type SortField = 'title' | 'artist' | 'difficulty' | 'genre' | 'created_at'
+type SortDir = 'asc' | 'desc'
+
+// --- Configuração de origens ---
+const ORIGIN_CONFIG: Record<string, { label: string; icon?: React.ReactNode; color: string }> = {
+  cifra_club: { label: 'Cifra Club', icon: <Lightning size={11} weight="fill" className="text-amber-400" />, color: 'text-amber-400' },
+  songsterr: { label: 'Songsterr', icon: <Guitar size={11} weight="fill" className="text-orange-400" />, color: 'text-orange-400' },
+  gp_import: { label: 'Guitar Pro', icon: <FileArrowUp size={11} weight="fill" className="text-green-400" />, color: 'text-green-400' },
+  chordpro: { label: 'ChordPro', icon: <FileText size={11} weight="fill" className="text-purple-400" />, color: 'text-purple-400' },
+  manual: { label: 'Manual', icon: <PencilSimple size={11} className="text-text3" />, color: 'text-text3' },
+}
+
+// --- Instrumentos disponíveis ---
+const INSTRUMENT_OPTIONS = [
+  { key: 'Violão', icon: <Guitar size={12} /> },
+  { key: 'Guitarra', icon: <Guitar size={12} /> },
+  { key: 'Teclado', icon: <PianoKeys size={12} /> },
+  { key: 'Canto', icon: <MicrophoneStage size={12} /> },
+  { key: 'Baixo', icon: <Guitar size={12} /> },
+  { key: 'Bateria', icon: <MusicNote size={12} /> },
+  { key: 'Ukulele', icon: <Guitar size={12} /> },
+]
+
 // --- Página Principal ---
 export function Repertorio() {
   const { data: songs, loading, error, refetch } = useRepertoire();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [modalOpen, setModalOpen] = useState(false);
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [songsterrModalOpen, setSongsterrModalOpen] = useState(false);
-  const [gpModalOpen, setGpModalOpen] = useState(false);
+  const [unifiedModalOpen, setUnifiedModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Repertoire | null>(null);
   const [previewSong, setPreviewSong] = useState<Repertoire | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterGenre, setFilterGenre] = useState('todos');
-  const [filterDifficulty, setFilterDifficulty] = useState(0); // 0 = todos, 1-5
-  const [filterCuration, setFilterCuration] = useState('todos');
-  const [filterOrigin, setFilterOrigin] = useState('todos'); // todos, cifra_club, manual
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // --- Filtros persistidos na URL ---
+  const search = searchParams.get('q') ?? '';
+  const filterGenre = searchParams.get('genre') ?? 'todos';
+  const filterDifficulty = parseInt(searchParams.get('diff') ?? '0');
+  const filterCuration = searchParams.get('curation') ?? 'todos';
+  const filterOrigin = searchParams.get('origin') ?? 'todos';
+  const filterInstrument = searchParams.get('instrument') ?? 'todos';
+  const sortField = (searchParams.get('sort') ?? 'title') as SortField;
+  const sortDir = (searchParams.get('dir') ?? 'asc') as SortDir;
+  const viewMode = (searchParams.get('view') ?? 'table') as ViewMode;
+  const showAdvancedFilters = searchParams.get('filters') === '1';
+  const showDashboard = searchParams.get('dash') === '1';
+
+  // --- Helper para atualizar um param da URL sem perder os outros ---
+  const setParam = useCallback((key: string, value: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (value === '' || value === 'todos' || value === '0' || (key === 'sort' && value === 'title') || (key === 'dir' && value === 'asc') || (key === 'view' && value === 'table') || (key === 'filters' && value === '0') || (key === 'dash' && value === '0')) {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const setSearch = useCallback((v: string) => setParam('q', v), [setParam]);
+  const setFilterGenre = useCallback((v: string) => setParam('genre', v), [setParam]);
+  const setFilterDifficulty = useCallback((v: number) => setParam('diff', String(v)), [setParam]);
+  const setFilterCuration = useCallback((v: string) => setParam('curation', v), [setParam]);
+  const setFilterOrigin = useCallback((v: string) => setParam('origin', v), [setParam]);
+  const setFilterInstrument = useCallback((v: string) => setParam('instrument', v), [setParam]);
+  const setViewMode = useCallback((v: ViewMode) => setParam('view', v), [setParam]);
+  const setShowAdvancedFilters = useCallback((v: boolean) => setParam('filters', v ? '1' : '0'), [setParam]);
+
+  const toggleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setParam('dir', sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set('sort', field);
+        next.delete('dir');
+        return next;
+      }, { replace: true });
+    }
+  }, [sortField, sortDir, setParam, setSearchParams]);
+
+  const clearAllFilters = useCallback(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('q');
+      next.delete('genre');
+      next.delete('diff');
+      next.delete('curation');
+      next.delete('origin');
+      next.delete('instrument');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const activeFilterCount = [
     filterGenre !== 'todos',
     filterDifficulty > 0,
     filterCuration !== 'todos',
     filterOrigin !== 'todos',
+    filterInstrument !== 'todos',
   ].filter(Boolean).length
 
-  // --- Filtros ---
+  // --- Filtros + Ordenação ---
   const filtered = useMemo(() => {
     if (!songs) return [];
-    return songs.filter(s => {
+
+    const result = songs.filter(s => {
       const searchLower = search.toLowerCase()
       const matchesSearch = !search ||
         s.title.toLowerCase().includes(searchLower) ||
@@ -282,13 +365,39 @@ export function Repertorio() {
         (s.genre ?? '').toLowerCase() === filterGenre.toLowerCase();
       const matchesDifficulty = filterDifficulty === 0 || (s.difficulty ?? 1) === filterDifficulty;
       const matchesCuration = filterCuration === 'todos' || (s.curation_status ?? 'draft') === filterCuration;
-      const matchesOrigin = filterOrigin === 'todos' ||
-        (filterOrigin === 'cifra_club' && s.cifra_source === 'cifra_club') ||
-        (filterOrigin === 'songsterr' && s.cifra_source === 'songsterr') ||
-        (filterOrigin === 'manual' && s.cifra_source !== 'cifra_club' && s.cifra_source !== 'songsterr');
-      return matchesSearch && matchesGenre && matchesDifficulty && matchesCuration && matchesOrigin;
+
+      // Origem expandida com GP e ChordPro
+      let matchesOrigin = true;
+      if (filterOrigin !== 'todos') {
+        if (filterOrigin === 'manual') {
+          matchesOrigin = !s.cifra_source || s.cifra_source === 'manual';
+        } else {
+          matchesOrigin = s.cifra_source === filterOrigin;
+        }
+      }
+
+      // Instrumento
+      const matchesInstrument = filterInstrument === 'todos' ||
+        (s.instruments ?? []).some(i => i === filterInstrument);
+
+      return matchesSearch && matchesGenre && matchesDifficulty && matchesCuration && matchesOrigin && matchesInstrument;
     });
-  }, [songs, search, filterGenre, filterDifficulty, filterCuration, filterOrigin]);
+
+    // Ordenação
+    result.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'title': cmp = (a.title ?? '').localeCompare(b.title ?? ''); break;
+        case 'artist': cmp = (a.artist ?? '').localeCompare(b.artist ?? ''); break;
+        case 'difficulty': cmp = (a.difficulty ?? 1) - (b.difficulty ?? 1); break;
+        case 'genre': cmp = (a.genre ?? '').localeCompare(b.genre ?? ''); break;
+        case 'created_at': cmp = (a.created_at ?? '').localeCompare(b.created_at ?? ''); break;
+      }
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+
+    return result;
+  }, [songs, search, filterGenre, filterDifficulty, filterCuration, filterOrigin, filterInstrument, sortField, sortDir]);
 
   // --- KPIs ---
   const kpis = useMemo(() => {
@@ -360,6 +469,17 @@ export function Repertorio() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Toggle Dashboard */}
+          <button
+            onClick={() => setParam('dash', showDashboard ? '0' : '1')}
+            className={`px-3 py-1.5 text-xs flex items-center gap-1.5 rounded-lg border transition-colors ${
+              showDashboard
+                ? 'bg-accent/10 text-accent border-accent/30 font-semibold'
+                : 'text-text3 hover:text-text2 border-border'
+            }`}
+          >
+            <ChartDonut size={14} /> Dashboard
+          </button>
           {/* Toggle Tabela/Cards */}
           <div className="flex rounded-lg border border-border overflow-hidden">
             <button
@@ -379,60 +499,58 @@ export function Repertorio() {
               <Rows size={14} /> Cards
             </button>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setImportModalOpen(true)}>
-            <Lightning size={16} weight="fill" className="text-amber-400" /> Importar Cifra Club
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSongsterrModalOpen(true)}>
-            <Guitar size={16} weight="fill" className="text-orange-400" /> Importar Songsterr
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setGpModalOpen(true)}>
-            <FileArrowUp size={16} weight="fill" className="text-green-400" /> Importar GP
-          </Button>
-          <Button onClick={handleNew}>
-            <Plus size={16} /> Nova Música
+          <Button onClick={() => setUnifiedModalOpen(true)}>
+            <Plus size={16} /> Adicionar Música
           </Button>
         </div>
       </div>
 
-      {/* ====== KPIs ====== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          label="Total"
-          value={kpis.total}
-          icon={<MusicNote size={18} weight="fill" />}
-          barColor="bg-[#2D5A8E]"
-          iconBg="bg-[#2D5A8E]/15"
-          iconColor="text-[#4A7DC0]"
-          sub={`${kpis.cifraClub + kpis.songsterr} importada${(kpis.cifraClub + kpis.songsterr) !== 1 ? 's' : ''} · ${kpis.manual} manual`}
+      {/* ====== DASHBOARD ou KPIs ====== */}
+      {showDashboard ? (
+        <RepertorioDashboard
+          songs={songs ?? []}
+          onAddMusic={() => setUnifiedModalOpen(true)}
         />
-        <KpiCard
-          label="Gêneros"
-          value={kpis.genres}
-          icon={<Funnel size={18} />}
-          barColor="bg-indigo-500"
-          iconBg="bg-indigo-500/15"
-          iconColor="text-indigo-400"
-          sub="gêneros diferentes"
-        />
-        <KpiCard
-          label="Dificuldade Média"
-          value={kpis.avgDiff}
-          icon={<Star size={18} weight="fill" />}
-          barColor="bg-amber-500"
-          iconBg="bg-amber-500/15"
-          iconColor="text-amber-400"
-          sub="de 1 a 5 estrelas"
-        />
-        <KpiCard
-          label="Importadas"
-          value={kpis.cifraClub + kpis.songsterr}
-          icon={<Lightning size={18} weight="fill" />}
-          barColor="bg-[#FF2D78]"
-          iconBg="bg-[#FF2D78]/15"
-          iconColor="text-[#FF2D78]"
-          sub={kpis.total > 0 ? `${kpis.cifraClub} Cifra Club · ${kpis.songsterr} Songsterr` : '—'}
-        />
-      </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="Total"
+            value={kpis.total}
+            icon={<MusicNote size={18} weight="fill" />}
+            barColor="bg-[#2D5A8E]"
+            iconBg="bg-[#2D5A8E]/15"
+            iconColor="text-[#4A7DC0]"
+            sub={`${kpis.cifraClub + kpis.songsterr} importada${(kpis.cifraClub + kpis.songsterr) !== 1 ? 's' : ''} · ${kpis.manual} manual`}
+          />
+          <KpiCard
+            label="Gêneros"
+            value={kpis.genres}
+            icon={<Funnel size={18} />}
+            barColor="bg-indigo-500"
+            iconBg="bg-indigo-500/15"
+            iconColor="text-indigo-400"
+            sub="gêneros diferentes"
+          />
+          <KpiCard
+            label="Dificuldade Média"
+            value={kpis.avgDiff}
+            icon={<Star size={18} weight="fill" />}
+            barColor="bg-amber-500"
+            iconBg="bg-amber-500/15"
+            iconColor="text-amber-400"
+            sub="de 1 a 5 estrelas"
+          />
+          <KpiCard
+            label="Importadas"
+            value={kpis.cifraClub + kpis.songsterr}
+            icon={<Lightning size={18} weight="fill" />}
+            barColor="bg-[#FF2D78]"
+            iconBg="bg-[#FF2D78]/15"
+            iconColor="text-[#FF2D78]"
+            sub={kpis.total > 0 ? `${kpis.cifraClub} Cifra Club · ${kpis.songsterr} Songsterr` : '—'}
+          />
+        </div>
+      )}
 
       {/* ====== FILTROS ====== */}
       <div className="rounded-[14px] bg-card border border-border p-4 space-y-3">
@@ -519,6 +637,37 @@ export function Repertorio() {
               </div>
             </div>
 
+            {/* Instrumento */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Instrumento</label>
+              <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setFilterInstrument('todos')}
+                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                    filterInstrument === 'todos'
+                      ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                      : 'border-border text-text3 hover:text-text2'
+                  }`}
+                >
+                  Todos
+                </button>
+                {INSTRUMENT_OPTIONS.map(({ key, icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setFilterInstrument(filterInstrument === key ? 'todos' : key)}
+                    className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors flex items-center gap-1 ${
+                      filterInstrument === key
+                        ? 'border-[var(--azul-claro)]/40 bg-[var(--azul-claro)]/10 text-[var(--azul-claro)] font-semibold'
+                        : 'border-border text-text3 hover:text-text2'
+                    }`}
+                  >
+                    {icon}
+                    {key}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Curadoria */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Status de curadoria</label>
@@ -553,12 +702,17 @@ export function Repertorio() {
             <div className="space-y-1.5">
               <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Origem</label>
               <div className="flex gap-1.5 flex-wrap">
-                {([
-                  { key: 'todos', label: 'Todos' },
-                  { key: 'cifra_club', label: 'Cifra Club' },
-                  { key: 'songsterr', label: 'Songsterr' },
-                  { key: 'manual', label: 'Manual' },
-                ] as const).map(({ key, label }) => (
+                <button
+                  onClick={() => setFilterOrigin('todos')}
+                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                    filterOrigin === 'todos'
+                      ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                      : 'border-border text-text3 hover:text-text2'
+                  }`}
+                >
+                  Todos
+                </button>
+                {Object.entries(ORIGIN_CONFIG).map(([key, cfg]) => (
                   <button
                     key={key}
                     onClick={() => setFilterOrigin(filterOrigin === key ? 'todos' : key)}
@@ -568,8 +722,37 @@ export function Repertorio() {
                         : 'border-border text-text3 hover:text-text2'
                     }`}
                   >
-                    {key === 'cifra_club' && <Lightning size={11} weight="fill" className="text-amber-400" />}
-                    {key === 'songsterr' && <Guitar size={11} weight="fill" className="text-orange-400" />}
+                    {cfg.icon}
+                    {cfg.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Ordenação */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Ordenar por</label>
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { field: 'title' as SortField, label: 'Título' },
+                  { field: 'artist' as SortField, label: 'Artista' },
+                  { field: 'difficulty' as SortField, label: 'Dificuldade' },
+                  { field: 'genre' as SortField, label: 'Gênero' },
+                  { field: 'created_at' as SortField, label: 'Data' },
+                ]).map(({ field, label }) => (
+                  <button
+                    key={field}
+                    onClick={() => toggleSort(field)}
+                    className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors flex items-center gap-1 ${
+                      sortField === field
+                        ? 'border-[var(--azul-claro)]/40 bg-[var(--azul-claro)]/10 text-[var(--azul-claro)] font-semibold'
+                        : 'border-border text-text3 hover:text-text2'
+                    }`}
+                  >
+                    {sortField === field
+                      ? (sortDir === 'asc' ? <SortAscending size={12} /> : <SortDescending size={12} />)
+                      : <ArrowsDownUp size={12} />
+                    }
                     {label}
                   </button>
                 ))}
@@ -579,14 +762,10 @@ export function Repertorio() {
             {/* Limpar filtros */}
             {activeFilterCount > 0 && (
               <button
-                onClick={() => {
-                  setFilterGenre('todos')
-                  setFilterDifficulty(0)
-                  setFilterCuration('todos')
-                  setFilterOrigin('todos')
-                }}
-                className="text-[11px] text-accent hover:text-accent/80 font-semibold transition-colors"
+                onClick={clearAllFilters}
+                className="text-[11px] text-accent hover:text-accent/80 font-semibold transition-colors flex items-center gap-1"
               >
+                <X size={12} />
                 Limpar todos os filtros
               </button>
             )}
@@ -600,12 +779,44 @@ export function Repertorio() {
           <Table>
             <TableHeader>
               <TableRow className="bg-[var(--bg2)] hover:bg-[var(--bg2)]">
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Música</TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Artista</TableHead>
+                <TableHead
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  onClick={() => toggleSort('title')}
+                >
+                  <span className="flex items-center gap-1">
+                    Música
+                    {sortField === 'title' && (sortDir === 'asc' ? <SortAscending size={11} /> : <SortDescending size={11} />)}
+                  </span>
+                </TableHead>
+                <TableHead
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  onClick={() => toggleSort('artist')}
+                >
+                  <span className="flex items-center gap-1">
+                    Artista
+                    {sortField === 'artist' && (sortDir === 'asc' ? <SortAscending size={11} /> : <SortDescending size={11} />)}
+                  </span>
+                </TableHead>
                 <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Acordes</TableHead>
                 <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Tom</TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Gênero</TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Nível</TableHead>
+                <TableHead
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  onClick={() => toggleSort('genre')}
+                >
+                  <span className="flex items-center gap-1">
+                    Gênero
+                    {sortField === 'genre' && (sortDir === 'asc' ? <SortAscending size={11} /> : <SortDescending size={11} />)}
+                  </span>
+                </TableHead>
+                <TableHead
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  onClick={() => toggleSort('difficulty')}
+                >
+                  <span className="flex items-center gap-1">
+                    Nível
+                    {sortField === 'difficulty' && (sortDir === 'asc' ? <SortAscending size={11} /> : <SortDescending size={11} />)}
+                  </span>
+                </TableHead>
                 <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Status</TableHead>
                 <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 text-right">Ações</TableHead>
               </TableRow>
@@ -684,28 +895,32 @@ export function Repertorio() {
                           </Tooltip>
                         </TooltipProvider>
                         <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <TooltipProvider delayDuration={200}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-400 hover:text-red-300">
                                     <Trash size={15} />
                                   </Button>
-                                </TooltipTrigger>
-                                <TooltipContent><p className="text-xs">Excluir</p></TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </AlertDialogTrigger>
+                                </AlertDialogTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent><p className="text-xs">Excluir</p></TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                           <AlertDialogContent className="bg-surface border-border">
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Excluir música?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Tem certeza que deseja excluir <strong>{song.title}</strong>? Esta ação não pode ser desfeita.
+                              <AlertDialogTitle className="text-text">Excluir música?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-text2">
+                                Tem certeza que deseja excluir <strong className="text-text">{song.title}</strong>? Esta ação não pode ser desfeita.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => handleDelete(song.id)}>
+                              <AlertDialogCancel className="border-border text-text2 hover:bg-surface">Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                                onClick={() => handleDelete(song.id)}
+                              >
+                                <Trash size={14} />
                                 Excluir
                               </AlertDialogAction>
                             </AlertDialogFooter>
@@ -757,22 +972,11 @@ export function Repertorio() {
         song={editingSong}
       />
 
-      <CifraClubImportModal
-        open={importModalOpen}
-        onClose={() => setImportModalOpen(false)}
+      <UnifiedImportModal
+        open={unifiedModalOpen}
+        onClose={() => setUnifiedModalOpen(false)}
         onSuccess={refetch}
-      />
-
-      <SongsterrImportModal
-        open={songsterrModalOpen}
-        onClose={() => setSongsterrModalOpen(false)}
-        onSuccess={refetch}
-      />
-
-      <GpImportModal
-        open={gpModalOpen}
-        onClose={() => setGpModalOpen(false)}
-        onSuccess={refetch}
+        onOpenEditor={() => { setEditingSong(null); setModalOpen(true) }}
       />
 
       <RepertoireSheet

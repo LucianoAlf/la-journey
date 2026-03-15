@@ -18,6 +18,48 @@ export async function getChords(instrument?: Database['public']['Enums']['chord_
   return data
 }
 
+/** Busca paginada de acordes com filtros (para a Biblioteca Musical) */
+export async function getChordsPaginated(opts: {
+  instrument?: Database['public']['Enums']['chord_instrument']
+  search?: string
+  difficulty?: number
+  tag?: string
+  page?: number
+  pageSize?: number
+}): Promise<{ data: Chord[]; count: number }> {
+  const { instrument, search, difficulty, tag, page = 0, pageSize = 60 } = opts
+  const from = page * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase
+    .from('chord_library')
+    .select('*', { count: 'exact' })
+    .order('name')
+    .range(from, to)
+
+  if (instrument) query = query.eq('instrument', instrument)
+  if (search) query = query.ilike('name', `%${search}%`)
+  if (difficulty && difficulty > 0) query = query.eq('difficulty', difficulty)
+  if (tag && tag !== 'todos') query = query.contains('tags', [tag])
+
+  const { data, error, count } = await query
+  if (error) handleError(error)
+  return { data: data ?? [], count: count ?? 0 }
+}
+
+/** Contagem rápida de acordes por instrumento */
+export async function getChordsCount(instrument?: Database['public']['Enums']['chord_instrument']): Promise<number> {
+  let query = supabase
+    .from('chord_library')
+    .select('id', { count: 'exact', head: true })
+
+  if (instrument) query = query.eq('instrument', instrument)
+
+  const { count, error } = await query
+  if (error) handleError(error)
+  return count ?? 0
+}
+
 export async function getChordsByNames(names: string[], instrument?: Database['public']['Enums']['chord_instrument']) {
   if (!names.length) return []
   let query = supabase

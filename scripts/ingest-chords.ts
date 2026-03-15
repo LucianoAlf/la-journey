@@ -169,14 +169,17 @@ function convertPosition(pos: { frets: string; fingers: string; barres?: string;
       // Corda aberta
       fingers.push(finger !== '0' ? [svgString, 0, finger] : [svgString, 0])
     } else {
-      // Corda pressionada
-      fingers.push(finger !== '0' ? [svgString, fret, finger] : [svgString, fret])
+      // Corda pressionada — converter fret absoluto → relativo ao baseFret
+      // SVGuitar espera fret relativo: casa 1 do diagrama = baseFret
+      const relativeFret = fret - baseFret + 1
+      fingers.push(finger !== '0' ? [svgString, relativeFret, finger] : [svgString, relativeFret])
     }
   }
 
-  // Processar barres
+  // Processar barres — converter fret absoluto → relativo ao baseFret
   if (pos.barres) {
     const barreFret = parseInt(pos.barres)
+    const relativeBarreFret = barreFret - baseFret + 1
     // Encontrar extensão da pestana: cordas que têm o mesmo fret
     const barreStrings: number[] = []
     for (let i = 0; i < 6; i++) {
@@ -187,7 +190,7 @@ function convertPosition(pos: { frets: string; fingers: string; barres?: string;
       barres.push({
         fromString: Math.max(...barreStrings),
         toString: Math.min(...barreStrings),
-        fret: barreFret,
+        fret: relativeBarreFret,
       })
     }
   }
@@ -328,6 +331,8 @@ function loadTombatossalsUkulele(): Map<string, any> {
         const muted: number[] = []
         const barres: Array<{ fromString: number; toString: number; fret: number }> = []
 
+        const baseFret = pos.baseFret ?? 1
+
         // Ukulele: 4 cordas (string 4=G mais grossa, string 1=A mais fina)
         for (let i = 0; i < 4; i++) {
           const svgString = 4 - i
@@ -339,13 +344,15 @@ function loadTombatossalsUkulele(): Map<string, any> {
           } else if (fret === 0) {
             fingers.push(finger ? [svgString, 0, String(finger)] : [svgString, 0])
           } else {
-            fingers.push(finger ? [svgString, fret, String(finger)] : [svgString, fret])
+            const relativeFret = fret - baseFret + 1
+            fingers.push(finger ? [svgString, relativeFret, String(finger)] : [svgString, relativeFret])
           }
         }
 
-        // Barres
+        // Barres — converter fret absoluto → relativo
         if (pos.barres && pos.barres.length > 0) {
           for (const barreFret of pos.barres) {
+            const relativeBarreFret = barreFret - baseFret + 1
             const barreStrings: number[] = []
             for (let i = 0; i < 4; i++) {
               if (pos.frets[i] === barreFret) barreStrings.push(4 - i)
@@ -354,7 +361,7 @@ function loadTombatossalsUkulele(): Map<string, any> {
               barres.push({
                 fromString: Math.max(...barreStrings),
                 toString: Math.min(...barreStrings),
-                fret: barreFret,
+                fret: relativeBarreFret,
               })
             }
           }
@@ -425,6 +432,7 @@ function loadTombatossalsGuitar(): Map<string, any> {
         const fingers: Array<[number, number, string?]> = []
         const muted: number[] = []
         const barres: Array<{ fromString: number; toString: number; fret: number }> = []
+        const baseFret = pos.baseFret ?? 1
 
         for (let i = 0; i < 6; i++) {
           const svgString = 6 - i
@@ -436,12 +444,14 @@ function loadTombatossalsGuitar(): Map<string, any> {
           } else if (fret === 0) {
             fingers.push(finger ? [svgString, 0, String(finger)] : [svgString, 0])
           } else {
-            fingers.push(finger ? [svgString, fret, String(finger)] : [svgString, fret])
+            const relativeFret = fret - baseFret + 1
+            fingers.push(finger ? [svgString, relativeFret, String(finger)] : [svgString, relativeFret])
           }
         }
 
         if (pos.barres && pos.barres.length > 0) {
           for (const barreFret of pos.barres) {
+            const relativeBarreFret = barreFret - baseFret + 1
             const barreStrings: number[] = []
             for (let i = 0; i < 6; i++) {
               if (pos.frets[i] === barreFret) barreStrings.push(6 - i)
@@ -450,7 +460,7 @@ function loadTombatossalsGuitar(): Map<string, any> {
               barres.push({
                 fromString: Math.max(...barreStrings),
                 toString: Math.min(...barreStrings),
-                fret: barreFret,
+                fret: relativeBarreFret,
               })
             }
           }
@@ -459,7 +469,7 @@ function loadTombatossalsGuitar(): Map<string, any> {
         chords.set(name, {
           name,
           instrument: 'guitar' as const,
-          positions: { fingers, barres, muted, position: pos.baseFret ?? 1 },
+          positions: { fingers, barres, muted, position: baseFret },
           svg_config: {},
           fingers: {},
           barre: null,

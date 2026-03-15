@@ -100,7 +100,13 @@ export function Biblioteca() {
   const [activeTab, setActiveTab] = useState("acordes");
   const [instrument, setInstrument] = useState<InstrumentFilter>('guitar');
   const { openModal } = useAppContext();
-  const { data: chords, loading: chordsLoading, refetch: refetchChords } = useChords(instrument as any);
+  const [chordSearch, setChordSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [populating, setPopulating] = useState(false);
+  const [diffFilter, setDiffFilter] = useState('todos');
+
+  const diffFilterNum = diffFilter !== 'todos' ? Number(diffFilter) : undefined;
+  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum });
   const { data: scales, loading: scalesLoading } = useScales();
   const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
   const { data: tablatures, loading: tablaturesLoading, refetch: refetchTablatures } = useTablatures();
@@ -111,9 +117,12 @@ export function Biblioteca() {
     window.addEventListener('chord-library-updated', handler);
     return () => window.removeEventListener('chord-library-updated', handler);
   }, [refetchChords]);
-  const [chordSearch, setChordSearch] = useState('');
-  const [populating, setPopulating] = useState(false);
-  const [diffFilter, setDiffFilter] = useState('todos');
+
+  // Debounce da busca de acordes (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(chordSearch), 300);
+    return () => clearTimeout(timer);
+  }, [chordSearch]);
 
   // Estado da aba Notação
   const [notationSearch, setNotationSearch] = useState('');
@@ -252,17 +261,8 @@ export function Biblioteca() {
     return list
   }, [tablatures, tabSearch, tabDiffFilter])
 
-  const filteredChords = useMemo(() => {
-    let list = chords ?? []
-    if (chordSearch) {
-      const q = chordSearch.toLowerCase()
-      list = list.filter(c => c.name.toLowerCase().includes(q))
-    }
-    if (diffFilter !== 'todos') {
-      list = list.filter(c => c.difficulty === Number(diffFilter))
-    }
-    return list
-  }, [chords, chordSearch, diffFilter])
+  // Filtros agora são aplicados no server via useChords opts
+  const filteredChords = chords ?? []
 
   const filteredNotations = useMemo(() => {
     let list = (notations ?? []) as NotationLibraryRow[]
@@ -287,7 +287,7 @@ export function Biblioteca() {
             Biblioteca <em className="not-italic text-accent">Musical</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            {(chords ?? []).length} acordes · {(scales ?? []).length} escalas · {(notations ?? []).length} notações · {(tablatures ?? []).length} tablaturas
+            {chordsCount} acordes · {(scales ?? []).length} escalas · {(notations ?? []).length} notações · {(tablatures ?? []).length} tablaturas
           </p>
         </div>
         <Button onClick={() => {
@@ -312,7 +312,7 @@ export function Biblioteca() {
 
       <Tabs defaultValue="acordes" className="mb-6" onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="acordes">🎸 Acordes ({(chords ?? []).length})</TabsTrigger>
+          <TabsTrigger value="acordes">🎸 Acordes ({chordsCount})</TabsTrigger>
           <TabsTrigger value="escalas">📊 Escalas ({(scales ?? []).length})</TabsTrigger>
           <TabsTrigger value="notacao">🎵 Notação ({(notations ?? []).length})</TabsTrigger>
           <TabsTrigger value="tablatura">🎼 Tablatura ({(tablatures ?? []).length})</TabsTrigger>
@@ -450,6 +450,31 @@ export function Biblioteca() {
                   </div>
                   <div className="text-sm text-text2">Adicionar</div>
                 </div>
+              </div>
+            )}
+
+            {/* Paginação */}
+            {chordsTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={chordsPage === 0}
+                  onClick={() => setChordsPage(chordsPage - 1)}
+                >
+                  ← Anterior
+                </Button>
+                <span className="text-[13px] text-text2 min-w-[120px] text-center">
+                  Página {chordsPage + 1} de {chordsTotalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={chordsPage >= chordsTotalPages - 1}
+                  onClick={() => setChordsPage(chordsPage + 1)}
+                >
+                  Próxima →
+                </Button>
               </div>
             )}
           </div>
