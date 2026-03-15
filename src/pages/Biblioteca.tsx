@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash, Database, Lightning } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash, Database, Lightning, Funnel, MagnifyingGlass } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect } from "react";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
@@ -104,9 +104,29 @@ export function Biblioteca() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [populating, setPopulating] = useState(false);
   const [diffFilter, setDiffFilter] = useState('todos');
+  const [rootNoteFilter, setRootNoteFilter] = useState('todos');
+  const [familyFilter, setFamilyFilter] = useState('todos');
+  const [slashFilter, setSlashFilter] = useState<'todos' | 'sem' | 'inversion' | 'upper_structure' | 'com'>('todos');
+  const [barreFilter, setBarreFilter] = useState<'todos' | 'sem' | 'com'>('todos');
+  const [accidentalFilter, setAccidentalFilter] = useState<'todos' | 'natural' | 'sharp_flat'>('todos');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  const activeFilterCount = [
+    familyFilter !== 'todos',
+    barreFilter !== 'todos',
+    slashFilter !== 'todos',
+    accidentalFilter !== 'todos',
+  ].filter(Boolean).length;
 
   const diffFilterNum = diffFilter !== 'todos' ? Number(diffFilter) : undefined;
-  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum });
+  const rootNoteVal = rootNoteFilter !== 'todos' ? rootNoteFilter : undefined;
+  const familyVal = familyFilter !== 'todos' ? familyFilter : undefined;
+  const hasBarre = barreFilter === 'sem' ? false : barreFilter === 'com' ? true : null;
+  const excludeSlash = slashFilter === 'sem';
+  const onlySlash = slashFilter === 'com';
+  const slashType = slashFilter === 'inversion' ? 'inversion' : slashFilter === 'upper_structure' ? 'upper_structure' : undefined;
+  const accidental = accidentalFilter !== 'todos' ? accidentalFilter as 'natural' | 'sharp_flat' : undefined;
+  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum, rootNote: rootNoteVal, family: familyVal, excludeSlash, onlySlash, slashType, accidental, hasBarre });
   const { data: scales, loading: scalesLoading } = useScales();
   const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
   const { data: tablatures, loading: tablaturesLoading, refetch: refetchTablatures } = useTablatures();
@@ -359,26 +379,37 @@ export function Biblioteca() {
               </div>
             </div>
 
-            <div className="card mb-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label>Buscar acorde</Label>
-                  <Input placeholder="Ex: Am7, F#m, Bb" value={chordSearch} onChange={e => setChordSearch(e.target.value)} />
+            {/* ====== FILTROS (padrão Repertório) ====== */}
+            <div className="rounded-[14px] bg-card border border-border p-4 space-y-3 mb-4">
+              {/* Linha principal: Busca + Nota Raiz + Dificuldade + Filtros + Resultados */}
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[200px] space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3 flex items-center gap-1">
+                    <MagnifyingGlass size={12} /> Buscar
+                  </label>
+                  <Input
+                    placeholder="Ex: Am7, F#m, Bb, Cmaj7..."
+                    value={chordSearch}
+                    onChange={e => setChordSearch(e.target.value)}
+                    className="h-9 text-[13px]"
+                  />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Tipo (tags)</Label>
-                  <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
+                <div className="w-[130px] space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Nota raiz</label>
+                  <Select value={rootNoteFilter} onValueChange={setRootNoteFilter}>
+                    <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="aberto">Aberto</SelectItem>
-                      <SelectItem value="pestana">Pestana</SelectItem>
-                      <SelectItem value="jazz">Jazz</SelectItem>
+                      <SelectItem value="todos">Todas</SelectItem>
+                      {['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].map(n => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Dificuldade</Label>
-                  <Select value={diffFilter} onValueChange={setDiffFilter}><SelectTrigger><SelectValue /></SelectTrigger>
+                <div className="w-[150px] space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Dificuldade</label>
+                  <Select value={diffFilter} onValueChange={setDiffFilter}>
+                    <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
                       <SelectItem value="1">1 — Fácil</SelectItem>
@@ -387,7 +418,139 @@ export function Biblioteca() {
                     </SelectContent>
                   </Select>
                 </div>
+                <button
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className={`h-9 px-3 text-[11px] font-semibold rounded-lg border transition-colors flex items-center gap-1.5 ${
+                    showAdvancedFilters || activeFilterCount > 0
+                      ? 'border-accent/30 bg-accent/10 text-accent'
+                      : 'border-border text-text3 hover:text-text2'
+                  }`}
+                >
+                  <Funnel size={13} />
+                  Filtros
+                  {activeFilterCount > 0 && (
+                    <span className="bg-accent text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+                <Badge variant="secondary" className="h-9 px-3 text-[11px]">
+                  {chordsCount} acorde{chordsCount !== 1 ? 's' : ''}
+                </Badge>
               </div>
+
+              {/* Filtros avançados (colapsável) */}
+              {showAdvancedFilters && (
+                <div className="pt-3 border-t border-border space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                  {/* Família */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Família</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {(['todos', 'triad', 'tetrad', 'tension', 'suspended', 'power'] as const).map(fam => {
+                        const labels: Record<string, string> = { todos: 'Todos', triad: 'Tríades', tetrad: 'Tétrades', tension: 'Tensões', suspended: 'Suspensas', power: 'Power' }
+                        return (
+                          <button
+                            key={fam}
+                            onClick={() => setFamilyFilter(fam)}
+                            className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                              familyFilter === fam
+                                ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                                : 'border-border text-text3 hover:text-text2'
+                            }`}
+                          >
+                            {labels[fam]}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Pestana */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Pestana</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {([
+                        { label: 'Todos', value: 'todos' as const },
+                        { label: 'Sem pestana', value: 'sem' as const },
+                        { label: 'Com pestana', value: 'com' as const },
+                      ]).map(opt => (
+                        <button
+                          key={`barre-${opt.value}`}
+                          onClick={() => setBarreFilter(opt.value)}
+                          className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                            barreFilter === opt.value
+                              ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                              : 'border-border text-text3 hover:text-text2'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Baixo / Slash */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Baixo</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {([
+                        { label: 'Todos', value: 'todos' as const },
+                        { label: 'Pos. Fundamental', value: 'sem' as const },
+                        { label: 'Inversões', value: 'inversion' as const },
+                        { label: 'Est. Superior', value: 'upper_structure' as const },
+                      ]).map(opt => (
+                        <button
+                          key={`slash-${opt.value}`}
+                          onClick={() => setSlashFilter(opt.value)}
+                          className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                            slashFilter === opt.value
+                              ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                              : 'border-border text-text3 hover:text-text2'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notas Raízes */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Notas Raízes</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {([
+                        { label: 'Todas', value: 'todos' as const },
+                        { label: 'Naturais', value: 'natural' as const },
+                        { label: 'Sustenidos / Bemóis', value: 'sharp_flat' as const },
+                      ]).map(opt => (
+                        <button
+                          key={`acc-${opt.value}`}
+                          onClick={() => setAccidentalFilter(opt.value)}
+                          className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                            accidentalFilter === opt.value
+                              ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                              : 'border-border text-text3 hover:text-text2'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Limpar filtros avançados */}
+                  {activeFilterCount > 0 && (
+                    <div className="pt-2 border-t border-border/50">
+                      <button
+                        onClick={() => { setFamilyFilter('todos'); setBarreFilter('todos'); setSlashFilter('todos'); setAccidentalFilter('todos') }}
+                        className="text-[11px] text-accent hover:underline font-medium"
+                      >
+                        Limpar filtros avançados
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {chordsLoading ? (
@@ -425,6 +588,7 @@ export function Biblioteca() {
                             name={chord.name}
                             positions={positions}
                             size="full"
+                            strings={instrument === 'ukulele' || instrument === 'bass' ? 4 : 6}
                           />
                         )}
                       </div>

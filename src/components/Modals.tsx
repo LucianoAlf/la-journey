@@ -17,7 +17,7 @@ import { createChord, updateChord, deleteChord } from '@/services/libraryService
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { createAchievement } from '@/services/achievementService';
 import { createTemplate } from '@/services/whatsappService';
-import { ChordEditor, createEmptyState, stateToPositions, positionsToState, type ChordEditorState } from '@/components/music/ChordEditor';
+import { ChordEditor, createEmptyState, stateToPositions, positionsToState, getStringCount, type ChordEditorState, type ChordInstrument } from '@/components/music/ChordEditor';
 import type { Chord } from '@/services/libraryService';
 
 export function Modals() {
@@ -72,7 +72,8 @@ export function Modals() {
       const minFret = frets.length > 0 ? Math.min(...frets) : 1;
       const sf = minFret > 0 ? minFret : 1;
       setChordStartFret(sf);
-      setChordEditorState(positionsToState(pos, sf));
+      const inst = (editChordData.instrument ?? 'guitar') as ChordInstrument
+      setChordEditorState(positionsToState(pos, sf, inst));
     }
   }, [editChordData, isModalOpen]);
 
@@ -80,7 +81,7 @@ export function Modals() {
     if (!chordName.trim()) { toast.error('Informe o nome do acorde'); return; }
     setChordSaving(true);
     try {
-      const positions = stateToPositions(chordEditorState, chordStartFret);
+      const positions = stateToPositions(chordEditorState, chordStartFret, chordInstrument as ChordInstrument);
       if (editingChordId) {
         await updateChord(editingChordId, {
           name: chordName,
@@ -125,7 +126,7 @@ export function Modals() {
     setChordName('');
     setChordInstrument('guitar');
     setChordDifficulty('1');
-    setChordEditorState(createEmptyState());
+    setChordEditorState(createEmptyState(6));
     setChordStartFret(1);
     setEditingChordId(null);
   };
@@ -372,11 +373,15 @@ export function Modals() {
             </div>
             <div className="space-y-1.5">
               <Label>Instrumento</Label>
-              <Select value={chordInstrument} onValueChange={setChordInstrument}>
+              <Select value={chordInstrument} onValueChange={(v) => {
+                setChordInstrument(v)
+                setChordEditorState(createEmptyState(getStringCount(v as ChordInstrument)))
+              }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="guitar">Violão</SelectItem>
                   <SelectItem value="ukulele">Ukulele</SelectItem>
+                  <SelectItem value="bass">Baixo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -409,6 +414,7 @@ export function Modals() {
             onChange={setChordEditorState}
             chordName={chordName}
             startFret={chordStartFret}
+            instrument={chordInstrument as ChordInstrument}
           />
 
           <div className="flex justify-between items-center mt-4 pt-3 border-t border-border">

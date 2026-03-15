@@ -18,29 +18,48 @@ export async function getChords(instrument?: Database['public']['Enums']['chord_
   return data
 }
 
-/** Busca paginada de acordes com filtros (para a Biblioteca Musical) */
+/** Busca paginada de acordes com filtros semânticos (para a Biblioteca Musical) */
 export async function getChordsPaginated(opts: {
   instrument?: Database['public']['Enums']['chord_instrument']
   search?: string
   difficulty?: number
   tag?: string
+  rootNote?: string
+  family?: string
+  quality?: string
+  excludeSlash?: boolean
+  onlySlash?: boolean
+  slashType?: string
+  accidental?: 'natural' | 'sharp_flat'
+  hasBarre?: boolean | null
   page?: number
   pageSize?: number
 }): Promise<{ data: Chord[]; count: number }> {
-  const { instrument, search, difficulty, tag, page = 0, pageSize = 60 } = opts
+  const { instrument, search, difficulty, tag, rootNote, family, quality, excludeSlash, onlySlash, slashType, accidental, hasBarre, page = 0, pageSize = 60 } = opts
   const from = page * pageSize
   const to = from + pageSize - 1
 
   let query = supabase
     .from('chord_library')
     .select('*', { count: 'exact' })
-    .order('name')
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true })
     .range(from, to)
 
   if (instrument) query = query.eq('instrument', instrument)
-  if (search) query = query.ilike('name', `%${search}%`)
+  if (search) query = query.or(`name.ilike.%${search}%,canonical_name.ilike.%${search}%`)
   if (difficulty && difficulty > 0) query = query.eq('difficulty', difficulty)
   if (tag && tag !== 'todos') query = query.contains('tags', [tag])
+  if (rootNote) query = query.eq('root_note', rootNote)
+  if (family) query = query.eq('family', family)
+  if (quality) query = query.eq('quality', quality)
+  if (excludeSlash) query = query.not('name', 'like', '%/%')
+  if (onlySlash) query = query.like('name', '%/%')
+  if (slashType) query = (query as any).eq('slash_type', slashType)
+  if (accidental === 'natural') query = (query as any).in('root_note', ['C','D','E','F','G','A','B'])
+  if (accidental === 'sharp_flat') query = (query as any).not('root_note', 'in', '("C","D","E","F","G","A","B")')
+  if (hasBarre === true) query = (query as any).eq('has_barre', true)
+  if (hasBarre === false) query = (query as any).eq('has_barre', false)
 
   const { data, error, count } = await query
   if (error) handleError(error)

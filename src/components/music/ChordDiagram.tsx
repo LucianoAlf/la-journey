@@ -18,6 +18,8 @@ export interface ChordDiagramProps {
   size?: 'compact' | 'full'
   /** Forçar tema (ignora detecção automática) — útil para PDF */
   forceTheme?: 'light' | 'dark'
+  /** Número de cordas do instrumento (default: 6) */
+  strings?: number
 }
 
 function getStyle(forcedDark?: boolean) {
@@ -51,7 +53,7 @@ function useTheme() {
   return theme
 }
 
-export function ChordDiagram({ name, positions, position = 1, size = 'full', forceTheme }: ChordDiagramProps) {
+export function ChordDiagram({ name, positions, position = 1, size = 'full', forceTheme, strings = 6 }: ChordDiagramProps) {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useTheme()
   const effectiveIsDark = forceTheme ? forceTheme === 'dark' : theme === 'dark'
@@ -79,7 +81,7 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
     const chart = new SVGuitarChord(ref.current)
       .configure({
         title: name,
-        strings: 6,
+        strings,
         frets: 5,
         position,
         style: ChordStyle.normal,
@@ -108,11 +110,12 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
         })
       }
     }
-  }, [name, positions, position, size, theme, forceTheme, effectiveIsDark])
+  }, [name, positions, position, size, theme, forceTheme, effectiveIsDark, strings])
 
+  const is4 = strings <= 4
   const dimensions = size === 'compact'
-    ? { width: 90, height: 120 }
-    : { width: 140, height: 180 }
+    ? { width: is4 ? 70 : 90, height: 120 }
+    : { width: is4 ? 110 : 140, height: 180 }
 
   return (
     <div

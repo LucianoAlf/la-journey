@@ -11,6 +11,14 @@ interface UseChordsPaginatedOpts {
   search?: string
   difficulty?: number
   tag?: string
+  rootNote?: string
+  family?: string
+  quality?: string
+  excludeSlash?: boolean
+  onlySlash?: boolean
+  slashType?: string
+  accidental?: 'natural' | 'sharp_flat'
+  hasBarre?: boolean | null
   pageSize?: number
 }
 
@@ -36,7 +44,7 @@ export function useChords(instrument?: ChordInstrument, opts?: Omit<UseChordsPag
   const [fetchKey, setFetchKey] = useState(0)
 
   // Reset página quando filtros mudam
-  useEffect(() => { setPage(0) }, [instrument, opts?.search, opts?.difficulty, opts?.tag])
+  useEffect(() => { setPage(0) }, [instrument, opts?.search, opts?.difficulty, opts?.tag, opts?.rootNote, opts?.family, opts?.quality, opts?.excludeSlash, opts?.onlySlash, opts?.slashType, opts?.accidental, opts?.hasBarre])
 
   const refetch = useCallback(() => setFetchKey(k => k + 1), [])
 
@@ -50,6 +58,14 @@ export function useChords(instrument?: ChordInstrument, opts?: Omit<UseChordsPag
       search: opts?.search,
       difficulty: opts?.difficulty,
       tag: opts?.tag,
+      rootNote: opts?.rootNote,
+      family: opts?.family,
+      quality: opts?.quality,
+      excludeSlash: opts?.excludeSlash,
+      onlySlash: opts?.onlySlash,
+      slashType: opts?.slashType,
+      accidental: opts?.accidental,
+      hasBarre: opts?.hasBarre,
       page,
       pageSize,
     })
@@ -68,7 +84,7 @@ export function useChords(instrument?: ChordInstrument, opts?: Omit<UseChordsPag
       })
 
     return () => { cancelled = true }
-  }, [instrument, opts?.search, opts?.difficulty, opts?.tag, page, pageSize, fetchKey])
+  }, [instrument, opts?.search, opts?.difficulty, opts?.tag, opts?.rootNote, opts?.family, opts?.quality, opts?.excludeSlash, opts?.onlySlash, opts?.slashType, opts?.accidental, opts?.hasBarre, page, pageSize, fetchKey])
 
   return {
     data,
