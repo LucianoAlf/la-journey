@@ -3,7 +3,7 @@ import {
   MusicNote, Star, Lightning, Guitar, Funnel,
   CheckCircle, Clock, PencilSimple, FileArrowUp,
   FileText, PianoKeys, MicrophoneStage, ChartDonut,
-  TrendUp, CalendarBlank
+  TrendUp, CalendarBlank, Globe
 } from '@phosphor-icons/react'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -32,6 +32,7 @@ const ORIGIN_ICONS: Record<string, { icon: React.ReactNode; color: string; label
   songsterr: { icon: <Guitar size={12} weight="fill" />, color: 'text-orange-400', label: 'Songsterr' },
   gp_import: { icon: <FileArrowUp size={12} weight="fill" />, color: 'text-green-400', label: 'Guitar Pro' },
   chordpro: { icon: <FileText size={12} weight="fill" />, color: 'text-purple-400', label: 'ChordPro' },
+  olga: { icon: <Globe size={12} weight="fill" />, color: 'text-sky-400', label: 'OLGA' },
   manual: { icon: <PencilSimple size={12} />, color: 'text-text3', label: 'Manual' },
 }
 

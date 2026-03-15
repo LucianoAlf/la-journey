@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Lightning, Plus, PencilSimple, Trash, SpinnerGap, Warning,
   Eye, MusicNote, Guitar, PianoKeys, MicrophoneStage, Rows, Table as TableIcon,
   MagnifyingGlass, Funnel, Star, SortAscending, SortDescending,
-  ArrowsDownUp, FileArrowUp, FileText, X, ChartDonut
+  ArrowsDownUp, FileArrowUp, FileText, X, ChartDonut, Globe
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -259,6 +259,7 @@ const ORIGIN_CONFIG: Record<string, { label: string; icon?: React.ReactNode; col
   songsterr: { label: 'Songsterr', icon: <Guitar size={11} weight="fill" className="text-orange-400" />, color: 'text-orange-400' },
   gp_import: { label: 'Guitar Pro', icon: <FileArrowUp size={11} weight="fill" className="text-green-400" />, color: 'text-green-400' },
   chordpro: { label: 'ChordPro', icon: <FileText size={11} weight="fill" className="text-purple-400" />, color: 'text-purple-400' },
+  olga: { label: 'OLGA', icon: <Globe size={11} weight="fill" className="text-sky-400" />, color: 'text-sky-400' },
   manual: { label: 'Manual', icon: <PencilSimple size={11} className="text-text3" />, color: 'text-text3' },
 }
 
@@ -282,12 +283,23 @@ export function Repertorio() {
   const [editingSong, setEditingSong] = useState<Repertoire | null>(null);
   const [previewSong, setPreviewSong] = useState<Repertoire | null>(null);
 
+  // Sincronizar previewSong com dados frescos após refetch (ex: enriquecimento IA)
+  useEffect(() => {
+    if (previewSong && songs) {
+      const fresh = songs.find(s => s.id === previewSong.id)
+      if (fresh && fresh.updated_at !== previewSong.updated_at) {
+        setPreviewSong(fresh)
+      }
+    }
+  }, [songs])
+
   // --- Filtros persistidos na URL ---
   const search = searchParams.get('q') ?? '';
   const filterGenre = searchParams.get('genre') ?? 'todos';
   const filterDifficulty = parseInt(searchParams.get('diff') ?? '0');
   const filterCuration = searchParams.get('curation') ?? 'todos';
   const filterOrigin = searchParams.get('origin') ?? 'todos';
+  const filterCountry = searchParams.get('country') ?? 'todos';
   const filterInstrument = searchParams.get('instrument') ?? 'todos';
   const sortField = (searchParams.get('sort') ?? 'title') as SortField;
   const sortDir = (searchParams.get('dir') ?? 'asc') as SortDir;
@@ -299,10 +311,14 @@ export function Repertorio() {
   const setParam = useCallback((key: string, value: string) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      if (value === '' || value === 'todos' || value === '0' || (key === 'sort' && value === 'title') || (key === 'dir' && value === 'asc') || (key === 'view' && value === 'table') || (key === 'filters' && value === '0') || (key === 'dash' && value === '0')) {
+      if (value === '' || value === 'todos' || value === '0' || (key === 'sort' && value === 'title') || (key === 'dir' && value === 'asc') || (key === 'view' && value === 'table') || (key === 'filters' && value === '0') || (key === 'dash' && value === '0') || (key === 'page' && value === '1')) {
         next.delete(key);
       } else {
         next.set(key, value);
+      }
+      // Resetar página ao mudar qualquer filtro (exceto a própria página)
+      if (key !== 'page' && key !== 'view' && key !== 'filters' && key !== 'dash') {
+        next.delete('page');
       }
       return next;
     }, { replace: true });
@@ -313,6 +329,7 @@ export function Repertorio() {
   const setFilterDifficulty = useCallback((v: number) => setParam('diff', String(v)), [setParam]);
   const setFilterCuration = useCallback((v: string) => setParam('curation', v), [setParam]);
   const setFilterOrigin = useCallback((v: string) => setParam('origin', v), [setParam]);
+  const setFilterCountry = useCallback((v: string) => setParam('country', v), [setParam]);
   const setFilterInstrument = useCallback((v: string) => setParam('instrument', v), [setParam]);
   const setViewMode = useCallback((v: ViewMode) => setParam('view', v), [setParam]);
   const setShowAdvancedFilters = useCallback((v: boolean) => setParam('filters', v ? '1' : '0'), [setParam]);
@@ -338,6 +355,7 @@ export function Repertorio() {
       next.delete('diff');
       next.delete('curation');
       next.delete('origin');
+      next.delete('country');
       next.delete('instrument');
       return next;
     }, { replace: true });
@@ -348,6 +366,7 @@ export function Repertorio() {
     filterDifficulty > 0,
     filterCuration !== 'todos',
     filterOrigin !== 'todos',
+    filterCountry !== 'todos',
     filterInstrument !== 'todos',
   ].filter(Boolean).length
 
@@ -376,19 +395,23 @@ export function Repertorio() {
         }
       }
 
+      // País (Nacional/Internacional)
+      const matchesCountry = filterCountry === 'todos' || (s.country ?? '') === filterCountry;
+
       // Instrumento
       const matchesInstrument = filterInstrument === 'todos' ||
         (s.instruments ?? []).some(i => i === filterInstrument);
 
-      return matchesSearch && matchesGenre && matchesDifficulty && matchesCuration && matchesOrigin && matchesInstrument;
+      return matchesSearch && matchesGenre && matchesDifficulty && matchesCuration && matchesOrigin && matchesCountry && matchesInstrument;
     });
 
-    // Ordenação
+    // Ordenação (strip chars especiais no início para ordem alfabética limpa)
+    const stripSort = (s: string) => s.replace(/^[^a-zA-Z0-9À-ÿ]+/, '').toLowerCase()
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case 'title': cmp = (a.title ?? '').localeCompare(b.title ?? ''); break;
-        case 'artist': cmp = (a.artist ?? '').localeCompare(b.artist ?? ''); break;
+        case 'title': cmp = stripSort(a.title ?? '').localeCompare(stripSort(b.title ?? '')); break;
+        case 'artist': cmp = stripSort(a.artist ?? '').localeCompare(stripSort(b.artist ?? '')); break;
         case 'difficulty': cmp = (a.difficulty ?? 1) - (b.difficulty ?? 1); break;
         case 'genre': cmp = (a.genre ?? '').localeCompare(b.genre ?? ''); break;
         case 'created_at': cmp = (a.created_at ?? '').localeCompare(b.created_at ?? ''); break;
@@ -397,16 +420,43 @@ export function Repertorio() {
     });
 
     return result;
-  }, [songs, search, filterGenre, filterDifficulty, filterCuration, filterOrigin, filterInstrument, sortField, sortDir]);
+  }, [songs, search, filterGenre, filterDifficulty, filterCuration, filterOrigin, filterCountry, filterInstrument, sortField, sortDir]);
+
+  // --- Paginação ---
+  const PAGE_SIZE = 50
+  const page = parseInt(searchParams.get('page') ?? '1')
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedSongs = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [filtered, currentPage])
 
   // --- KPIs ---
   const kpis = useMemo(() => {
-    if (!songs || songs.length === 0) return { total: 0, genres: 0, avgDiff: 0, cifraClub: 0, manual: 0 }
+    if (!songs || songs.length === 0) return { total: 0, genres: 0, avgDiff: 0, imported: 0, manual: 0, importBreakdown: '' }
     const genres = new Set(songs.map(s => s.genre).filter(Boolean))
     const avgDiff = songs.reduce((sum, s) => sum + (s.difficulty ?? 1), 0) / songs.length
-    const cifraClub = songs.filter(s => s.cifra_source === 'cifra_club').length
-    const songsterr = songs.filter(s => s.cifra_source === 'songsterr').length
-    return { total: songs.length, genres: genres.size, avgDiff: Math.round(avgDiff * 10) / 10, cifraClub, songsterr, manual: songs.length - cifraClub - songsterr }
+
+    // Contar importadas por fonte
+    const sourceCount: Record<string, number> = {}
+    for (const s of songs) {
+      const src = s.cifra_source || 'manual'
+      sourceCount[src] = (sourceCount[src] || 0) + 1
+    }
+    const manual = sourceCount['manual'] || 0
+    const imported = songs.length - manual
+
+    // Breakdown das 3 maiores fontes importadas
+    const importSources = Object.entries(sourceCount)
+      .filter(([k]) => k !== 'manual')
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+    const importBreakdown = importSources
+      .map(([k, v]) => `${v} ${ORIGIN_CONFIG[k]?.label || k}`)
+      .join(' · ')
+
+    return { total: songs.length, genres: genres.size, avgDiff: Math.round(avgDiff * 10) / 10, imported, manual, importBreakdown }
   }, [songs])
 
   // --- Gêneros únicos para o filtro ---
@@ -520,7 +570,7 @@ export function Repertorio() {
             barColor="bg-[#2D5A8E]"
             iconBg="bg-[#2D5A8E]/15"
             iconColor="text-[#4A7DC0]"
-            sub={`${kpis.cifraClub + kpis.songsterr} importada${(kpis.cifraClub + kpis.songsterr) !== 1 ? 's' : ''} · ${kpis.manual} manual`}
+            sub={`${kpis.imported} importada${kpis.imported !== 1 ? 's' : ''} · ${kpis.manual} manual`}
           />
           <KpiCard
             label="Gêneros"
@@ -542,12 +592,12 @@ export function Repertorio() {
           />
           <KpiCard
             label="Importadas"
-            value={kpis.cifraClub + kpis.songsterr}
+            value={kpis.imported}
             icon={<Lightning size={18} weight="fill" />}
             barColor="bg-[#FF2D78]"
             iconBg="bg-[#FF2D78]/15"
             iconColor="text-[#FF2D78]"
-            sub={kpis.total > 0 ? `${kpis.cifraClub} Cifra Club · ${kpis.songsterr} Songsterr` : '—'}
+            sub={kpis.importBreakdown || '—'}
           />
         </div>
       )}
@@ -578,6 +628,26 @@ export function Repertorio() {
                 {uniqueGenres.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          {/* Filtro Nacional/Internacional */}
+          <div className="flex rounded-lg border border-border overflow-hidden h-9">
+            {[
+              { value: 'todos', label: 'Todos' },
+              { value: 'BR', label: '🇧🇷 Nacional' },
+              { value: 'INT', label: '🌎 Internacional' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setFilterCountry(opt.value)}
+                className={`px-2.5 text-[11px] font-semibold transition-colors ${
+                  filterCountry === opt.value
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-text3 hover:text-text2 hover:bg-surface'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
           <button
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
@@ -776,11 +846,11 @@ export function Repertorio() {
       {/* ====== CONTEÚDO: TABELA ====== */}
       {viewMode === 'table' && (
         <div className="rounded-[14px] bg-card border border-border overflow-hidden">
-          <Table>
+          <Table className="table-fixed w-full">
             <TableHeader>
               <TableRow className="bg-[var(--bg2)] hover:bg-[var(--bg2)]">
                 <TableHead
-                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none w-[18%]"
                   onClick={() => toggleSort('title')}
                 >
                   <span className="flex items-center gap-1">
@@ -789,7 +859,7 @@ export function Repertorio() {
                   </span>
                 </TableHead>
                 <TableHead
-                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none w-[14%]"
                   onClick={() => toggleSort('artist')}
                 >
                   <span className="flex items-center gap-1">
@@ -797,10 +867,10 @@ export function Repertorio() {
                     {sortField === 'artist' && (sortDir === 'asc' ? <SortAscending size={11} /> : <SortDescending size={11} />)}
                   </span>
                 </TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Acordes</TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Tom</TableHead>
+                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 w-[20%]">Acordes</TableHead>
+                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 w-[6%]">Tom</TableHead>
                 <TableHead
-                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none w-[10%]"
                   onClick={() => toggleSort('genre')}
                 >
                   <span className="flex items-center gap-1">
@@ -809,7 +879,7 @@ export function Repertorio() {
                   </span>
                 </TableHead>
                 <TableHead
-                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none"
+                  className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 cursor-pointer hover:text-text2 select-none w-[10%]"
                   onClick={() => toggleSort('difficulty')}
                 >
                   <span className="flex items-center gap-1">
@@ -817,8 +887,8 @@ export function Repertorio() {
                     {sortField === 'difficulty' && (sortDir === 'asc' ? <SortAscending size={11} /> : <SortDescending size={11} />)}
                   </span>
                 </TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3">Status</TableHead>
-                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 text-right">Ações</TableHead>
+                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 w-[10%]">Status</TableHead>
+                <TableHead className="text-[9px] uppercase tracking-[2px] font-semibold text-text3 py-3 text-right w-[12%]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -836,7 +906,7 @@ export function Repertorio() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map(song => (
+                paginatedSongs.map(song => (
                   <TableRow
                     key={song.id}
                     className="cursor-pointer hover:bg-[var(--azul-soft)] transition-colors border-b border-border"
@@ -844,16 +914,13 @@ export function Repertorio() {
                   >
                     <TableCell className="py-3.5">
                       <div className="flex items-center gap-2">
-                        {song.cifra_source === 'cifra_club' && (
-                          <Lightning size={12} weight="fill" className="text-amber-400 flex-shrink-0" />
+                        {song.cifra_source && ORIGIN_CONFIG[song.cifra_source]?.icon && (
+                          <span className="flex-shrink-0">{ORIGIN_CONFIG[song.cifra_source].icon}</span>
                         )}
-                        {song.cifra_source === 'songsterr' && (
-                          <Guitar size={12} weight="fill" className="text-orange-400 flex-shrink-0" />
-                        )}
-                        <span className="font-semibold text-[13px] text-text">{song.title}</span>
+                        <span className="font-semibold text-[13px] text-text truncate block max-w-full">{song.title}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-text2 text-[13px] py-3.5">{song.artist ?? '—'}</TableCell>
+                    <TableCell className="text-text2 text-[13px] py-3.5 truncate">{song.artist ?? '—'}</TableCell>
                     <TableCell className="py-3.5">
                       <div className="flex gap-1 flex-wrap">
                         {(song.chords ?? []).slice(0, 5).map(chord => (
@@ -936,6 +1003,56 @@ export function Repertorio() {
         </div>
       )}
 
+      {/* ====== PAGINAÇÃO ====== */}
+      {filtered.length > PAGE_SIZE && (viewMode === 'table' || viewMode === 'cards') && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-[11px] text-text3">
+            Mostrando {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] border-border"
+              disabled={currentPage <= 1}
+              onClick={() => setParam('page', '1')}
+            >
+              ««
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] border-border"
+              disabled={currentPage <= 1}
+              onClick={() => setParam('page', String(currentPage - 1))}
+            >
+              ‹ Anterior
+            </Button>
+            <span className="text-[11px] text-text2 px-3 font-mono">
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] border-border"
+              disabled={currentPage >= totalPages}
+              onClick={() => setParam('page', String(currentPage + 1))}
+            >
+              Próxima ›
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] border-border"
+              disabled={currentPage >= totalPages}
+              onClick={() => setParam('page', String(totalPages))}
+            >
+              »»
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* ====== CONTEÚDO: CARDS ====== */}
       {viewMode === 'cards' && (
         <div>
@@ -950,7 +1067,7 @@ export function Repertorio() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filtered.map(song => (
+              {paginatedSongs.map(song => (
                 <SongCard
                   key={song.id}
                   song={song}
@@ -984,7 +1101,7 @@ export function Repertorio() {
         open={!!previewSong}
         onOpenChange={(open) => { if (!open) setPreviewSong(null) }}
         onEdit={(song) => { setPreviewSong(null); handleEdit(song) }}
-        onSaved={() => { refetch(); setPreviewSong(null) }}
+        onSaved={() => { refetch() }}
       />
     </div>
   );

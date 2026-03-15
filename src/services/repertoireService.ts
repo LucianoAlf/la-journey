@@ -8,17 +8,31 @@ export async function getRepertoire(filters?: {
   difficulty?: number
   genre?: string
 }) {
-  let query = supabase
-    .from('repertoire')
-    .select('*')
-    .order('title')
+  // Supabase tem limite default de 1000 rows — paginar para buscar todas
+  const PAGE_SIZE = 1000
+  const allData: Repertoire[] = []
+  let from = 0
 
-  if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty)
-  if (filters?.genre) query = query.eq('genre', filters.genre)
+  while (true) {
+    let query = supabase
+      .from('repertoire')
+      .select('*')
+      .order('title')
+      .range(from, from + PAGE_SIZE - 1)
 
-  const { data, error } = await query
-  if (error) handleError(error)
-  return data
+    if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty)
+    if (filters?.genre) query = query.eq('genre', filters.genre)
+
+    const { data, error } = await query
+    if (error) handleError(error)
+    if (!data || data.length === 0) break
+
+    allData.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+
+  return allData
 }
 
 export async function createSong(song: TablesInsert<'repertoire'>) {

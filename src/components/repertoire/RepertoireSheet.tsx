@@ -26,6 +26,7 @@ import { TablatureEditor } from "@/components/music/TablatureEditor"
 import { getChordsByNames, updateChord, createChord, type Chord } from "@/services/libraryService"
 import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@/services/chordAutoFillService"
 import { updateSong } from "@/services/repertoireService"
+import { enrichSongWithAI, enrichmentToUpdates, type EnrichmentResult, type EnrichmentPreview } from "@/services/aiEnrichService"
 import { uploadGpFile, deleteGpFile, updateGpFileUrl } from "@/services/gpFileService"
 import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
 import { TransposeControl } from "@/components/repertoire/TransposeControl"
@@ -390,7 +391,26 @@ interface RepertoireSheetProps {
   onSaved?: () => void
 }
 
-export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: RepertoireSheetProps) {
+export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, onSaved }: RepertoireSheetProps) {
+  // Estado local da música — sincroniza com a prop mas pode ser atualizado localmente (ex: enriquecimento IA)
+  const [liveSong, setLiveSong] = useState<Repertoire | null>(songProp)
+  const justSavedRef = useRef(false)
+  useEffect(() => {
+    // Após enriquecimento IA, não sobrescrever o liveSong com prop stale
+    if (justSavedRef.current) {
+      justSavedRef.current = false
+      // Mesclar: manter campos locais que foram enriquecidos + atualizar o resto da prop
+      if (songProp && liveSong && songProp.id === liveSong.id) {
+        setLiveSong(prev => prev ? { ...songProp, ...Object.fromEntries(
+          Object.entries(prev).filter(([, v]) => v != null)
+        ) } as Repertoire : songProp)
+        return
+      }
+    }
+    setLiveSong(songProp)
+  }, [songProp])
+  const song = liveSong
+
   const [libraryChords, setLibraryChords] = useState<Chord[]>([])
   const [loadingChords, setLoadingChords] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -403,6 +423,13 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
 
   // Transposição de tonalidade
   const [transposeSemitones, setTransposeSemitones] = useState(0)
+
+  // Enriquecimento IA
+  const [enriching, setEnriching] = useState(false)
+  const [enrichPreview, setEnrichPreview] = useState<EnrichmentPreview[] | null>(null)
+  const [enrichResult, setEnrichResult] = useState<EnrichmentResult | null>(null)
+  const [enrichSelectedFields, setEnrichSelectedFields] = useState<Set<string>>(new Set())
+  const [applyingEnrich, setApplyingEnrich] = useState(false)
 
   // PDF
   const printRef = useRef<HTMLDivElement>(null)
@@ -431,6 +458,79 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
       setShowPrintable(false)
     }
   }, [song, showGuitar, showPiano, showTab])
+
+  // --- Enriquecimento IA ---
+  const handleEnrichWithAI = useCallback(async () => {
+    if (!song) return
+    setEnriching(true)
+    setEnrichPreview(null)
+    setEnrichResult(null)
+
+    try {
+      const { result, preview, latencyMs, tokensUsed } = await enrichSongWithAI(song)
+
+      if (preview.length === 0) {
+        toast.info('Todos os campos já estão preenchidos!')
+        setEnriching(false)
+        return
+      }
+
+      setEnrichResult(result)
+      setEnrichPreview(preview)
+      setEnrichSelectedFields(new Set(preview.map(p => p.field)))
+      toast.success(`IA encontrou ${preview.length} campo${preview.length > 1 ? 's' : ''} para preencher (${latencyMs}ms)`)
+    } catch (e: any) {
+      toast.error('Erro na IA: ' + (e?.message ?? 'Desconhecido'))
+    } finally {
+      setEnriching(false)
+    }
+  }, [song])
+
+  const handleApplyEnrichment = useCallback(async () => {
+    if (!song || !enrichResult) {
+      console.warn('[Enrich] song ou enrichResult nulo', { song: !!song, enrichResult: !!enrichResult })
+      return
+    }
+    setApplyingEnrich(true)
+
+    try {
+      const selectedArr = [...enrichSelectedFields]
+      const updates = enrichmentToUpdates(enrichResult, selectedArr)
+      console.log('[Enrich] updates a aplicar:', updates, 'selectedFields:', selectedArr, 'enrichResult:', enrichResult)
+
+      if (Object.keys(updates).length === 0) {
+        toast.info('Nenhum campo selecionado para aplicar.')
+        setApplyingEnrich(false)
+        return
+      }
+
+      const result = await updateSong(song.id, updates as any)
+      console.log('[Enrich] updateSong retorno:', result)
+      toast.success(`${Object.keys(updates).length} campo${Object.keys(updates).length > 1 ? 's' : ''} atualizado${Object.keys(updates).length > 1 ? 's' : ''} com sucesso!`)
+      // Atualizar música localmente (sem fechar o sheet)
+      setLiveSong(prev => prev ? { ...prev, ...updates } as Repertoire : prev)
+      setEnrichPreview(null)
+      setEnrichResult(null)
+      // Marcar que acabamos de salvar — proteger liveSong de ser sobrescrito pelo refetch
+      justSavedRef.current = true
+      // Refresh da lista em background — sem fechar o sheet
+      onSaved?.()
+    } catch (e: any) {
+      console.error('[Enrich] Erro:', e)
+      toast.error('Erro ao salvar: ' + (e?.message ?? ''))
+    } finally {
+      setApplyingEnrich(false)
+    }
+  }, [song, enrichResult, enrichSelectedFields, onSaved])
+
+  const toggleEnrichField = useCallback((field: string) => {
+    setEnrichSelectedFields(prev => {
+      const next = new Set(prev)
+      if (next.has(field)) next.delete(field)
+      else next.add(field)
+      return next
+    })
+  }, [])
 
   // Separar acordes de violão e piano (antes dos handlers que dependem)
   const guitarChords = useMemo(() => libraryChords.filter(c => c.instrument === 'guitar'), [libraryChords])
@@ -907,11 +1007,23 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                   {song.artist ?? 'Artista desconhecido'}
                 </SheetDescription>
               </div>
-              {onEdit && (
-                <Button variant="ghost" size="sm" onClick={() => onEdit(song)} className="flex-shrink-0">
-                  <PencilSimple size={16} /> Editar
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEnrichWithAI}
+                  disabled={enriching}
+                  className="border-accent/30 text-accent hover:bg-accent/10 text-xs"
+                >
+                  {enriching ? <SpinnerGap size={14} className="animate-spin" /> : <MusicNotesSimple size={14} />}
+                  {enriching ? 'Analisando...' : 'Completar com IA'}
                 </Button>
-              )}
+                {onEdit && (
+                  <Button variant="ghost" size="sm" onClick={() => onEdit(song)}>
+                    <PencilSimple size={16} /> Editar
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Badges */}
@@ -1300,7 +1412,14 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
                         <MetaItem label="Gênero" value={song.genre ?? '—'} />
                         <MetaItem label="Dificuldade" value={diffConfig.label} />
                         <MetaItem label="Curadoria" value={curationConfig.label} />
-                        <MetaItem label="Origem" value={song.cifra_source === 'cifra_club' ? 'Cifra Club' : song.cifra_source === 'songsterr' ? 'Songsterr' : 'Manual'} />
+                        <MetaItem label="Origem" value={
+                          song.cifra_source === 'cifra_club' ? 'Cifra Club' :
+                          song.cifra_source === 'songsterr' ? 'Songsterr' :
+                          song.cifra_source === 'gp_import' ? 'Guitar Pro' :
+                          song.cifra_source === 'chordpro' ? 'ChordPro' :
+                          song.cifra_source === 'olga' ? 'OLGA' :
+                          'Manual'
+                        } />
                         <MetaItem label="Acordes" value={`${(song.chords ?? []).length} acordes`} />
                         {song.created_at && (
                           <MetaItem label="Cadastrado em" value={new Date(song.created_at).toLocaleDateString('pt-BR')} />
@@ -1662,6 +1781,60 @@ export function RepertoireSheet({ song, open, onOpenChange, onEdit, onSaved }: R
           />
         </div>
       )}
+
+      {/* ====== MODAL: Preview Enriquecimento IA ====== */}
+      <Dialog open={!!enrichPreview} onOpenChange={(v) => { if (!v) { setEnrichPreview(null); setEnrichResult(null) } }}>
+        <DialogContent className="bg-surface border-border max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-text flex items-center gap-2">
+              <MusicNotesSimple size={18} className="text-accent" />
+              Completar com IA
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            {enrichPreview?.map(item => (
+              <label
+                key={item.field}
+                className={`flex items-start gap-3 p-3 rounded-xl border transition-colors cursor-pointer ${
+                  enrichSelectedFields.has(item.field)
+                    ? 'border-accent/40 bg-accent/5'
+                    : 'border-border bg-card hover:border-border/80'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={enrichSelectedFields.has(item.field)}
+                  onChange={() => toggleEnrichField(item.field)}
+                  className="mt-1 accent-[var(--accent)]"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-text3">{item.label}</p>
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-[12px] text-text3 line-through">{item.before}</p>
+                    <p className="text-[13px] text-text font-medium break-words">{item.after}</p>
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setEnrichPreview(null); setEnrichResult(null) }} className="border-border text-text2">
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleApplyEnrichment}
+              disabled={applyingEnrich || enrichSelectedFields.size === 0}
+              className="bg-accent hover:bg-accent/90 text-white"
+            >
+              {applyingEnrich ? <SpinnerGap size={14} className="animate-spin" /> : null}
+              Aplicar {enrichSelectedFields.size} campo{enrichSelectedFields.size !== 1 ? 's' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ====== MODAL: Editor de Teclado (Piano) ====== */}
       <KeyboardEditor
