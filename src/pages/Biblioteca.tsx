@@ -43,11 +43,43 @@ const STAGE_BADGES: Record<string, 'foundation' | 'grow' | 'advance' | 'master'>
 
 /** Card de acorde de piano com teclado SVG real */
 function PianoChordCard({ positions, name }: { positions: any; name: string }) {
-  const keys = (positions?.keys ?? []) as string[]
-  const fingeringRh = (positions?.fingering_rh ?? []) as number[]
+  const allKeys = (positions?.keys ?? []) as string[]
+  const rawKeysLh = (positions?.keys_lh ?? []) as string[]
+  const fingeringRhRaw = (positions?.fingering_rh ?? []) as number[]
+  const fingeringLhRaw = (positions?.fingering_lh ?? []) as number[]
   const quality = positions?.quality as string | undefined
+  const rawRoot = (positions?.root ?? '') as string
 
-  if (keys.length === 0) {
+  // Extrair nome e oitava do root (pode vir como "C4" ou "C")
+  const rootMatch = rawRoot.match(/^([A-G][b#]?)(\d?)$/)
+  const rootName = rootMatch ? rootMatch[1] : rawRoot
+  const rootOctave = rootMatch?.[2] ? parseInt(rootMatch[2]) : undefined
+
+  // Inferir keysLh para acordes antigos: se nome tem slash e keys_lh está vazio,
+  // separar a nota do baixo (slash) da mão direita para a mão esquerda
+  let keys = allKeys
+  let keysLh = rawKeysLh
+  let fingeringRh = fingeringRhRaw
+  let fingeringLh = fingeringLhRaw
+
+  if (keysLh.length === 0 && name.includes('/')) {
+    const slashNote = name.split('/')[1] // ex: "G" de "C/G"
+    if (slashNote) {
+      // Encontrar a nota do baixo (mais grave) que corresponde ao slash
+      const bassIdx = allKeys.findIndex(k => {
+        const m = k.match(/^([A-G][b#]?)/)
+        return m && m[1] === slashNote
+      })
+      if (bassIdx !== -1) {
+        keysLh = [allKeys[bassIdx]]
+        keys = allKeys.filter((_, i) => i !== bassIdx)
+        fingeringLh = fingeringRhRaw[bassIdx] != null ? [fingeringRhRaw[bassIdx]] : []
+        fingeringRh = fingeringRhRaw.filter((_, i) => i !== bassIdx)
+      }
+    }
+  }
+
+  if (keys.length === 0 && keysLh.length === 0) {
     return (
       <div className="h-[180px] flex flex-col items-center justify-center gap-2 w-full">
         <PianoKeys size={32} className="text-text3" />
@@ -64,12 +96,13 @@ function PianoChordCard({ positions, name }: { positions: any; name: string }) {
       )}
       <PianoKeyboard
         keys={keys}
-        root={positions?.root}
+        keysLh={keysLh}
+        root={rootName}
+        rootOctave={rootOctave}
         fingeringRH={fingeringRh}
+        fingeringLH={fingeringLh}
         showLabels={true}
         hand="rh"
-        highlightColor="#FF2D78"
-        range={['C4', 'C6']}
         scale={1}
         className="w-full overflow-hidden"
       />
@@ -109,13 +142,21 @@ export function Biblioteca() {
   const [slashFilter, setSlashFilter] = useState<'todos' | 'sem' | 'inversion' | 'upper_structure' | 'com'>('todos');
   const [barreFilter, setBarreFilter] = useState<'todos' | 'sem' | 'com'>('todos');
   const [accidentalFilter, setAccidentalFilter] = useState<'todos' | 'natural' | 'sharp_flat'>('todos');
+  const [cagedMode, setCagedMode] = useState(false);
+  const [voicingMode, setVoicingMode] = useState(false);
+  const [voicingFilter, setVoicingFilter] = useState<'todos' | 'root_position' | '1st_inversion' | '2nd_inversion' | '3rd_inversion'>('todos');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // CAGED só é relevante para instrumentos de braço (violão/guitarra)
+  const isStringInstrument = instrument === 'guitar';
+  const isPiano = instrument === 'piano';
 
   const activeFilterCount = [
     familyFilter !== 'todos',
     barreFilter !== 'todos',
     slashFilter !== 'todos',
     accidentalFilter !== 'todos',
+    voicingFilter !== 'todos',
   ].filter(Boolean).length;
 
   const diffFilterNum = diffFilter !== 'todos' ? Number(diffFilter) : undefined;
@@ -126,7 +167,9 @@ export function Biblioteca() {
   const onlySlash = slashFilter === 'com';
   const slashType = slashFilter === 'inversion' ? 'inversion' : slashFilter === 'upper_structure' ? 'upper_structure' : undefined;
   const accidental = accidentalFilter !== 'todos' ? accidentalFilter as 'natural' | 'sharp_flat' : undefined;
-  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum, rootNote: rootNoteVal, family: familyVal, excludeSlash, onlySlash, slashType, accidental, hasBarre });
+  const voicingPositionVal = voicingFilter !== 'todos' ? voicingFilter : undefined;
+  const matrixPageSize = (cagedMode && isStringInstrument) || (voicingMode && isPiano) ? 500 : undefined;
+  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum, rootNote: rootNoteVal, family: familyVal, excludeSlash, onlySlash, slashType, accidental, hasBarre, voicingPosition: voicingPositionVal, pageSize: matrixPageSize });
   const { data: scales, loading: scalesLoading } = useScales();
   const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
   const { data: tablatures, loading: tablaturesLoading, refetch: refetchTablatures } = useTablatures();
@@ -155,24 +198,87 @@ export function Biblioteca() {
   const [pianoEditorOpen, setPianoEditorOpen] = useState(false);
   const [editingPianoChord, setEditingPianoChord] = useState<any>(null);
 
+  /** Auto-classifica voicing_position e slash_type a partir das notas do piano */
+  const classifyPianoVoicing = (positions: PianoChordData['positions']) => {
+    const NOTE_SEMITONES: Record<string, number> = {
+      'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4, 'Fb': 4,
+      'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11, 'Cb': 11,
+    }
+    const parsePitch = (s: string) => {
+      const m = s.match(/^([A-G][b#]?)(\d+)$/)
+      if (!m) return null
+      return (NOTE_SEMITONES[m[1]] ?? 0) + (parseInt(m[2]) + 1) * 12
+    }
+    const rootSem = NOTE_SEMITONES[positions.root] ?? 0
+
+    // Intervalos comuns de cada grau em semitons (mod 12)
+    const INTERVALS: Record<string, number[]> = {
+      '3rd': [3, 4],     // terça menor ou maior
+      '5th': [7, 6, 8],  // quinta justa, diminuta, aumentada
+      '7th': [10, 11],   // sétima menor ou maior
+    }
+
+    const classifyInterval = (noteSem: number): string | null => {
+      const interval = ((noteSem - rootSem) % 12 + 12) % 12
+      if (interval === 0) return null // é a fundamental
+      for (const [degree, semitones] of Object.entries(INTERVALS)) {
+        if (semitones.includes(interval)) return degree
+      }
+      return 'other'
+    }
+
+    // voicing_position: baseada na 1ª nota da mão direita
+    let voicingPosition: string | null = null
+    if (positions.keys.length > 0) {
+      const firstRhMidi = parsePitch(positions.keys[0])
+      if (firstRhMidi != null) {
+        const firstSem = firstRhMidi % 12
+        const degree = classifyInterval(firstSem)
+        if (degree === null) voicingPosition = 'root_position'
+        else if (degree === '3rd') voicingPosition = '1st_inv_shape'
+        else if (degree === '5th') voicingPosition = '2nd_inv_shape'
+        else if (degree === '7th') voicingPosition = '3rd_inv_shape'
+        else voicingPosition = 'root_position'
+      }
+    }
+
+    // slash_type: baseada na nota mais grave da mão esquerda
+    let slashType: string | null = null
+    const lhKeys = positions.keys_lh ?? []
+    if (lhKeys.length > 0) {
+      const lhMidis = lhKeys.map(parsePitch).filter((m): m is number => m != null)
+      if (lhMidis.length > 0) {
+        const lowestLh = Math.min(...lhMidis)
+        const degree = classifyInterval(lowestLh % 12)
+        if (degree === '3rd') slashType = '3rd'
+        else if (degree === '5th') slashType = '5th'
+        else if (degree === '7th') slashType = '7th'
+        else if (degree === 'other') slashType = 'upper_structure'
+        // se degree === null, é a fundamental → sem slash
+      }
+    }
+
+    return { voicingPosition, slashType }
+  }
+
   const handleSavePianoChord = async (data: PianoChordData) => {
+    const auto = classifyPianoVoicing(data.positions)
+    // Usar voicing_position explícito do editor quando disponível
+    const voicingPos = data.positions.voicing_position || auto.voicingPosition
+    const chordPayload = {
+      name: data.name,
+      instrument: 'piano' as any,
+      positions: data.positions as any,
+      difficulty: data.difficulty,
+      tags: data.tags as any,
+      voicing_position: voicingPos,
+      slash_type: auto.slashType,
+    }
     if (editingPianoChord) {
-      await updateChord(editingPianoChord.id, {
-        name: data.name,
-        instrument: 'piano' as any,
-        positions: data.positions as any,
-        difficulty: data.difficulty,
-        tags: data.tags as any,
-      });
+      await updateChord(editingPianoChord.id, chordPayload);
       toast.success('Acorde de piano atualizado!');
     } else {
-      await createChord({
-        name: data.name,
-        instrument: 'piano' as any,
-        positions: data.positions as any,
-        difficulty: data.difficulty,
-        tags: data.tags as any,
-      });
+      await createChord(chordPayload);
       toast.success('Acorde de piano criado!');
     }
     refetchChords();
@@ -281,6 +387,18 @@ export function Biblioteca() {
     return list
   }, [tablatures, tabSearch, tabDiffFilter])
 
+  // Helper: calcula baseFret (position) a partir dos dados do acorde
+  const getChordPosition = (positions: any): number => {
+    if (positions?.position) return positions.position
+    const frets: number[] = [
+      ...(positions?.fingers ?? []).map((f: any) => f[1]).filter((f: number) => typeof f === 'number' && f > 0),
+      ...(positions?.barres ?? []).map((b: any) => b.fret).filter((f: number) => typeof f === 'number' && f > 0),
+    ]
+    if (frets.length === 0) return 1
+    const minFret = Math.min(...frets)
+    return minFret > 0 ? minFret : 1
+  }
+
   // Filtros agora são aplicados no server via useChords opts
   const filteredChords = chords ?? []
 
@@ -349,7 +467,7 @@ export function Biblioteca() {
                 return (
                   <button
                     key={inst.value}
-                    onClick={() => setInstrument(inst.value)}
+                    onClick={() => { setInstrument(inst.value); if (inst.value !== 'guitar') setCagedMode(false); }}
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-all ${
                       active
                         ? 'bg-accent/15 text-accent border border-accent/30'
@@ -439,6 +557,56 @@ export function Biblioteca() {
                 </Badge>
               </div>
 
+              {/* Toggle MODO CAGED — SÓ para Violão/Guitarra */}
+              {isStringInstrument && (
+                <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+                  <button
+                    onClick={() => setCagedMode(!cagedMode)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-[12px] font-bold uppercase tracking-wider transition-all ${
+                      cagedMode
+                        ? 'border-accent bg-accent/15 text-accent shadow-sm shadow-accent/20'
+                        : 'border-border text-text3 hover:text-text2 hover:border-text3'
+                    }`}
+                  >
+                    <Guitar size={16} weight={cagedMode ? 'fill' : 'regular'} />
+                    Modo CAGED
+                    <span className={`w-8 h-4 rounded-full relative transition-colors ${cagedMode ? 'bg-accent' : 'bg-border'}`}>
+                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${cagedMode ? 'left-[18px]' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                  {cagedMode && (
+                    <span className="text-[11px] text-text3 italic">
+                      Visualização em Matriz — 5 regiões do braço
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Toggle MODO VOICING — SÓ para Piano */}
+              {isPiano && (
+                <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+                  <button
+                    onClick={() => setVoicingMode(!voicingMode)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-[12px] font-bold uppercase tracking-wider transition-all ${
+                      voicingMode
+                        ? 'border-accent bg-accent/15 text-accent shadow-sm shadow-accent/20'
+                        : 'border-border text-text3 hover:text-text2 hover:border-text3'
+                    }`}
+                  >
+                    <PianoKeys size={16} weight={voicingMode ? 'fill' : 'regular'} />
+                    Modo Voicing
+                    <span className={`w-8 h-4 rounded-full relative transition-colors ${voicingMode ? 'bg-accent' : 'bg-border'}`}>
+                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${voicingMode ? 'left-[18px]' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                  {voicingMode && (
+                    <span className="text-[11px] text-text3 italic">
+                      Visualização em Matriz — Voicings agrupados por nota
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Filtros avançados (colapsável) */}
               {showAdvancedFilters && (
                 <div className="pt-3 border-t border-border space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -465,8 +633,8 @@ export function Biblioteca() {
                     </div>
                   </div>
 
-                  {/* Pestana */}
-                  <div className="space-y-1.5">
+                  {/* Pestana — só para instrumentos de braço */}
+                  {!isPiano && <div className="space-y-1.5">
                     <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Pestana</label>
                     <div className="flex gap-1.5 flex-wrap">
                       {([
@@ -487,7 +655,35 @@ export function Biblioteca() {
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </div>}
+
+                  {/* Voicing — só para Piano */}
+                  {isPiano && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-semibold uppercase tracking-[1.5px] text-text3">Posição (MD)</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {([
+                          { label: 'Todos', value: 'todos' as const },
+                          { label: 'Fundamental', value: 'root_position' as const },
+                          { label: '1ª Pos', value: '1st_inversion' as const },
+                          { label: '2ª Pos', value: '2nd_inversion' as const },
+                          { label: '3ª Pos', value: '3rd_inversion' as const },
+                        ]).map(opt => (
+                          <button
+                            key={`voicing-${opt.value}`}
+                            onClick={() => setVoicingFilter(opt.value)}
+                            className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                              voicingFilter === opt.value
+                                ? 'border-accent/40 bg-accent/10 text-accent font-semibold'
+                                : 'border-border text-text3 hover:text-text2'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Baixo / Slash */}
                   <div className="space-y-1.5">
@@ -542,7 +738,7 @@ export function Biblioteca() {
                   {activeFilterCount > 0 && (
                     <div className="pt-2 border-t border-border/50">
                       <button
-                        onClick={() => { setFamilyFilter('todos'); setBarreFilter('todos'); setSlashFilter('todos'); setAccidentalFilter('todos') }}
+                        onClick={() => { setFamilyFilter('todos'); setBarreFilter('todos'); setSlashFilter('todos'); setAccidentalFilter('todos'); setVoicingFilter('todos') }}
                         className="text-[11px] text-accent hover:underline font-medium"
                       >
                         Limpar filtros avançados
@@ -561,7 +757,178 @@ export function Biblioteca() {
               <div className="card p-8 text-center text-text3">
                 <Warning size={20} className="inline mr-1" /> Nenhum acorde encontrado.
               </div>
+            ) : cagedMode && isStringInstrument ? (
+              /* ====== MODO CAGED: Swimlanes (Matriz 5 regiões) ====== */
+              <div className="space-y-6">
+                {(['C', 'A', 'G', 'E', 'D'] as const).map(shape => {
+                  const shapeChords = filteredChords.filter(c => (c as any).caged_shape === shape)
+                  const shapeLabels: Record<string, string> = { C: 'Formato C', A: 'Formato A', G: 'Formato G', E: 'Formato E', D: 'Formato D' }
+                  const shapeDescriptions: Record<string, string> = {
+                    C: 'Baixo na 5ª corda — escadinha descendente',
+                    A: 'Baixo na 5ª corda — mão compacta subindo',
+                    G: 'Baixo na 6ª corda — aranha (grande extensão)',
+                    E: 'Baixo na 6ª corda — com pestana',
+                    D: 'Baixo na 4ª corda — cordas agudas',
+                  }
+                  return (
+                    <div key={shape} className="rounded-[14px] bg-card border border-border overflow-hidden">
+                      {/* Header da raia */}
+                      <div className="flex items-center gap-3 px-4 py-2.5 bg-surface/50 border-b border-border">
+                        <span className="text-[18px] font-bold font-mono text-accent tracking-wider">{shape}</span>
+                        <div>
+                          <span className="text-[13px] font-semibold text-text">{shapeLabels[shape]}</span>
+                          <span className="text-[11px] text-text3 ml-2">{shapeDescriptions[shape]}</span>
+                        </div>
+                        <Badge variant="secondary" className="ml-auto text-[10px]">
+                          {shapeChords.length} acorde{shapeChords.length !== 1 ? 's' : ''}
+                        </Badge>
+                      </div>
+                      {/* Grid de acordes da raia */}
+                      {shapeChords.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-[12px] text-text3 italic">
+                          Nenhum acorde neste formato para os filtros aplicados
+                        </div>
+                      ) : (
+                        <div className="p-3 grid grid-cols-6 gap-3">
+                          {shapeChords.map(chord => {
+                            const tags = (chord.tags ?? []) as string[]
+                            const positions = (chord.positions ?? {}) as any
+                            return (
+                              <div
+                                key={chord.id}
+                                className="card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer"
+                                onClick={() => openModal('modal-acorde', chord)}
+                              >
+                                <div className="flex justify-center mb-1">
+                                  <ChordDiagram
+                                    name={chord.name}
+                                    positions={positions}
+                                    position={getChordPosition(positions)}
+                                    size="full"
+                                    strings={6}
+                                  />
+                                </div>
+                                <div className="text-[11px] text-text3">
+                                  {tags.join(' · ')} · Nível {chord.difficulty}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {/* Acordes sem shape definido */}
+                {filteredChords.some(c => !(c as any).caged_shape) && (
+                  <div className="rounded-[14px] bg-card border border-border/50 overflow-hidden opacity-60">
+                    <div className="flex items-center gap-3 px-4 py-2.5 bg-surface/30 border-b border-border/50">
+                      <span className="text-[14px] font-semibold text-text3">?</span>
+                      <span className="text-[12px] text-text3">Sem classificação CAGED</span>
+                      <Badge variant="secondary" className="ml-auto text-[10px]">
+                        {filteredChords.filter(c => !(c as any).caged_shape).length}
+                      </Badge>
+                    </div>
+                    <div className="p-3 grid grid-cols-6 gap-3">
+                      {filteredChords.filter(c => !(c as any).caged_shape).map(chord => {
+                        const tags = (chord.tags ?? []) as string[]
+                        const positions = (chord.positions ?? {}) as any
+                        return (
+                          <div
+                            key={chord.id}
+                            className="card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer"
+                            onClick={() => openModal('modal-acorde', chord)}
+                          >
+                            <div className="flex justify-center mb-1">
+                              <ChordDiagram name={chord.name} positions={positions} position={getChordPosition(positions)} size="full" strings={6} />
+                            </div>
+                            <div className="text-[11px] text-text3">
+                              {tags.join(' · ')} · Nível {chord.difficulty}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : voicingMode && isPiano ? (
+              /* ====== MODO VOICING: Swimlanes agrupadas por nome base (Piano) ====== */
+              (() => {
+                // Agrupar acordes por nome, preservando ordem de aparição
+                const groups: { name: string; chords: typeof filteredChords }[] = []
+                const groupMap = new Map<string, typeof filteredChords>()
+                for (const chord of filteredChords) {
+                  const key = chord.name
+                  if (!groupMap.has(key)) {
+                    const arr: typeof filteredChords = []
+                    groupMap.set(key, arr)
+                    groups.push({ name: key, chords: arr })
+                  }
+                  groupMap.get(key)!.push(chord)
+                }
+
+                const VOICING_COLS = [
+                  { key: 'root_position', label: 'Fund.' },
+                  { key: '1st_inversion', label: '1ª Pos' },
+                  { key: '2nd_inversion', label: '2ª Pos' },
+                  { key: '3rd_inversion', label: '3ª Pos' },
+                ] as const
+
+                return (
+                  <div className="space-y-5">
+                    {groups.map(({ name, chords: groupChords }) => (
+                      <div key={name} className="rounded-[14px] bg-card border border-border overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center gap-3 px-4 py-2.5 bg-surface/50 border-b border-border">
+                          <span className="text-[16px] font-bold text-accent">{name}</span>
+                          <Badge variant="secondary" className="ml-auto text-[10px]">
+                            {groupChords.length} voicing{groupChords.length !== 1 ? 's' : ''}
+                          </Badge>
+                        </div>
+                        {/* Grid 4 colunas: Fund. | 1ª Pos | 2ª Pos | 3ª Pos */}
+                        <div className="grid grid-cols-4 gap-0 divide-x divide-border/50">
+                          {VOICING_COLS.map(col => {
+                            const colChords = groupChords.filter(c => (c as any).voicing_position === col.key)
+                            return (
+                              <div key={col.key} className="min-h-[140px]">
+                                <div className="text-center py-1.5 bg-surface/30 border-b border-border/50">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">{col.label}</span>
+                                </div>
+                                {colChords.length === 0 ? (
+                                  <div className="flex items-center justify-center h-[120px] text-[11px] text-text3/40 italic">—</div>
+                                ) : (
+                                  <div className="p-2 space-y-2">
+                                    {colChords.map(chord => {
+                                      const positions = (chord.positions ?? {}) as any
+                                      return (
+                                        <div
+                                          key={chord.id}
+                                          className="card text-center p-2 hover:border-accent/30 transition-colors cursor-pointer"
+                                          onClick={() => { setEditingPianoChord(chord); setPianoEditorOpen(true) }}
+                                        >
+                                          <div className="flex justify-center mb-1">
+                                            <PianoChordCard positions={positions} name={chord.name} />
+                                          </div>
+                                          <div className="text-[10px] text-text3">
+                                            MD: {positions.fingering_rh?.join('-') || '—'} · Nível {chord.difficulty}
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()
             ) : (
+              /* ====== MODO NORMAL: Grid flat ====== */
               <div className={`grid gap-4 ${instrument === 'piano' ? 'grid-cols-4' : 'grid-cols-6 gap-3'}`}>
                 {filteredChords.map(chord => {
                   const tags = (chord.tags ?? []) as string[]
@@ -587,6 +954,7 @@ export function Biblioteca() {
                           <ChordDiagram
                             name={chord.name}
                             positions={positions}
+                            position={getChordPosition(positions)}
                             size="full"
                             strings={instrument === 'ukulele' || instrument === 'bass' ? 4 : 6}
                           />

@@ -62,9 +62,22 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
     if (!ref.current) return
     ref.current.innerHTML = ''
 
+    // Normalizar frets: se position > 1 e os frets são absolutos, converter para relativos
+    // SVGuitar espera frets relativos ao position (ex: position=5, fret 5→1, fret 7→3)
+    const needsNormalization = position > 1 && (positions.fingers ?? []).some(
+      (f: any) => typeof f[1] === 'number' && f[1] >= position
+    )
+    const offset = needsNormalization ? position - 1 : 0
+
     // Mesclar fingers normais + cordas mudas (fret='x') no formato SVGuitar
     const allFingers: Array<[number, number | 'x', (string | undefined)?]> = [
-      ...(positions.fingers ?? []),
+      ...(positions.fingers ?? []).map((f: any) => {
+        const [str, fret, label] = f
+        if (typeof fret === 'number' && fret > 0 && offset > 0) {
+          return [str, fret - offset, label] as [number, number, string | undefined]
+        }
+        return f
+      }),
       ...(positions.muted ?? []).map(s => [s, 'x'] as [number, 'x']),
     ]
 
@@ -74,6 +87,7 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
     const barreColor = style.barreChordStrokeColor
     const styledBarres = (positions.barres ?? []).map(b => ({
       ...b,
+      fret: offset > 0 ? b.fret - offset : b.fret,
       color: barreColor,
       textColor: style.fingerTextColor,
     }))

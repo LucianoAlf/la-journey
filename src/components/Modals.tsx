@@ -54,6 +54,7 @@ export function Modals() {
   const [chordDifficulty, setChordDifficulty] = useState('1');
   const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState());
   const [chordStartFret, setChordStartFret] = useState(1);
+  const [chordCagedShape, setChordCagedShape] = useState<string>('none');
   const [chordSaving, setChordSaving] = useState(false);
   const [chordDeleting, setChordDeleting] = useState(false);
   const [editingChordId, setEditingChordId] = useState<string | null>(null);
@@ -74,6 +75,7 @@ export function Modals() {
       setChordStartFret(sf);
       const inst = (editChordData.instrument ?? 'guitar') as ChordInstrument
       setChordEditorState(positionsToState(pos, sf, inst));
+      setChordCagedShape(editChordData.caged_shape ?? 'none');
     }
   }, [editChordData, isModalOpen]);
 
@@ -82,12 +84,14 @@ export function Modals() {
     setChordSaving(true);
     try {
       const positions = stateToPositions(chordEditorState, chordStartFret, chordInstrument as ChordInstrument);
+      const cagedValue = (chordInstrument === 'guitar' && chordCagedShape !== 'none') ? chordCagedShape : null;
       if (editingChordId) {
         await updateChord(editingChordId, {
           name: chordName,
           instrument: chordInstrument as any,
           difficulty: parseInt(chordDifficulty) || 1,
           positions: positions as any,
+          caged_shape: cagedValue,
         });
         toast.success('Acorde atualizado!');
       } else {
@@ -96,6 +100,7 @@ export function Modals() {
           instrument: chordInstrument as any,
           difficulty: parseInt(chordDifficulty) || 1,
           positions: positions as any,
+          caged_shape: cagedValue,
         });
         toast.success('Acorde salvo na biblioteca!');
       }
@@ -129,6 +134,7 @@ export function Modals() {
     setChordEditorState(createEmptyState(6));
     setChordStartFret(1);
     setEditingChordId(null);
+    setChordCagedShape('none');
   };
 
   // Conquista form state
@@ -407,6 +413,41 @@ export function Modals() {
               </Select>
             </div>
           </div>
+
+          {/* Formato CAGED — só para violão */}
+          {chordInstrument === 'guitar' && (
+            <div className="mb-4 space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Guitar size={14} /> Formato CAGED (Violão)
+              </Label>
+              <div className="flex gap-1.5">
+                {([
+                  { label: 'Nenhum', value: 'none' },
+                  { label: 'C', value: 'C' },
+                  { label: 'A', value: 'A' },
+                  { label: 'G', value: 'G' },
+                  { label: 'E', value: 'E' },
+                  { label: 'D', value: 'D' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setChordCagedShape(opt.value)}
+                    className={`px-3 py-1.5 text-[12px] rounded-lg border transition-colors ${
+                      chordCagedShape === opt.value
+                        ? 'border-accent/40 bg-accent/10 text-accent font-bold'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    } ${opt.value !== 'none' ? 'font-mono tracking-wider' : ''}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Classifique a região do braço onde este acorde é montado. Usado no Modo CAGED.
+              </p>
+            </div>
+          )}
 
           {/* Editor visual do braço + preview */}
           <ChordEditor

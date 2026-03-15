@@ -31,11 +31,13 @@ export async function getChordsPaginated(opts: {
   onlySlash?: boolean
   slashType?: string
   accidental?: 'natural' | 'sharp_flat'
+  cagedShape?: 'C' | 'A' | 'G' | 'E' | 'D'
   hasBarre?: boolean | null
+  voicingPosition?: string
   page?: number
   pageSize?: number
 }): Promise<{ data: Chord[]; count: number }> {
-  const { instrument, search, difficulty, tag, rootNote, family, quality, excludeSlash, onlySlash, slashType, accidental, hasBarre, page = 0, pageSize = 60 } = opts
+  const { instrument, search, difficulty, tag, rootNote, family, quality, excludeSlash, onlySlash, slashType, accidental, cagedShape, hasBarre, voicingPosition, page = 0, pageSize = 60 } = opts
   const from = page * pageSize
   const to = from + pageSize - 1
 
@@ -58,8 +60,10 @@ export async function getChordsPaginated(opts: {
   if (slashType) query = (query as any).eq('slash_type', slashType)
   if (accidental === 'natural') query = (query as any).in('root_note', ['C','D','E','F','G','A','B'])
   if (accidental === 'sharp_flat') query = (query as any).not('root_note', 'in', '("C","D","E","F","G","A","B")')
+  if (cagedShape) query = (query as any).eq('caged_shape', cagedShape)
   if (hasBarre === true) query = (query as any).eq('has_barre', true)
   if (hasBarre === false) query = (query as any).eq('has_barre', false)
+  if (voicingPosition) query = (query as any).eq('voicing_position', voicingPosition)
 
   const { data, error, count } = await query
   if (error) handleError(error)
@@ -116,7 +120,7 @@ export async function createChord(chord: TablesInsert<'chord_library'>) {
 
 /**
  * Insere múltiplos acordes em batch via upsert, ignorando duplicatas (name+instrument).
- * Usa constraint unique chord_library_name_instrument_unique.
+ * Constraint unique: chord_library_name_instrument_caged_unique (name, instrument, COALESCE(caged_shape, '')).
  * Retorna quantos foram inseridos com sucesso.
  */
 export async function insertChordsBatch(

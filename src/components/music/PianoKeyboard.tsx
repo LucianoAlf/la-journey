@@ -19,9 +19,15 @@ function useTheme() {
 }
 
 interface PianoKeyboardProps {
-  /** Notas do acorde/escala: ["C4", "E4", "G4"] */
+  /** Notas da mão direita: ["C4", "E4", "G4"] */
   keys: string[]
-  /** Fundamental: "C" */
+  /** Notas da mão esquerda: ["G3"] */
+  keysLh?: string[]
+  /** Nota fundamental (nome sem oitava): "C" — será pintada de laranja */
+  rootNote?: string
+  /** Oitava da fundamental (para identificar a tecla exata) */
+  rootOctave?: number
+  /** Fundamental: "C" (legado, usado se rootNote não definido) */
   root?: string
   /** Dedilhado mão direita: [1, 3, 5] */
   fingeringRH?: number[]
@@ -68,33 +74,30 @@ function noteToMidi(note: string): number | null {
   return octave * 12 + idx
 }
 
-/** Calcula range de 2 oitavas centrado nas notas reais do acorde */
-function calculateRange(keys: string[]): [string, string] {
-  if (keys.length === 0) return ['C4', 'C6']
+// Cores padrão para mão direita, esquerda e fundamental
+const COLOR_RH = '#FF2D78'
+const COLOR_LH = '#6366F1'
+const COLOR_ROOT = '#F97316'
 
-  const midis = keys.map(noteToMidi).filter((m): m is number => m !== null)
+/** Calcula range fixo de 2 oitavas começando na oitava da nota mais grave */
+function calculateRange(keys: string[], keysLh?: string[]): [string, string] {
+  const allKeys = [...keys, ...(keysLh ?? [])]
+  if (allKeys.length === 0) return ['C4', 'C6']
+
+  const midis = allKeys.map(noteToMidi).filter((m): m is number => m !== null)
   if (midis.length === 0) return ['C4', 'C6']
 
   const minMidi = Math.min(...midis)
   const maxMidi = Math.max(...midis)
 
-  // Ponto médio das notas
-  const center = (minMidi + maxMidi) / 2
+  // Começar na oitava da nota mais grave (baixo fica na extrema esquerda)
+  let startOctave = Math.floor(minMidi / 12)
+  let endOctave = startOctave + 2
 
-  // Oitava central — abrir 1 oitava para cada lado a partir do C
-  const centerOctave = Math.floor(center / 12)
-  let startOctave = centerOctave - 1
-  let endOctave = centerOctave + 1
-
-  // Garantir que TODAS as notas estão dentro do range
-  const startMidi = startOctave * 12 // C da oitava start
-  const endMidi = endOctave * 12     // C da oitava end
-
-  if (minMidi < startMidi) startOctave = Math.floor(minMidi / 12)
-  if (maxMidi >= endMidi) endOctave = Math.floor(maxMidi / 12) + 1
-
-  // Mínimo 2 oitavas
-  if (endOctave - startOctave < 2) endOctave = startOctave + 2
+  // Se a nota mais aguda não couber em 2 oitavas, expandir para 3
+  if (maxMidi >= endOctave * 12) {
+    endOctave = startOctave + 3
+  }
 
   // Clamp para range razoável (C1-C8)
   startOctave = Math.max(1, startOctave)
@@ -105,11 +108,15 @@ function calculateRange(keys: string[]): [string, string] {
 
 export function PianoKeyboard({
   keys,
+  keysLh,
+  rootNote,
+  rootOctave,
+  root,
   fingeringRH,
   fingeringLH,
   label,
   range,
-  highlightColor = '#FF2D78',
+  highlightColor = COLOR_RH,
   showLabels = true,
   hand = 'rh',
   scale = 1,
@@ -119,16 +126,54 @@ export function PianoKeyboard({
 }: PianoKeyboardProps) {
   const detectedTheme = useTheme()
   const isDark = forceTheme ? forceTheme === 'dark' : detectedTheme === 'dark'
-  const effectiveRange = range || calculateRange(keys)
+  const effectiveRange = range || calculateRange(keys, keysLh)
   const fingering = hand === 'rh' ? fingeringRH : fingeringLH
+  const lhKeys = keysLh ?? []
+
+  // Identificar a nota fundamental (laranja) entre as teclas
+  const fundamentalKey = useMemo(() => {
+    let rn = rootNote ?? root
+    if (!rn) return null
+    // root pode vir como "C4" (com oitava) ou "C" (sem oitava) — extrair só o nome
+    const rootMatch = rn.match(/^([A-G][b#]?)(\d?)$/)
+    const rootName = rootMatch ? rootMatch[1] : rn
+    const rootOct = rootOctave ?? (rootMatch?.[2] ? parseInt(rootMatch[2]) : null)
+    // Procurar a fundamental nas keys (MR) e keysLh (ME)
+    const allK = [...keys, ...lhKeys]
+    // Fundamental exata: nome + oitava
+    if (rootOct != null) {
+      const exact = `${rootName}${rootOct}`
+      if (allK.includes(exact)) return exact
+    }
+    // Fallback: primeira nota que começa com o nome da fundamental
+    return allK.find(k => {
+      const m = k.match(/^([A-G][b#]?)/)
+      return m && m[1] === rootName
+    }) ?? null
+  }, [rootNote, root, rootOctave, keys, lhKeys])
+
+  // Separar keys por cor: fundamental (laranja) > MR (rosa) > ME (azul)
+  const { rhOnly, lhOnly, rootKey } = useMemo(() => {
+    const rootK = fundamentalKey
+    const rh = keys.filter(k => k !== rootK)
+    const lh = lhKeys.filter(k => k !== rootK)
+    return { rhOnly: rh, lhOnly: lh, rootKey: rootK }
+  }, [keys, lhKeys, fundamentalKey])
 
   const rendered = useMemo(() => {
-    // Montar labels do dedilhado
+    // Montar labels do dedilhado (MR + ME)
     const labelMap: Record<string, string> = {}
-    if (showLabels && fingering) {
-      keys.forEach((key, i) => {
-        if (fingering[i] != null) labelMap[key] = String(fingering[i])
-      })
+    if (showLabels) {
+      if (fingeringRH) {
+        keys.forEach((key, i) => {
+          if (fingeringRH[i] != null) labelMap[key] = String(fingeringRH[i])
+        })
+      }
+      if (fingeringLH) {
+        lhKeys.forEach((key, i) => {
+          if (fingeringLH[i] != null) labelMap[key] = String(fingeringLH[i])
+        })
+      }
     }
 
     // palette: [teclas pretas, teclas brancas]
@@ -138,9 +183,15 @@ export function PianoKeyboard({
 
     const stroke = isDark ? '#475569' : '#CBD5E1'
 
+    // Colorize por prioridade: fundamental (laranja) > ME (azul) > MR (rosa)
+    const colorize: { keys: string[]; color: string }[] = []
+    if (rhOnly.length > 0) colorize.push({ keys: rhOnly, color: COLOR_RH })
+    if (lhOnly.length > 0) colorize.push({ keys: lhOnly, color: COLOR_LH })
+    if (rootKey) colorize.push({ keys: [rootKey], color: COLOR_ROOT })
+
     return renderSVG({
       range: effectiveRange,
-      colorize: [{ keys, color: highlightColor }],
+      colorize,
       labels: labelMap,
       palette,
       stroke,
@@ -148,10 +199,22 @@ export function PianoKeyboard({
       scaleX: scale,
       scaleY: scale,
     })
-  }, [keys, effectiveRange, highlightColor, showLabels, fingering, scale, isDark])
+  }, [keys, lhKeys, rhOnly, lhOnly, rootKey, effectiveRange, showLabels, fingeringRH, fingeringLH, scale, isDark])
+
+  // Mapa de nota → cor para usar nos circles/texts
+  const keyColorMap = useMemo(() => {
+    const map = new Map<string, string>()
+    rhOnly.forEach(k => map.set(k, COLOR_RH))
+    lhOnly.forEach(k => map.set(k, COLOR_LH))
+    if (rootKey) map.set(rootKey, COLOR_ROOT)
+    return map
+  }, [rhOnly, lhOnly, rootKey])
 
   const labelFill = '#FFFFFF'
   const contrastText = isDark ? '#F1F5F9' : '#1E293B'
+
+  // Set de todas as cores usadas para detecção de highlight
+  const allColors = new Set([COLOR_RH, COLOR_LH, COLOR_ROOT, highlightColor])
 
   return (
     <div className={className}>
@@ -166,7 +229,8 @@ export function PianoKeyboard({
         {rendered.children.map((child, index) => {
           if (!child) return null
           const { polygon, circle, text } = child
-          const isHighlighted = child.key.fill === highlightColor
+          const fillColor = child.key.fill
+          const isHighlighted = allColors.has(fillColor)
 
           return (
             <g key={index}>
@@ -183,7 +247,7 @@ export function PianoKeyboard({
                   cx={circle.cx}
                   cy={circle.cy}
                   r={circle.r}
-                  fill={isHighlighted ? highlightColor : contrastText}
+                  fill={isHighlighted ? fillColor : contrastText}
                   stroke={circle.stroke}
                   strokeWidth={circle.strokeWidth}
                 />
@@ -205,9 +269,9 @@ export function PianoKeyboard({
           )
         })}
       </svg>
-      {showLabels && fingering && fingering.length > 0 && (
+      {showLabels && fingeringRH && fingeringRH.length > 0 && (
         <div className="text-center text-[10px] text-text3 mt-1 font-mono" style={labelColor ? { color: labelColor } : undefined}>
-          {hand === 'rh' ? 'MD' : 'ME'}: {fingering.join('-')}
+          MD: {fingeringRH.join('-')}
         </div>
       )}
     </div>

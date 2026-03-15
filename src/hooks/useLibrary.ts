@@ -18,7 +18,9 @@ interface UseChordsPaginatedOpts {
   onlySlash?: boolean
   slashType?: string
   accidental?: 'natural' | 'sharp_flat'
+  cagedShape?: 'C' | 'A' | 'G' | 'E' | 'D'
   hasBarre?: boolean | null
+  voicingPosition?: string
   pageSize?: number
 }
 
@@ -44,7 +46,7 @@ export function useChords(instrument?: ChordInstrument, opts?: Omit<UseChordsPag
   const [fetchKey, setFetchKey] = useState(0)
 
   // Reset página quando filtros mudam
-  useEffect(() => { setPage(0) }, [instrument, opts?.search, opts?.difficulty, opts?.tag, opts?.rootNote, opts?.family, opts?.quality, opts?.excludeSlash, opts?.onlySlash, opts?.slashType, opts?.accidental, opts?.hasBarre])
+  useEffect(() => { setPage(0) }, [instrument, opts?.search, opts?.difficulty, opts?.tag, opts?.rootNote, opts?.family, opts?.quality, opts?.excludeSlash, opts?.onlySlash, opts?.slashType, opts?.accidental, opts?.cagedShape, opts?.hasBarre, opts?.voicingPosition])
 
   const refetch = useCallback(() => setFetchKey(k => k + 1), [])
 
@@ -65,7 +67,9 @@ export function useChords(instrument?: ChordInstrument, opts?: Omit<UseChordsPag
       onlySlash: opts?.onlySlash,
       slashType: opts?.slashType,
       accidental: opts?.accidental,
+      cagedShape: opts?.cagedShape,
       hasBarre: opts?.hasBarre,
+      voicingPosition: opts?.voicingPosition,
       page,
       pageSize,
     })
@@ -84,7 +88,7 @@ export function useChords(instrument?: ChordInstrument, opts?: Omit<UseChordsPag
       })
 
     return () => { cancelled = true }
-  }, [instrument, opts?.search, opts?.difficulty, opts?.tag, opts?.rootNote, opts?.family, opts?.quality, opts?.excludeSlash, opts?.onlySlash, opts?.slashType, opts?.accidental, opts?.hasBarre, page, pageSize, fetchKey])
+  }, [instrument, opts?.search, opts?.difficulty, opts?.tag, opts?.rootNote, opts?.family, opts?.quality, opts?.excludeSlash, opts?.onlySlash, opts?.slashType, opts?.accidental, opts?.cagedShape, opts?.hasBarre, opts?.voicingPosition, page, pageSize, fetchKey])
 
   return {
     data,
