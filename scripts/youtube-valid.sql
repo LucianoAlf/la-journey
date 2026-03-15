@@ -1,0 +1,9 @@
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=YR5ApYxkU-U' WHERE id = '64f0fee5-ddb4-4013-8615-3ffa98083391';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=3mbBbFH9fAg' WHERE id = '1c38ec07-f880-4eda-96a3-4d48812e111f';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=YkgkThdzX-8' WHERE id = 'f1343777-984b-4e89-b51c-f014570b1520';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=JwYX52BP2Sk' WHERE id = '02e4665c-e33b-4378-880f-f7bde71b5105';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=7Xf-Lesrkuc' WHERE id = 'cef7cdea-dd0d-4813-ba86-783275127245';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=79fzeNUqQbQ' WHERE id = 'c42d29da-ce48-4686-9b89-0a572e033e63';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=rTVjnBo96Ug' WHERE id = 'f73f1bed-05ef-423b-99a0-44247a36cded';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=0J2QdDbelmY' WHERE id = '7539867f-39c4-40e6-b20f-fef8818a47a1';
+UPDATE repertoire SET youtube_url = 'https://www.youtube.com/watch?v=1w7OgIMMRc4' WHERE id = 'eaab3d0a-7570-4a59-a05e-a26cab62fbc3';

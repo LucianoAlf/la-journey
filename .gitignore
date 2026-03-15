@@ -13,4 +13,5 @@ public/soundfont/fluidr3-gm.sf2
 
 # Dados externos de ingestão (clonados temporariamente)
 scripts/guitar-chords-db-json/
-scripts/olga-import/
+
+scripts/olga-import

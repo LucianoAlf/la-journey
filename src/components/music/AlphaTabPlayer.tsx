@@ -131,9 +131,7 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
           return res.json()
         })
         .then((bundle) => {
-          console.log('[AlphaTab] Convertendo Songsterr JSON →', bundle.title, bundle.artist)
           const score = convertSongsterrToScore(bundle)
-          console.log('[AlphaTab] Score gerado:', score.tracks.length, 'tracks,', score.masterBars.length, 'compassos')
           api.renderScore(score)
         })
         .catch((err) => {
@@ -170,7 +168,6 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
 
     // Player pronto (soundfont carregado)
     api.playerReady.on(() => {
-      console.log('[AlphaTab] Player MIDI pronto — soundfont carregado')
       setPlayerReady(true)
     })
 

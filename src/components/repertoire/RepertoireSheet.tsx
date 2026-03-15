@@ -496,7 +496,6 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
     try {
       const selectedArr = [...enrichSelectedFields]
       const updates = enrichmentToUpdates(enrichResult, selectedArr)
-      console.log('[Enrich] updates a aplicar:', updates, 'selectedFields:', selectedArr, 'enrichResult:', enrichResult)
 
       if (Object.keys(updates).length === 0) {
         toast.info('Nenhum campo selecionado para aplicar.')
@@ -505,7 +504,6 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
       }
 
       const result = await updateSong(song.id, updates as any)
-      console.log('[Enrich] updateSong retorno:', result)
       toast.success(`${Object.keys(updates).length} campo${Object.keys(updates).length > 1 ? 's' : ''} atualizado${Object.keys(updates).length > 1 ? 's' : ''} com sucesso!`)
       // Atualizar música localmente (sem fechar o sheet)
       setLiveSong(prev => prev ? { ...prev, ...updates } as Repertoire : prev)

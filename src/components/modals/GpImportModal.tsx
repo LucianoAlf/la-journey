@@ -175,7 +175,6 @@ export function GpImportModal({ open, onClose, onSuccess }: GpImportModalProps) 
       setDifficulty(parsedData.difficulty)
       setMainInstrument(instruments[0] ?? 'Violão')
 
-      console.log('[GP Import] Parsed:', parsedData)
     } catch (err: any) {
       console.error('[GP Import] Erro ao parsear:', err)
       setParseError(err?.message || 'Erro ao ler arquivo')
