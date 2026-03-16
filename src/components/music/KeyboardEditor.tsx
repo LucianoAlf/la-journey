@@ -971,24 +971,17 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
           {mode === 'chord' && (
             <div className="flex gap-2 items-stretch flex-wrap">
               {/* Tríades */}
-              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tríades</span>
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px] bg-muted/60">
+                <span className="text-[9px] uppercase tracking-[1px] font-bold whitespace-nowrap mr-[3px] text-muted-foreground">Tríades</span>
                 {['major', 'minor', 'dim', 'aug', 'sus2', 'sus4', 'add9'].map(p => (
                   <button
                     key={p}
                     onClick={() => handleLoadPreset(p)}
-                    style={{
-                      height: 28, padding: '0 10px',
-                      border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
-                      borderRadius: 6,
-                      background: lastPreset === p ? '#FF2D78' : 'transparent',
-                      color: lastPreset === p ? '#fff' : '#94A3B8',
-                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
-                      cursor: 'pointer', whiteSpace: 'nowrap',
-                      transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                    onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
-                    onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                    className={`h-7 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-all duration-150 flex items-center justify-center font-[DM_Sans,sans-serif] cursor-pointer ${
+                      lastPreset === p
+                        ? 'border-accent bg-accent text-white font-semibold'
+                        : 'border-border text-muted-foreground hover:border-accent hover:text-accent font-normal'
+                    }`}
                   >
                     {PRESET_LABELS[p]}
                   </button>
@@ -996,24 +989,17 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
               </div>
 
               {/* Tétrades */}
-              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tétrades</span>
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px] bg-muted/60">
+                <span className="text-[9px] uppercase tracking-[1px] font-bold whitespace-nowrap mr-[3px] text-muted-foreground">Tétrades</span>
                 {['7', 'm7', 'maj7', 'dim7', 'm7b5', '6', 'm6', 'mmaj7'].map(p => (
                   <button
                     key={p}
                     onClick={() => handleLoadPreset(p)}
-                    style={{
-                      height: 28, padding: '0 10px',
-                      border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
-                      borderRadius: 6,
-                      background: lastPreset === p ? '#FF2D78' : 'transparent',
-                      color: lastPreset === p ? '#fff' : '#94A3B8',
-                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
-                      cursor: 'pointer', whiteSpace: 'nowrap',
-                      transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                    onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
-                    onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                    className={`h-7 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-all duration-150 flex items-center justify-center font-[DM_Sans,sans-serif] cursor-pointer ${
+                      lastPreset === p
+                        ? 'border-accent bg-accent text-white font-semibold'
+                        : 'border-border text-muted-foreground hover:border-accent hover:text-accent font-normal'
+                    }`}
                   >
                     {PRESET_LABELS[p]}
                   </button>
@@ -1023,63 +1009,54 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
           )}
 
           {/* ─ LINHA 3: TENSÕES (isolada, desabilitada sem acorde base) ─ */}
-          {mode === 'chord' && (
-            <div className="flex gap-2 items-stretch flex-wrap">
-              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032', opacity: lastPreset && !lastPreset.includes('scale') && lastPreset !== 'penta' && lastPreset !== 'blues' ? 1 : 0.4 }}>
-                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tensões</span>
-                {!lastPreset && (
-                  <span style={{ fontSize: 10, color: '#475569', fontStyle: 'italic', marginRight: 4 }}>Selecione um acorde base</span>
-                )}
-                {ALL_TENSIONS.map(t => {
-                  const isActive = activeTensions.has(t)
-                  const isDisabled = !lastPreset || lastPreset.includes('scale') || lastPreset === 'penta' || lastPreset === 'blues'
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => !isDisabled && handleToggleTension(t)}
-                      disabled={isDisabled}
-                      style={{
-                        height: 28, padding: '0 8px',
-                        border: isActive ? '1px solid #8B5CF6' : '1px solid #334155',
-                        borderRadius: 6,
-                        background: isActive ? '#8B5CF6' : 'transparent',
-                        color: isActive ? '#fff' : '#94A3B8',
-                        fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: isActive ? 600 : 400,
-                        cursor: isDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-                        transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                      onMouseEnter={(e) => { if (!isActive && !isDisabled) { (e.currentTarget as HTMLElement).style.borderColor = '#8B5CF6'; (e.currentTarget as HTMLElement).style.color = '#8B5CF6' } }}
-                      onMouseLeave={(e) => { if (!isActive && !isDisabled) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
-                    >
-                      {TENSION_LABELS[t]}
-                    </button>
-                  )
-                })}
+          {mode === 'chord' && (() => {
+            const tensionEnabled = !!lastPreset && !lastPreset.includes('scale') && lastPreset !== 'penta' && lastPreset !== 'blues'
+            return (
+              <div className="flex gap-2 items-stretch flex-wrap">
+                <div className={`flex gap-[4px] items-center rounded-lg px-3 py-[6px] bg-muted/60 transition-opacity duration-200 ${tensionEnabled ? 'opacity-100' : 'opacity-30'}`}>
+                  <span className="text-[9px] uppercase tracking-[1px] font-bold whitespace-nowrap mr-[3px] text-muted-foreground">Tensões</span>
+                  {!lastPreset && (
+                    <span className="text-[10px] text-muted-foreground/60 italic mr-1">Selecione um acorde base</span>
+                  )}
+                  {ALL_TENSIONS.map(t => {
+                    const isActive = activeTensions.has(t)
+                    const isDisabled = !tensionEnabled
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => !isDisabled && handleToggleTension(t)}
+                        disabled={isDisabled}
+                        className={`h-7 px-2 rounded-md border text-[11px] whitespace-nowrap transition-all duration-150 flex items-center justify-center font-[DM_Mono,monospace] ${
+                          isActive
+                            ? 'border-violet-500 bg-violet-500 text-white font-semibold'
+                            : isDisabled
+                              ? 'border-border text-muted-foreground/50 cursor-not-allowed'
+                              : 'border-border text-muted-foreground hover:border-violet-500 hover:text-violet-500 cursor-pointer font-normal'
+                        }`}
+                      >
+                        {TENSION_LABELS[t]}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* ─ LINHA 4: ESCALAS (condicional — só modo Escala/Arpejo) ─ */}
           {(mode === 'scale' || mode === 'arpeggio') && (
             <div className="flex gap-2 items-stretch flex-wrap">
-              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Escalas</span>
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px] bg-muted/60">
+                <span className="text-[9px] uppercase tracking-[1px] font-bold whitespace-nowrap mr-[3px] text-muted-foreground">Escalas</span>
                 {['major_scale', 'minor_scale', 'harmonic_minor_scale', 'melodic_minor_scale', 'penta', 'blues'].map(p => (
                   <button
                     key={p}
                     onClick={() => handleLoadPreset(p)}
-                    style={{
-                      height: 28, padding: '0 10px',
-                      border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
-                      borderRadius: 6,
-                      background: lastPreset === p ? '#FF2D78' : 'transparent',
-                      color: lastPreset === p ? '#fff' : '#94A3B8',
-                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
-                      cursor: 'pointer', whiteSpace: 'nowrap',
-                      transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                    onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
-                    onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                    className={`h-7 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-all duration-150 flex items-center justify-center font-[DM_Sans,sans-serif] cursor-pointer ${
+                      lastPreset === p
+                        ? 'border-accent bg-accent text-white font-semibold'
+                        : 'border-border text-muted-foreground hover:border-accent hover:text-accent font-normal'
+                    }`}
                   >
                     {PRESET_LABELS[p]}
                   </button>

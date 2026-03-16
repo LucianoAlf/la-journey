@@ -41,6 +41,17 @@ const STAGE_BADGES: Record<string, 'foundation' | 'grow' | 'advance' | 'master'>
   foundation: 'foundation', grow: 'grow', advance: 'advance', master: 'master',
 }
 
+/** Traduz family do banco para texto em pt-BR */
+const FAMILY_LABELS: Record<string, string> = {
+  triad: 'tríade', tetrad: 'tétrade', suspended: 'suspensa',
+  tension: 'tensão', power: 'power chord', other: 'outro',
+}
+function chordFooterText(chord: { family?: string | null; difficulty?: number | null }): string {
+  const family = FAMILY_LABELS[(chord.family ?? '')] ?? ''
+  const level = chord.difficulty ? `nível ${chord.difficulty}` : ''
+  return [family, level].filter(Boolean).join(' · ')
+}
+
 /** Card de acorde de piano com teclado SVG real */
 const PianoChordCard = memo(function PianoChordCard({ positions, name }: { positions: any; name: string }) {
   const allKeys = (positions?.keys ?? []) as string[]
@@ -816,7 +827,7 @@ export function Biblioteca() {
                                   />
                                 </div>
                                 <div className="text-[11px] text-text3">
-                                  {tags.join(' · ')} · Nível {chord.difficulty}
+                                  {chordFooterText(chord)}
                                 </div>
                               </div>
                             )
@@ -850,7 +861,7 @@ export function Biblioteca() {
                               <ChordDiagram name={chord.name} positions={positions} position={getChordPosition(positions)} size="full" strings={6} />
                             </div>
                             <div className="text-[11px] text-text3">
-                              {tags.join(' · ')} · Nível {chord.difficulty}
+                              {chordFooterText(chord)}
                             </div>
                           </div>
                         )
@@ -968,7 +979,7 @@ export function Biblioteca() {
                         )}
                       </div>
                       <div className="text-[11px] text-text3">
-                        {tags.join(' · ')} · Nível {chord.difficulty}
+                        {chordFooterText(chord)}
                       </div>
                     </div>
                   )
