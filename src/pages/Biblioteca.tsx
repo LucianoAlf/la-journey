@@ -1,5 +1,5 @@
 import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash, Database, Lightning, Funnel, MagnifyingGlass } from "@phosphor-icons/react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, memo } from "react";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
 import { Button } from "@/components/ui/button";
@@ -42,13 +42,21 @@ const STAGE_BADGES: Record<string, 'foundation' | 'grow' | 'advance' | 'master'>
 }
 
 /** Card de acorde de piano com teclado SVG real */
-function PianoChordCard({ positions, name }: { positions: any; name: string }) {
+const PianoChordCard = memo(function PianoChordCard({ positions, name }: { positions: any; name: string }) {
   const allKeys = (positions?.keys ?? []) as string[]
   const rawKeysLh = (positions?.keys_lh ?? []) as string[]
   const fingeringRhRaw = (positions?.fingering_rh ?? []) as number[]
   const fingeringLhRaw = (positions?.fingering_lh ?? []) as number[]
-  const quality = positions?.quality as string | undefined
+  const rawQuality = (positions?.quality ?? '') as string
   const rawRoot = (positions?.root ?? '') as string
+
+  // Inferir quality a partir do nome quando campo está vazio
+  const quality = rawQuality || (() => {
+    // Remover nota raiz do nome para extrair sufixo (ex: "Cm7" → "m7", "C" → "")
+    const rootFromName = name.match(/^[A-G][b#]?/)?.[0] ?? ''
+    const suffix = name.slice(rootFromName.length)
+    return suffix || 'maior'
+  })()
 
   // Extrair nome e oitava do root (pode vir como "C4" ou "C")
   const rootMatch = rawRoot.match(/^([A-G][b#]?)(\d?)$/)
@@ -108,7 +116,7 @@ function PianoChordCard({ positions, name }: { positions: any; name: string }) {
       />
     </div>
   )
-}
+})
 
 const NOTATION_CATEGORY_BADGES: Record<string, { label: string; variant: string }> = {
   scale: { label: 'Escala', variant: 'advance' },
@@ -168,8 +176,7 @@ export function Biblioteca() {
   const slashType = slashFilter === 'inversion' ? 'inversion' : slashFilter === 'upper_structure' ? 'upper_structure' : undefined;
   const accidental = accidentalFilter !== 'todos' ? accidentalFilter as 'natural' | 'sharp_flat' : undefined;
   const voicingPositionVal = voicingFilter !== 'todos' ? voicingFilter : undefined;
-  const matrixPageSize = (cagedMode && isStringInstrument) || (voicingMode && isPiano) ? 500 : undefined;
-  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum, rootNote: rootNoteVal, family: familyVal, excludeSlash, onlySlash, slashType, accidental, hasBarre, voicingPosition: voicingPositionVal, pageSize: matrixPageSize });
+  const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum, rootNote: rootNoteVal, family: familyVal, excludeSlash, onlySlash, slashType, accidental, hasBarre, voicingPosition: voicingPositionVal });
   const { data: scales, loading: scalesLoading } = useScales();
   const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
   const { data: tablatures, loading: tablaturesLoading, refetch: refetchTablatures } = useTablatures();
@@ -562,7 +569,7 @@ export function Biblioteca() {
                 <div className="flex items-center gap-3 pt-2 border-t border-border/50">
                   <button
                     onClick={() => setCagedMode(!cagedMode)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-[12px] font-bold uppercase tracking-wider transition-all ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-[12px] font-bold uppercase tracking-wider cursor-pointer transition-colors duration-150 active:scale-[0.97] active:duration-75 ${
                       cagedMode
                         ? 'border-accent bg-accent/15 text-accent shadow-sm shadow-accent/20'
                         : 'border-border text-text3 hover:text-text2 hover:border-text3'
@@ -587,7 +594,7 @@ export function Biblioteca() {
                 <div className="flex items-center gap-3 pt-2 border-t border-border/50">
                   <button
                     onClick={() => setVoicingMode(!voicingMode)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-[12px] font-bold uppercase tracking-wider transition-all ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-[12px] font-bold uppercase tracking-wider cursor-pointer transition-colors duration-150 active:scale-[0.97] active:duration-75 ${
                       voicingMode
                         ? 'border-accent bg-accent/15 text-accent shadow-sm shadow-accent/20'
                         : 'border-border text-text3 hover:text-text2 hover:border-text3'
@@ -911,7 +918,7 @@ export function Biblioteca() {
                                             <PianoChordCard positions={positions} name={chord.name} />
                                           </div>
                                           <div className="text-[10px] text-text3">
-                                            MD: {positions.fingering_rh?.join('-') || '—'} · Nível {chord.difficulty}
+                                            Nível {chord.difficulty}
                                           </div>
                                         </div>
                                       )
@@ -992,7 +999,7 @@ export function Biblioteca() {
                   variant="outline"
                   size="sm"
                   disabled={chordsPage === 0}
-                  onClick={() => setChordsPage(chordsPage - 1)}
+                  onClick={() => { setChordsPage(chordsPage - 1); document.querySelector('.h-screen.overflow-y-auto')?.scrollTo({ top: 0, behavior: 'smooth' }) }}
                 >
                   ← Anterior
                 </Button>
@@ -1003,7 +1010,7 @@ export function Biblioteca() {
                   variant="outline"
                   size="sm"
                   disabled={chordsPage >= chordsTotalPages - 1}
-                  onClick={() => setChordsPage(chordsPage + 1)}
+                  onClick={() => { setChordsPage(chordsPage + 1); document.querySelector('.h-screen.overflow-y-auto')?.scrollTo({ top: 0, behavior: 'smooth' }) }}
                 >
                   Próxima →
                 </Button>

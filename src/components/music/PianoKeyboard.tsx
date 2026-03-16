@@ -1,21 +1,35 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useSyncExternalStore } from 'react'
 import { renderSVG } from 'svg-piano'
 
-/** Observa mudanças no atributo data-theme do <html> */
-function useTheme() {
-  const [theme, setTheme] = useState(() =>
-    typeof document !== 'undefined'
+/** Singleton: 1 único MutationObserver compartilhado por todas as instâncias */
+let _themeListeners = new Set<() => void>()
+let _cachedTheme: string | null = null
+let _observerStarted = false
+
+function _getTheme() {
+  if (_cachedTheme === null) {
+    _cachedTheme = typeof document !== 'undefined'
       ? document.documentElement.getAttribute('data-theme') ?? 'dark'
       : 'dark'
-  )
-  useEffect(() => {
+  }
+  return _cachedTheme
+}
+
+function _subscribeTheme(cb: () => void) {
+  _themeListeners.add(cb)
+  if (!_observerStarted && typeof document !== 'undefined') {
+    _observerStarted = true
     const obs = new MutationObserver(() => {
-      setTheme(document.documentElement.getAttribute('data-theme') ?? 'dark')
+      _cachedTheme = document.documentElement.getAttribute('data-theme') ?? 'dark'
+      _themeListeners.forEach(fn => fn())
     })
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
-    return () => obs.disconnect()
-  }, [])
-  return theme
+  }
+  return () => { _themeListeners.delete(cb) }
+}
+
+function useTheme() {
+  return useSyncExternalStore(_subscribeTheme, _getTheme, () => 'dark')
 }
 
 interface PianoKeyboardProps {

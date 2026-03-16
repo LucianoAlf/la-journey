@@ -120,7 +120,7 @@ export async function createChord(chord: TablesInsert<'chord_library'>) {
 
 /**
  * Insere múltiplos acordes em batch via upsert, ignorando duplicatas (name+instrument).
- * Constraint unique: chord_library_name_instrument_caged_unique (name, instrument, COALESCE(caged_shape, '')).
+ * Constraint unique: chord_library_name_instrument_voicing_unique (name, instrument, caged_shape, voicing_position).
  * Retorna quantos foram inseridos com sucesso.
  */
 export async function insertChordsBatch(

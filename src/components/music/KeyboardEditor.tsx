@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { FloppyDisk, Trash, X } from '@phosphor-icons/react'
+import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -761,6 +762,15 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
     bump()
   }, [rightKeys, leftKeys, bump])
 
+  // Reconstruir acorde quando fundamental muda (evita closure stale do setTimeout)
+  const prevRootRef = useRef(selectedRoot)
+  useEffect(() => {
+    if (prevRootRef.current !== selectedRoot) {
+      prevRootRef.current = selectedRoot
+      if (lastPreset) buildChord(lastPreset, activeTensions, voicingPosition)
+    }
+  }, [selectedRoot, lastPreset, activeTensions, voicingPosition, buildChord])
+
   // Info computada
   const infoMode = mode === 'chord' ? 'Acorde' : mode === 'scale' ? 'Escala' : 'Arpejo'
   const rootDisplay = rootNote != null
@@ -791,6 +801,13 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
         tags,
       })
       onOpenChange(false)
+    } catch (err: any) {
+      const msg = err?.message ?? String(err)
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('409') || msg.includes('23505')) {
+        toast.error(`Já existe um acorde "${chordName.trim()}" para este instrumento. Use outro nome ou edite o existente.`)
+      } else {
+        toast.error(`Erro ao salvar: ${msg}`)
+      }
     } finally {
       setSaving(false)
     }
@@ -824,64 +841,18 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
           </DialogTitle>
         </DialogHeader>
 
-        {/* ── Linha 1: Config principal ── */}
-        <div className="flex gap-2.5 flex-wrap items-end mb-3">
-          {/* Modo */}
-          <div className="space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Modo</span>
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              {(['chord', 'scale', 'arpeggio'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setMode(m)}
-                  className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                    mode === m ? 'bg-accent text-white' : 'text-text3 hover:bg-accent/10 hover:text-accent'
-                  }`}
-                >
-                  {m === 'chord' ? 'Acorde' : m === 'scale' ? 'Escala' : 'Arpejo'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Mão ativa */}
-          <div className="space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Mão ativa</span>
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              <button
-                onClick={() => setActiveHand('left')}
-                className={`px-3 py-1.5 text-[12px] font-medium transition-colors flex items-center gap-1.5 ${
-                  activeHand === 'left' ? 'text-white' : 'text-text3 hover:bg-white/5'
-                }`}
-                style={{ backgroundColor: activeHand === 'left' ? COLORS.leftHand : undefined }}
-              >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS.leftHand }} />
-                Esquerda
-              </button>
-              <button
-                onClick={() => setActiveHand('right')}
-                className={`px-3 py-1.5 text-[12px] font-medium transition-colors flex items-center gap-1.5 ${
-                  activeHand === 'right' ? 'text-white' : 'text-text3 hover:bg-white/5'
-                }`}
-                style={{ backgroundColor: activeHand === 'right' ? COLORS.rightHand : undefined }}
-              >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS.rightHand }} />
-                Direita
-              </button>
-            </div>
-          </div>
-
-        </div>
-
-        {/* ── Toolbar: 3 linhas separadas ── */}
+        {/* ══════════════════════════════════════════════════════════════
+            TOOLBAR — Proposta C: "Camadas de Decisão"
+            L1: Config Master | L2: Corpo do Acorde | L3: Tensões | L4: Escalas (condicional)
+            ══════════════════════════════════════════════════════════════ */}
         <div className="flex flex-col gap-1.5 mb-3.5">
 
-          {/* ─ Linha 1: Configuração (Fundamental + Posição MD + Oitavas) ─ */}
-          <div className="flex gap-2 items-stretch flex-wrap">
-            {/* Card: Fundamental */}
-            <div className="flex gap-[6px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
+          {/* ─ LINHA 1: CONFIG MASTER ─ */}
+          <div className="flex items-center gap-2 flex-wrap rounded-lg px-3 py-[7px]" style={{ backgroundColor: '#162032' }}>
+            {/* Fundamental */}
+            <div className="flex items-center gap-[6px]">
               <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap' }}>Fundamental</span>
-              <Select value={String(selectedRoot)} onValueChange={v => { setSelectedRoot(Number(v)); if (lastPreset) setTimeout(handleReloadPreset, 0) }}>
+              <Select value={String(selectedRoot)} onValueChange={v => setSelectedRoot(Number(v))}>
                 <SelectTrigger className="h-7 w-[72px] text-[12px] font-semibold font-mono px-2">
                   <SelectValue />
                 </SelectTrigger>
@@ -891,37 +862,32 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
               </Select>
             </div>
 
-            {/* Card: Posição (MD) — só no modo Acorde */}
+            <div style={{ width: 1, height: 20, backgroundColor: '#334155' }} />
+
+            {/* Posição (MD) — só no modo Acorde */}
             {mode === 'chord' && (
-              <div className="flex gap-[5px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 2 }}>Posição (MD)</span>
-                {(['root_position', '1st_inversion', '2nd_inversion', ...(lastPreset && TYPE_MAP[lastPreset] === 'tetrad' ? ['3rd_inversion' as const] : [])] as VoicingPosition[]).map(vp => (
-                  <button
-                    key={vp}
-                    onClick={() => handleVoicingChange(vp)}
-                    style={{
-                      height: 28, padding: '0 10px',
-                      border: voicingPosition === vp ? '1px solid #F97316' : '1px solid #334155',
-                      borderRadius: 6,
-                      background: voicingPosition === vp ? '#F97316' : 'transparent',
-                      color: voicingPosition === vp ? '#fff' : '#94A3B8',
-                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: voicingPosition === vp ? 600 : 400,
-                      cursor: 'pointer', whiteSpace: 'nowrap',
-                      transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                    onMouseEnter={(e) => { if (voicingPosition !== vp) { (e.currentTarget as HTMLElement).style.borderColor = '#F97316'; (e.currentTarget as HTMLElement).style.color = '#F97316' } }}
-                    onMouseLeave={(e) => { if (voicingPosition !== vp) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
-                  >
-                    {VOICING_LABELS[vp]}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="flex items-center gap-[6px]">
+                  <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap' }}>Posição (MD)</span>
+                  <Select value={voicingPosition} onValueChange={v => handleVoicingChange(v as VoicingPosition)}>
+                    <SelectTrigger className="h-7 w-[80px] text-[12px] font-semibold px-2" style={{ borderColor: '#F97316', color: '#F97316' }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(['root_position', '1st_inversion', '2nd_inversion', ...(lastPreset && TYPE_MAP[lastPreset] === 'tetrad' ? ['3rd_inversion'] : [])] as VoicingPosition[]).map(vp => (
+                        <SelectItem key={vp} value={vp}>{VOICING_LABELS[vp]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div style={{ width: 1, height: 20, backgroundColor: '#334155' }} />
+              </>
             )}
 
-            {/* Card: Oitavas + Início — só para Escala/Arpejo */}
+            {/* Oitavas + Início — só para Escala/Arpejo */}
             {mode !== 'chord' && (
-              <div className="flex gap-3 items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-                <div className="flex gap-[6px] items-center">
+              <>
+                <div className="flex items-center gap-[6px]">
                   <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap' }}>Oitavas</span>
                   <Select value={String(octaveCount)} onValueChange={v => setOctaveCount(Number(v))}>
                     <SelectTrigger className="h-7 w-[52px] text-[12px] font-mono px-2">
@@ -932,8 +898,7 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
                     </SelectContent>
                   </Select>
                 </div>
-                <div style={{ width: 1, height: 20, backgroundColor: '#334155' }} />
-                <div className="flex gap-[6px] items-center">
+                <div className="flex items-center gap-[6px]">
                   <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap' }}>Início</span>
                   <Select value={String(octaveStart)} onValueChange={v => setOctaveStart(Number(v))}>
                     <SelectTrigger className="h-7 w-[60px] text-[12px] font-mono px-2">
@@ -944,121 +909,184 @@ export function KeyboardEditor({ open, onOpenChange, chord, onSave, onDelete }: 
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+                <div style={{ width: 1, height: 20, backgroundColor: '#334155' }} />
+              </>
             )}
-          </div>
 
-          {/* ─ Linha 2: Qualidade (Tríades + Tétrades) ─ */}
-          <div className="flex gap-2 items-stretch flex-wrap">
-            {/* Card: Tríades */}
-            <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tríades</span>
-              {['major', 'minor', 'dim', 'aug', 'sus2', 'sus4', 'add9'].map(p => (
-                <button
-                  key={p}
-                  onClick={() => handleLoadPreset(p)}
-                  style={{
-                    height: 28, padding: '0 10px',
-                    border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
-                    borderRadius: 6,
-                    background: lastPreset === p ? '#FF2D78' : 'transparent',
-                    color: lastPreset === p ? '#fff' : '#94A3B8',
-                    fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
-                    cursor: 'pointer', whiteSpace: 'nowrap',
-                    transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
-                  onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
-                >
-                  {PRESET_LABELS[p]}
-                </button>
-              ))}
+            {/* Modo */}
+            <div className="flex items-center gap-[6px]">
+              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap' }}>Modo</span>
+              <Select value={mode} onValueChange={v => setMode(v as 'chord' | 'scale' | 'arpeggio')}>
+                <SelectTrigger className="h-7 w-[90px] text-[12px] font-semibold px-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="chord">Acorde</SelectItem>
+                  <SelectItem value="scale">Escala</SelectItem>
+                  <SelectItem value="arpeggio">Arpejo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Card: Tétrades */}
-            <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tétrades</span>
-              {['7', 'm7', 'maj7', 'dim7', 'm7b5', '6', 'm6', 'mmaj7'].map(p => (
+            <div style={{ width: 1, height: 20, backgroundColor: '#334155' }} />
+
+            {/* Mão ativa */}
+            <div className="flex items-center gap-[6px]">
+              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap' }}>Mão</span>
+              <div className="flex border border-border rounded-md overflow-hidden">
                 <button
-                  key={p}
-                  onClick={() => handleLoadPreset(p)}
-                  style={{
-                    height: 28, padding: '0 10px',
-                    border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
-                    borderRadius: 6,
-                    background: lastPreset === p ? '#FF2D78' : 'transparent',
-                    color: lastPreset === p ? '#fff' : '#94A3B8',
-                    fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
-                    cursor: 'pointer', whiteSpace: 'nowrap',
-                    transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
-                  onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                  onClick={() => setActiveHand('left')}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                    activeHand === 'left' ? 'text-white' : 'text-text3 hover:bg-white/5'
+                  }`}
+                  style={{ backgroundColor: activeHand === 'left' ? COLORS.leftHand : undefined }}
                 >
-                  {PRESET_LABELS[p]}
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: COLORS.leftHand }} />
+                  Esq
                 </button>
-              ))}
+                <button
+                  onClick={() => setActiveHand('right')}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                    activeHand === 'right' ? 'text-white' : 'text-text3 hover:bg-white/5'
+                  }`}
+                  style={{ backgroundColor: activeHand === 'right' ? COLORS.rightHand : undefined }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: COLORS.rightHand }} />
+                  Dir
+                </button>
+              </div>
             </div>
+
+            {/* Limpar */}
+            <button
+              onClick={handleClearAll}
+              className="ml-auto text-[11px] text-text3 hover:text-accent transition-colors flex items-center gap-1"
+              style={{ fontFamily: "'DM Sans', sans-serif" }}
+            >
+              ⟲ Limpar
+            </button>
           </div>
 
-          {/* ─ Linha 3: Tensões (toggle múltiplo, desabilitada sem acorde base) ─ */}
-          <div className="flex gap-2 items-stretch flex-wrap">
-            <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032', opacity: lastPreset && !lastPreset.includes('scale') && lastPreset !== 'penta' && lastPreset !== 'blues' ? 1 : 0.4 }}>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tensões</span>
-              {ALL_TENSIONS.map(t => {
-                const isActive = activeTensions.has(t)
-                const isDisabled = !lastPreset || lastPreset.includes('scale') || lastPreset === 'penta' || lastPreset === 'blues'
-                return (
+          {/* ─ LINHA 2: CORPO DO ACORDE (Tríades + Tétrades) ─ */}
+          {mode === 'chord' && (
+            <div className="flex gap-2 items-stretch flex-wrap">
+              {/* Tríades */}
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
+                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tríades</span>
+                {['major', 'minor', 'dim', 'aug', 'sus2', 'sus4', 'add9'].map(p => (
                   <button
-                    key={t}
-                    onClick={() => !isDisabled && handleToggleTension(t)}
-                    disabled={isDisabled}
+                    key={p}
+                    onClick={() => handleLoadPreset(p)}
                     style={{
-                      height: 28, padding: '0 8px',
-                      border: isActive ? '1px solid #8B5CF6' : '1px solid #334155',
+                      height: 28, padding: '0 10px',
+                      border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
                       borderRadius: 6,
-                      background: isActive ? '#8B5CF6' : 'transparent',
-                      color: isActive ? '#fff' : '#94A3B8',
-                      fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: isActive ? 600 : 400,
-                      cursor: isDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                      background: lastPreset === p ? '#FF2D78' : 'transparent',
+                      color: lastPreset === p ? '#fff' : '#94A3B8',
+                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
+                      cursor: 'pointer', whiteSpace: 'nowrap',
                       transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
-                    onMouseEnter={(e) => { if (!isActive && !isDisabled) { (e.currentTarget as HTMLElement).style.borderColor = '#8B5CF6'; (e.currentTarget as HTMLElement).style.color = '#8B5CF6' } }}
-                    onMouseLeave={(e) => { if (!isActive && !isDisabled) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                    onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
+                    onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
                   >
-                    {TENSION_LABELS[t]}
+                    {PRESET_LABELS[p]}
                   </button>
-                )
-              })}
-            </div>
-          </div>
+                ))}
+              </div>
 
-          {/* ─ Linha 4: Escalas ─ */}
-          <div className="flex gap-2 items-stretch flex-wrap">
-            <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Escalas</span>
-              {['major_scale', 'minor_scale', 'harmonic_minor_scale', 'melodic_minor_scale', 'penta', 'blues'].map(p => (
-                <button
-                  key={p}
-                  onClick={() => handleLoadPreset(p)}
-                  style={{
-                    height: 28, padding: '0 10px',
-                    border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
-                    borderRadius: 6,
-                    background: lastPreset === p ? '#FF2D78' : 'transparent',
-                    color: lastPreset === p ? '#fff' : '#94A3B8',
-                    fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
-                    cursor: 'pointer', whiteSpace: 'nowrap',
-                    transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
-                  onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
-                >
-                  {PRESET_LABELS[p]}
-                </button>
-              ))}
+              {/* Tétrades */}
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
+                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tétrades</span>
+                {['7', 'm7', 'maj7', 'dim7', 'm7b5', '6', 'm6', 'mmaj7'].map(p => (
+                  <button
+                    key={p}
+                    onClick={() => handleLoadPreset(p)}
+                    style={{
+                      height: 28, padding: '0 10px',
+                      border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
+                      borderRadius: 6,
+                      background: lastPreset === p ? '#FF2D78' : 'transparent',
+                      color: lastPreset === p ? '#fff' : '#94A3B8',
+                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                      transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
+                    onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                  >
+                    {PRESET_LABELS[p]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ─ LINHA 3: TENSÕES (isolada, desabilitada sem acorde base) ─ */}
+          {mode === 'chord' && (
+            <div className="flex gap-2 items-stretch flex-wrap">
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032', opacity: lastPreset && !lastPreset.includes('scale') && lastPreset !== 'penta' && lastPreset !== 'blues' ? 1 : 0.4 }}>
+                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Tensões</span>
+                {!lastPreset && (
+                  <span style={{ fontSize: 10, color: '#475569', fontStyle: 'italic', marginRight: 4 }}>Selecione um acorde base</span>
+                )}
+                {ALL_TENSIONS.map(t => {
+                  const isActive = activeTensions.has(t)
+                  const isDisabled = !lastPreset || lastPreset.includes('scale') || lastPreset === 'penta' || lastPreset === 'blues'
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => !isDisabled && handleToggleTension(t)}
+                      disabled={isDisabled}
+                      style={{
+                        height: 28, padding: '0 8px',
+                        border: isActive ? '1px solid #8B5CF6' : '1px solid #334155',
+                        borderRadius: 6,
+                        background: isActive ? '#8B5CF6' : 'transparent',
+                        color: isActive ? '#fff' : '#94A3B8',
+                        fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: isActive ? 600 : 400,
+                        cursor: isDisabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                        transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                      onMouseEnter={(e) => { if (!isActive && !isDisabled) { (e.currentTarget as HTMLElement).style.borderColor = '#8B5CF6'; (e.currentTarget as HTMLElement).style.color = '#8B5CF6' } }}
+                      onMouseLeave={(e) => { if (!isActive && !isDisabled) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                    >
+                      {TENSION_LABELS[t]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ─ LINHA 4: ESCALAS (condicional — só modo Escala/Arpejo) ─ */}
+          {(mode === 'scale' || mode === 'arpeggio') && (
+            <div className="flex gap-2 items-stretch flex-wrap">
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px]" style={{ backgroundColor: '#162032' }}>
+                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: '#64748B', fontWeight: 700, whiteSpace: 'nowrap', marginRight: 3 }}>Escalas</span>
+                {['major_scale', 'minor_scale', 'harmonic_minor_scale', 'melodic_minor_scale', 'penta', 'blues'].map(p => (
+                  <button
+                    key={p}
+                    onClick={() => handleLoadPreset(p)}
+                    style={{
+                      height: 28, padding: '0 10px',
+                      border: lastPreset === p ? '1px solid #FF2D78' : '1px solid #334155',
+                      borderRadius: 6,
+                      background: lastPreset === p ? '#FF2D78' : 'transparent',
+                      color: lastPreset === p ? '#fff' : '#94A3B8',
+                      fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: lastPreset === p ? 600 : 400,
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                      transition: '.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    onMouseEnter={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#FF2D78'; (e.currentTarget as HTMLElement).style.color = '#FF2D78' } }}
+                    onMouseLeave={(e) => { if (lastPreset !== p) { (e.currentTarget as HTMLElement).style.borderColor = '#334155'; (e.currentTarget as HTMLElement).style.color = '#94A3B8' } }}
+                  >
+                    {PRESET_LABELS[p]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 
