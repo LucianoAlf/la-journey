@@ -18,6 +18,8 @@ import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
 import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
 import { TablatureEditor } from "@/components/music/TablatureEditor";
+import { GuitarFretboardDiagram, type GuitarFretboardPositions } from "@/components/music/GuitarFretboardDiagram";
+import { GuitarFretboardEditor } from "@/components/music/GuitarFretboardEditor";
 import { createChord, updateChord, deleteChord, insertChordsBatch } from "@/services/libraryService";
 import { generateAllChordsForPopulation } from "@/services/chordAutoFillService";
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
@@ -139,10 +141,11 @@ const NOTATION_CATEGORY_BADGES: Record<string, { label: string; variant: string 
 }
 
 
-type InstrumentFilter = 'guitar' | 'piano' | 'bass' | 'ukulele'
+type InstrumentFilter = 'guitar' | 'electric_guitar' | 'piano' | 'bass' | 'ukulele'
 
 const INSTRUMENTS: { value: InstrumentFilter; label: string; icon: typeof Guitar }[] = [
   { value: 'guitar', label: 'Violão', icon: Guitar },
+  { value: 'electric_guitar', label: 'Guitarra', icon: Guitar },
   { value: 'piano', label: 'Piano', icon: PianoKeys },
   { value: 'bass', label: 'Baixo', icon: Guitar },
   { value: 'ukulele', label: 'Ukulele', icon: Guitar },
@@ -166,9 +169,10 @@ export function Biblioteca() {
   const [voicingFilter, setVoicingFilter] = useState<'todos' | 'root_position' | '1st_inversion' | '2nd_inversion' | '3rd_inversion'>('todos');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-  // CAGED só é relevante para instrumentos de braço (violão/guitarra)
+  // CAGED só é relevante para instrumentos de braço (violão)
   const isStringInstrument = instrument === 'guitar';
   const isPiano = instrument === 'piano';
+  const isElectricGuitar = instrument === 'electric_guitar';
 
   const activeFilterCount = [
     familyFilter !== 'todos',
@@ -215,6 +219,10 @@ export function Biblioteca() {
   // Estado do KeyboardEditor (piano)
   const [pianoEditorOpen, setPianoEditorOpen] = useState(false);
   const [editingPianoChord, setEditingPianoChord] = useState<any>(null);
+
+  // Estado do GuitarFretboardEditor (guitarra elétrica)
+  const [guitarEditorOpen, setGuitarEditorOpen] = useState(false);
+  const [editingGuitarChord, setEditingGuitarChord] = useState<any>(null);
 
   /** Auto-classifica voicing_position e slash_type a partir das notas do piano */
   const classifyPianoVoicing = (positions: PianoChordData['positions']) => {
@@ -458,11 +466,14 @@ export function Biblioteca() {
           } else if (instrument === 'piano') {
             setEditingPianoChord(null);
             setPianoEditorOpen(true);
+          } else if (instrument === 'electric_guitar') {
+            setEditingGuitarChord(null);
+            setGuitarEditorOpen(true);
           } else {
             openModal('modal-acorde');
           }
         }}>
-          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : 'Novo Acorde'}
+          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : instrument === 'electric_guitar' ? 'Nova Escala/Acorde' : 'Novo Acorde'}
         </Button>
       </div>
 
@@ -485,7 +496,7 @@ export function Biblioteca() {
                 return (
                   <button
                     key={inst.value}
-                    onClick={() => { setInstrument(inst.value); if (inst.value !== 'guitar') setCagedMode(false); }}
+                    onClick={() => { setInstrument(inst.value); if (inst.value !== 'guitar') { setCagedMode(false); setVoicingMode(false) } }}
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-all ${
                       active
                         ? 'bg-accent/15 text-accent border border-accent/30'
@@ -947,7 +958,7 @@ export function Biblioteca() {
               })()
             ) : (
               /* ====== MODO NORMAL: Grid flat ====== */
-              <div className={`grid gap-4 ${instrument === 'piano' ? 'grid-cols-4' : 'grid-cols-6 gap-3'}`}>
+              <div className={`grid gap-4 ${isElectricGuitar ? 'grid-cols-2' : instrument === 'piano' ? 'grid-cols-4' : 'grid-cols-6 gap-3'}`}>
                 {filteredChords.map(chord => {
                   const tags = (chord.tags ?? []) as string[]
                   const positions = (chord.positions ?? {}) as any
@@ -955,18 +966,41 @@ export function Biblioteca() {
                   return (
                     <div
                       key={chord.id}
-                      className="card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer"
+                      className={`card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer ${isElectricGuitar ? 'p-4' : ''}`}
                       onClick={() => {
                         if (instrument === 'piano') {
                           setEditingPianoChord(chord);
                           setPianoEditorOpen(true);
+                        } else if (isElectricGuitar) {
+                          setEditingGuitarChord({
+                            id: chord.id,
+                            name: chord.name,
+                            instrument: 'electric_guitar' as const,
+                            positions: positions as GuitarFretboardPositions,
+                            difficulty: chord.difficulty ?? 1,
+                            tags: (chord.tags ?? []) as string[],
+                            family: chord.family ?? undefined,
+                            quality: chord.quality ?? undefined,
+                            root_note: chord.root_note ?? 'C',
+                          });
+                          setGuitarEditorOpen(true);
                         } else {
                           openModal('modal-acorde', chord);
                         }
                       }}
                     >
-                      <div className="flex justify-center mb-1">
-                        {instrument === 'piano' ? (
+                      <div className={`flex justify-center mb-1 ${isElectricGuitar ? 'w-full' : ''}`}>
+                        {isElectricGuitar && positions?.format === 'fretboard_horizontal' ? (
+                          <GuitarFretboardDiagram
+                            positions={positions as GuitarFretboardPositions}
+                            name={chord.name}
+                            width={960}
+                            height={180}
+                            fretCount={positions.fretRange?.[1] ?? 15}
+                            dotLabel="note"
+                            dotSize={18}
+                          />
+                        ) : instrument === 'piano' ? (
                           <PianoChordCard positions={positions} name={chord.name} />
                         ) : (
                           <ChordDiagram
@@ -985,17 +1019,20 @@ export function Biblioteca() {
                   )
                 })}
                 <div
-                  className="card text-center p-3 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors"
+                  className={`card text-center p-3 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors ${isElectricGuitar ? 'p-4' : ''}`}
                   onClick={() => {
                     if (instrument === 'piano') {
                       setEditingPianoChord(null);
                       setPianoEditorOpen(true);
+                    } else if (isElectricGuitar) {
+                      setEditingGuitarChord(null);
+                      setGuitarEditorOpen(true);
                     } else {
                       openModal('modal-acorde');
                     }
                   }}
                 >
-                  <div className="h-[180px] flex items-center justify-center">
+                  <div className={`${isElectricGuitar ? 'h-[140px]' : 'h-[180px]'} flex items-center justify-center`}>
                     <div className="text-[28px] text-text3">+</div>
                   </div>
                   <div className="text-sm text-text2">Adicionar</div>
@@ -1392,6 +1429,14 @@ export function Biblioteca() {
         chord={editingPianoChord}
         onSave={handleSavePianoChord}
         onDelete={handleDeletePianoChord}
+      />
+
+      {/* GuitarFretboardEditor — modal de guitarra */}
+      <GuitarFretboardEditor
+        open={guitarEditorOpen}
+        onOpenChange={(v) => { setGuitarEditorOpen(v); if (!v) setEditingGuitarChord(null); }}
+        chord={editingGuitarChord}
+        onSave={() => refetchChords()}
       />
 
       {/* NotationEditor — modal de notação */}
