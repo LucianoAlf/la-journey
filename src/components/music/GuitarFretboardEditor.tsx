@@ -116,6 +116,12 @@ function generateFretboardNotes(
       if (scaleNotes.has(noteIdx)) {
         const isRoot = noteIdx === rootIdx
         const degree = intervals.indexOf((noteIdx - rootIdx + 12) % 12) + 1
+        // Dedilhado automático: dedo 1-4 baseado na posição relativa no bloco de 4 trastes
+        let finger: number | undefined
+        if (fret > 0) {
+          const posInBlock = ((fret - 1) % 4)
+          finger = posInBlock + 1  // 1, 2, 3, 4
+        }
         notes.push({
           string: stringNum,
           fret,
@@ -123,6 +129,7 @@ function generateFretboardNotes(
           isRoot,
           degree: degree > 0 ? degree : undefined,
           interval: isRoot ? '1P' : undefined,
+          finger,
         })
       }
     }
@@ -218,8 +225,16 @@ export function GuitarFretboardEditor({
   const [deleting, setDeleting] = useState(false)
   const [dotLabel, setDotLabel] = useState<'finger' | 'note' | 'degree' | 'none'>('note')
 
+  // Popover de edição (clique direito)
+  const [popover, setPopover] = useState<{
+    noteIdx: number
+    x: number
+    y: number
+  } | null>(null)
+
   // Referências
   const fretboardRef = useRef<HTMLDivElement>(null)
+  const fretboardCardRef = useRef<HTMLDivElement>(null)
   const fbInstanceRef = useRef<Fretboard | null>(null)
 
   // Tema
@@ -278,7 +293,13 @@ export function GuitarFretboardEditor({
         if (dotLabel === 'none') return ''
         if (dotLabel === 'note') return dot.note ?? ''
         if (dotLabel === 'degree') return dot.degree ? String(dot.degree) : ''
-        return dot.finger ? String(dot.finger) : ''
+        if (dotLabel === 'finger') {
+          if (dot.finger && dot.finger > 0) return String(dot.finger)
+          // Dedilhado automático: dedo 1-4 baseado na posição do traste
+          if (dot.fret > 0) return String(((dot.fret - 1) % 4) + 1)
+          return ''
+        }
+        return ''
       },
     })
 
@@ -310,6 +331,11 @@ export function GuitarFretboardEditor({
       filter: (dot: any) => !dot.isRoot,
       fill: colors.dotFill,
       fontFill: '#FFFFFF',
+    })
+
+    // Forçar texto branco em todas as notas (fretboard.js não aplica fontFill corretamente)
+    fretboardRef.current.querySelectorAll('.dot-text').forEach(t => {
+      t.setAttribute('fill', '#FFFFFF')
     })
 
     // Injetar inlay dots (marcadores de traste)
@@ -354,6 +380,124 @@ export function GuitarFretboardEditor({
       return () => clearTimeout(timer)
     }
   }, [open, renderFretboard])
+
+  // ── Registrar contextmenu nativo direto no elemento (bypass Radix Dialog) ──
+  const contextMenuHandlerRef = useRef<((e: MouseEvent) => void) | null>(null)
+  useEffect(() => {
+    const el = fretboardRef.current
+    if (!el || !open) return
+
+    // Remover handler anterior se existir
+    if (contextMenuHandlerRef.current) {
+      el.removeEventListener('contextmenu', contextMenuHandlerRef.current)
+    }
+
+    const handler = (e: MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      const svg = el.querySelector('svg')
+      if (!svg) return
+
+      const svgRect = svg.getBoundingClientRect()
+      const mx = e.clientX - svgRect.left
+      const my = e.clientY - svgRect.top
+
+      const dotGroups = svg.querySelectorAll('g[class*="dot-string"]')
+      let bestIdx = -1
+      let bestDist = Infinity
+
+      dotGroups.forEach(dotGroup => {
+        const circle = dotGroup.querySelector('circle')
+        if (!circle) return
+        const cr = circle.getBoundingClientRect()
+        const cx = cr.left + cr.width / 2 - svgRect.left
+        const cy = cr.top + cr.height / 2 - svgRect.top
+        const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2)
+        if (dist < bestDist && dist < 20) {
+          const cls = dotGroup.getAttribute('class') || ''
+          const sm = cls.match(/dot-string-(\d+)/)
+          const fm = cls.match(/dot-fret-(\d+)/)
+          if (sm && fm) {
+            const s = parseInt(sm[1])
+            const f = parseInt(fm[1])
+            const idx = notes.findIndex(n => n.string === s && n.fret === f)
+            if (idx >= 0) { bestIdx = idx; bestDist = dist }
+          }
+        }
+      })
+
+      if (bestIdx < 0) return
+
+      const cardRect = fretboardCardRef.current?.getBoundingClientRect()
+      if (!cardRect) return
+
+      // Encontrar o círculo exato da nota para posicionar acima dele
+      setPopover({
+        noteIdx: bestIdx,
+        x: e.clientX - cardRect.left,
+        y: e.clientY - cardRect.top,
+      })
+    }
+
+    contextMenuHandlerRef.current = handler
+    el.addEventListener('contextmenu', handler)
+    return () => el.removeEventListener('contextmenu', handler)
+  }, [open, notes])
+
+  // ── Clique direito no overlay para abrir popover (mesmo padrão do ChordEditor) ──
+  const handleOverlayContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const container = fretboardRef.current
+    if (!container) return
+
+    // Encontrar o SVG do fretboard
+    const svg = container.querySelector('svg')
+    if (!svg) return
+
+    const svgRect = svg.getBoundingClientRect()
+    const mx = e.clientX - svgRect.left
+    const my = e.clientY - svgRect.top
+
+    // Buscar a nota mais próxima do clique no SVG
+    const dotGroups = svg.querySelectorAll('g[class*="dot-string"]')
+    let bestIdx = -1
+    let bestDist = Infinity
+
+    dotGroups.forEach(dotGroup => {
+      const circle = dotGroup.querySelector('circle')
+      if (!circle) return
+
+      const cx = circle.getBoundingClientRect().left + circle.getBoundingClientRect().width / 2 - svgRect.left
+      const cy = circle.getBoundingClientRect().top + circle.getBoundingClientRect().height / 2 - svgRect.top
+      const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2)
+
+      if (dist < bestDist && dist < 20) {
+        const cls = dotGroup.getAttribute('class') || ''
+        const sm = cls.match(/dot-string-(\d+)/)
+        const fm = cls.match(/dot-fret-(\d+)/)
+        if (sm && fm) {
+          const s = parseInt(sm[1])
+          const f = parseInt(fm[1])
+          const idx = notes.findIndex(n => n.string === s && n.fret === f)
+          if (idx >= 0) {
+            bestIdx = idx
+            bestDist = dist
+          }
+        }
+      }
+    })
+
+    if (bestIdx < 0) return
+
+    const cardRect = fretboardCardRef.current?.getBoundingClientRect()
+    if (!cardRect) return
+    setPopover({
+      noteIdx: bestIdx,
+      x: e.clientX - cardRect.left,
+      y: e.clientY - cardRect.top,
+    })
+  }, [notes])
 
   // ── Handlers de presets ──
   const handleLoadPreset = useCallback((presetKey: string) => {
@@ -549,6 +693,57 @@ export function GuitarFretboardEditor({
   // Variáveis para tensões
   const tensionEnabled = !!lastPreset && !lastPreset.includes('scale') && !lastPreset.startsWith('penta') && lastPreset !== 'blues'
 
+  // ── Handler de clique direito no fretboard ──
+  const handleFretboardContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setPopover(null)
+
+    // Encontrar qual nota SVG foi clicada
+    const target = e.target as Element
+    const dotGroup = target.closest('g.dot')
+    if (!dotGroup) return
+
+    // Extrair string e fret do className: "dot dot-string-X dot-fret-Y ..."
+    const cls = dotGroup.getAttribute('class') || ''
+    const stringMatch = cls.match(/dot-string-(\d+)/)
+    const fretMatch = cls.match(/dot-fret-(\d+)/)
+    if (!stringMatch || !fretMatch) return
+
+    const s = parseInt(stringMatch[1])
+    const f = parseInt(fretMatch[1])
+
+    // Encontrar índice no array de notas
+    const idx = notes.findIndex(n => n.string === s && n.fret === f)
+    if (idx < 0) return
+
+    // Posição do popover relativa ao container do fretboard
+    const containerRect = fretboardRef.current?.getBoundingClientRect()
+    if (!containerRect) return
+
+    setPopover({
+      noteIdx: idx,
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top - 40,
+    })
+  }, [notes])
+
+  // ── Atualizar valor da nota no popover ──
+  const handlePopoverEdit = useCallback((value: number | string) => {
+    if (popover === null) return
+    setNotes(prev => {
+      const updated = [...prev]
+      const note = { ...updated[popover.noteIdx] }
+      if (dotLabel === 'finger') {
+        note.finger = typeof value === 'number' ? value : parseInt(String(value))
+      } else if (dotLabel === 'degree') {
+        note.degree = typeof value === 'number' ? value : parseInt(String(value))
+      }
+      updated[popover.noteIdx] = note
+      return updated
+    })
+    setPopover(null)
+  }, [popover, dotLabel])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -572,8 +767,8 @@ export function GuitarFretboardEditor({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {NOTE_NAMES.map((n, i) => (
-                    <SelectItem key={n} value={n} className="text-[11px]">{n} ({NOTE_NAMES_PT[i]})</SelectItem>
+                  {NOTE_NAMES.map(n => (
+                    <SelectItem key={n} value={n} className="text-[11px]">{n}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -613,7 +808,7 @@ export function GuitarFretboardEditor({
             <div className="w-px h-5 bg-border mx-1" />
 
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] uppercase tracking-[1px] font-bold text-muted-foreground">Label</span>
+              <span className="text-[9px] uppercase tracking-[1px] font-bold text-muted-foreground">Exibir</span>
               <Select value={dotLabel} onValueChange={v => setDotLabel(v as any)}>
                 <SelectTrigger className="h-7 w-[80px] text-[11px]">
                   <SelectValue />
@@ -621,7 +816,7 @@ export function GuitarFretboardEditor({
                 <SelectContent>
                   <SelectItem value="note" className="text-[11px]">Nota</SelectItem>
                   <SelectItem value="degree" className="text-[11px]">Grau</SelectItem>
-                  <SelectItem value="finger" className="text-[11px]">Dedo</SelectItem>
+                  <SelectItem value="finger" className="text-[11px]">Digitação</SelectItem>
                   <SelectItem value="none" className="text-[11px]">Nenhum</SelectItem>
                 </SelectContent>
               </Select>
@@ -761,11 +956,90 @@ export function GuitarFretboardEditor({
         </div>
 
         {/* ── BRAÇO HORIZONTAL ── */}
-        <div className="mt-3 rounded-xl border border-border bg-card p-4 overflow-x-auto">
-          <div
-            ref={fretboardRef}
-            className="min-w-[900px] [&_svg]:w-full [&_svg]:h-auto"
-          />
+        <div ref={fretboardCardRef} className="mt-3 rounded-xl border border-border bg-card p-4 relative">
+          <div className="overflow-x-auto">
+            <div
+              ref={fretboardRef}
+              className="min-w-[900px] [&_svg]:w-full [&_svg]:h-auto [&_.dot-text]:fill-white"
+              onContextMenu={handleOverlayContextMenu}
+            />
+          </div>
+
+          {/* Popover de edição (clique direito) */}
+          {popover !== null && (
+            <>
+              <div
+                className="fixed inset-0 z-[199]"
+                onMouseDown={() => setPopover(null)}
+              />
+              <div
+                className="absolute z-[200] flex gap-[3px] p-[5px] rounded-xl border-2 border-accent bg-surface shadow-2xl"
+                style={{ left: popover.x, top: popover.y, transform: 'translate(-50%, -100%) translateY(-12px)' }}
+              >
+                {dotLabel === 'finger' && (
+                  [1, 2, 3, 4].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => handlePopoverEdit(n)}
+                      className={`w-[30px] h-[30px] rounded-full border-2 border-accent font-bold text-[13px] transition-all cursor-pointer select-none ${
+                        notes[popover.noteIdx]?.finger === n
+                          ? 'bg-accent text-white'
+                          : 'bg-transparent text-accent hover:bg-accent hover:text-white'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))
+                )}
+                {dotLabel === 'degree' && (
+                  [1, 2, 3, 4, 5, 6, 7].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => handlePopoverEdit(n)}
+                      className={`w-[28px] h-[28px] rounded-full border-2 border-accent font-bold text-[12px] transition-all cursor-pointer select-none ${
+                        notes[popover.noteIdx]?.degree === n
+                          ? 'bg-accent text-white'
+                          : 'bg-transparent text-accent hover:bg-accent hover:text-white'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))
+                )}
+                {dotLabel === 'note' && (
+                  <div className="flex flex-wrap gap-[3px] max-w-[200px]">
+                    {NOTE_NAMES.map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          if (popover === null) return
+                          setNotes(prev => {
+                            const updated = [...prev]
+                            updated[popover.noteIdx] = { ...updated[popover.noteIdx], note: n }
+                            return updated
+                          })
+                          setPopover(null)
+                        }}
+                        className={`px-2 py-1 rounded-lg border border-accent font-bold text-[11px] transition-all cursor-pointer select-none ${
+                          notes[popover.noteIdx]?.note === n
+                            ? 'bg-accent text-white'
+                            : 'bg-transparent text-accent hover:bg-accent hover:text-white'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {dotLabel === 'none' && (
+                  <span className="text-[11px] text-muted-foreground px-2 py-1">Selecione um modo em Exibir</span>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Legenda */}
           <div className="flex items-center gap-4 mt-2 text-[10px] text-muted-foreground">
@@ -778,7 +1052,7 @@ export function GuitarFretboardEditor({
               <span>Tônica</span>
             </div>
             <span className="ml-auto">
-              <span className="text-accent font-semibold">Clique</span> = adicionar/remover nota
+              <span className="text-accent font-semibold">Clique</span> = adicionar/remover nota · <span className="text-accent font-semibold">Clique direito</span> na nota = editar
             </span>
           </div>
         </div>

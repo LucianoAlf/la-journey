@@ -48,6 +48,65 @@ const FAMILY_LABELS: Record<string, string> = {
   triad: 'tríade', tetrad: 'tétrade', suspended: 'suspensa',
   tension: 'tensão', power: 'power chord', other: 'outro',
 }
+
+/** Mapeamento nota → semitom (0-11) */
+const NOTE_TO_SEMI: Record<string, number> = {
+  'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5,
+  'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11,
+}
+
+/** Intervalos da escala maior (referência para bemóis/sustenidos) */
+const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11]
+
+/** Nomes dos graus baseado em semitons, com contexto para decidir b vs # */
+function semitoneToDegreeName(semi: number, allSemitones: Set<number>): string {
+  // Graus naturais (sem ambiguidade)
+  const natural: Record<number, string> = {
+    0: '1', 2: '2', 4: '3', 5: '4', 7: '5', 9: '6', 11: '7',
+  }
+  if (natural[semi]) return natural[semi]
+
+  // Graus ambíguos: decidir b ou # baseado no contexto
+  // Se o grau natural abaixo existe → é # desse grau
+  // Se o grau natural acima existe → é b desse grau
+  const ambiguous: Record<number, { sharp: string; flat: string; naturalBelow: number; naturalAbove: number }> = {
+    1:  { sharp: '#1', flat: 'b2', naturalBelow: 0, naturalAbove: 2 },
+    3:  { sharp: '#2', flat: 'b3', naturalBelow: 2, naturalAbove: 4 },
+    6:  { sharp: '#4', flat: 'b5', naturalBelow: 5, naturalAbove: 7 },
+    8:  { sharp: '#5', flat: 'b6', naturalBelow: 7, naturalAbove: 9 },
+    10: { sharp: '#6', flat: 'b7', naturalBelow: 9, naturalAbove: 11 },
+  }
+
+  const info = ambiguous[semi]
+  if (!info) return String(semi)
+
+  // Se o grau natural abaixo NÃO existe → este semitom o substitui → # (ex: #4 no lídio, onde 4 natural sumiu)
+  if (!allSemitones.has(info.naturalBelow)) return info.sharp
+  // Se o grau natural abaixo existe → é alteração extra → b do grau acima (ex: b5 na blues onde 4 e 5 existem)
+  return info.flat
+}
+
+/** Extrai os graus únicos das notas do fretboard, formatados com b/# */
+function extractDegrees(positions: GuitarFretboardPositions, rootNote?: string): string {
+  if (!positions?.notes?.length) return ''
+  const root = rootNote ?? positions.notes.find(n => n.isRoot)?.note
+  if (!root) return ''
+  const rootSemi = NOTE_TO_SEMI[root]
+  if (rootSemi === undefined) return ''
+
+  const semitones = new Set<number>()
+  positions.notes.forEach(n => {
+    if (n.note) {
+      const semi = NOTE_TO_SEMI[n.note]
+      if (semi !== undefined) {
+        semitones.add((semi - rootSemi + 12) % 12)
+      }
+    }
+  })
+
+  const sorted = Array.from(semitones).sort((a, b) => a - b)
+  return sorted.map(s => semitoneToDegreeName(s, semitones)).join(', ')
+}
 function chordFooterText(chord: { family?: string | null; difficulty?: number | null }): string {
   const family = FAMILY_LABELS[(chord.family ?? '')] ?? ''
   const level = chord.difficulty ? `nível ${chord.difficulty}` : ''
@@ -989,6 +1048,9 @@ export function Biblioteca() {
                         }
                       }}
                     >
+                      {isElectricGuitar && positions?.format === 'fretboard_horizontal' && (
+                        <div className="font-serif font-bold text-[15px] text-text mb-1">{chord.name}</div>
+                      )}
                       <div className={`flex justify-center mb-1 ${isElectricGuitar ? 'w-full' : ''}`}>
                         {isElectricGuitar && positions?.format === 'fretboard_horizontal' ? (
                           <GuitarFretboardDiagram
@@ -1013,7 +1075,16 @@ export function Biblioteca() {
                         )}
                       </div>
                       <div className="text-[11px] text-text3">
-                        {chordFooterText(chord)}
+                        {isElectricGuitar && positions?.format === 'fretboard_horizontal' ? (
+                          <>
+                            {(() => {
+                              const degrees = extractDegrees(positions as GuitarFretboardPositions, chord.root_note ?? undefined)
+                              return degrees ? (
+                                <span>Graus: {degrees} · nível {chord.difficulty ?? 1}</span>
+                              ) : chordFooterText(chord)
+                            })()}
+                          </>
+                        ) : chordFooterText(chord)}
                       </div>
                     </div>
                   )

@@ -288,6 +288,11 @@ export const GuitarFretboardDiagram = memo(function GuitarFretboardDiagram({
       fontFill: colors.fontFill,
     })
 
+    // Forçar texto branco em todas as notas (fretboard.js não aplica fontFill corretamente)
+    containerRef.current.querySelectorAll('.dot-text').forEach(t => {
+      t.setAttribute('fill', '#FFFFFF')
+    })
+
     // Injetar inlay dots (marcadores de traste)
     const inlayColor = isDark ? '#94A3B8' : '#64748B'
     injectInlayDots(containerRef.current, effectiveFretCount, inlayColor, 0.21, dotSize * 0.25)
