@@ -354,6 +354,91 @@ const match = chordsForKey.find(c => c.suffix === parsed.suffix)
 
 ### REGRA: NUNCA declarar acorde como "não encontrado" sem antes verificar o chords-db!
 
+## 5. ChordEditor — Visual Chord Diagrammer
+
+### Component: `src/components/music/ChordEditor.tsx`
+
+Interactive canvas-based chord diagram editor used in Biblioteca, CifraEditor, RepertoireSheet, and TablatureEditor.
+
+### State Type
+```typescript
+interface ChordEditorState {
+  dots: Array<{ string: number; fret: number; finger?: number }>
+  openMuted: Array<'open' | 'muted' | null>  // per string
+  barres: Array<{ fret: number; fromString: number; toString: number }>
+}
+```
+
+### Key Functions
+```typescript
+import { ChordEditor, createEmptyState, positionsToState, stateToPositions } from './ChordEditor'
+import type { ChordEditorState } from './ChordEditor'
+
+// Convert DB chord → editor state
+const state = positionsToState(chord.positions, startFret)
+
+// Convert editor state → DB format
+const positions = stateToPositions(state, startFret)
+
+// Empty state for new chord
+const empty = createEmptyState()
+```
+
+### Usage Pattern (modal)
+```tsx
+<Dialog open={chordEditorOpen} onOpenChange={setChordEditorOpen}>
+  <DialogContent className="sm:max-w-[860px]">
+    <div className="grid grid-cols-[1fr_200px] gap-6">
+      <ChordEditor
+        state={chordEditorState}
+        onChange={setChordEditorState}
+        chordName={chordEditorName}
+        startFret={chordEditorStartFret}
+      />
+      {/* Side panel: name input, start fret select */}
+    </div>
+    <DialogFooter>
+      <Button onClick={handleSaveChordEditor}>Salvar</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+### Save to Database
+```typescript
+import { createChord, updateChord } from '@/services/libraryService'
+
+const positions = stateToPositions(chordEditorState, startFret)
+const positionsWithPosition = { ...positions, position: startFret }
+
+if (editingId) {
+  await updateChord(editingId, { name, positions: positionsWithPosition })
+} else {
+  await createChord({ name, instrument: 'guitar', positions: positionsWithPosition, difficulty: 1, tags: [] })
+}
+```
+
+## 6. AlphaTab — Tablature Player & Viewer
+
+### Components
+- `AlphaTabPlayer.tsx` — Full MIDI player with mixer, cursor, scroll
+- `AlphaTabViewer.tsx` — Read-only SVG preview (no player)
+
+### AlphaTabViewer Usage (in TablatureEditor)
+```tsx
+<AlphaTabViewer
+  alphaTex={gridToAlphaTex(grid, columns, durations, instrument, timeSignature, ties, tuplets, dots)}
+  darkMode={isDark}
+/>
+```
+
+### gridToAlphaTex Function
+Converts editor grid data to AlphaTab's alphaTex format string.
+- 8 parameters: grid, columns, durations, instrument, timeSignature, ties, tuplets, dots
+- Generates `\ts N M` for time signature metadata
+- `{d}` / `{dd}` / `{ddd}` for dotted notes
+- `{tu N}` for tuplets
+
 ## Common Pitfalls
 
 1. **SVGuitar string numbering** — String 1 = thinnest (high E). Different from some guitar convention.

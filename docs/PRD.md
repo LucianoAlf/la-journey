@@ -1,12 +1,13 @@
 # 🎵 LA Journey — Product Requirements Document (PRD)
 
-**Versão:** 4.0  
+**Versão:** 5.0  
 **Data:** 17 de março de 2026  
 **Autor:** Luciano Alf · LA Music  
 **Classificação:** Confidencial  
 **Changelog v2:** Inclusão do Editor de Material (block-based), módulos Gestão de Turmas, Visão do Professor e Integrações, novas tabelas (material_blocks, class_students, whatsapp_templates), arquitetura multi-tenant (RLS), Gemini API para imagens, tipografia atualizada.
 **Changelog v3:** AlphaTab integrado como player de tablatura interativo com MIDI. Pipeline Songsterr→GP completo (Edge Function + conversor frontend). Mixer de volumes por track. Upload de arquivos GP com auto-preenchimento de metadados via ScoreLoader. SoundFont GeneralUser GS (30MB). Modal dedicado "Importar GP" (GpImportModal). Nova coluna `gp_file_url` no repertoire. Bucket `gp-files` no Storage.
 **Changelog v4:** Editor de Notação Musical completo (NotationEditor + NotationRenderer): 4 claves (Sol/Fá/Dó/Percussão), 5 durações, alterações (#/b/♮), armaduras, pausas, ponto de aumento, noteheads de percussão (x), barras de compasso manuais (modo livre), serialização para Supabase. Editor de Tablatura completo (TablatureEditor + TabSvgEditor): editor SVG multi-linha interativo, 5 instrumentos (violão/guitarra/baixo/ukulele/7 cordas), auto-expand de colunas, AlphaTab preview integrado, fórmulas de compasso (16 opções com subdivisão automática), barras de compasso com números, durações proporcionais (semibreve a semicolcheia), Tab como backspace contínuo, substituição direta de trastes. Biblioteca Musical expandida para 5 tabs (Acordes/Escalas/Notação/Tablatura/Imagens IA). AlphaTab Viewer condicional: stems/barras/fórmula visíveis quando há compasso definido, limpo quando livre. Tabela `notation_library` + `tablature_library` no Supabase. 8961 acordes na chord_library.
+**Changelog v5:** Editor de Tablatura expandido: ponto de aumento, ligadura, palhetada (↓/↑), quiáltera (3/5/6/7), toolbar reorganizada com grupos lógicos. Popover de acorde integrado com Supabase (`chord_library`): busca assíncrona com debounce, navegação entre posições, normalização automática de input (g→G). Diagramador de acorde (ChordEditor) integrado: clicar no diagrama abre modal de edição visual, criar nova posição do zero, salvar/atualizar acorde no banco em tempo real. Editor de Notação com cifras e annotations como overlay HTML. Capas de material com geração de imagem IA (Gemini), prompt personalizável, edição inline de título, drag-and-drop de elementos. Blocos de mídia no Editor de Material: imagem (upload), áudio (player HTML5), vídeo (embed YouTube/Vimeo). 8965 acordes na chord_library. 20 services no frontend. 17 componentes musicais. 16 páginas + Login.
 
 ---
 
@@ -225,7 +226,7 @@ Repositório estruturado de conteúdo pedagógico musical que alimenta o gerador
 Subsistema responsável por gerar os elementos visuais musicais.
 
 **Componentes:**
-- **Diagramas de acordes:** SVGuitar para violão/guitarra/ukulele, componente SVG customizado para teclado/piano (8961 acordes na chord_library)
+- **Diagramas de acordes:** SVGuitar para violão/guitarra/ukulele, componente SVG customizado para teclado/piano (8965 acordes na chord_library)
 - **Notação musical na pauta:** VexFlow para claves, figuras rítmicas, escalas, intervalos, acordes na pauta
 - **Tablatura:** AlphaTab para preview profissional + TabSvgEditor para edição interativa
 - **Exercícios interativos:** Geração procedural de exercícios (ex: "calcule os intervalos") onde a IA varia os parâmetros para que cada material seja único
@@ -238,6 +239,7 @@ Cada elemento renderizado tem um ID único no banco de dados e é armazenado com
 **Editor de Notação Musical** (`NotationEditor.tsx` + `NotationRenderer.tsx`):
 - 4 claves: Sol (treble), Fá (bass), Dó (alto), Percussão
 - 5 durações: semibreve, mínima, semínima, colcheia, semicolcheia
+- 5 modos de input: Melódico, Acorde, Ligadura, Cifra, Anotação
 - Alterações: sustenido (#), bemol (b), bequadro (♮)
 - 15 armaduras (Dó maior a 7 sustenidos/bemóis)
 - Pausas com toggle de modo pausa
@@ -245,7 +247,9 @@ Cada elemento renderizado tem um ID único no banco de dados e é armazenado com
 - Percussão: noteheads x para pratos, nomes das peças em pt-BR
 - Barras de compasso manuais (modo livre)
 - Ghost tooltip com preview da nota antes de clicar
-- Serialização completa para Supabase (notation_library)
+- **Cifras e annotations como overlay HTML:** cifras em bold roxo (#6366F1) + annotations em itálico cinza (#94A3B8), posicionados acima das notas, popup inline para edição
+- Multi-line: `splitBeatsIntoLines()` com 4/8/12/16 notas por linha, scroll vertical
+- Serialização completa para Supabase (notation_library) incluindo cifra + annotation por beat
 - VexFlow renderiza em tempo real com auto-formatting
 
 **Editor de Tablatura** (`TablatureEditor.tsx` + `TabSvgEditor.tsx`):
@@ -256,10 +260,15 @@ Cada elemento renderizado tem um ID único no banco de dados e é armazenado com
 - Barras de compasso automáticas baseadas na soma de durações vs capacidade do compasso
 - Números de compasso acima da pauta
 - Durações proporcionais: colcheia = metade do espaço de semínima, etc.
+- Efeitos: ponto de aumento (1.5× duração), ligadura (tie entre notas), palhetada (↓ downstroke / ↑ upstroke), quiáltera (tuplet 3/5/6/7)
 - Auto-expand de colunas (ArrowRight no final cria nova linha)
 - Tab como backspace contínuo (volta apagando notas)
 - Substituição direta de trastes ao digitar (sem precisar deletar antes)
+- Toolbar reorganizada: grupos lógicos (duração+tuplet, efeitos com borda, palhetadas unificadas, acorde)
+- **Popover de acorde integrado com Supabase:** busca assíncrona na `chord_library` com debounce (300ms), navegação entre todas as posições do banco (ex: C = 5 posições), normalização automática de input (g→G, am7→Am7)
+- **Diagramador de acorde (ChordEditor):** clicar no diagrama do popover abre modal com editor visual de braço do instrumento (canvas 2D), editar dedos/pestanas/cordas abertas-mutadas, criar nova posição do zero, salvar/atualizar acorde no banco `chord_library` em tempo real, recarrega posições no popover após salvar
 - AlphaTab preview integrado com fórmula de compasso, barras e stems visíveis
+- Atalhos de teclado: L (ligadura), . (ponto), D (palhetada ↓), U (palhetada ↑), T (quiáltera), C (acorde)
 - Serialização completa para Supabase (tablature_library)
 
 **AlphaTab Viewer** (`AlphaTabViewer.tsx`):
@@ -969,7 +978,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - Sheet/drawer para painéis laterais no mobile
 - Skeleton loading durante geração de material
 
-### 11.4 Mapa de Páginas (15 telas)
+### 11.4 Mapa de Páginas (16 telas)
 
 | # | Página | Rota | Descrição |
 |---|--------|------|-----------|
@@ -978,7 +987,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | 03 | Gerador | `/gerador` | Configuração de geração, seleção jornada/stage/estação, branding, preview PDF, histórico |
 | 04 | Editor Material | `/editor/:id` | Editor de blocos 3 painéis: lista blocos / canvas editável / propriedades |
 | 05 | Base Curada | `/conteudo` | Tabela de conteúdos, 3 tabs (Lista/Por Tópico/Fila Curadoria), workflow de status |
-| 06 | Biblioteca Musical | `/biblioteca` | 5 tabs: Acordes (SVGuitar, 8961), Escalas (VexFlow), Notação (VexFlow editor), Tablatura (SVG editor + AlphaTab preview), Imagens IA (Gemini) |
+| 06 | Biblioteca Musical | `/biblioteca` | 5 tabs: Acordes (SVGuitar, 8965), Escalas (VexFlow), Notação (VexFlow editor), Tablatura (SVG editor + AlphaTab preview + ChordEditor integrado), Imagens IA (Gemini) |
 | 07 | Alunos | `/alunos` | Lista com filtros, alertas de risco, progress bars, 5 tabs de status |
 | 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, importação Songsterr + Cifra Club + GP, editor de cifra, transposição, tablatura interativa com player MIDI |
 | 09 | Turmas | `/turmas` | 8 turmas incluindo Baby Class/Kids/Heart, professor/horário/jornada |
@@ -988,6 +997,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | 13 | Relatórios | `/relatorios` | KPIs agregados, gráficos por Stage e instrumento |
 | 14 | Integrações | `/integracoes` | 7 APIs ativas + 3 futuras, status de conexão |
 | 15 | Configurações | `/configuracoes` | 4 tabs: Escola / Usuários / Visual / Plano |
+| 16 | Login | `/login` | Tela de autenticação (Supabase Auth) |
 
 ### 11.5 Ícones das Páginas (Phosphor Icons)
 
@@ -1024,21 +1034,26 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [ ] Auth e multi-tenancy (Supabase Auth com JWT customizado)
 - [ ] Conectar frontend ao Supabase (services, hooks, queries reais)
 
-### Fase 2 — Motor de Conteúdo (Semanas 4-6) 🔄 EM PROGRESSO
-- [x] Biblioteca de acordes (chord_library) com SVGuitar — 8961 acordes (violão, guitarra, piano, ukulele, baixo)
+### Fase 2 — Motor de Conteúdo (Semanas 4-6) ✅ CONCLUÍDA
+- [x] Biblioteca de acordes (chord_library) com SVGuitar — 8965 acordes (violão, guitarra, piano, ukulele, baixo, cavaquinho)
 - [x] Biblioteca de escalas com VexFlow — renderização real + posições
 - [x] Biblioteca de notação musical (notation_library) com editor completo
 - [x] Biblioteca de tablatura (tablature_library) com editor SVG + AlphaTab preview
 - [x] Componentes de renderização musical (SVGuitar, VexFlow, VexTab, AlphaTab, componente teclado SVG)
 - [x] Seed de conteúdo: Violão Foundation (Fundamentos 1 e 2) com content_blocks
-- [x] Editor de Material block-based funcional (18 tipos de bloco, drag-and-drop, contenteditable)
-- [x] Novos tipos de bloco: chord_grid, keyboard, keyboard_grid, page_break, rhythm, cover
-- [x] Editor de Notação Musical (NotationEditor): 4 claves, 5 durações, alterações, armaduras, pausas, ponto de aumento, percussão, barras manuais, serialização Supabase
-- [x] Editor de Tablatura (TablatureEditor + TabSvgEditor): 5 instrumentos, SVG multi-linha, 5 durações, 16 fórmulas de compasso, barras automáticas, AlphaTab preview com stems/barras/fórmula, Tab backspace, substituição direta
+- [x] Editor de Material block-based funcional (18+ tipos de bloco, drag-and-drop, contenteditable)
+- [x] Novos tipos de bloco: chord_grid, keyboard, keyboard_grid, page_break, rhythm, cover, audio, video, columns
+- [x] Bloco capa (cover): geração de imagem IA (Gemini), prompt personalizável, edição inline de título, drag-and-drop de elementos, templates visuais
+- [x] Blocos de mídia: imagem (upload 5MB), áudio (player HTML5), vídeo (embed YouTube/Vimeo)
+- [x] Editor de Notação Musical (NotationEditor): 4 claves, 5 durações, 5 modos input, alterações, armaduras, pausas, ponto de aumento, percussão, barras manuais, cifras e annotations como overlay HTML, multi-line, serialização Supabase
+- [x] Editor de Tablatura (TablatureEditor + TabSvgEditor): 5 instrumentos, SVG multi-linha, 5 durações, 16 fórmulas de compasso, barras automáticas, efeitos (ponto, ligadura, palhetada ↓/↑, quiáltera), toolbar reorganizada, atalhos de teclado, AlphaTab preview
+- [x] Popover de acorde integrado com Supabase: busca assíncrona na chord_library com debounce, navegação entre posições, normalização automática de input (g→G)
+- [x] Diagramador de acorde (ChordEditor) no editor de tablatura: editar/criar acorde visual, salvar no banco em tempo real
 - [x] AlphaTab Viewer condicional: modo livre (clean) vs modo com compasso (fórmula + barras + stems)
 - [x] Biblioteca Musical expandida: 5 tabs (Acordes/Escalas/Notação/Tablatura/Imagens IA)
+- [x] 17 componentes musicais, 20 services no frontend, 16 páginas + Login
 - [ ] Base de conteúdo curado: interface de cadastro para professores N4
-- [ ] Integração Gemini API para geração de imagens didáticas
+- [ ] Conectar frontend ao Supabase com Auth real (JWT customizado, multi-tenancy)
 
 ### Fase 3 — Construtor de Jornada (Semanas 7-8)
 - [ ] Interface de configuração de jornada (CRUD funcional)
