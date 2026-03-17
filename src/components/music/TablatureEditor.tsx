@@ -89,7 +89,7 @@ const INSTRUMENT_OPTIONS: { value: TabInstrument; label: string }[] = [
 
 // ─── Durações ───────────────────────────────────────────────────────
 
-export type BeatDuration = 'w' | 'h' | 'q' | '8' | '16'
+export type BeatDuration = 'w' | 'h' | 'q' | '8' | '16' | '32' | '64'
 
 const DURATION_OPTIONS: { value: BeatDuration; label: string; symbol: string; beats: number }[] = [
   { value: 'w', label: 'Semibreve', symbol: '𝅝', beats: 4 },
@@ -97,12 +97,14 @@ const DURATION_OPTIONS: { value: BeatDuration; label: string; symbol: string; be
   { value: 'q', label: 'Semínima', symbol: '♩', beats: 1 },
   { value: '8', label: 'Colcheia', symbol: '♪', beats: 0.5 },
   { value: '16', label: 'Semicolcheia', symbol: '𝅘𝅥𝅯', beats: 0.25 },
+  { value: '32', label: 'Fusa', symbol: '𝅘𝅥𝅰', beats: 0.125 },
+  { value: '64', label: 'Semifusa', symbol: '𝅘𝅥𝅱', beats: 0.0625 },
 ]
 
-const DURATION_ALPHATEX: Record<BeatDuration, number> = { w: 1, h: 2, q: 4, '8': 8, '16': 16 }
+const DURATION_ALPHATEX: Record<BeatDuration, number> = { w: 1, h: 2, q: 4, '8': 8, '16': 16, '32': 32, '64': 64 }
 
 /** Valor de cada duração em quarter-note beats (semínima = 1) */
-const DURATION_QUARTER_BEATS: Record<BeatDuration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+const DURATION_QUARTER_BEATS: Record<BeatDuration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
 
 // ─── Fórmulas de compasso ───────────────────────────────────────────
 
@@ -242,6 +244,8 @@ export interface TablatureData {
   durations: BeatDuration[]
   label?: string
   timeSignature?: TimeSignature
+  /** Ligaduras: Set serializado como array de strings "col-string" */
+  ties?: string[]
 }
 
 export interface TablatureEditorProps {
@@ -366,6 +370,7 @@ function gridToAlphaTex(
   instrumentConfig: InstrumentConfig,
   label?: string,
   timeSignature: TimeSignature = 'free',
+  ties: Set<string> = new Set(),
 ): string {
   const stringCount = instrumentConfig.stringCount
 
@@ -402,7 +407,9 @@ function gridToAlphaTex(
     for (let s = 0; s < stringCount; s++) {
       const val = grid[s]?.[c]
       if (val !== null) {
-        notesInCol.push(`${val}.${s + 1}`)
+        // Se esta coluna tem ligadura para a próxima → hammer-on (arco + números preservados)
+        const hasTie = ties.has(`${c}-${s}`)
+        notesInCol.push(hasTie ? `${val}.${s + 1}{h}` : `${val}.${s + 1}`)
       }
     }
     if (notesInCol.length === 0) {
@@ -462,6 +469,7 @@ export function TablatureEditor({
   const [hoverCell, setHoverCell] = useState<{ s: number; c: number } | null>(null)
   const [fretInput, setFretInput] = useState('')
   const [timeSignature, setTimeSignature] = useState<TimeSignature>('free')
+  const [ties, setTies] = useState<Set<string>>(new Set())
 
   // Reset quando abrir com novos dados
   useEffect(() => {
@@ -474,6 +482,7 @@ export function TablatureEditor({
       setDurations([...initialData.durations])
       setLabel(initialData.label ?? initialLabel ?? '')
       setTimeSignature(initialData.timeSignature ?? 'free')
+      setTies(initialData.ties ? new Set(initialData.ties) : new Set())
     } else {
       // Formato legado (linhas de texto) ou vazio
       const inst = initialInstrument ?? 'guitar'
@@ -485,6 +494,7 @@ export function TablatureEditor({
       setDurations(createDefaultDurations(c))
       setLabel(initialLabel ?? '')
       setTimeSignature('free')
+      setTies(new Set())
     }
     setCurrentDuration('q')
     setSelectedCol(null)
@@ -645,7 +655,28 @@ export function TablatureEditor({
     setSelectedCol(null)
     setSelectedString(null)
     setFretInput('')
+    setTies(new Set())
   }, [columns, instrumentConfig.stringCount])
+
+  // Toggle ligadura na célula selecionada → liga à próxima coluna
+  const toggleTie = useCallback(() => {
+    if (selectedCol === null || selectedString === null) return
+    // Precisa ter nota na coluna atual E na próxima
+    const hasCurrentNote = grid[selectedString]?.[selectedCol] !== null
+    const hasNextNote = grid[selectedString]?.[selectedCol + 1] !== null
+    if (!hasCurrentNote || !hasNextNote) return
+
+    const key = `${selectedCol}-${selectedString}`
+    setTies(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [selectedCol, selectedString, grid])
 
   // Navegação com teclado
   const stringCount = instrumentConfig.stringCount
@@ -733,6 +764,13 @@ export function TablatureEditor({
         break
     }
 
+    // Ligadura (L) — toggle tie na célula selecionada
+    if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault()
+      toggleTie()
+      return
+    }
+
     // Números diretos (0-9)
     // Se célula tem 1 dígito e concatenar é válido (≤ maxFret), concatena (ex: 1→12)
     // Senão, substitui o valor existente (ex: 4→3)
@@ -782,7 +820,7 @@ export function TablatureEditor({
         }
       }
     }
-  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration])
+  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration, toggleTie])
 
   // Hidden input ref para captura de teclado (padrão CodeMirror/Monaco)
   const hiddenInputRef = useRef<HTMLInputElement>(null)
@@ -851,8 +889,8 @@ export function TablatureEditor({
 
   // AlphaTex para preview
   const alphaTex = useMemo(
-    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature),
-    [grid, columns, durations, instrumentConfig, label, timeSignature],
+    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature, ties),
+    [grid, columns, durations, instrumentConfig, label, timeSignature, ties],
   )
 
   // Debounce: só atualiza o preview AlphaTab 800ms após última mudança
@@ -873,10 +911,11 @@ export function TablatureEditor({
       durations: [...durations],
       label: label || undefined,
       timeSignature: timeSignature !== 'free' ? timeSignature : undefined,
+      ties: ties.size > 0 ? Array.from(ties) : undefined,
     }
     onSave(previewLines, label, data)
     onOpenChange(false)
-  }, [instrument, grid, columns, durations, label, previewLines, onSave, onOpenChange])
+  }, [instrument, grid, columns, durations, label, ties, previewLines, onSave, onOpenChange])
 
   if (!open) return null
 
@@ -965,30 +1004,46 @@ export function TablatureEditor({
             </Badge>
           </div>
 
-          {/* Linha 2: Duração + Colunas + Ações */}
+          {/* Linha 2: Duração (Select) + Ligadura + Ações */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Duração ativa */}
-            <div className="flex items-center gap-1">
+            {/* Duração ativa — Select compacto */}
+            <div className="flex items-center gap-1.5">
               <Timer size={14} className="text-text3" />
-              <Label className="text-[11px] text-text3 uppercase tracking-wider whitespace-nowrap">Duração:</Label>
-              {DURATION_OPTIONS.map(d => (
-                <TooltipProvider key={d.value} delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={currentDuration === d.value ? 'default' : 'ghost'}
-                        size="sm"
-                        className={`h-7 w-8 p-0 text-[14px] ${currentDuration === d.value ? '' : 'text-text3/60'}`}
-                        onClick={() => { setCurrentDuration(d.value); focusGrid() }}
-                      >
-                        {d.symbol}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p className="text-xs">{d.label}</p></TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ))}
+              <Select value={currentDuration} onValueChange={(v) => { setCurrentDuration(v as BeatDuration); focusGrid() }}>
+                <SelectTrigger className="h-7 w-[90px] text-[13px] gap-1 px-2">
+                  <SelectValue>
+                    {DURATION_OPTIONS.find(d => d.value === currentDuration)?.symbol}{' '}
+                    <span className="text-[10px] text-text3/70">{DURATION_OPTIONS.find(d => d.value === currentDuration)?.label}</span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {DURATION_OPTIONS.map(d => (
+                    <SelectItem key={d.value} value={d.value} className="text-[13px]">
+                      <span className="mr-2">{d.symbol}</span> {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
+            {/* Ligadura — só ícone */}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={selectedCol !== null && selectedString !== null && ties.has(`${selectedCol}-${selectedString}`) ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7 w-8 p-0"
+                    onClick={() => { toggleTie(); focusGrid() }}
+                  >
+                    <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+                      <path d="M3 10 Q9 2 15 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+                    </svg>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p className="text-xs">Ligadura (L)</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             <div className="flex-1" />
 
@@ -1005,6 +1060,7 @@ export function TablatureEditor({
             <span className="text-accent font-semibold"> 0–9</span> = traste ·
             <span className="text-accent font-semibold"> Backspace</span> = apagar e voltar ·
             <span className="text-accent font-semibold"> Del</span> = apagar célula ·
+            <span className="text-accent font-semibold"> L</span> = ligadura ·
             <span className="text-accent font-semibold"> Clique no símbolo ♩</span> = aplicar duração
           </div>
 
@@ -1023,6 +1079,7 @@ export function TablatureEditor({
             onHoverCell={setHoverCell}
             barlines={barlines}
             barNumbers={barNumbers}
+            ties={ties}
             inputRef={hiddenInputRef}
             onKeyDown={handleKeyDown}
           />

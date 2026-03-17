@@ -22,6 +22,8 @@ export interface TabSvgEditorProps {
   barlines?: number[]
   /** Mapa colIdx → número do compasso (exibido no topo) */
   barNumbers?: Map<number, number>
+  /** Ligaduras: Set de strings "col-string" indicando tie da coluna col, corda string para a próxima */
+  ties?: Set<string>
   /** Hidden input ref para captura de teclado (padrão CodeMirror) */
   inputRef?: React.RefObject<HTMLInputElement | null>
   /** Handler de teclado para o hidden input */
@@ -32,7 +34,7 @@ export interface TabSvgEditorProps {
 
 const STRING_SPACING = 14
 const BEAT_WIDTHS: Record<BeatDuration, number> = {
-  w: 52, h: 40, q: 32, '8': 24, '16': 18,
+  w: 52, h: 40, q: 32, '8': 24, '16': 18, '32': 14, '64': 12,
 }
 const LEFT_MARGIN = 26
 const RIGHT_MARGIN = 6
@@ -116,6 +118,7 @@ export function TabSvgEditor({
   onHoverCell,
   barlines = [],
   barNumbers,
+  ties,
   inputRef,
   onKeyDown,
 }: TabSvgEditorProps) {
@@ -360,10 +363,41 @@ export function TabSvgEditor({
           }
         }
       }
+
+      // Ligaduras (arcos) nesta linha
+      if (ties && ties.size > 0) {
+        for (let i = 0; i < row.beatCenters.length; i++) {
+          const colIdx = row.startCol + i
+          for (let s = 0; s < stringCount; s++) {
+            if (!ties.has(`${colIdx}-${s}`)) continue
+            // Encontrar o centro X da próxima coluna
+            const nextI = i + 1
+            if (nextI < row.beatCenters.length) {
+              // Mesma linha
+              const x1 = row.beatCenters[i]
+              const x2 = row.beatCenters[nextI]
+              const cy = stringY(r, s)
+              const midX = (x1 + x2) / 2
+              const arcY = cy + 10
+              els.push(
+                <path
+                  key={`tie-${colIdx}-${s}`}
+                  d={`M ${x1 + 5} ${cy + 6} Q ${midX} ${arcY + 4} ${x2 - 5} ${cy + 6}`}
+                  fill="none"
+                  stroke="#6366F1"
+                  strokeWidth={1.5}
+                  style={{ pointerEvents: 'none' }}
+                />,
+              )
+            }
+            // Se a próxima coluna está na linha seguinte, não renderizar (simplificação)
+          }
+        }
+      }
     }
 
     return els
-  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers])
+  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties])
 
   return (
     <div className="relative rounded-xl border border-border bg-card overflow-hidden">
