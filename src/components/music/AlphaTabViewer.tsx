@@ -229,7 +229,7 @@ export function AlphaTabViewer({
     // Efeitos
     elements.set(NE.EffectTempo, false)
     elements.set(NE.EffectDynamics, false)
-    elements.set(NE.EffectPickStroke, false)
+    elements.set(NE.EffectPickStroke, true)
     elements.set(NE.EffectCrescendo, false)
     elements.set(NE.EffectFreeTime, false)
     // Número de compasso, clef TAB, fórmula de compasso, barras

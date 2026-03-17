@@ -112,9 +112,27 @@ export type DotType = 0 | 1 | 2
 /** Multiplicadores para pontos: 1.0, 1.5, 1.75 */
 const DOT_MULTIPLIERS: Record<DotType, number> = { 0: 1, 1: 1.5, 2: 1.75 }
 
-/** Calcula o valor efetivo de uma duração com ponto */
-export function getEffectiveBeats(duration: BeatDuration, dot: DotType = 0): number {
-  return DURATION_QUARTER_BEATS[duration] * DOT_MULTIPLIERS[dot]
+/** Direção de palhetada: none = sem, down = para baixo (П), up = para cima (V) */
+export type PickingDirection = 'none' | 'down' | 'up'
+
+/** Quiáltera: 0 = sem, 3 = tercina, 5 = quintina, 6 = sextina, 7 = septina */
+export type TupletValue = 0 | 3 | 5 | 6 | 7
+
+/** Fator de duração das quiálteras: tercina = 2/3, quintina = 4/5, etc. */
+const TUPLET_FACTORS: Record<TupletValue, number> = { 0: 1, 3: 2 / 3, 5: 4 / 5, 6: 4 / 6, 7: 4 / 7 }
+
+/** Opções de quiáltera disponíveis */
+const TUPLET_OPTIONS: { value: TupletValue; label: string; shortLabel: string }[] = [
+  { value: 0, label: 'Sem quiáltera', shortLabel: '—' },
+  { value: 3, label: 'Tercina (3:2)', shortLabel: '3' },
+  { value: 5, label: 'Quintina (5:4)', shortLabel: '5' },
+  { value: 6, label: 'Sextina (6:4)', shortLabel: '6' },
+  { value: 7, label: 'Septina (7:4)', shortLabel: '7' },
+]
+
+/** Calcula o valor efetivo de uma duração com ponto e quiáltera */
+export function getEffectiveBeats(duration: BeatDuration, dot: DotType = 0, tuplet: TupletValue = 0): number {
+  return DURATION_QUARTER_BEATS[duration] * DOT_MULTIPLIERS[dot] * TUPLET_FACTORS[tuplet]
 }
 
 // ─── Fórmulas de compasso ───────────────────────────────────────────
@@ -183,6 +201,7 @@ export function computeBarlines(
   columns: number,
   timeSignature: TimeSignature,
   dots: DotType[] = [],
+  tuplets: TupletValue[] = [],
 ): number[] {
   if (timeSignature === 'free') return []
   const tsConfig = TIME_SIGNATURES[timeSignature]
@@ -193,7 +212,7 @@ export function computeBarlines(
 
   for (let c = 0; c < columns; c++) {
     const dur = durations[c] ?? 'q'
-    accumulated += getEffectiveBeats(dur, dots[c] ?? 0)
+    accumulated += getEffectiveBeats(dur, dots[c] ?? 0, tuplets[c] ?? 0)
 
     // Quando acumulamos beats suficientes para um compasso completo
     if (accumulated >= tsConfig.quarterBeatsPerBar - 0.001) {
@@ -214,6 +233,7 @@ export function computeBarNumbers(
   columns: number,
   timeSignature: TimeSignature,
   dots: DotType[] = [],
+  tuplets: TupletValue[] = [],
 ): Map<number, number> {
   const map = new Map<number, number>()
   if (timeSignature === 'free') return map
@@ -226,7 +246,7 @@ export function computeBarNumbers(
 
   for (let c = 0; c < columns; c++) {
     const dur = durations[c] ?? 'q'
-    accumulated += getEffectiveBeats(dur, dots[c] ?? 0)
+    accumulated += getEffectiveBeats(dur, dots[c] ?? 0, tuplets[c] ?? 0)
 
     if (accumulated >= tsConfig.quarterBeatsPerBar - 0.001) {
       accumulated = accumulated - tsConfig.quarterBeatsPerBar
@@ -263,8 +283,12 @@ export interface TablatureData {
   timeSignature?: TimeSignature
   /** Ligaduras: Set serializado como array de strings "col-string" */
   ties?: string[]
-  /** Pontos de aumento por coluna (0 = sem, 1 = ponto, 2 = duplo, 3 = triplo) */
+  /** Pontos de aumento por coluna (0 = sem, 1 = ponto, 2 = duplo) */
   dots?: DotType[]
+  /** Direção de palhetada por coluna */
+  pickings?: PickingDirection[]
+  /** Quiálteras por coluna (0 = sem, 3 = tercina, 5 = quintina, etc.) */
+  tuplets?: TupletValue[]
 }
 
 export interface TablatureEditorProps {
@@ -384,6 +408,14 @@ function createDefaultDots(columns: number): DotType[] {
   return Array(columns).fill(0)
 }
 
+function createDefaultPickings(columns: number): PickingDirection[] {
+  return Array(columns).fill('none')
+}
+
+function createDefaultTuplets(columns: number): TupletValue[] {
+  return Array(columns).fill(0)
+}
+
 // ─── Conversor: grid → alphaTex (dinâmico) ──────────────────────────
 
 export function gridToAlphaTex(
@@ -395,6 +427,8 @@ export function gridToAlphaTex(
   timeSignature: TimeSignature = 'free',
   ties: Set<string> = new Set(),
   dots: DotType[] = [],
+  pickings: PickingDirection[] = [],
+  tuplets: TupletValue[] = [],
 ): string {
   const stringCount = instrumentConfig.stringCount
 
@@ -437,10 +471,17 @@ export function gridToAlphaTex(
         notesInCol.push(hasTie ? `${val}.${s + 1}{h}` : `${val}.${s + 1}`)
       }
     }
-    // Efeito de ponto: d = ponto, dd = duplo, ddd = triplo
+    // Efeito de ponto: d = ponto, dd = duplo
     const dot = dots[c] ?? 0
     if (dot === 1) beatEffects.push('d')
     else if (dot >= 2) beatEffects.push('dd') // AlphaTab suporta até duplo ponto
+    // Direção de palhetada: su = up, sd = down
+    const picking = pickings[c] ?? 'none'
+    if (picking === 'down') beatEffects.push('sd')
+    else if (picking === 'up') beatEffects.push('su')
+    // Quiáltera: tu N
+    const tuplet = tuplets[c] ?? 0
+    if (tuplet > 0) beatEffects.push(`tu ${tuplet}`)
     const beatSuffix = beatEffects.length > 0 ? `{${beatEffects.join(' ')}}` : ''
     if (notesInCol.length === 0) {
       allBeats.push(`r.${dur}${beatSuffix}`)
@@ -502,6 +543,9 @@ export function TablatureEditor({
   const [ties, setTies] = useState<Set<string>>(new Set())
   const [dots, setDots] = useState<DotType[]>(() => createDefaultDots(MIN_COLUMNS))
   const [currentDot, setCurrentDot] = useState<DotType>(0)
+  const [pickings, setPickings] = useState<PickingDirection[]>(() => createDefaultPickings(MIN_COLUMNS))
+  const [tuplets, setTuplets] = useState<TupletValue[]>(() => createDefaultTuplets(MIN_COLUMNS))
+  const [currentTuplet, setCurrentTuplet] = useState<TupletValue>(0)
 
   // Reset quando abrir com novos dados
   useEffect(() => {
@@ -516,6 +560,8 @@ export function TablatureEditor({
       setTimeSignature(initialData.timeSignature ?? 'free')
       setTies(initialData.ties ? new Set(initialData.ties) : new Set())
       setDots(initialData.dots ? [...initialData.dots] : createDefaultDots(initialData.columns))
+      setPickings(initialData.pickings ? [...initialData.pickings] : createDefaultPickings(initialData.columns))
+      setTuplets(initialData.tuplets ? [...initialData.tuplets] : createDefaultTuplets(initialData.columns))
     } else {
       // Formato legado (linhas de texto) ou vazio
       const inst = initialInstrument ?? 'guitar'
@@ -529,9 +575,12 @@ export function TablatureEditor({
       setTimeSignature('free')
       setTies(new Set())
       setDots(createDefaultDots(c))
+      setPickings(createDefaultPickings(c))
+      setTuplets(createDefaultTuplets(c))
     }
     setCurrentDuration('q')
     setCurrentDot(0)
+    setCurrentTuplet(0)
     setSelectedCol(null)
     setSelectedString(null)
     setFretInput('')
@@ -632,8 +681,10 @@ export function TablatureEditor({
     setGrid(prev => prev.map(row => [...row, null]))
     setDurations(prev => [...prev, currentDuration])
     setDots(prev => [...prev, currentDot])
+    setPickings(prev => [...prev, 'none'])
+    setTuplets(prev => [...prev, currentTuplet])
     setColumns(prev => prev + 1)
-  }, [columns, currentDuration, currentDot])
+  }, [columns, currentDuration, currentDot, currentTuplet])
 
   // Remover última coluna
   const removeColumn = useCallback(() => {
@@ -641,6 +692,8 @@ export function TablatureEditor({
     setGrid(prev => prev.map(row => row.slice(0, -1)))
     setDurations(prev => prev.slice(0, -1))
     setDots(prev => prev.slice(0, -1))
+    setPickings(prev => prev.slice(0, -1))
+    setTuplets(prev => prev.slice(0, -1))
     setColumns(prev => prev - 1)
     if (selectedCol !== null && selectedCol >= columns - 1) {
       setSelectedCol(null)
@@ -669,9 +722,19 @@ export function TablatureEditor({
       next.splice(selectedCol + 1, 0, currentDot)
       return next
     })
+    setPickings(prev => {
+      const next = [...prev]
+      next.splice(selectedCol + 1, 0, 'none')
+      return next
+    })
+    setTuplets(prev => {
+      const next = [...prev]
+      next.splice(selectedCol + 1, 0, currentTuplet)
+      return next
+    })
     setColumns(prev => prev + 1)
     setSelectedCol(prev => prev !== null ? prev + 1 : null)
-  }, [columns, selectedCol, currentDuration, currentDot])
+  }, [columns, selectedCol, currentDuration, currentDot, currentTuplet])
 
   // Remover coluna na posição selecionada
   const removeColumnAt = useCallback(() => {
@@ -694,6 +757,16 @@ export function TablatureEditor({
       next.splice(selectedCol, 1)
       return next
     })
+    setPickings(prev => {
+      const next = [...prev]
+      next.splice(selectedCol, 1)
+      return next
+    })
+    setTuplets(prev => {
+      const next = [...prev]
+      next.splice(selectedCol, 1)
+      return next
+    })
     setColumns(prev => prev - 1)
     setSelectedCol(null)
     setSelectedString(null)
@@ -709,6 +782,8 @@ export function TablatureEditor({
     setFretInput('')
     setTies(new Set())
     setDots(createDefaultDots(columns))
+    setPickings(createDefaultPickings(columns))
+    setTuplets(createDefaultTuplets(columns))
   }, [columns, instrumentConfig.stringCount])
 
   // Toggle ligadura na célula selecionada → liga à próxima coluna
@@ -745,6 +820,8 @@ export function TablatureEditor({
       setGrid(prev => prev.map(row => [...row, ...Array(toAdd).fill(null)]))
       setDurations(prev => [...prev, ...Array(toAdd).fill(currentDuration)])
       setDots(prev => [...prev, ...Array(toAdd).fill(currentDot)])
+      setPickings(prev => [...prev, ...Array(toAdd).fill('none')])
+      setTuplets(prev => [...prev, ...Array(toAdd).fill(currentTuplet)])
       setColumns(target)
       setSelectedCol(selectedCol + 1)
     }
@@ -801,6 +878,8 @@ export function TablatureEditor({
             setGrid(newGrid.map(row => row.slice(0, newColumns)))
             setDurations(prev => prev.slice(0, newColumns))
             setDots(prev => prev.slice(0, newColumns))
+            setPickings(prev => prev.slice(0, newColumns))
+            setTuplets(prev => prev.slice(0, newColumns))
             setColumns(newColumns)
           } else {
             setGrid(newGrid)
@@ -830,6 +909,40 @@ export function TablatureEditor({
       })
       // Também atualizar currentDot para o novo valor
       setCurrentDot(prev => ((prev + 1) % 3) as DotType)
+      return
+    }
+
+    // Palhetada para baixo (D) e para cima (U)
+    if (e.key === 'd' || e.key === 'D') {
+      e.preventDefault()
+      setPickings(prev => {
+        const next = [...prev]
+        next[selectedCol] = prev[selectedCol] === 'down' ? 'none' : 'down'
+        return next
+      })
+      return
+    }
+    if (e.key === 'u' || e.key === 'U') {
+      e.preventDefault()
+      setPickings(prev => {
+        const next = [...prev]
+        next[selectedCol] = prev[selectedCol] === 'up' ? 'none' : 'up'
+        return next
+      })
+      return
+    }
+
+    // Tercina/quiáltera (T) — ciclar tuplet na coluna selecionada (0→3→5→6→7→0)
+    if (e.key === 't' || e.key === 'T') {
+      e.preventDefault()
+      const tupletCycle: TupletValue[] = [0, 3, 5, 6, 7]
+      setTuplets(prev => {
+        const next = [...prev]
+        const cur = next[selectedCol] ?? 0
+        const idx = tupletCycle.indexOf(cur as TupletValue)
+        next[selectedCol] = tupletCycle[(idx + 1) % tupletCycle.length]
+        return next
+      })
       return
     }
 
@@ -877,6 +990,13 @@ export function TablatureEditor({
           next[selectedCol] = currentDot
           return next
         })
+        // Aplicar quiáltera ativa à coluna ao inserir nota
+        setTuplets(prev => {
+          if (prev[selectedCol] === currentTuplet) return prev
+          const next = [...prev]
+          next[selectedCol] = currentTuplet
+          return next
+        })
 
         // Auto-avançar cursor para próxima coluna
         if (shouldAdvance) {
@@ -890,6 +1010,8 @@ export function TablatureEditor({
               setGrid(prev => prev.map(row => [...row, ...Array(toAdd).fill(null)]))
               setDurations(prev => [...prev, ...Array(toAdd).fill(currentDuration)])
               setDots(prev => [...prev, ...Array(toAdd).fill(currentDot)])
+              setPickings(prev => [...prev, ...Array(toAdd).fill('none')])
+              setTuplets(prev => [...prev, ...Array(toAdd).fill(currentTuplet)])
               setColumns(target)
             }
             setSelectedCol(selectedCol + 1)
@@ -897,7 +1019,7 @@ export function TablatureEditor({
         }
       }
     }
-  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration, currentDot, toggleTie])
+  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration, currentDot, currentTuplet, toggleTie])
 
   // Hidden input ref para captura de teclado (padrão CodeMirror/Monaco)
   const hiddenInputRef = useRef<HTMLInputElement>(null)
@@ -956,18 +1078,18 @@ export function TablatureEditor({
 
   // Barras de compasso (só até onde tem notas)
   const barlines = useMemo(
-    () => computeBarlines(durations, effectiveCols, timeSignature, dots),
-    [durations, effectiveCols, timeSignature, dots],
+    () => computeBarlines(durations, effectiveCols, timeSignature, dots, tuplets),
+    [durations, effectiveCols, timeSignature, dots, tuplets],
   )
   const barNumbers = useMemo(
-    () => computeBarNumbers(durations, effectiveCols, timeSignature, dots),
-    [durations, effectiveCols, timeSignature, dots],
+    () => computeBarNumbers(durations, effectiveCols, timeSignature, dots, tuplets),
+    [durations, effectiveCols, timeSignature, dots, tuplets],
   )
 
   // AlphaTex para preview
   const alphaTex = useMemo(
-    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature, ties, dots),
-    [grid, columns, durations, instrumentConfig, label, timeSignature, ties, dots],
+    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature, ties, dots, pickings, tuplets),
+    [grid, columns, durations, instrumentConfig, label, timeSignature, ties, dots, pickings, tuplets],
   )
 
   // Debounce: só atualiza o preview AlphaTab 800ms após última mudança
@@ -990,10 +1112,12 @@ export function TablatureEditor({
       timeSignature: timeSignature !== 'free' ? timeSignature : undefined,
       ties: ties.size > 0 ? Array.from(ties) : undefined,
       dots: dots.some(d => d > 0) ? [...dots] : undefined,
+      pickings: pickings.some(p => p !== 'none') ? [...pickings] : undefined,
+      tuplets: tuplets.some(t => t > 0) ? [...tuplets] : undefined,
     }
     onSave(previewLines, label, data)
     onOpenChange(false)
-  }, [instrument, grid, columns, durations, label, ties, dots, previewLines, onSave, onOpenChange])
+  }, [instrument, grid, columns, durations, label, ties, dots, pickings, tuplets, previewLines, onSave, onOpenChange])
 
   if (!open) return null
 
@@ -1211,6 +1335,101 @@ export function TablatureEditor({
               </Tooltip>
             </TooltipProvider>
 
+            {/* Palhetada — downstroke (П) e upstroke (V) */}
+            <div className="inline-flex items-center rounded-md border border-input overflow-hidden">
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`inline-flex items-center justify-center h-7 w-7 text-[15px] font-bold transition-colors border-r border-input
+                        ${selectedCol !== null && pickings[selectedCol] === 'down'
+                          ? 'bg-accent/10 text-accent'
+                          : 'bg-background text-text3 hover:bg-accent/5 hover:text-accent'
+                        }`}
+                      onClick={() => {
+                        if (selectedCol !== null) {
+                          setPickings(prev => {
+                            const next = [...prev]
+                            next[selectedCol] = prev[selectedCol] === 'down' ? 'none' : 'down'
+                            return next
+                          })
+                        }
+                        focusGrid()
+                      }}
+                    >
+                      П
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent><p className="text-xs">Palhetada para baixo (D)</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`inline-flex items-center justify-center h-7 w-7 text-[15px] font-bold transition-colors
+                        ${selectedCol !== null && pickings[selectedCol] === 'up'
+                          ? 'bg-accent/10 text-accent'
+                          : 'bg-background text-text3 hover:bg-accent/5 hover:text-accent'
+                        }`}
+                      onClick={() => {
+                        if (selectedCol !== null) {
+                          setPickings(prev => {
+                            const next = [...prev]
+                            next[selectedCol] = prev[selectedCol] === 'up' ? 'none' : 'up'
+                            return next
+                          })
+                        }
+                        focusGrid()
+                      }}
+                    >
+                      V
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent><p className="text-xs">Palhetada para cima (U)</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            {/* Quiáltera/Tercina — Select com ícone de colchete */}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Select
+                      value={String(currentTuplet)}
+                      onValueChange={(v) => {
+                        const val = parseInt(v) as TupletValue
+                        setCurrentTuplet(val)
+                        if (selectedCol !== null) {
+                          setTuplets(prev => {
+                            const next = [...prev]
+                            next[selectedCol] = val
+                            return next
+                          })
+                        }
+                        focusGrid()
+                      }}
+                    >
+                      <SelectTrigger className={`h-7 w-auto min-w-[68px] text-[12px] px-1.5 gap-0.5 ${currentTuplet > 0 ? 'border-accent/40 bg-accent/5 text-accent' : 'border-input text-text3'}`}>
+                        <SelectValue>
+                          <span className="font-mono text-[11px]">┌ {currentTuplet > 0 ? currentTuplet : 3} ┐</span>
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TUPLET_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={String(opt.value)} className="text-[12px]">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent><p className="text-xs">Quiáltera / Tercina (T)</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <div className="flex-1" />
 
             <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px] text-text3 hover:text-vermelho" onClick={() => { clearAll(); focusGrid() }}>
@@ -1228,6 +1447,9 @@ export function TablatureEditor({
             <span className="text-accent font-semibold"> Del</span> = apagar célula ·
             <span className="text-accent font-semibold"> L</span> = ligadura ·
             <span className="text-accent font-semibold"> .</span> = ponto ·
+            <span className="text-accent font-semibold"> D</span> = palhetada ↓ ·
+            <span className="text-accent font-semibold"> U</span> = palhetada ↑ ·
+            <span className="text-accent font-semibold"> T</span> = quiáltera ·
             <span className="text-accent font-semibold"> Clique no símbolo ♩</span> = aplicar duração
           </div>
 
@@ -1248,6 +1470,8 @@ export function TablatureEditor({
             barNumbers={barNumbers}
             ties={ties}
             dots={dots}
+            pickings={pickings}
+            tuplets={tuplets}
             inputRef={hiddenInputRef}
             onKeyDown={handleKeyDown}
           />

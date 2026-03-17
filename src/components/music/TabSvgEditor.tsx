@@ -1,5 +1,5 @@
 import React, { useRef, useMemo, useCallback } from 'react'
-import type { BeatDuration, DotType } from './TablatureEditor'
+import type { BeatDuration, DotType, PickingDirection, TupletValue } from './TablatureEditor'
 
 // ─── Tipos ──────────────────────────────────────────────────────────
 
@@ -26,6 +26,10 @@ export interface TabSvgEditorProps {
   ties?: Set<string>
   /** Pontos de aumento por coluna */
   dots?: DotType[]
+  /** Direção de palhetada por coluna */
+  pickings?: PickingDirection[]
+  /** Quiálteras por coluna */
+  tuplets?: TupletValue[]
   /** Hidden input ref para captura de teclado (padrão CodeMirror) */
   inputRef?: React.RefObject<HTMLInputElement | null>
   /** Handler de teclado para o hidden input */
@@ -122,6 +126,8 @@ export function TabSvgEditor({
   barNumbers,
   ties,
   dots,
+  pickings,
+  tuplets,
   inputRef,
   onKeyDown,
 }: TabSvgEditorProps) {
@@ -294,6 +300,35 @@ export function TabSvgEditor({
           )
         }
 
+        // Símbolo de palhetada (abaixo da última corda)
+        const pick = pickings?.[colIdx]
+        if (pick && pick !== 'none') {
+          const pickY = stringY(r, stringCount - 1) + 12
+          if (pick === 'down') {
+            // П — downstroke: path em forma de "banquinho"
+            els.push(
+              <path
+                key={`pick-${colIdx}`}
+                d={`M${cx - 4} ${pickY - 2} L${cx - 4} ${pickY + 5} L${cx + 4} ${pickY + 5} L${cx + 4} ${pickY - 2}`}
+                stroke="#6366F1" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none"
+                style={{ pointerEvents: 'none' }}
+              />,
+            )
+          } else {
+            // V — upstroke
+            els.push(
+              <text
+                key={`pick-${colIdx}`}
+                x={cx} y={pickY + 2}
+                textAnchor="middle" dominantBaseline="central"
+                fontSize={10} fontWeight="bold" fontFamily={FONT_UI}
+                fill="#6366F1"
+                style={{ pointerEvents: 'none', userSelect: 'none' }}
+              >V</text>,
+            )
+          }
+        }
+
         // Notas + pontos de aumento ao lado
         const dotCount = (dots?.[colIdx] ?? 0) as number
         for (let s = 0; s < stringCount; s++) {
@@ -347,7 +382,7 @@ export function TabSvgEditor({
       for (let i = 0; i < row.beatCenters.length; i++) {
         const colIdx = row.startCol + i
 
-        // Barra de compasso APÓS esta coluna
+        // Barra de compasso APÓS esta coluna + número do próximo compasso em cima da barra
         if (barlineSet.has(colIdx) && i < row.beatCenters.length - 1) {
           const cx = row.beatCenters[i]
           const nextCx = row.beatCenters[i + 1]
@@ -363,17 +398,34 @@ export function TabSvgEditor({
               style={{ pointerEvents: 'none' }}
             />,
           )
+          // Número do compasso seguinte — em cima da barline
+          if (barNumbers) {
+            const nextBarNum = barNumbers.get(colIdx + 1)
+            if (nextBarNum !== undefined) {
+              const topY = rowY(r) - 2
+              els.push(
+                <text
+                  key={`bn-${r}-${colIdx}`}
+                  x={barX} y={topY}
+                  textAnchor="middle" dominantBaseline="auto"
+                  fontSize={9} fontWeight="600" fontFamily={FONT_UI}
+                  fill={C.barNumber}
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}
+                >{nextBarNum}</text>,
+              )
+            }
+          }
         }
 
-        // Número do compasso (acima da primeira nota do compasso)
-        if (barNumbers) {
+        // Número do primeiro compasso (coluna 0) — fica acima da primeira nota
+        if (barNumbers && colIdx === row.startCol) {
           const barNum = barNumbers.get(colIdx)
           if (barNum !== undefined) {
             const cx = row.beatCenters[i]
             const topY = rowY(r) - 2
             els.push(
               <text
-                key={`bn-${r}-${colIdx}`}
+                key={`bn-first-${r}-${colIdx}`}
                 x={cx} y={topY}
                 textAnchor="middle" dominantBaseline="auto"
                 fontSize={9} fontWeight="600" fontFamily={FONT_UI}
@@ -381,6 +433,56 @@ export function TabSvgEditor({
                 style={{ pointerEvents: 'none', userSelect: 'none' }}
               >{barNum}</text>,
             )
+          }
+        }
+      }
+
+      // Colchetes de quiáltera (tuplet brackets) acima das notas
+      if (tuplets && tuplets.length > 0) {
+        let i = 0
+        while (i < row.beatCenters.length) {
+          const colIdx = row.startCol + i
+          const tv = tuplets[colIdx] ?? 0
+          if (tv > 0) {
+            // Encontrar grupo consecutivo com mesmo tuplet value
+            let groupEnd = i
+            let count = 0
+            while (groupEnd < row.beatCenters.length) {
+              const gColIdx = row.startCol + groupEnd
+              if ((tuplets[gColIdx] ?? 0) === tv) {
+                count++
+                groupEnd++
+                if (count >= tv) break
+              } else {
+                break
+              }
+            }
+            // Renderizar colchete se temos pelo menos 2 notas no grupo
+            if (count >= 2) {
+              const x1 = row.beatCenters[i]
+              const x2 = row.beatCenters[groupEnd - 1]
+              const bracketY = stringY(r, 0) - 12
+              const midX = (x1 + x2) / 2
+              // Colchete: [ N ]
+              els.push(
+                <line key={`tub-l-${colIdx}`} x1={x1 - 2} y1={bracketY + 4} x2={x1 - 2} y2={bracketY}
+                  stroke="#6366F1" strokeWidth={1} style={{ pointerEvents: 'none' }} />,
+                <line key={`tub-t-${colIdx}`} x1={x1 - 2} y1={bracketY} x2={midX - 6} y2={bracketY}
+                  stroke="#6366F1" strokeWidth={1} style={{ pointerEvents: 'none' }} />,
+                <text key={`tun-${colIdx}`} x={midX} y={bracketY + 1}
+                  textAnchor="middle" dominantBaseline="central"
+                  fontSize={8} fontWeight="bold" fontFamily={FONT_UI}
+                  fill="#6366F1" style={{ pointerEvents: 'none', userSelect: 'none' }}
+                >{tv}</text>,
+                <line key={`tub-t2-${colIdx}`} x1={midX + 6} y1={bracketY} x2={x2 + 2} y2={bracketY}
+                  stroke="#6366F1" strokeWidth={1} style={{ pointerEvents: 'none' }} />,
+                <line key={`tub-r-${colIdx}`} x1={x2 + 2} y1={bracketY} x2={x2 + 2} y2={bracketY + 4}
+                  stroke="#6366F1" strokeWidth={1} style={{ pointerEvents: 'none' }} />,
+              )
+            }
+            i = groupEnd
+          } else {
+            i++
           }
         }
       }
@@ -418,7 +520,7 @@ export function TabSvgEditor({
     }
 
     return els
-  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties, dots])
+  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties, dots, pickings, tuplets])
 
   return (
     <div className="relative rounded-xl border border-border bg-card overflow-hidden">

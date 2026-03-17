@@ -1419,6 +1419,8 @@ export function Biblioteca() {
                         nd.timeSignature ?? 'free',
                         nd.ties ? new Set(nd.ties) : new Set(),
                         nd.dots ?? [],
+                        nd.pickings ?? [],
+                        nd.tuplets ?? [],
                       )
                     : ''
 
