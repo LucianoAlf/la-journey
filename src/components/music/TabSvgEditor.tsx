@@ -30,6 +30,8 @@ export interface TabSvgEditorProps {
   pickings?: PickingDirection[]
   /** Quiálteras por coluna */
   tuplets?: TupletValue[]
+  /** Nomes de acordes por coluna (cifra acima do beat) */
+  chordNames?: (string | null)[]
   /** Hidden input ref para captura de teclado (padrão CodeMirror) */
   inputRef?: React.RefObject<HTMLInputElement | null>
   /** Handler de teclado para o hidden input */
@@ -128,6 +130,7 @@ export function TabSvgEditor({
   dots,
   pickings,
   tuplets,
+  chordNames,
   inputRef,
   onKeyDown,
 }: TabSvgEditorProps) {
@@ -135,7 +138,9 @@ export function TabSvgEditor({
   const stringCount = stringNames.length
   const staffH = (stringCount - 1) * STRING_SPACING
   const hasBarNums = barNumbers && barNumbers.size > 0
-  const extraTop = hasBarNums ? BAR_NUM_H : 0
+  const hasChords = chordNames && chordNames.some(cn => cn !== null)
+  const CHORD_NAME_H = 16
+  const extraTop = (hasBarNums ? BAR_NUM_H : 0) + (hasChords ? CHORD_NAME_H : 0)
   const rowH = TOP_PAD + staffH + BOTTOM_PAD
 
   // ── Distribuir beats em linhas ──
@@ -487,6 +492,28 @@ export function TabSvgEditor({
         }
       }
 
+      // Nomes de acordes (cifras) acima da pauta
+      if (chordNames) {
+        for (let i = 0; i < row.beatCenters.length; i++) {
+          const colIdx = row.startCol + i
+          const cn = chordNames[colIdx]
+          if (cn) {
+            const cx = row.beatCenters[i]
+            const chordY = rowY(r) - (hasBarNums ? BAR_NUM_H : 0) + 8
+            els.push(
+              <text
+                key={`ch-${r}-${colIdx}`}
+                x={cx} y={chordY}
+                textAnchor="middle" dominantBaseline="auto"
+                fontSize={10} fontWeight="700" fontFamily="'DM Mono', monospace"
+                fill="#6366F1"
+                style={{ pointerEvents: 'none', userSelect: 'none' }}
+              >{cn}</text>,
+            )
+          }
+        }
+      }
+
       // Ligaduras (arcos) nesta linha
       if (ties && ties.size > 0) {
         for (let i = 0; i < row.beatCenters.length; i++) {
@@ -520,7 +547,7 @@ export function TabSvgEditor({
     }
 
     return els
-  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties, dots, pickings, tuplets])
+  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties, dots, pickings, tuplets, chordNames, hasBarNums, hasChords])
 
   return (
     <div className="relative rounded-xl border border-border bg-card overflow-hidden">

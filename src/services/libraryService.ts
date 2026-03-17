@@ -107,6 +107,44 @@ export async function getScales() {
   return data
 }
 
+/** Busca todas as posições de um acorde por nome exato (para o popover de tablatura) */
+export async function getChordPositionsByName(
+  name: string,
+  instrument: Database['public']['Enums']['chord_instrument'] = 'guitar'
+): Promise<Chord[]> {
+  if (!name.trim()) return []
+  const { data, error } = await supabase
+    .from('chord_library')
+    .select('*')
+    .eq('name', name.trim())
+    .eq('instrument', instrument)
+    .order('difficulty', { ascending: true })
+    .order('sort_order', { ascending: true })
+
+  if (error) handleError(error)
+  return data ?? []
+}
+
+/** Busca acordes por nome parcial (ilike) — para autocomplete no popover */
+export async function searchChordPositions(
+  search: string,
+  instrument: Database['public']['Enums']['chord_instrument'] = 'guitar',
+  limit: number = 20
+): Promise<Chord[]> {
+  if (!search.trim()) return []
+  const { data, error } = await supabase
+    .from('chord_library')
+    .select('*')
+    .eq('instrument', instrument)
+    .ilike('name', search.trim())
+    .order('difficulty', { ascending: true })
+    .order('sort_order', { ascending: true })
+    .limit(limit)
+
+  if (error) handleError(error)
+  return data ?? []
+}
+
 export async function createChord(chord: TablesInsert<'chord_library'>) {
   const { data, error } = await supabase
     .from('chord_library')

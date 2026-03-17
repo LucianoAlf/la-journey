@@ -127,18 +127,21 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
     }
 
     // Estender staff lines até a borda direita do SVG (linhas completas)
+    // Filtrar apenas linhas que começam perto da margem esquerda (staff lines reais),
+    // e esconder retângulos extras do diagrama de acorde (que começam mais à direita)
     const svgWidth = parseFloat(svg.getAttribute('width') || '0')
     if (svgWidth > 0) {
       const rects = svg.querySelectorAll(':scope > rect')
       rects.forEach(r => {
+        const x = parseFloat(r.getAttribute('x') || '0')
         const w = parseFloat(r.getAttribute('width') || '0')
         const h = parseFloat(r.getAttribute('height') || '0')
-        // Staff lines: retângulos finos (height < 2) com largura > 30
-        if (h > 0.3 && h < 2 && w > 30) {
-          const rightEdge = parseFloat(r.getAttribute('x') || '0') + w
-          // Só estender se a linha não vai até o final
+        // Staff lines reais: retângulos finos que começam perto da margem esquerda
+        // Não estender retângulos do diagrama de acorde (x >= 100)
+        if (h > 0.3 && h < 2 && w > 30 && x < 100) {
+          const rightEdge = x + w
           if (rightEdge < svgWidth - 5) {
-            r.setAttribute('width', String(svgWidth - parseFloat(r.getAttribute('x') || '0')))
+            r.setAttribute('width', String(svgWidth - x))
           }
         }
       })

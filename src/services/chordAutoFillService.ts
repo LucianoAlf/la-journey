@@ -297,6 +297,73 @@ function keyToJsonKey(key: string): string {
 }
 
 /**
+ * Busca TODAS as posições de um acorde no chords-db
+ * Retorna array com todas as variações (posições abertas e fechadas)
+ * Para power chords (5), retorna uma única posição gerada programaticamente
+ */
+export function lookupAllGuitarChordPositions(chordName: string): { positions: ChordPositions; baseFret: number; frets: number[]; barres: number[] }[] {
+  const parsed = parseChordName(chordName)
+  if (!parsed) return []
+
+  if (parsed.suffix === '5') {
+    const pc = generatePowerChord(parsed.key)
+    if (!pc) return []
+    return [{ ...pc, frets: [], barres: [] }]
+  }
+
+  const jsonKey = keyToJsonKey(parsed.key)
+  const chordsForKey = (guitarDb.chords as any)[jsonKey] as ChordsDbChord[] | undefined
+  if (!chordsForKey) return []
+
+  const match = chordsForKey.find(c => c.suffix === parsed.suffix)
+  if (!match || !match.positions.length) return []
+
+  return match.positions.map(pos => {
+    const converted = convertChordsDbToOurFormat(pos)
+    return { ...converted, frets: [...pos.frets], barres: pos.barres ? [...pos.barres] : [] }
+  })
+}
+
+/**
+ * Converte frets[] do chords-db para o formato do grid da tablatura
+ * chords-db: frets[0]=E grave(6ª), frets[5]=e agudo(1ª) — -1=muda, 0=aberta
+ * Grid: grid[0]=corda mais aguda(e), grid[5]=corda mais grave(E) — null=vazio
+ * baseFret: 1-indexed, frets no chords-db são relativos ao baseFret
+ */
+export function chordsDbFretsToGrid(frets: number[], baseFret: number): (number | null)[] {
+  // chords-db: idx 0 = E grave → grid idx 5 (última corda)
+  // chords-db: idx 5 = e agudo → grid idx 0 (primeira corda)
+  const gridValues: (number | null)[] = []
+  for (let i = frets.length - 1; i >= 0; i--) {
+    const f = frets[i]
+    if (f === -1) {
+      gridValues.push(null) // corda muda
+    } else if (f === 0) {
+      gridValues.push(0) // corda aberta
+    } else {
+      // fret absoluto = baseFret - 1 + fret relativo
+      gridValues.push(baseFret - 1 + f)
+    }
+  }
+  return gridValues
+}
+
+/**
+ * Converte frets[] do chords-db para formato AlphaTab \chord
+ * AlphaTab: corda1(aguda) corda2 ... corda6(grave) — x=muda, 0=aberta
+ * chords-db: frets[0]=E grave, frets[5]=e agudo — -1=muda, 0=aberta
+ * Os frets no chords-db são RELATIVOS ao baseFret, AlphaTab espera absolutos
+ */
+export function chordsDbFretsToAlphaTab(frets: number[], baseFret: number): string {
+  // Inverter ordem: chords-db [E_grave..e_agudo] → AlphaTab [e_agudo..E_grave]
+  return [...frets].reverse().map(f => {
+    if (f === -1) return 'x'
+    if (f === 0) return '0'
+    return String(baseFret - 1 + f)
+  }).join(' ')
+}
+
+/**
  * Busca um acorde no banco de dados chords-db
  * Retorna a primeira posição (mais comum/fácil) ou null
  * Para power chords (5), gera programaticamente já que o chords-db não inclui
@@ -398,34 +465,17 @@ function convertChordsDbToOurFormat(pos: ChordsDbPosition): { positions: ChordPo
   const muted: number[] = []
   const barresOut: ChordPositions['barres'] = []
 
-  // frets array: índice 0 = corda 6 (E grave), índice 5 = corda 1 (E agudo)
-  // No SVGuitar: string 1 = E grave (mais grossa), string 6 = E agudo
-  pos.frets.forEach((fret, idx) => {
-    const svgString = 6 - idx // idx 0 → string 6, idx 5 → string 1
-
-    if (fret === -1) {
-      muted.push(svgString)
-    } else if (fret === 0) {
-      fingers.push([svgString, 0])
-    } else {
-      const fingerNum = pos.fingers[idx]
-      if (fingerNum > 0) {
-        fingers.push([svgString, fret, String(fingerNum)])
-      } else {
-        fingers.push([svgString, fret])
-      }
-    }
-  })
-
-  // Barres: o chords-db lista os frets com barre
-  // Precisamos descobrir fromString e toString
+  // Primeiro: construir barres para saber quais cordas/frets estão cobertos
+  // Cordas cobertas pela barre não devem gerar fingers individuais
+  const barreCoveredKeys = new Set<string>() // "string:fret"
   if (pos.barres && pos.barres.length > 0) {
     for (const barreFret of pos.barres) {
-      // Encontrar quais cordas são cobertas pela barre neste fret
       const coveredStrings: number[] = []
       pos.frets.forEach((fret, idx) => {
         if (fret === barreFret) {
-          coveredStrings.push(6 - idx)
+          const svgStr = 6 - idx
+          coveredStrings.push(svgStr)
+          barreCoveredKeys.add(`${svgStr}:${barreFret}`)
         }
       })
 
@@ -435,11 +485,35 @@ function convertChordsDbToOurFormat(pos: ChordsDbPosition): { positions: ChordPo
         barresOut.push({
           fromString: maxString,
           toString: minString,
-          fret: barreFret,
+          fret: pos.baseFret - 1 + barreFret, // absoluto para consistência com ChordDiagram
         })
       }
     }
   }
+
+  // frets array: índice 0 = corda E grave, índice 5 = corda e agudo
+  // No SVGuitar (neste projeto): string 6 = E grave (mais grossa), string 1 = e agudo (mais fina)
+  // Frets do chords-db são relativos ao baseFret; converter para absolutos
+  // para manter consistência com o formato do banco/ChordDiagram (que normaliza absoluto→relativo)
+  const base = pos.baseFret
+  pos.frets.forEach((fret, idx) => {
+    const svgString = 6 - idx // idx 0 → string 6 (E grave), idx 5 → string 1 (e agudo)
+    const absFret = fret > 0 ? base - 1 + fret : fret // absoluto (0 e -1 ficam iguais)
+
+    if (fret === -1) {
+      muted.push(svgString)
+    } else if (fret === 0) {
+      fingers.push([svgString, 0])
+    } else if (!barreCoveredKeys.has(`${svgString}:${fret}`)) {
+      // Só gerar finger se NÃO está coberto pela barre
+      const fingerNum = pos.fingers[idx]
+      if (fingerNum > 0) {
+        fingers.push([svgString, absFret, String(fingerNum)])
+      } else {
+        fingers.push([svgString, absFret])
+      }
+    }
+  })
 
   return {
     positions: { fingers, barres: barresOut, muted },

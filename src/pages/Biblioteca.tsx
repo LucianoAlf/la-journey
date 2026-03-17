@@ -1421,6 +1421,7 @@ export function Biblioteca() {
                         nd.dots ?? [],
                         nd.pickings ?? [],
                         nd.tuplets ?? [],
+                        nd.chordNames ?? [],
                       )
                     : ''
 
