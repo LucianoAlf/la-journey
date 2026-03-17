@@ -1,7 +1,15 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Fretboard, GUITAR_TUNINGS } from '@moonwave99/fretboard.js'
-import { FloppyDisk, Trash, X, Eraser, Crosshair, ListNumbers } from '@phosphor-icons/react'
+import { FloppyDisk, Trash, X, Eraser, Crosshair, ListNumbers, Guitar } from '@phosphor-icons/react'
+import { SimpleTablature } from './SimpleTablature'
+import { getCagedPositions, hasCagedTemplate, getCagedLabelsForRoot, getShapeFretRange, isNoteInShape } from '@/lib/caged-utils'
+import { CAGED_POSITION_NAMES } from '@/lib/caged-templates'
+import {
+  CHROMATIC_SHARP, getNoteNameInKey, getNotePt, getChromaticNamesForKey,
+  noteToChromatic, ROOT_OPTIONS, presetToScaleType, getDisplayRoot,
+  type ScaleType,
+} from '@/lib/music-theory'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -17,8 +25,6 @@ import { createChord, updateChord, deleteChord } from '@/services/libraryService
 import { injectInlayDots, type GuitarFretboardPositions, type FretboardNote } from './GuitarFretboardDiagram'
 
 // ─── Constantes musicais ────────────────────────────────────────────
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-const NOTE_NAMES_PT = ['Dó', 'Dó#', 'Ré', 'Ré#', 'Mi', 'Fá', 'Fá#', 'Sol', 'Sol#', 'Lá', 'Lá#', 'Si']
 
 // Afinação padrão da guitarra: E2, A2, D3, G3, B3, E4
 // string 6=E2(grave) … string 1=E4(agudo) — convenção fretboard.js
@@ -89,9 +95,17 @@ const FAMILY_MAP: Record<string, string> = {
 
 // ─── Helpers musicais ───────────────────────────────────────────────
 
-/** Converte nota raiz (C, C#, D…) para índice MIDI (0-11) */
+/** Converte nota raiz (C, C#, D…) para índice cromático (0-11) */
 function rootToMidi(root: string): number {
-  return NOTE_NAMES.indexOf(root)
+  return noteToChromatic(root)
+}
+
+/**
+ * Mapeia intervalo em semitons para grau real da escala.
+ * Ex: 0→1, 2→2, 3→b3, 4→3, 5→4, 6→b5/#4, 7→5, 8→b6/#5, 9→6, 10→b7, 11→7
+ */
+const SEMITONE_TO_DEGREE: Record<number, number> = {
+  0: 1, 1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 6: 5, 7: 5, 8: 6, 9: 6, 10: 7, 11: 7,
 }
 
 /** Gera todas as notas de uma escala/acorde no braço inteiro da guitarra */
@@ -99,12 +113,20 @@ function generateFretboardNotes(
   root: string,
   intervals: number[],
   fretCount: number = 15,
+  scaleType?: ScaleType | null,
 ): FretboardNote[] {
   const rootIdx = rootToMidi(root)
   if (rootIdx < 0) return []
 
   // Notas MIDI da escala/acorde (dentro de 1 oitava)
   const scaleNotes = new Set(intervals.map(i => (rootIdx + i) % 12))
+
+  // Pré-calcular mapa de intervalo → grau real
+  const intervalToDegree = new Map<number, number>()
+  for (const interval of intervals) {
+    const semitones = interval % 12
+    intervalToDegree.set(semitones, SEMITONE_TO_DEGREE[semitones] ?? (intervals.indexOf(interval) + 1))
+  }
 
   const notes: FretboardNote[] = []
 
@@ -115,17 +137,20 @@ function generateFretboardNotes(
       const noteIdx = midi % 12
       if (scaleNotes.has(noteIdx)) {
         const isRoot = noteIdx === rootIdx
-        const degree = intervals.indexOf((noteIdx - rootIdx + 12) % 12) + 1
+        const semitoneFromRoot = (noteIdx - rootIdx + 12) % 12
+        const degree = intervalToDegree.get(semitoneFromRoot) ?? (intervals.indexOf(semitoneFromRoot) + 1)
         // Dedilhado automático: dedo 1-4 baseado na posição relativa no bloco de 4 trastes
         let finger: number | undefined
         if (fret > 0) {
           const posInBlock = ((fret - 1) % 4)
           finger = posInBlock + 1  // 1, 2, 3, 4
         }
+        // Grafia enarmônica correta baseada na tonalidade
+        const noteName = getNoteNameInKey(noteIdx, root, scaleType ?? undefined)
         notes.push({
           string: stringNum,
           fret,
-          note: NOTE_NAMES[noteIdx],
+          note: noteName,
           isRoot,
           degree: degree > 0 ? degree : undefined,
           interval: isRoot ? '1P' : undefined,
@@ -224,6 +249,7 @@ export function GuitarFretboardEditor({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [dotLabel, setDotLabel] = useState<'finger' | 'note' | 'degree' | 'none'>('note')
+  const [cagedPosition, setCagedPosition] = useState<number | null>(null) // null=todas, 0-4=posição
 
   // Popover de edição (clique direito)
   const [popover, setPopover] = useState<{
@@ -236,6 +262,7 @@ export function GuitarFretboardEditor({
   const fretboardRef = useRef<HTMLDivElement>(null)
   const fretboardCardRef = useRef<HTMLDivElement>(null)
   const fbInstanceRef = useRef<Fretboard | null>(null)
+  const cagedActiveNotesRef = useRef<FretboardNote[] | null>(null)
 
   // Tema
   const isDark = typeof document !== 'undefined' &&
@@ -245,10 +272,24 @@ export function GuitarFretboardEditor({
   // ── Carregar dados de edição ──
   useEffect(() => {
     if (chord && open) {
-      setNotes(chord.positions.notes)
+      // Recalcular graus ao carregar (dados antigos podem ter graus errados)
+      const root = chord.root_note ?? 'C'
+      const rootIdx = rootToMidi(root)
+      const loadedNotes = chord.positions.notes.map(n => {
+        if (rootIdx >= 0 && n.note) {
+          const noteIdx = noteToChromatic(n.note)
+          const semitoneFromRoot = (noteIdx - rootIdx + 12) % 12
+          const correctedDegree = SEMITONE_TO_DEGREE[semitoneFromRoot]
+          if (correctedDegree !== undefined) {
+            return { ...n, degree: correctedDegree }
+          }
+        }
+        return n
+      })
+      setNotes(loadedNotes)
       setChordName(chord.name)
       setDifficulty(chord.difficulty)
-      setRootNote(chord.root_note ?? 'C')
+      setRootNote(root)
       setLastPreset(null)
       setActiveTensions(new Set())
     } else if (open && !chord) {
@@ -338,6 +379,33 @@ export function GuitarFretboardEditor({
       t.setAttribute('fill', '#FFFFFF')
     })
 
+    // ── CAGED: efeito fantasma nas notas fora da posição ──
+    const activeShape = cagedActiveNotesRef.current
+    if (activeShape && activeShape.length > 0) {
+      const svg = fretboardRef.current.querySelector('svg')
+      if (svg) {
+        const dotGroups = svg.querySelectorAll('g[class*="dot-string"]')
+        dotGroups.forEach(dotGroup => {
+          const cls = dotGroup.getAttribute('class') || ''
+          const sm = cls.match(/dot-string-(\d+)/)
+          const fm = cls.match(/dot-fret-(\d+)/)
+          if (!sm || !fm) return
+
+          const s = parseInt(sm[1])
+          const f = parseInt(fm[1])
+
+          // Verificar se a nota pertence ao shape ativo
+          const inShape = activeShape.some(cn => cn.string === s && cn.fret === f)
+
+          if (!inShape) {
+            // Aplicar efeito fantasma: opacidade reduzida
+            const el = dotGroup as SVGElement
+            el.style.opacity = '0.12'
+          }
+        })
+      }
+    }
+
     // Injetar inlay dots (marcadores de traste)
     const inlayColor = isDark ? '#94A3B8' : '#64748B'
     injectInlayDots(fretboardRef.current, fretCount, inlayColor, 0.21, 5)
@@ -359,10 +427,11 @@ export function GuitarFretboardEditor({
           const midi = STANDARD_TUNING_MIDI[6 - position.string] + position.fret
           const noteIdx = midi % 12
           const isRoot = rootMode || noteIdx === rootToMidi(rootNote)
+          const st = presetToScaleType(lastPreset)
           return [...prev, {
             string: position.string,
             fret: position.fret,
-            note: NOTE_NAMES[noteIdx],
+            note: getNoteNameInKey(noteIdx, rootNote, st ?? undefined),
             isRoot,
             degree: undefined,
             finger: undefined,
@@ -370,7 +439,42 @@ export function GuitarFretboardEditor({
         }
       })
     })
-  }, [notes, fretCount, colors, dotLabel, rootNote, rootMode])
+  }, [notes, fretCount, colors, dotLabel, rootNote, rootMode, cagedPosition])
+
+  // ── Recarregar preset ao mudar rootNote ──
+  const prevRootRef = useRef(rootNote)
+  useEffect(() => {
+    if (prevRootRef.current !== rootNote) {
+      prevRootRef.current = rootNote
+      if (lastPreset) {
+        // Recalcular notas com a nova fundamental
+        const intervals = PRESETS[lastPreset]
+        if (intervals) {
+          // Se tem tensões ativas, incluí-las
+          const allIntervals = [...intervals]
+          activeTensions.forEach(t => {
+            const interval = TENSION_INTERVALS[t]
+            if (interval !== undefined && !allIntervals.includes(interval % 12)) {
+              allIntervals.push(interval % 12)
+            }
+          })
+          const generatedNotes = generateFretboardNotes(rootNote, allIntervals, fretCount, presetToScaleType(lastPreset))
+          setNotes(generatedNotes)
+          setCagedPosition(null)
+
+          // Atualizar nome
+          const displayR = getDisplayRoot(rootNote)
+          const isScale = lastPreset.includes('scale') || lastPreset.startsWith('penta') || lastPreset === 'blues'
+          if (isScale) {
+            setChordName(`${displayR} ${PRESET_LABELS[lastPreset] || lastPreset}`)
+          } else {
+            const suffix = lastPreset === 'major' ? '' : lastPreset === 'minor' ? 'm' : lastPreset
+            setChordName(`${displayR}${suffix}`)
+          }
+        }
+      }
+    }
+  }, [rootNote, lastPreset, fretCount, activeTensions])
 
   // Re-renderizar quando notas ou config mudam
   useEffect(() => {
@@ -504,20 +608,22 @@ export function GuitarFretboardEditor({
     const intervals = PRESETS[presetKey]
     if (!intervals) return
 
-    const generatedNotes = generateFretboardNotes(rootNote, intervals, fretCount)
+    const generatedNotes = generateFretboardNotes(rootNote, intervals, fretCount, presetToScaleType(presetKey))
     setNotes(generatedNotes)
     setLastPreset(presetKey)
     setActiveTensions(new Set())
+    setCagedPosition(null)
 
     // Auto-nomear
     const isScale = presetKey.includes('scale') || presetKey.startsWith('penta') || presetKey === 'blues'
+    const displayR = getDisplayRoot(rootNote)
     if (isScale) {
       setMode('scale')
-      setChordName(`${rootNote} ${PRESET_LABELS[presetKey] || presetKey}`)
+      setChordName(`${displayR} ${PRESET_LABELS[presetKey] || presetKey}`)
     } else {
       setMode('chord')
       const suffix = presetKey === 'major' ? '' : presetKey === 'minor' ? 'm' : presetKey
-      setChordName(`${rootNote}${suffix}`)
+      setChordName(`${displayR}${suffix}`)
     }
   }, [rootNote, fretCount])
 
@@ -541,7 +647,7 @@ export function GuitarFretboardEditor({
         }
       })
 
-      const generatedNotes = generateFretboardNotes(rootNote, baseIntervals, fretCount)
+      const generatedNotes = generateFretboardNotes(rootNote, baseIntervals, fretCount, presetToScaleType(lastPreset))
       setNotes(generatedNotes)
 
       return next
@@ -553,6 +659,7 @@ export function GuitarFretboardEditor({
     setNotes([])
     setLastPreset(null)
     setActiveTensions(new Set())
+    setCagedPosition(null)
     setChordName('')
   }, [])
 
@@ -659,8 +766,8 @@ export function GuitarFretboardEditor({
       seen.add(n.note)
       return true
     }).sort((a, b) => {
-      const ai = NOTE_NAMES.indexOf(a.note!)
-      const bi = NOTE_NAMES.indexOf(b.note!)
+      const ai = noteToChromatic(a.note!)
+      const bi = noteToChromatic(b.note!)
       return ai - bi
     })
   }, [notes])
@@ -672,23 +779,30 @@ export function GuitarFretboardEditor({
     return [Math.min(...frets), Math.max(...frets)]
   }, [notes])
 
-  // ── Tablatura simples ──
-  const tabLines = useMemo(() => {
-    if (!showTab || notes.length === 0) return null
-    // 6 linhas: e, B, G, D, A, E (de cima pra baixo = agudo pra grave)
-    const strings = [1, 2, 3, 4, 5, 6] // e, B, G, D, A, E
-    const stringLabels = ['e', 'B', 'G', 'D', 'A', 'E']
-    const maxFret = Math.max(...notes.map(n => n.fret), 12)
 
-    return strings.map((s, si) => {
-      const stringNotes = notes.filter(n => n.string === s).sort((a, b) => a.fret - b.fret)
-      const fretNumbers = stringNotes.map(n => String(n.fret))
-      return {
-        label: stringLabels[si],
-        frets: fretNumbers,
-      }
-    })
-  }, [showTab, notes])
+  // ── CAGED: posições calculadas ──
+  const cagedAvailable = hasCagedTemplate(lastPreset)
+  const cagedPositions = useMemo(() => {
+    if (!lastPreset || !cagedAvailable) return null
+    return getCagedPositions(lastPreset, rootNote, fretCount)
+  }, [lastPreset, rootNote, fretCount, cagedAvailable])
+
+  const cagedLabels = useMemo(() => getCagedLabelsForRoot(rootNote), [rootNote])
+
+  /** Notas da posição CAGED selecionada (ou todas se null) */
+  const cagedActiveNotes = useMemo(() => {
+    if (cagedPosition === null || !cagedPositions || !cagedPositions[cagedPosition]) return null
+    return cagedPositions[cagedPosition]
+  }, [cagedPosition, cagedPositions])
+
+  // Sincronizar ref para uso no renderFretboard (evita referência circular)
+  cagedActiveNotesRef.current = cagedActiveNotes
+
+  /** Notas filtradas para a tablatura (só da posição ativa) */
+  const tabNotes = useMemo(() => {
+    if (!cagedActiveNotes) return notes
+    return notes.filter(n => isNoteInShape(n, cagedActiveNotes))
+  }, [notes, cagedActiveNotes])
 
   // Variáveis para tensões
   const tensionEnabled = !!lastPreset && !lastPreset.includes('scale') && !lastPreset.startsWith('penta') && lastPreset !== 'blues'
@@ -762,13 +876,13 @@ export function GuitarFretboardEditor({
           <div className="flex gap-2 items-center flex-wrap rounded-xl border border-border bg-muted/30 px-3 py-2">
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] uppercase tracking-[1px] font-bold text-muted-foreground">Fundamental</span>
-              <Select value={rootNote} onValueChange={v => { setRootNote(v); if (lastPreset) handleLoadPreset(lastPreset) }}>
-                <SelectTrigger className="h-7 w-[72px] text-[11px]">
-                  <SelectValue />
+              <Select value={rootNote} onValueChange={v => setRootNote(v)}>
+                <SelectTrigger className="h-7 w-[80px] text-[11px]">
+                  <SelectValue>{getDisplayRoot(rootNote)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {NOTE_NAMES.map(n => (
-                    <SelectItem key={n} value={n} className="text-[11px]">{n}</SelectItem>
+                  {ROOT_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value} className="text-[11px]">{o.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -929,7 +1043,45 @@ export function GuitarFretboardEditor({
             </div>
           )}
 
-          {/* Linha 5: Ferramentas */}
+          {/* Linha 5: Posições CAGED (quando template disponível) */}
+          {cagedAvailable && lastPreset && (
+            <div className="flex gap-2 items-stretch flex-wrap">
+              <div className="flex gap-[4px] items-center rounded-lg px-3 py-[6px] bg-muted/60">
+                <Guitar size={14} weight="bold" className="text-orange-500 mr-0.5" />
+                <span className="text-[9px] uppercase tracking-[1px] font-bold whitespace-nowrap mr-[3px] text-muted-foreground">Posição CAGED</span>
+                <button
+                  onClick={() => setCagedPosition(null)}
+                  className={`h-7 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-all duration-150 flex items-center justify-center font-[DM_Sans,sans-serif] cursor-pointer ${
+                    cagedPosition === null
+                      ? 'border-orange-500 bg-orange-500 text-white font-semibold'
+                      : 'border-border text-muted-foreground hover:border-orange-500 hover:text-orange-500 font-normal'
+                  }`}
+                >
+                  Todas
+                </button>
+                {CAGED_POSITION_NAMES.map((name, idx) => {
+                  const shapeLabel = cagedLabels[idx] ?? ''
+                  const shapeFrets = cagedPositions?.[idx] ? getShapeFretRange(cagedPositions[idx]) : null
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setCagedPosition(idx)}
+                      className={`h-7 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-all duration-150 flex items-center justify-center font-[DM_Sans,sans-serif] cursor-pointer ${
+                        cagedPosition === idx
+                          ? 'border-orange-500 bg-orange-500 text-white font-semibold'
+                          : 'border-border text-muted-foreground hover:border-orange-500 hover:text-orange-500 font-normal'
+                      }`}
+                      title={shapeFrets ? `Casas ${shapeFrets[0]}–${shapeFrets[1]}` : ''}
+                    >
+                      {name}·{shapeLabel}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Linha 6: Ferramentas */}
           <div className="flex gap-2 items-center flex-wrap">
             <button
               onClick={() => setRootMode(prev => !prev)}
@@ -1010,7 +1162,7 @@ export function GuitarFretboardEditor({
                 )}
                 {dotLabel === 'note' && (
                   <div className="flex flex-wrap gap-[3px] max-w-[200px]">
-                    {NOTE_NAMES.map(n => (
+                    {getChromaticNamesForKey(rootNote).map(n => (
                       <button
                         key={n}
                         type="button"
@@ -1058,26 +1210,12 @@ export function GuitarFretboardEditor({
         </div>
 
         {/* ── TABLATURA (toggle) ── */}
-        {showTab && notes.length > 0 && tabLines && (
-          <div className="mt-2 rounded-xl border border-border bg-card p-4 overflow-x-auto">
-            <div className="text-[9px] uppercase tracking-[1px] font-bold text-muted-foreground mb-2">Tablatura</div>
-            <div className="font-mono text-[12px] leading-[1.8] text-text">
-              {tabLines.map((line, i) => (
-                <div key={i} className="flex items-center gap-0">
-                  <span className="w-4 text-muted-foreground text-right mr-1">{line.label}</span>
-                  <span className="text-muted-foreground">|</span>
-                  <span className="tracking-wider">
-                    {line.frets.length > 0
-                      ? line.frets.map((f, fi) => (
-                          <span key={fi} className="inline-block w-6 text-center text-accent font-semibold">{f}</span>
-                        ))
-                      : <span className="text-muted-foreground/40">{'─'.repeat(20)}</span>
-                    }
-                  </span>
-                  <span className="text-muted-foreground">|</span>
-                </div>
-              ))}
-            </div>
+        {showTab && notes.length > 0 && (
+          <div className="mt-2">
+            <SimpleTablature
+              notes={tabNotes}
+              fretCount={fretCount}
+            />
           </div>
         )}
 
@@ -1100,7 +1238,7 @@ export function GuitarFretboardEditor({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tônica</span>
-                <span className="font-semibold text-text">{rootNote}</span>
+                <span className="font-semibold text-text">{getDisplayRoot(rootNote)}</span>
               </div>
             </div>
           </div>
@@ -1115,8 +1253,8 @@ export function GuitarFretboardEditor({
                   className={`text-[10px] ${n.isRoot ? 'bg-orange-500 text-white border-orange-500' : ''}`}
                 >
                   {n.degree ? `${n.degree}·` : ''}{n.note}
-                  {n.note && NOTE_NAMES_PT[NOTE_NAMES.indexOf(n.note)] ? (
-                    <span className="text-[8px] opacity-60 ml-0.5">({NOTE_NAMES_PT[NOTE_NAMES.indexOf(n.note!)]})</span>
+                  {n.note ? (
+                    <span className="text-[8px] opacity-60 ml-0.5">({getNotePt(n.note)})</span>
                   ) : null}
                 </Badge>
               ))}

@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { FloppyDisk, Plus, Minus, Trash, ArrowLeft, ArrowRight, Guitar } from '@phosphor-icons/react'
+import { AlphaTabViewer } from './AlphaTabViewer'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -239,6 +240,59 @@ function TabGridEditor({
       </div>
     </div>
   )
+}
+
+// ─── Conversor: grid → alphaTex ─────────────────────────────────────
+
+function gridToAlphaTex(grid: TabGrid, columns: number, label?: string): string {
+  // Verificar se há notas
+  let hasNotes = false
+  for (let s = 0; s < 6; s++) {
+    for (let c = 0; c < columns; c++) {
+      if (grid[s]?.[c] !== null) { hasNotes = true; break }
+    }
+    if (hasNotes) break
+  }
+  if (!hasNotes) return ''
+
+  const lines: string[] = []
+  if (label) lines.push(`\\title "${label}"`)
+  lines.push('\\tuning E4 B3 G3 D3 A2 E2')
+  lines.push('\\instrument AcousticGuitarSteel')
+  lines.push('\\tempo 120')
+  lines.push('\\staff{score} \\staff{tabs}')
+  lines.push('.')
+
+  // Cada coluna = um beat (semínima)
+  // Cordas no grid: [0]=E agudo(string 1), [1]=B(string 2), ..., [5]=E grave(string 6)
+  const beats: string[] = []
+  for (let c = 0; c < columns; c++) {
+    const notesInCol: string[] = []
+    for (let s = 0; s < 6; s++) {
+      const val = grid[s]?.[c]
+      if (val !== null) {
+        // alphaTab: fret.string — string 1=E agudo, string 6=E grave
+        // Grid: s=0 → string 1 (E agudo), s=5 → string 6 (E grave)
+        notesInCol.push(`${val}.${s + 1}`)
+      }
+    }
+    if (notesInCol.length === 0) {
+      beats.push('r.4') // pausa
+    } else if (notesInCol.length === 1) {
+      beats.push(`${notesInCol[0]}.4`)
+    } else {
+      beats.push(`(${notesInCol.join(' ')}).4`)
+    }
+  }
+
+  // Agrupar em compassos de 4 beats
+  const bars: string[] = []
+  for (let i = 0; i < beats.length; i += 4) {
+    bars.push(beats.slice(i, i + 4).join(' '))
+  }
+  lines.push(bars.join(' | \n'))
+
+  return lines.join('\n')
 }
 
 // ─── Preview de texto ───────────────────────────────────────────────
@@ -647,7 +701,7 @@ export function TablatureEditor({ open, onOpenChange, initialLines, initialLabel
             </div>
           )}
 
-          {/* Preview */}
+          {/* Preview profissional (alphaTab) */}
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Label className="text-[11px] text-text3 uppercase tracking-wider">Preview</Label>
@@ -655,7 +709,18 @@ export function TablatureEditor({ open, onOpenChange, initialLines, initialLabel
                 {noteCount} nota{noteCount !== 1 ? 's' : ''}
               </Badge>
             </div>
-            <TabPreview lines={previewLines} label={label || undefined} />
+            {noteCount > 0 ? (
+              <div className="rounded-lg border border-border overflow-hidden">
+                <AlphaTabViewer
+                  tex={gridToAlphaTex(grid, columns, label || undefined)}
+                  layout="horizontal"
+                  scale={0.7}
+                  minHeight={140}
+                />
+              </div>
+            ) : (
+              <TabPreview lines={previewLines} label={label || undefined} />
+            )}
           </div>
         </div>
 
