@@ -569,11 +569,11 @@ export const MAJOR_TRIAD_CAGED: CagedTemplateSet = {
       n(1, 3, NOTE, 5),  // G — 5ª
     ],
 
-    // Shape 2 (pos II) — casas 3–7
+    // Shape 2 (pos II) — casas 2–5
     [
       n(6, 3, NOTE, 5),  // G
       n(5, 3, ROOT, 1),  // C ★
-      n(5, 7, NOTE, 3),  // E
+      n(4, 2, NOTE, 3),  // E
       n(4, 5, NOTE, 5),  // G
       n(3, 5, ROOT, 1),  // C ★
       n(2, 5, NOTE, 3),  // E
@@ -610,6 +610,7 @@ export const MAJOR_TRIAD_CAGED: CagedTemplateSet = {
     [
       n(6, 12, NOTE, 3), // E — 3ª
       n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C — 1ª ★
       n(4, 14, NOTE, 3), // E — 3ª
       n(3, 12, NOTE, 5), // G — 5ª
       n(2, 13, ROOT, 1), // C — 1ª ★
@@ -630,7 +631,7 @@ export const MINOR_TRIAD_CAGED: CagedTemplateSet = {
   label: 'Tríade Menor',
   intervals: [0, 3, 7],
   shapes: [
-    // Shape 1 (pos I) — casas 0–3
+    // Shape 1 (pos I) — casas 0–4
     [
       n(6, 0, NOTE, 3),  // Eb — b3
       n(6, 3, NOTE, 5),  // G — 5ª
@@ -638,7 +639,7 @@ export const MINOR_TRIAD_CAGED: CagedTemplateSet = {
       n(4, 1, NOTE, 3),  // Eb — b3
       n(3, 0, NOTE, 5),  // G — 5ª
       n(2, 1, ROOT, 1),  // C — 1ª ★
-      n(1, 0, NOTE, 3),  // Eb — b3
+      n(2, 4, NOTE, 3),  // Eb — b3
       n(1, 3, NOTE, 5),  // G — 5ª
     ],
 
@@ -681,15 +682,427 @@ export const MINOR_TRIAD_CAGED: CagedTemplateSet = {
     // Shape 5 (pos V) — casas 10–15
     [
       n(6, 11, NOTE, 3), // Eb
-      n(6, 15, NOTE, 5), // G
       n(5, 10, NOTE, 5), // G
-      n(5, 15, ROOT, 1), // C ★
       n(4, 10, ROOT, 1), // C ★
       n(4, 13, NOTE, 3), // Eb
       n(3, 12, NOTE, 5), // G
       n(2, 13, ROOT, 1), // C ★
       n(1, 11, NOTE, 3), // Eb
       n(1, 15, NOTE, 5), // G
+    ],
+  ],
+}
+
+/**
+ * Tríade Diminuta em Dó (C) — 5 shapes
+ *
+ * Intervalos: 1, b3, b5
+ * Semitons:   0, 3, 6
+ * Notas em C: C, Eb, Gb
+ *
+ * Mapa de trastes por corda (afinação padrão):
+ *   6ª(E): Gb=2, C=8, Eb=11
+ *   5ª(A): C=3, Eb=6, Gb=9
+ *   4ª(D): Eb=1, Gb=4, C=10
+ *   3ª(G): C=5, Eb=8, Gb=11
+ *   2ª(B): Eb=4, Gb=7, C=1,13
+ *   1ª(E): Gb=2, C=8, Eb=11
+ */
+export const DIM_TRIAD_CAGED: CagedTemplateSet = {
+  type: 'dim',
+  label: 'Tríade Diminuta',
+  intervals: [0, 3, 6],
+  shapes: [
+    // Shape 1 (pos I) — casas 1–5 — formato "C"
+    [
+      n(6, 2, NOTE, 5),  // Gb — b5
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 1, NOTE, 3),  // Eb — b3
+      n(4, 4, NOTE, 5),  // Gb — b5
+      n(3, 5, ROOT, 1),  // C — 1ª ★
+      n(2, 4, NOTE, 3),  // Eb — b3
+      n(1, 2, NOTE, 5),  // Gb — b5
+    ],
+
+    // Shape 2 (pos II) — casas 2–8 — formato "A"
+    [
+      n(6, 2, NOTE, 5),  // Gb — b5
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 4, NOTE, 5),  // Gb
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 4, NOTE, 3),  // Eb
+      n(2, 7, NOTE, 5),  // Gb
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 3 (pos III) — casas 5–9 — formato "G"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(5, 9, NOTE, 5),  // Gb
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 7, NOTE, 5),  // Gb
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–11 — formato "E"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 11, NOTE, 3), // Eb
+      n(5, 9, NOTE, 5),  // Gb
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(3, 11, NOTE, 5), // Gb
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+    ],
+
+    // Shape 5 (pos V) — casas 10–14 — formato "D"
+    [
+      n(6, 11, NOTE, 3), // Eb
+      n(6, 14, NOTE, 5), // Gb
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 13, NOTE, 3), // Eb
+      n(3, 11, NOTE, 5), // Gb
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+      n(1, 14, NOTE, 5), // Gb
+    ],
+  ],
+}
+
+/**
+ * Tríade Aumentada em Dó (C) — 5 shapes
+ *
+ * Intervalos: 1, 3, #5
+ * Semitons:   0, 4, 8
+ * Notas em C: C, E, G#
+ *
+ * Mapa de trastes por corda (afinação padrão):
+ *   6ª(E): E=0,12  G#=4  C=8
+ *   5ª(A): C=3  E=7  G#=11
+ *   4ª(D): E=2,14  G#=6  C=10
+ *   3ª(G): G#=1,13  C=5  E=9
+ *   2ª(B): C=1,13  E=5  G#=9
+ *   1ª(E): E=0,12  G#=4  C=8
+ */
+export const AUG_TRIAD_CAGED: CagedTemplateSet = {
+  type: 'aug',
+  label: 'Tríade Aumentada',
+  intervals: [0, 4, 8],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–5 — formato "C"
+    [
+      n(6, 0, NOTE, 3),  // E — 3ª
+      n(6, 4, NOTE, 5),  // G# — #5
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 2, NOTE, 3),  // E — 3ª
+      n(3, 1, NOTE, 5),  // G# — #5
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(1, 0, NOTE, 3),  // E — 3ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–7 — formato "A"
+    [
+      n(6, 4, NOTE, 5),  // G# — #5
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E — 3ª
+      n(4, 6, NOTE, 5),  // G# — #5
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 5, NOTE, 3),  // E — 3ª
+      n(1, 4, NOTE, 5),  // G# — #5
+    ],
+
+    // Shape 3 (pos III) — casas 5–9 — formato "G"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E — 3ª
+      n(4, 6, NOTE, 5),  // G# — #5
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 9, NOTE, 3),  // E — 3ª
+      n(2, 9, NOTE, 5),  // G# — #5
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–13 — formato "E"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 12, NOTE, 3), // E — 3ª
+      n(5, 11, NOTE, 5), // G# — #5
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 9, NOTE, 3),  // E — 3ª
+      n(2, 9, NOTE, 5),  // G# — #5
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 12, NOTE, 3), // E — 3ª
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — formato "D"
+    [
+      n(6, 12, NOTE, 3), // E — 3ª
+      n(5, 11, NOTE, 5), // G# — #5
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 14, NOTE, 3), // E — 3ª
+      n(3, 13, NOTE, 5), // G# — #5
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 12, NOTE, 3), // E — 3ª
+    ],
+  ],
+}
+
+/**
+ * Tríade sus2 em Dó (C) — 5 shapes
+ *
+ * Intervalos: 1, 2, 5
+ * Semitons:   0, 2, 7
+ * Notas em C: C, D, G
+ *
+ * Mapa de trastes por corda (afinação padrão):
+ *   6ª(E): G=3,15  C=8  D=10
+ *   5ª(A): C=3,15  D=5  G=10
+ *   4ª(D): D=0,12  G=5  C=10
+ *   3ª(G): G=0,12  C=5  D=7
+ *   2ª(B): C=1,13  D=3,15  G=8
+ *   1ª(E): G=3,15  C=8  D=10
+ */
+export const SUS2_TRIAD_CAGED: CagedTemplateSet = {
+  type: 'sus2',
+  label: 'Tríade sus2',
+  intervals: [0, 2, 7],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–5 — formato "C"
+    [
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(5, 5, NOTE, 2),  // D — 2ª
+      n(4, 5, NOTE, 5),  // G — 5ª
+      n(3, 5, ROOT, 1),  // C — 1ª ★
+      n(2, 3, NOTE, 2),  // D — 2ª
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–8 — formato "A"
+    [
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 5, NOTE, 2),  // D — 2ª
+      n(4, 5, NOTE, 5),  // G — 5ª
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 7, NOTE, 2),  // D — 2ª
+      n(2, 8, NOTE, 5),  // G — 5ª
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 3 (pos III) — casas 5–10 — formato "G"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 10, NOTE, 2), // D — 2ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 7, NOTE, 2),  // D — 2ª
+      n(2, 8, NOTE, 5),  // G — 5ª
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 10, NOTE, 2), // D — 2ª
+    ],
+
+    // Shape 4 (pos IV) — casas 8–13 — formato "E"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 10, NOTE, 2), // D — 2ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C ★
+      n(4, 12, NOTE, 2), // D — 2ª
+      n(3, 12, NOTE, 5), // G — 5ª
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 10, NOTE, 2), // D — 2ª
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — formato "D"
+    [
+      n(6, 10, NOTE, 2), // D — 2ª
+      n(6, 15, NOTE, 5), // G — 5ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 12, NOTE, 2), // D — 2ª
+      n(3, 12, NOTE, 5), // G — 5ª
+      n(2, 13, ROOT, 1), // C ★
+      n(2, 15, NOTE, 2), // D — 2ª
+      n(1, 15, NOTE, 5), // G — 5ª
+    ],
+  ],
+}
+
+/**
+ * Tríade sus4 em Dó (C) — 5 shapes
+ *
+ * Intervalos: 1, 4, 5
+ * Semitons:   0, 5, 7
+ * Notas em C: C, F, G
+ *
+ * Mapa de trastes por corda (afinação padrão):
+ *   6ª(E): F=1,13  G=3,15  C=8
+ *   5ª(A): C=3,15  F=8  G=10
+ *   4ª(D): F=3,15  G=5  C=10
+ *   3ª(G): G=0,12  C=5  F=10
+ *   2ª(B): C=1,13  F=6  G=8
+ *   1ª(E): F=1,13  G=3,15  C=8
+ */
+export const SUS4_TRIAD_CAGED: CagedTemplateSet = {
+  type: 'sus4',
+  label: 'Tríade sus4',
+  intervals: [0, 5, 7],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–5 — formato "C"
+    [
+      n(6, 1, NOTE, 4),  // F — 4ª
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 3, NOTE, 4),  // F — 4ª
+      n(3, 0, NOTE, 5),  // G — 5ª
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(1, 1, NOTE, 4),  // F — 4ª
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–8 — formato "A"
+    [
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 8, NOTE, 4),  // F — 4ª
+      n(4, 5, NOTE, 5),  // G — 5ª
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 6, NOTE, 4),  // F — 4ª
+      n(2, 8, NOTE, 5),  // G — 5ª
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 3 (pos III) — casas 5–10 — formato "G"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 8, NOTE, 4),  // F — 4ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 10, NOTE, 4), // F — 4ª
+      n(2, 8, NOTE, 5),  // G — 5ª
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–13 — formato "E"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 13, NOTE, 4), // F — 4ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 10, NOTE, 4), // F — 4ª
+      n(3, 12, NOTE, 5), // G — 5ª
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 13, NOTE, 4), // F — 4ª
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — formato "D"
+    [
+      n(6, 13, NOTE, 4), // F — 4ª
+      n(6, 15, NOTE, 5), // G — 5ª
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 15, NOTE, 4), // F — 4ª
+      n(3, 12, NOTE, 5), // G — 5ª
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 13, NOTE, 4), // F — 4ª
+      n(1, 15, NOTE, 5), // G — 5ª
+    ],
+  ],
+}
+
+/**
+ * Acorde add9 em Dó (C) — 5 shapes
+ *
+ * Intervalos: 1, 2(9), 3, 5
+ * Semitons:   0, 2, 4, 7
+ * Notas em C: C, D, E, G
+ *
+ * Mapa de trastes por corda (afinação padrão):
+ *   6ª(E): E=0,12  G=3,15  C=8  D=10
+ *   5ª(A): C=3,15  D=5  E=7  G=10
+ *   4ª(D): D=0,12  E=2,14  G=5  C=10
+ *   3ª(G): G=0,12  C=5  D=7  E=9
+ *   2ª(B): C=1,13  D=3,15  E=5  G=8
+ *   1ª(E): E=0,12  G=3,15  C=8  D=10
+ */
+export const ADD9_TRIAD_CAGED: CagedTemplateSet = {
+  type: 'add9',
+  label: 'Acorde add9',
+  intervals: [0, 2, 4, 7],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–3 — formato "C"
+    [
+      n(6, 0, NOTE, 3),  // E — 3ª
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 0, NOTE, 2),  // D — 9ª(2ª) (corda solta)
+      n(4, 2, NOTE, 3),  // E — 3ª
+      n(3, 0, NOTE, 5),  // G — 5ª (corda solta)
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(2, 3, NOTE, 2),  // D — 9ª(2ª)
+      n(1, 0, NOTE, 3),  // E — 3ª
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–8 — formato "A"
+    [
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 5, NOTE, 2),  // D — 9ª(2ª)
+      n(5, 7, NOTE, 3),  // E — 3ª
+      n(4, 5, NOTE, 5),  // G — 5ª
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 7, NOTE, 2),  // D — 9ª(2ª)
+      n(2, 5, NOTE, 3),  // E — 3ª
+      n(2, 8, NOTE, 5),  // G — 5ª
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 3 (pos III) — casas 5–10 — formato "G"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 10, NOTE, 2), // D — 9ª(2ª)
+      n(5, 7, NOTE, 3),  // E — 3ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 7, NOTE, 2),  // D — 9ª(2ª)
+      n(3, 9, NOTE, 3),  // E — 3ª
+      n(2, 8, NOTE, 5),  // G — 5ª
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 10, NOTE, 2), // D — 9ª(2ª)
+    ],
+
+    // Shape 4 (pos IV) — casas 8–12 — formato "E"
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 10, NOTE, 2), // D — 9ª(2ª)
+      n(6, 12, NOTE, 3), // E — 3ª
+      n(5, 10, NOTE, 5), // G — 5ª
+      n(4, 10, ROOT, 1), // C ★
+      n(4, 12, NOTE, 2), // D — 9ª(2ª)
+      n(3, 9, NOTE, 3),  // E — 3ª
+      n(3, 12, NOTE, 5), // G — 5ª
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 10, NOTE, 2), // D — 9ª(2ª)
+      n(1, 12, NOTE, 3), // E — 3ª
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — formato "D"
+    [
+      n(6, 12, NOTE, 3), // E — 3ª
+      n(6, 15, NOTE, 5), // G — 5ª
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 12, NOTE, 2), // D — 9ª(2ª)
+      n(4, 14, NOTE, 3), // E — 3ª
+      n(3, 12, NOTE, 5), // G — 5ª
+      n(2, 13, ROOT, 1), // C ★
+      n(2, 15, NOTE, 2), // D — 9ª(2ª)
+      n(1, 12, NOTE, 3), // E — 3ª
+      n(1, 15, NOTE, 5), // G — 5ª
     ],
   ],
 }
@@ -710,7 +1123,7 @@ export const MAJ7_TETRAD_CAGED: CagedTemplateSet = {
   label: 'Tétrade Maior (Maj7)',
   intervals: [0, 4, 7, 11],
   shapes: [
-    // Shape 1 (pos I) — casas 0–4
+    // Shape 1 (pos I) — casas 0–3
     [
       n(6, 0, NOTE, 3),  // E — 3ª
       n(6, 3, NOTE, 5),  // G — 5ª
@@ -718,18 +1131,18 @@ export const MAJ7_TETRAD_CAGED: CagedTemplateSet = {
       n(5, 3, ROOT, 1),  // C — 1ª ★
       n(4, 2, NOTE, 3),  // E — 3ª
       n(3, 0, NOTE, 5),  // G — 5ª
-      n(3, 4, NOTE, 7),  // B — 7ª
+      n(2, 0, NOTE, 7),  // B — 7ª (corda solta)
       n(2, 1, ROOT, 1),  // C — 1ª ★
       n(1, 0, NOTE, 3),  // E — 3ª
       n(1, 3, NOTE, 5),  // G — 5ª
     ],
 
-    // Shape 2 (pos II) — casas 3–7
+    // Shape 2 (pos II) — casas 2–5
     [
       n(6, 3, NOTE, 5),  // G
-      n(6, 7, NOTE, 7),  // B
+      n(5, 2, NOTE, 7),  // B
       n(5, 3, ROOT, 1),  // C ★
-      n(5, 7, NOTE, 3),  // E
+      n(4, 2, NOTE, 3),  // E
       n(4, 5, NOTE, 5),  // G
       n(3, 4, NOTE, 7),  // B
       n(3, 5, ROOT, 1),  // C ★
@@ -752,33 +1165,632 @@ export const MAJ7_TETRAD_CAGED: CagedTemplateSet = {
       n(1, 8, ROOT, 1),  // C ★
     ],
 
-    // Shape 4 (pos IV) — casas 8–12
+    // Shape 4 (pos IV) — casas 7–10
     [
       n(6, 8, ROOT, 1),  // C ★
-      n(6, 12, NOTE, 3), // E
+      n(5, 7, NOTE, 3),  // E
       n(5, 10, NOTE, 5), // G
       n(4, 9, NOTE, 7),  // B
       n(4, 10, ROOT, 1), // C ★
       n(3, 9, NOTE, 3),  // E
       n(2, 8, NOTE, 5),  // G
-      n(2, 12, NOTE, 7), // B
+      n(1, 7, NOTE, 7),  // B
       n(1, 8, ROOT, 1),  // C ★
-      n(1, 12, NOTE, 3), // E
     ],
 
-    // Shape 5 (pos V) — casas 10–15
+    // Shape 5 (pos V) — casas 10–14
     [
       n(6, 12, NOTE, 3), // E
-      n(6, 15, NOTE, 5), // G
-      n(5, 10, NOTE, 5), // G (projeção)
+      n(5, 10, NOTE, 5), // G
       n(5, 14, NOTE, 7), // B
-      n(5, 15, ROOT, 1), // C ★
       n(4, 10, ROOT, 1), // C ★
       n(4, 14, NOTE, 3), // E
       n(3, 12, NOTE, 5), // G
       n(2, 12, NOTE, 7), // B
       n(2, 13, ROOT, 1), // C ★
       n(1, 12, NOTE, 3), // E
+    ],
+  ],
+}
+
+/**
+ * Tétrade Dominante (C7) em Dó — 5 shapes
+ * Base: tríade Maior + b7 (Bb)
+ *
+ * Intervalos: 1, 3, 5, b7
+ * Semitons:   0, 4, 7, 10
+ * Notas em C: C, E, G, Bb
+ *
+ * Bb por corda: 6ª=6  5ª=1,13  4ª=8  3ª=3,15  2ª=11  1ª=6
+ */
+export const DOM7_TETRAD_CAGED: CagedTemplateSet = {
+  type: '7',
+  label: 'Tétrade Dominante (7)',
+  intervals: [0, 4, 7, 10],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–3 — base: major shape 1
+    [
+      n(6, 0, NOTE, 3),  // E — 3ª
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 1, NOTE, 7),  // Bb — b7
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 2, NOTE, 3),  // E — 3ª
+      n(3, 0, NOTE, 5),  // G — 5ª
+      n(3, 3, NOTE, 7),  // Bb — b7
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(1, 0, NOTE, 3),  // E — 3ª
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–7 — base: major shape 2
+    [
+      n(6, 3, NOTE, 5),  // G
+      n(6, 6, NOTE, 7),  // Bb
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E
+      n(4, 5, NOTE, 5),  // G
+      n(3, 3, NOTE, 7),  // Bb
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 5, NOTE, 3),  // E
+      n(1, 3, NOTE, 5),  // G
+      n(1, 6, NOTE, 7),  // Bb
+    ],
+
+    // Shape 3 (pos III) — casas 5–9 — base: major shape 3
+    [
+      n(6, 6, NOTE, 7),  // Bb
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E
+      n(4, 5, NOTE, 5),  // G
+      n(4, 8, NOTE, 7),  // Bb
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 9, NOTE, 3),  // E
+      n(2, 8, NOTE, 5),  // G
+      n(1, 6, NOTE, 7),  // Bb
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–12 — base: major shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E
+      n(5, 10, NOTE, 5), // G
+      n(4, 8, NOTE, 7),  // Bb
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 9, NOTE, 3),  // E
+      n(2, 8, NOTE, 5),  // G
+      n(2, 11, NOTE, 7), // Bb
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 12, NOTE, 3), // E
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — base: major shape 5
+    [
+      n(6, 12, NOTE, 3), // E
+      n(6, 15, NOTE, 5), // G
+      n(5, 13, NOTE, 7), // Bb
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 14, NOTE, 3), // E
+      n(3, 12, NOTE, 5), // G
+      n(3, 15, NOTE, 7), // Bb
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 12, NOTE, 3), // E
+      n(1, 15, NOTE, 5), // G
+    ],
+  ],
+}
+
+/**
+ * Tétrade Menor com Sétima (Cm7) em Dó — 5 shapes
+ * Base: tríade Menor + b7 (Bb)
+ *
+ * Intervalos: 1, b3, 5, b7
+ * Semitons:   0, 3, 7, 10
+ * Notas em C: C, Eb, G, Bb
+ */
+export const MIN7_TETRAD_CAGED: CagedTemplateSet = {
+  type: 'm7',
+  label: 'Tétrade Menor (m7)',
+  intervals: [0, 3, 7, 10],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–4 — base: minor shape 1
+    [
+      n(6, 0, NOTE, 3),  // Eb — b3
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 1, NOTE, 7),  // Bb — b7
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 1, NOTE, 3),  // Eb — b3
+      n(3, 0, NOTE, 5),  // G — 5ª
+      n(3, 3, NOTE, 7),  // Bb — b7
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(2, 4, NOTE, 3),  // Eb — b3
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–6 — base: minor shape 2
+    [
+      n(6, 3, NOTE, 5),  // G
+      n(6, 6, NOTE, 7),  // Bb
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 5, NOTE, 5),  // G
+      n(3, 3, NOTE, 7),  // Bb
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 4, NOTE, 3),  // Eb
+      n(1, 3, NOTE, 5),  // G
+      n(1, 6, NOTE, 7),  // Bb
+    ],
+
+    // Shape 3 (pos III) — casas 5–8 — base: minor shape 3
+    [
+      n(6, 6, NOTE, 7),  // Bb
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 5, NOTE, 5),  // G
+      n(4, 8, NOTE, 7),  // Bb
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 8, NOTE, 5),  // G
+      n(1, 6, NOTE, 7),  // Bb
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–11 — base: minor shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 11, NOTE, 3), // Eb
+      n(5, 10, NOTE, 5), // G
+      n(5, 13, NOTE, 7), // Bb
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 8, NOTE, 5),  // G
+      n(2, 11, NOTE, 7), // Bb
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 11, NOTE, 3), // Eb
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — base: minor shape 5
+    [
+      n(6, 11, NOTE, 3), // Eb
+      n(6, 15, NOTE, 5), // G
+      n(5, 13, NOTE, 7), // Bb
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 13, NOTE, 3), // Eb
+      n(3, 12, NOTE, 5), // G
+      n(3, 15, NOTE, 7), // Bb
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+      n(1, 15, NOTE, 5), // G
+    ],
+  ],
+}
+
+/**
+ * Tétrade Diminuta (Cdim7) em Dó — 5 shapes
+ * Base: tríade Dim + bb7 (A = Bbb)
+ *
+ * Intervalos: 1, b3, b5, bb7
+ * Semitons:   0, 3, 6, 9
+ * Notas em C: C, Eb, Gb, A(Bbb)
+ *
+ * A por corda: 6ª=5  5ª=0,12  4ª=7  3ª=2,14  2ª=10  1ª=5
+ */
+export const DIM7_TETRAD_CAGED: CagedTemplateSet = {
+  type: 'dim7',
+  label: 'Tétrade Diminuta (dim7)',
+  intervals: [0, 3, 6, 9],
+  shapes: [
+    // Shape 1 (pos I) — casas 1–5 — base: dim shape 1
+    [
+      n(6, 2, NOTE, 5),  // Gb — b5
+      n(6, 5, NOTE, 7),  // A — bb7
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 1, NOTE, 3),  // Eb — b3
+      n(4, 4, NOTE, 5),  // Gb — b5 (vizinho)
+      n(3, 2, NOTE, 7),  // A — bb7
+      n(2, 4, NOTE, 3),  // Eb — b3
+      n(1, 2, NOTE, 5),  // Gb — b5
+      n(1, 5, NOTE, 7),  // A — bb7
+    ],
+
+    // Shape 2 (pos II) — casas 2–8 — base: dim shape 2
+    [
+      n(6, 2, NOTE, 5),  // Gb
+      n(6, 5, NOTE, 7),  // A
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 4, NOTE, 5),  // Gb
+      n(4, 7, NOTE, 7),  // A
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 7, NOTE, 5),  // Gb
+      n(2, 10, NOTE, 7), // A
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 3 (pos III) — casas 5–10 — base: dim shape 3
+    [
+      n(6, 5, NOTE, 7),  // A
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(5, 9, NOTE, 5),  // Gb
+      n(4, 7, NOTE, 7),  // A
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 7, NOTE, 5),  // Gb
+      n(2, 10, NOTE, 7), // A
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–13 — base: dim shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 11, NOTE, 3), // Eb
+      n(5, 9, NOTE, 5),  // Gb
+      n(5, 12, NOTE, 7), // A
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(3, 11, NOTE, 5), // Gb
+      n(2, 10, NOTE, 7), // A
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+    ],
+
+    // Shape 5 (pos V) — casas 10–14 — base: dim shape 5
+    [
+      n(6, 11, NOTE, 3), // Eb
+      n(6, 14, NOTE, 5), // Gb
+      n(5, 12, NOTE, 7), // A
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 13, NOTE, 3), // Eb
+      n(3, 11, NOTE, 5), // Gb
+      n(3, 14, NOTE, 7), // A
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+      n(1, 14, NOTE, 5), // Gb
+    ],
+  ],
+}
+
+/**
+ * Tétrade Meio-diminuta (Cm7b5) em Dó — 5 shapes
+ * Base: tríade Dim + b7 (Bb)
+ *
+ * Intervalos: 1, b3, b5, b7
+ * Semitons:   0, 3, 6, 10
+ * Notas em C: C, Eb, Gb, Bb
+ *
+ * Bb por corda: 6ª=6  5ª=1,13  4ª=8  3ª=3,15  2ª=11  1ª=6
+ */
+export const M7B5_TETRAD_CAGED: CagedTemplateSet = {
+  type: 'm7b5',
+  label: 'Tétrade Meio-diminuta (m7b5)',
+  intervals: [0, 3, 6, 10],
+  shapes: [
+    // Shape 1 (pos I) — casas 1–4 — base: dim shape 1
+    [
+      n(6, 2, NOTE, 5),  // Gb — b5
+      n(5, 1, NOTE, 7),  // Bb — b7
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 1, NOTE, 3),  // Eb — b3
+      n(4, 4, NOTE, 5),  // Gb — b5
+      n(3, 3, NOTE, 7),  // Bb — b7
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(2, 4, NOTE, 3),  // Eb — b3
+      n(1, 2, NOTE, 5),  // Gb — b5
+    ],
+
+    // Shape 2 (pos II) — casas 2–8 — base: dim shape 2
+    [
+      n(6, 2, NOTE, 5),  // Gb
+      n(6, 6, NOTE, 7),  // Bb
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 4, NOTE, 5),  // Gb
+      n(3, 3, NOTE, 7),  // Bb
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 4, NOTE, 3),  // Eb
+      n(1, 2, NOTE, 5),  // Gb
+      n(1, 6, NOTE, 7),  // Bb
+    ],
+
+    // Shape 3 (pos III) — casas 5–10 — base: dim shape 3
+    [
+      n(6, 6, NOTE, 7),  // Bb
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(5, 9, NOTE, 5),  // Gb
+      n(4, 8, NOTE, 7),  // Bb
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 7, NOTE, 5),  // Gb
+      n(1, 6, NOTE, 7),  // Bb
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–13 — base: dim shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 11, NOTE, 3), // Eb
+      n(5, 9, NOTE, 5),  // Gb
+      n(4, 8, NOTE, 7),  // Bb
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(3, 11, NOTE, 5), // Gb
+      n(2, 11, NOTE, 7), // Bb
+      n(1, 8, NOTE, 7),  // Bb
+      n(1, 11, NOTE, 3), // Eb
+    ],
+
+    // Shape 5 (pos V) — casas 10–14 — base: dim shape 5
+    [
+      n(6, 11, NOTE, 3), // Eb
+      n(6, 14, NOTE, 5), // Gb
+      n(5, 13, NOTE, 7), // Bb
+      n(4, 10, ROOT, 1), // C ★
+      n(4, 13, NOTE, 3), // Eb
+      n(3, 11, NOTE, 5), // Gb
+      n(2, 11, NOTE, 7), // Bb
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+      n(1, 14, NOTE, 5), // Gb
+    ],
+  ],
+}
+
+/**
+ * Acorde com Sexta (C6) em Dó — 5 shapes
+ * Base: tríade Maior + 6 (A)
+ *
+ * Intervalos: 1, 3, 5, 6
+ * Semitons:   0, 4, 7, 9
+ * Notas em C: C, E, G, A
+ *
+ * A por corda: 6ª=5  5ª=0,12  4ª=7  3ª=2,14  2ª=10  1ª=5
+ */
+export const SIXTH_TETRAD_CAGED: CagedTemplateSet = {
+  type: '6',
+  label: 'Acorde com Sexta (6)',
+  intervals: [0, 4, 7, 9],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–5 — base: major shape 1
+    [
+      n(6, 0, NOTE, 3),  // E — 3ª
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(6, 5, NOTE, 7),  // A — 6ª
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 2, NOTE, 3),  // E — 3ª
+      n(3, 0, NOTE, 5),  // G — 5ª
+      n(3, 2, NOTE, 7),  // A — 6ª
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(1, 0, NOTE, 3),  // E — 3ª
+      n(1, 3, NOTE, 5),  // G — 5ª
+      n(1, 5, NOTE, 7),  // A — 6ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–7 — base: major shape 2
+    [
+      n(6, 3, NOTE, 5),  // G
+      n(6, 5, NOTE, 7),  // A
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E
+      n(4, 5, NOTE, 5),  // G
+      n(4, 7, NOTE, 7),  // A
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 5, NOTE, 3),  // E
+      n(1, 3, NOTE, 5),  // G
+      n(1, 5, NOTE, 7),  // A
+    ],
+
+    // Shape 3 (pos III) — casas 5–9 — base: major shape 3
+    [
+      n(6, 5, NOTE, 7),  // A
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 7, NOTE, 3),  // E
+      n(4, 5, NOTE, 5),  // G
+      n(4, 7, NOTE, 7),  // A
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 9, NOTE, 3),  // E
+      n(2, 8, NOTE, 5),  // G
+      n(2, 10, NOTE, 7), // A
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–12 — base: major shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 12, NOTE, 3), // E
+      n(5, 10, NOTE, 5), // G
+      n(5, 12, NOTE, 7), // A
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 9, NOTE, 3),  // E
+      n(2, 8, NOTE, 5),  // G
+      n(2, 10, NOTE, 7), // A
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 12, NOTE, 3), // E
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — base: major shape 5
+    [
+      n(6, 12, NOTE, 3), // E
+      n(5, 10, NOTE, 5), // G
+      n(5, 12, NOTE, 7), // A
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 14, NOTE, 3), // E
+      n(3, 12, NOTE, 5), // G
+      n(3, 14, NOTE, 7), // A
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 12, NOTE, 3), // E
+    ],
+  ],
+}
+
+/**
+ * Acorde Menor com Sexta (Cm6) em Dó — 5 shapes
+ * Base: tríade Menor + 6 (A)
+ *
+ * Intervalos: 1, b3, 5, 6
+ * Semitons:   0, 3, 7, 9
+ * Notas em C: C, Eb, G, A
+ *
+ * A por corda: 6ª=5  5ª=0,12  4ª=7  3ª=2,14  2ª=10  1ª=5
+ */
+export const MIN6_TETRAD_CAGED: CagedTemplateSet = {
+  type: 'm6',
+  label: 'Acorde Menor com Sexta (m6)',
+  intervals: [0, 3, 7, 9],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–4 — base: minor shape 1
+    [
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 1, NOTE, 3),  // Eb — b3
+      n(3, 0, NOTE, 5),  // G — 5ª
+      n(3, 2, NOTE, 7),  // A — 6ª
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(2, 4, NOTE, 3),  // Eb — b3
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–6 — base: minor shape 2
+    [
+      n(6, 3, NOTE, 5),  // G
+      n(6, 5, NOTE, 7),  // A
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 5, NOTE, 5),  // G
+      n(4, 7, NOTE, 7),  // A
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 4, NOTE, 3),  // Eb
+      n(1, 3, NOTE, 5),  // G
+      n(1, 5, NOTE, 7),  // A
+    ],
+
+    // Shape 3 (pos III) — casas 5–8 — base: minor shape 3
+    [
+      n(6, 5, NOTE, 7),  // A
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 5, NOTE, 5),  // G
+      n(4, 7, NOTE, 7),  // A
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 8, NOTE, 5),  // G
+      n(2, 10, NOTE, 7), // A
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–11 — base: minor shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 11, NOTE, 3), // Eb
+      n(5, 10, NOTE, 5), // G
+      n(5, 12, NOTE, 7), // A
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 8, NOTE, 5),  // G
+      n(2, 10, NOTE, 7), // A
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 11, NOTE, 3), // Eb
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — base: minor shape 5
+    [
+      n(6, 11, NOTE, 3), // Eb
+      n(6, 15, NOTE, 5), // G
+      n(5, 12, NOTE, 7), // A
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 13, NOTE, 3), // Eb
+      n(3, 12, NOTE, 5), // G
+      n(3, 14, NOTE, 7), // A
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
+      n(1, 15, NOTE, 5), // G
+    ],
+  ],
+}
+
+/**
+ * Acorde Menor com Sétima Maior (CmMaj7) em Dó — 5 shapes
+ * Base: tríade Menor + 7 (B)
+ *
+ * Intervalos: 1, b3, 5, 7
+ * Semitons:   0, 3, 7, 11
+ * Notas em C: C, Eb, G, B
+ *
+ * B por corda: 6ª=7  5ª=2,14  4ª=9  3ª=4  2ª=0,12  1ª=7
+ */
+export const MMAJ7_TETRAD_CAGED: CagedTemplateSet = {
+  type: 'mmaj7',
+  label: 'Menor com 7ª Maior (mMaj7)',
+  intervals: [0, 3, 7, 11],
+  shapes: [
+    // Shape 1 (pos I) — casas 0–4 — base: minor shape 1
+    [
+      n(6, 0, NOTE, 3),  // Eb — b3
+      n(6, 3, NOTE, 5),  // G — 5ª
+      n(5, 2, NOTE, 7),  // B — 7ª
+      n(5, 3, ROOT, 1),  // C — 1ª ★
+      n(4, 1, NOTE, 3),  // Eb — b3
+      n(3, 0, NOTE, 5),  // G — 5ª
+      n(3, 4, NOTE, 7),  // B — 7ª
+      n(2, 1, ROOT, 1),  // C — 1ª ★
+      n(2, 4, NOTE, 3),  // Eb — b3
+      n(1, 3, NOTE, 5),  // G — 5ª
+    ],
+
+    // Shape 2 (pos II) — casas 3–7 — base: minor shape 2
+    [
+      n(6, 3, NOTE, 5),  // G
+      n(6, 7, NOTE, 7),  // B
+      n(5, 3, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 5, NOTE, 5),  // G
+      n(3, 4, NOTE, 7),  // B
+      n(3, 5, ROOT, 1),  // C ★
+      n(2, 4, NOTE, 3),  // Eb
+      n(1, 3, NOTE, 5),  // G
+      n(1, 7, NOTE, 7),  // B
+    ],
+
+    // Shape 3 (pos III) — casas 5–9 — base: minor shape 3
+    [
+      n(6, 7, NOTE, 7),  // B
+      n(6, 8, ROOT, 1),  // C ★
+      n(5, 6, NOTE, 3),  // Eb
+      n(4, 5, NOTE, 5),  // G
+      n(4, 9, NOTE, 7),  // B
+      n(3, 5, ROOT, 1),  // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 8, NOTE, 5),  // G
+      n(1, 7, NOTE, 7),  // B
+      n(1, 8, ROOT, 1),  // C ★
+    ],
+
+    // Shape 4 (pos IV) — casas 8–12 — base: minor shape 4
+    [
+      n(6, 8, ROOT, 1),  // C ★
+      n(6, 11, NOTE, 3), // Eb
+      n(5, 10, NOTE, 5), // G
+      n(4, 9, NOTE, 7),  // B
+      n(4, 10, ROOT, 1), // C ★
+      n(3, 8, NOTE, 3),  // Eb
+      n(2, 8, NOTE, 5),  // G
+      n(2, 12, NOTE, 7), // B
+      n(1, 8, ROOT, 1),  // C ★
+      n(1, 11, NOTE, 3), // Eb
+    ],
+
+    // Shape 5 (pos V) — casas 10–15 — base: minor shape 5
+    [
+      n(6, 11, NOTE, 3), // Eb
+      n(6, 15, NOTE, 5), // G
+      n(5, 14, NOTE, 7), // B
+      n(5, 15, ROOT, 1), // C ★
+      n(4, 13, NOTE, 3), // Eb
+      n(3, 12, NOTE, 5), // G
+      n(2, 12, NOTE, 7), // B
+      n(2, 13, ROOT, 1), // C ★
+      n(1, 11, NOTE, 3), // Eb
       n(1, 15, NOTE, 5), // G
     ],
   ],
@@ -1121,8 +2133,20 @@ export const CAGED_TEMPLATES: Record<string, CagedTemplateSet> = {
   // Tríades
   major: MAJOR_TRIAD_CAGED,
   minor: MINOR_TRIAD_CAGED,
+  dim: DIM_TRIAD_CAGED,
+  aug: AUG_TRIAD_CAGED,
+  sus2: SUS2_TRIAD_CAGED,
+  sus4: SUS4_TRIAD_CAGED,
+  add9: ADD9_TRIAD_CAGED,
   // Tétrades
   maj7: MAJ7_TETRAD_CAGED,
+  '7': DOM7_TETRAD_CAGED,
+  m7: MIN7_TETRAD_CAGED,
+  dim7: DIM7_TETRAD_CAGED,
+  m7b5: M7B5_TETRAD_CAGED,
+  '6': SIXTH_TETRAD_CAGED,
+  m6: MIN6_TETRAD_CAGED,
+  mmaj7: MMAJ7_TETRAD_CAGED,
 }
 
 /** Labels das 5 posições CAGED (ciclo) */

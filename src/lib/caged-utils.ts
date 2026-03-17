@@ -26,13 +26,42 @@ export function semitonesFromC(root: string): number {
   return noteToChromatic(root)
 }
 
+// ── Rotação de shapes por tonalidade ─────────────────────────────────
+
+/**
+ * Retorna os índices dos shapes rotacionados para uma tonalidade.
+ *
+ * Os 5 shapes no template estão na ordem CAGED para Dó:
+ *   [0]=C, [1]=A, [2]=G, [3]=E, [4]=D
+ *
+ * Para Ré (D), a 1ª posição usa o shape D (idx 4):
+ *   [4, 0, 1, 2, 3]
+ *
+ * Usa a mesma lógica de rotação do getCagedLabelsForRoot.
+ */
+export function getShapeRotationForRoot(root: string): number[] {
+  const cagedCycle = ['C', 'A', 'G', 'E', 'D']
+  const baseNote = root.replace('#', '').replace('b', '')
+
+  let startIdx = cagedCycle.indexOf(baseNote)
+  if (startIdx < 0) {
+    const fallbackMap: Record<string, number> = {
+      'C': 0, 'D': 4, 'E': 3, 'F': 0, 'G': 2, 'A': 1, 'B': 3,
+    }
+    startIdx = fallbackMap[baseNote] ?? 0
+  }
+
+  // Rotacionar: mesma lógica que getCagedLabelsForRoot
+  const indices = [0, 1, 2, 3, 4]
+  return [...indices.slice(startIdx), ...indices.slice(0, startIdx)]
+}
+
 // ── Transposição ───────────────────────────────────────────────────────
 
 /**
  * Transpõe um shape de Dó (C) para a tonalidade desejada.
  *
- * A lógica é cíclica: se o fret ultrapassa fretCount,
- * faz wrap-around para o início do braço.
+ * Notas que ultrapassam fretCount são descartadas.
  *
  * @param shape - Array de notas do shape em Dó
  * @param root - Nota raiz destino (ex: 'D', 'G', 'A')
@@ -47,16 +76,17 @@ export function transposeShape(
   const offset = semitonesFromC(root)
   if (offset === 0) return shape // Já está em Dó
 
-  return shape.map(note => {
-    let newFret = note.fret + offset
-    // Wrap-around cíclico
-    if (newFret > fretCount) {
-      newFret = newFret - (fretCount + 1)
-      // Se ainda ficou negativo (improvável), clamp em 0
-      if (newFret < 0) newFret = 0
-    }
-    return { ...note, fret: newFret }
-  })
+  // Transpor todas as notas
+  let transposed = shape.map(note => ({ ...note, fret: note.fret + offset }))
+
+  // Se o fret máximo ultrapassa o braço, descer o shape inteiro uma oitava (−12)
+  const maxFret = Math.max(...transposed.map(n => n.fret))
+  if (maxFret > fretCount) {
+    transposed = transposed.map(note => ({ ...note, fret: note.fret - 12 }))
+  }
+
+  // Filtrar notas que ficaram fora do braço (fret < 0 ou > fretCount)
+  return transposed.filter(note => note.fret >= 0 && note.fret <= fretCount)
 }
 
 /**
@@ -124,10 +154,22 @@ export function getCagedPositions(
     penta_major: 'major_scale',
     penta_minor: 'minor_scale',
     blues: 'minor_scale',
+    dim: 'minor_scale',
+    minor: 'minor_scale',
+    '7': 'minor_scale',
+    m7: 'minor_scale',
+    dim7: 'minor_scale',
+    m7b5: 'minor_scale',
+    m6: 'minor_scale',
+    mmaj7: 'minor_scale',
   }
   const scaleType = scaleTypeMap[presetKey]
 
-  const transposedShapes = transposeAllShapes(template, root, fretCount)
+  // Rotacionar os shapes na mesma ordem que os labels CAGED para esta tonalidade
+  const rotatedShapes = getShapeRotationForRoot(root).map(idx => template.shapes[idx])
+  const rotatedTemplate = { ...template, shapes: rotatedShapes }
+
+  const transposedShapes = transposeAllShapes(rotatedTemplate, root, fretCount)
   return transposedShapes.map(shape => shapeToFretboardNotes(shape, root, scaleType))
 }
 

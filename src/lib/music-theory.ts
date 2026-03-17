@@ -344,6 +344,14 @@ export function presetToScaleType(preset: string | null): ScaleType | null {
     penta_major: 'major_scale',
     penta_minor: 'minor_scale',
     blues: 'minor_scale',
+    dim: 'minor_scale',
+    minor: 'minor_scale',
+    '7': 'minor_scale',
+    m7: 'minor_scale',
+    dim7: 'minor_scale',
+    m7b5: 'minor_scale',
+    m6: 'minor_scale',
+    mmaj7: 'minor_scale',
   }
   return map[preset] ?? null
 }
