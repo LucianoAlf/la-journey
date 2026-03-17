@@ -599,11 +599,14 @@ export function TablatureEditor({
   // Inserir coluna na posição selecionada
   const insertColumnAt = useCallback(() => {
     if (columns >= MAX_COLUMNS || selectedCol === null) return
-    setGrid(prev => prev.map(row => {
-      const next = [...row]
-      next.splice(selectedCol + 1, 0, null)
+    setGrid(prev => {
+      const next = prev.map(row => {
+        const nextRow = [...row]
+        nextRow.splice(selectedCol + 1, 0, null)
+        return nextRow
+      })
       return next
-    }))
+    })
     setDurations(prev => {
       const next = [...prev]
       next.splice(selectedCol + 1, 0, currentDuration)
@@ -616,11 +619,14 @@ export function TablatureEditor({
   // Remover coluna na posição selecionada
   const removeColumnAt = useCallback(() => {
     if (columns <= MIN_COLUMNS || selectedCol === null) return
-    setGrid(prev => prev.map(row => {
-      const next = [...row]
-      next.splice(selectedCol, 1)
+    setGrid(prev => {
+      const next = prev.map(row => {
+        const nextRow = [...row]
+        nextRow.splice(selectedCol, 1)
+        return nextRow
+      })
       return next
-    }))
+    })
     setDurations(prev => {
       const next = [...prev]
       next.splice(selectedCol, 1)
@@ -687,13 +693,33 @@ export function TablatureEditor({
         e.preventDefault()
         if (selectedCol > 0) {
           const currentCol = selectedCol
-          setGrid(prev => {
-            const next = prev.map(row => [...row])
-            for (let s = 0; s < next.length; s++) {
-              next[s][currentCol] = null
+
+          // Calcular novo grid, columns e durations de uma vez
+          const newGrid = grid.map(row => [...row])
+          for (let s = 0; s < newGrid.length; s++) {
+            newGrid[s][currentCol] = null
+          }
+
+          // Encontrar última coluna com nota
+          let lastNoteCol = -1
+          for (let c = newGrid[0].length - 1; c >= 0; c--) {
+            for (let s = 0; s < newGrid.length; s++) {
+              if (newGrid[s][c] !== null) { lastNoteCol = c; break }
             }
-            return next
-          })
+            if (lastNoteCol >= 0) break
+          }
+
+          // Manter: última nota + 2 de respiro, mínimo MIN_COLUMNS
+          const newColumns = Math.max(MIN_COLUMNS, lastNoteCol + 3)
+
+          if (newColumns < columns) {
+            setGrid(newGrid.map(row => row.slice(0, newColumns)))
+            setDurations(prev => prev.slice(0, newColumns))
+            setColumns(newColumns)
+          } else {
+            setGrid(newGrid)
+          }
+
           setSelectedCol(currentCol - 1)
         } else if (selectedCol === 0) {
           setGrid(prev => {
@@ -801,14 +827,26 @@ export function TablatureEditor({
     return count
   }, [grid, columns])
 
-  // Barras de compasso
+  // Última coluna efetiva (com nota) — barras só até aqui
+  const effectiveCols = useMemo(() => {
+    let last = -1
+    for (let c = columns - 1; c >= 0; c--) {
+      for (let s = 0; s < grid.length; s++) {
+        if (grid[s]?.[c] !== null) { last = c; break }
+      }
+      if (last >= 0) break
+    }
+    return last + 1
+  }, [grid, columns])
+
+  // Barras de compasso (só até onde tem notas)
   const barlines = useMemo(
-    () => computeBarlines(durations, columns, timeSignature),
-    [durations, columns, timeSignature],
+    () => computeBarlines(durations, effectiveCols, timeSignature),
+    [durations, effectiveCols, timeSignature],
   )
   const barNumbers = useMemo(
-    () => computeBarNumbers(durations, columns, timeSignature),
-    [durations, columns, timeSignature],
+    () => computeBarNumbers(durations, effectiveCols, timeSignature),
+    [durations, effectiveCols, timeSignature],
   )
 
   // AlphaTex para preview
