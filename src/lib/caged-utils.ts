@@ -111,10 +111,13 @@ export function shapeToFretboardNotes(
   shape: CagedShapeNote[],
   root: string = 'C',
   scaleType?: ScaleType,
+  tuningMidi?: number[],
 ): FretboardNote[] {
+  const tuning = tuningMidi ?? STANDARD_TUNING_MIDI
+  const numStrings = tuning.length
   return shape.map(s => {
     // Calcular o nome da nota real a partir de string + fret
-    const openStringMidi = STANDARD_TUNING_MIDI[6 - s.string] // string 6=index 0 (E2), string 1=index 5 (E4)
+    const openStringMidi = tuning[numStrings - s.string]
     const noteMidi = openStringMidi + s.fret
     const chromaticIdx = ((noteMidi % 12) + 12) % 12
     const noteName = getNoteNameInKey(chromaticIdx, root, scaleType)
@@ -141,6 +144,7 @@ export function getCagedPositions(
   presetKey: string,
   root: string,
   fretCount: number = 15,
+  tuningMidi?: number[],
 ): FretboardNote[][] | null {
   const template = CAGED_TEMPLATES[presetKey]
   if (!template) return null
@@ -170,7 +174,7 @@ export function getCagedPositions(
   const rotatedTemplate = { ...template, shapes: rotatedShapes }
 
   const transposedShapes = transposeAllShapes(rotatedTemplate, root, fretCount)
-  return transposedShapes.map(shape => shapeToFretboardNotes(shape, root, scaleType))
+  return transposedShapes.map(shape => shapeToFretboardNotes(shape, root, scaleType, tuningMidi))
 }
 
 /**

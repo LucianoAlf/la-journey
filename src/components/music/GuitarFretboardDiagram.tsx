@@ -232,6 +232,7 @@ export const GuitarFretboardDiagram = memo(function GuitarFretboardDiagram({
     const fb = new Fretboard({
       el: containerRef.current,
       tuning,
+      stringCount: tuning.length,
       fretCount: effectiveFretCount,
       width,
       height,

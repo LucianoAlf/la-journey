@@ -26,9 +26,51 @@ import { injectInlayDots, type GuitarFretboardPositions, type FretboardNote } fr
 
 // ─── Constantes musicais ────────────────────────────────────────────
 
+export type FretboardInstrument = 'electric_guitar' | 'bass'
+export type BassStringCount = 4 | 5 | 6
+
 // Afinação padrão da guitarra: E2, A2, D3, G3, B3, E4
 // string 6=E2(grave) … string 1=E4(agudo) — convenção fretboard.js
-const STANDARD_TUNING_MIDI = [40, 45, 50, 55, 59, 64] // E2, A2, D3, G3, B3, E4
+const GUITAR_TUNING_MIDI = [40, 45, 50, 55, 59, 64] // E2, A2, D3, G3, B3, E4
+
+// Afinações de baixo (MIDI)
+// 4 cordas: E1, A1, D2, G2
+const BASS_4_TUNING_MIDI = [28, 33, 38, 43]
+// 5 cordas: B0, E1, A1, D2, G2
+const BASS_5_TUNING_MIDI = [23, 28, 33, 38, 43]
+// 6 cordas: B0, E1, A1, D2, G2, C3
+const BASS_6_TUNING_MIDI = [23, 28, 33, 38, 43, 48]
+
+// Tunings para fretboard.js (nomes de notas)
+const BASS_4_TUNING_NAMES = ['E1', 'A1', 'D2', 'G2']
+const BASS_5_TUNING_NAMES = ['B0', 'E1', 'A1', 'D2', 'G2']
+const BASS_6_TUNING_NAMES = ['B0', 'E1', 'A1', 'D2', 'G2', 'C3']
+
+/** Retorna tuning MIDI para o instrumento/configuração */
+function getTuningMidi(instrument: FretboardInstrument, bassStrings?: BassStringCount): number[] {
+  if (instrument === 'bass') {
+    if (bassStrings === 5) return BASS_5_TUNING_MIDI
+    if (bassStrings === 6) return BASS_6_TUNING_MIDI
+    return BASS_4_TUNING_MIDI
+  }
+  return GUITAR_TUNING_MIDI
+}
+
+/** Retorna tuning para fretboard.js */
+function getTuningNames(instrument: FretboardInstrument, bassStrings?: BassStringCount): string[] {
+  if (instrument === 'bass') {
+    if (bassStrings === 5) return BASS_5_TUNING_NAMES
+    if (bassStrings === 6) return BASS_6_TUNING_NAMES
+    return BASS_4_TUNING_NAMES
+  }
+  return GUITAR_TUNINGS.default
+}
+
+/** Retorna número de cordas do instrumento */
+function getStringCount(instrument: FretboardInstrument, bassStrings?: BassStringCount): number {
+  if (instrument === 'bass') return bassStrings ?? 4
+  return 6
+}
 
 // ─── Presets de acordes e escalas ───────────────────────────────────
 const PRESETS: Record<string, number[]> = {
@@ -108,15 +150,19 @@ const SEMITONE_TO_DEGREE: Record<number, number> = {
   0: 1, 1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 6: 5, 7: 5, 8: 6, 9: 6, 10: 7, 11: 7,
 }
 
-/** Gera todas as notas de uma escala/acorde no braço inteiro da guitarra */
+/** Gera todas as notas de uma escala/acorde no braço inteiro do instrumento */
 function generateFretboardNotes(
   root: string,
   intervals: number[],
   fretCount: number = 15,
   scaleType?: ScaleType | null,
+  tuningMidi?: number[],
 ): FretboardNote[] {
   const rootIdx = rootToMidi(root)
   if (rootIdx < 0) return []
+
+  const tuning = tuningMidi ?? GUITAR_TUNING_MIDI
+  const numStrings = tuning.length
 
   // Notas MIDI da escala/acorde (dentro de 1 oitava)
   const scaleNotes = new Set(intervals.map(i => (rootIdx + i) % 12))
@@ -130,8 +176,8 @@ function generateFretboardNotes(
 
   const notes: FretboardNote[] = []
 
-  for (let stringNum = 6; stringNum >= 1; stringNum--) {
-    const openMidi = STANDARD_TUNING_MIDI[6 - stringNum]
+  for (let stringNum = numStrings; stringNum >= 1; stringNum--) {
+    const openMidi = tuning[numStrings - stringNum]
     for (let fret = 0; fret <= fretCount; fret++) {
       const midi = openMidi + fret
       const noteIdx = midi % 12
@@ -186,7 +232,7 @@ type EditorMode = 'chord' | 'scale'
 interface GuitarChordData {
   id?: string
   name: string
-  instrument: 'electric_guitar'
+  instrument: 'electric_guitar' | 'bass'
   positions: GuitarFretboardPositions
   difficulty: number
   tags: string[]
@@ -202,6 +248,8 @@ export interface GuitarFretboardEditorProps {
   chord?: GuitarChordData | null
   /** Callback quando salvar */
   onSave?: (data: GuitarChordData) => void
+  /** Instrumento: guitarra (padrão) ou contrabaixo */
+  instrument?: FretboardInstrument
 }
 
 // ─── Cores do Design System ─────────────────────────────────────────
@@ -234,6 +282,7 @@ export function GuitarFretboardEditor({
   onOpenChange,
   chord,
   onSave,
+  instrument: instrumentProp = 'electric_guitar',
 }: GuitarFretboardEditorProps) {
   // Estado do editor
   const [notes, setNotes] = useState<FretboardNote[]>([])
@@ -250,6 +299,14 @@ export function GuitarFretboardEditor({
   const [deleting, setDeleting] = useState(false)
   const [dotLabel, setDotLabel] = useState<'finger' | 'note' | 'degree' | 'none'>('note')
   const [cagedPosition, setCagedPosition] = useState<number | null>(null) // null=todas, 0-4=posição
+  const [bassStrings, setBassStrings] = useState<BassStringCount>(4)
+
+  // Derivações de instrumento
+  const isBass = instrumentProp === 'bass'
+  const currentTuningMidi = getTuningMidi(instrumentProp, bassStrings)
+  const currentTuningNames = getTuningNames(instrumentProp, bassStrings)
+  const currentStringCount = getStringCount(instrumentProp, bassStrings)
+  const instrumentLabel = isBass ? 'Contrabaixo' : 'Guitarra'
 
   // Popover de edição (clique direito)
   const [popover, setPopover] = useState<{
@@ -313,10 +370,11 @@ export function GuitarFretboardEditor({
 
     const fb = new Fretboard({
       el: fretboardRef.current,
-      tuning: GUITAR_TUNINGS.default,
+      tuning: currentTuningNames,
+      stringCount: currentStringCount,
       fretCount,
       width: 900,
-      height: 200,
+      height: isBass && currentStringCount === 4 ? 140 : currentStringCount === 5 ? 170 : 200,
       dotSize: 22,
       dotFill: colors.dotFill,
       dotStrokeColor: colors.dotStroke,
@@ -424,7 +482,7 @@ export function GuitarFretboardEditor({
           return prev.filter((_, i) => i !== existing)
         } else {
           // Adicionar nova nota
-          const midi = STANDARD_TUNING_MIDI[6 - position.string] + position.fret
+          const midi = currentTuningMidi[currentStringCount - position.string] + position.fret
           const noteIdx = midi % 12
           const isRoot = rootMode || noteIdx === rootToMidi(rootNote)
           const st = presetToScaleType(lastPreset)
@@ -439,7 +497,7 @@ export function GuitarFretboardEditor({
         }
       })
     })
-  }, [notes, fretCount, colors, dotLabel, rootNote, rootMode, cagedPosition])
+  }, [notes, fretCount, colors, dotLabel, rootNote, rootMode, cagedPosition, currentTuningNames, currentTuningMidi, currentStringCount, isBass])
 
   // ── Recarregar preset ao mudar rootNote ──
   const prevRootRef = useRef(rootNote)
@@ -458,7 +516,7 @@ export function GuitarFretboardEditor({
               allIntervals.push(interval % 12)
             }
           })
-          const generatedNotes = generateFretboardNotes(rootNote, allIntervals, fretCount, presetToScaleType(lastPreset))
+          const generatedNotes = generateFretboardNotes(rootNote, allIntervals, fretCount, presetToScaleType(lastPreset), currentTuningMidi)
           setNotes(generatedNotes)
           setCagedPosition(null)
 
@@ -474,7 +532,7 @@ export function GuitarFretboardEditor({
         }
       }
     }
-  }, [rootNote, lastPreset, fretCount, activeTensions])
+  }, [rootNote, lastPreset, fretCount, activeTensions, currentTuningMidi])
 
   // Re-renderizar quando notas ou config mudam
   useEffect(() => {
@@ -608,7 +666,7 @@ export function GuitarFretboardEditor({
     const intervals = PRESETS[presetKey]
     if (!intervals) return
 
-    const generatedNotes = generateFretboardNotes(rootNote, intervals, fretCount, presetToScaleType(presetKey))
+    const generatedNotes = generateFretboardNotes(rootNote, intervals, fretCount, presetToScaleType(presetKey), currentTuningMidi)
     setNotes(generatedNotes)
     setLastPreset(presetKey)
     setActiveTensions(new Set())
@@ -625,7 +683,7 @@ export function GuitarFretboardEditor({
       const suffix = presetKey === 'major' ? '' : presetKey === 'minor' ? 'm' : presetKey
       setChordName(`${displayR}${suffix}`)
     }
-  }, [rootNote, fretCount])
+  }, [rootNote, fretCount, currentTuningMidi])
 
   // ── Toggle tensão ──
   const handleToggleTension = useCallback((tension: TensionKey) => {
@@ -647,12 +705,12 @@ export function GuitarFretboardEditor({
         }
       })
 
-      const generatedNotes = generateFretboardNotes(rootNote, baseIntervals, fretCount, presetToScaleType(lastPreset))
+      const generatedNotes = generateFretboardNotes(rootNote, baseIntervals, fretCount, presetToScaleType(lastPreset), currentTuningMidi)
       setNotes(generatedNotes)
 
       return next
     })
-  }, [lastPreset, rootNote, fretCount])
+  }, [lastPreset, rootNote, fretCount, currentTuningMidi])
 
   // ── Limpar tudo ──
   const handleClear = useCallback(() => {
@@ -680,7 +738,7 @@ export function GuitarFretboardEditor({
         format: 'fretboard_horizontal',
         notes,
         fretRange: [0, fretCount],
-        tuning: GUITAR_TUNINGS.default,
+        tuning: currentTuningNames,
       }
 
       const family = lastPreset ? (FAMILY_MAP[lastPreset] ?? null) : null
@@ -690,7 +748,7 @@ export function GuitarFretboardEditor({
       const data: GuitarChordData = {
         id: chord?.id,
         name: chordName.trim(),
-        instrument: 'electric_guitar',
+        instrument: instrumentProp,
         positions,
         difficulty,
         tags,
@@ -703,7 +761,7 @@ export function GuitarFretboardEditor({
         // Atualizar existente
         await updateChord(chord.id, {
           name: data.name,
-          instrument: 'electric_guitar' as any,
+          instrument: instrumentProp as any,
           positions: positions as any,
           difficulty,
           tags,
@@ -716,7 +774,7 @@ export function GuitarFretboardEditor({
         // Criar novo
         await createChord({
           name: data.name,
-          instrument: 'electric_guitar' as any,
+          instrument: instrumentProp as any,
           positions: positions as any,
           difficulty,
           tags,
@@ -733,7 +791,7 @@ export function GuitarFretboardEditor({
     } catch (err: any) {
       const msg = err?.message ?? ''
       if (msg.includes('unique') || msg.includes('duplicate') || msg.includes('23505') || msg.includes('409')) {
-        toast.error('Já existe um registro com esse nome para guitarra')
+        toast.error(`Já existe um registro com esse nome para ${instrumentLabel.toLowerCase()}`)
       } else {
         toast.error('Erro ao salvar: ' + msg.slice(0, 80))
       }
@@ -784,8 +842,8 @@ export function GuitarFretboardEditor({
   const cagedAvailable = hasCagedTemplate(lastPreset)
   const cagedPositions = useMemo(() => {
     if (!lastPreset || !cagedAvailable) return null
-    return getCagedPositions(lastPreset, rootNote, fretCount)
-  }, [lastPreset, rootNote, fretCount, cagedAvailable])
+    return getCagedPositions(lastPreset, rootNote, fretCount, currentTuningMidi)
+  }, [lastPreset, rootNote, fretCount, cagedAvailable, currentTuningMidi])
 
   const cagedLabels = useMemo(() => getCagedLabelsForRoot(rootNote), [rootNote])
 
@@ -866,7 +924,7 @@ export function GuitarFretboardEditor({
       >
         <DialogHeader>
           <DialogTitle className="font-serif text-[22px]">
-            {chord?.id ? 'Editar' : 'Novo'} <span className="text-accent">Guitarra</span>
+            {chord?.id ? 'Editar' : 'Novo'} <span className="text-accent">{instrumentLabel}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -918,6 +976,25 @@ export function GuitarFretboardEditor({
                 </SelectContent>
               </Select>
             </div>
+
+            {isBass && (
+              <>
+                <div className="w-px h-5 bg-border mx-1" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] uppercase tracking-[1px] font-bold text-muted-foreground">Cordas</span>
+                  <Select value={String(bassStrings)} onValueChange={v => { setBassStrings(Number(v) as BassStringCount); setNotes([]); setLastPreset(null); setCagedPosition(null) }}>
+                    <SelectTrigger className="h-7 w-[58px] text-[11px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[4, 5, 6].map(n => (
+                        <SelectItem key={n} value={String(n)} className="text-[11px]">{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
 
             <div className="w-px h-5 bg-border mx-1" />
 

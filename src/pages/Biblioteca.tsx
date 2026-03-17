@@ -232,6 +232,8 @@ export function Biblioteca() {
   const isStringInstrument = instrument === 'guitar';
   const isPiano = instrument === 'piano';
   const isElectricGuitar = instrument === 'electric_guitar';
+  const isBass = instrument === 'bass';
+  const isFretboardInstrument = isElectricGuitar || isBass;
 
   const activeFilterCount = [
     familyFilter !== 'todos',
@@ -282,6 +284,10 @@ export function Biblioteca() {
   // Estado do GuitarFretboardEditor (guitarra elétrica)
   const [guitarEditorOpen, setGuitarEditorOpen] = useState(false);
   const [editingGuitarChord, setEditingGuitarChord] = useState<any>(null);
+
+  // Estado do GuitarFretboardEditor (contrabaixo)
+  const [bassEditorOpen, setBassEditorOpen] = useState(false);
+  const [editingBassChord, setEditingBassChord] = useState<any>(null);
 
   /** Auto-classifica voicing_position e slash_type a partir das notas do piano */
   const classifyPianoVoicing = (positions: PianoChordData['positions']) => {
@@ -528,11 +534,14 @@ export function Biblioteca() {
           } else if (instrument === 'electric_guitar') {
             setEditingGuitarChord(null);
             setGuitarEditorOpen(true);
+          } else if (instrument === 'bass') {
+            setEditingBassChord(null);
+            setBassEditorOpen(true);
           } else {
             openModal('modal-acorde');
           }
         }}>
-          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : instrument === 'electric_guitar' ? 'Nova Escala/Acorde' : 'Novo Acorde'}
+          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (instrument === 'electric_guitar' || instrument === 'bass') ? 'Nova Escala/Acorde' : 'Novo Acorde'}
         </Button>
       </div>
 
@@ -1017,7 +1026,7 @@ export function Biblioteca() {
               })()
             ) : (
               /* ====== MODO NORMAL: Grid flat ====== */
-              <div className={`grid gap-4 ${isElectricGuitar ? 'grid-cols-2' : instrument === 'piano' ? 'grid-cols-4' : 'grid-cols-6 gap-3'}`}>
+              <div className={`grid gap-4 ${isFretboardInstrument ? 'grid-cols-2' : instrument === 'piano' ? 'grid-cols-4' : 'grid-cols-6 gap-3'}`}>
                 {filteredChords.map(chord => {
                   const tags = (chord.tags ?? []) as string[]
                   const positions = (chord.positions ?? {}) as any
@@ -1025,11 +1034,24 @@ export function Biblioteca() {
                   return (
                     <div
                       key={chord.id}
-                      className={`card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer ${isElectricGuitar ? 'p-4' : ''}`}
+                      className={`card text-center p-3 hover:border-accent/30 transition-colors cursor-pointer ${isFretboardInstrument ? 'p-4' : ''}`}
                       onClick={() => {
                         if (instrument === 'piano') {
                           setEditingPianoChord(chord);
                           setPianoEditorOpen(true);
+                        } else if (isBass) {
+                          setEditingBassChord({
+                            id: chord.id,
+                            name: chord.name,
+                            instrument: 'bass' as any,
+                            positions: positions as GuitarFretboardPositions,
+                            difficulty: chord.difficulty ?? 1,
+                            tags: tags,
+                            family: chord.family ?? undefined,
+                            quality: chord.quality ?? undefined,
+                            root_note: chord.root_note ?? 'C',
+                          });
+                          setBassEditorOpen(true);
                         } else if (isElectricGuitar) {
                           setEditingGuitarChord({
                             id: chord.id,
@@ -1048,15 +1070,14 @@ export function Biblioteca() {
                         }
                       }}
                     >
-                      {isElectricGuitar && positions?.format === 'fretboard_horizontal' && (
+                      {isFretboardInstrument && positions?.format === 'fretboard_horizontal' && (
                         <div className="font-serif font-bold text-[15px] text-text mb-1">{chord.name}</div>
                       )}
-                      <div className={`flex justify-center mb-1 ${isElectricGuitar ? 'w-full' : ''}`}>
-                        {isElectricGuitar && positions?.format === 'fretboard_horizontal' ? (
+                      <div className={`flex justify-center mb-1 ${isFretboardInstrument ? 'w-full' : ''}`}>
+                        {isFretboardInstrument && positions?.format === 'fretboard_horizontal' ? (
                           <GuitarFretboardDiagram
                             positions={positions as GuitarFretboardPositions}
                             name={chord.name}
-                            width={960}
                             height={180}
                             fretCount={positions.fretRange?.[1] ?? 15}
                             dotLabel="note"
@@ -1070,12 +1091,12 @@ export function Biblioteca() {
                             positions={positions}
                             position={getChordPosition(positions)}
                             size="full"
-                            strings={instrument === 'ukulele' || instrument === 'bass' ? 4 : 6}
+                            strings={instrument === 'ukulele' ? 4 : 6}
                           />
                         )}
                       </div>
                       <div className="text-[11px] text-text3">
-                        {isElectricGuitar && positions?.format === 'fretboard_horizontal' ? (
+                        {isFretboardInstrument && positions?.format === 'fretboard_horizontal' ? (
                           <>
                             {(() => {
                               const degrees = extractDegrees(positions as GuitarFretboardPositions, chord.root_note ?? undefined)
@@ -1090,7 +1111,7 @@ export function Biblioteca() {
                   )
                 })}
                 <div
-                  className={`card text-center p-3 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors ${isElectricGuitar ? 'p-4' : ''}`}
+                  className={`card text-center p-3 border-2 border-dashed border-border cursor-pointer hover:border-accent hover:text-accent transition-colors ${isFretboardInstrument ? 'p-4' : ''}`}
                   onClick={() => {
                     if (instrument === 'piano') {
                       setEditingPianoChord(null);
@@ -1098,12 +1119,15 @@ export function Biblioteca() {
                     } else if (isElectricGuitar) {
                       setEditingGuitarChord(null);
                       setGuitarEditorOpen(true);
+                    } else if (isBass) {
+                      setEditingBassChord(null);
+                      setBassEditorOpen(true);
                     } else {
                       openModal('modal-acorde');
                     }
                   }}
                 >
-                  <div className={`${isElectricGuitar ? 'h-[140px]' : 'h-[180px]'} flex items-center justify-center`}>
+                  <div className={`${isFretboardInstrument ? 'h-[140px]' : 'h-[180px]'} flex items-center justify-center`}>
                     <div className="text-[28px] text-text3">+</div>
                   </div>
                   <div className="text-sm text-text2">Adicionar</div>
@@ -1508,6 +1532,15 @@ export function Biblioteca() {
         onOpenChange={(v) => { setGuitarEditorOpen(v); if (!v) setEditingGuitarChord(null); }}
         chord={editingGuitarChord}
         onSave={() => refetchChords()}
+      />
+
+      {/* GuitarFretboardEditor — modal de contrabaixo */}
+      <GuitarFretboardEditor
+        open={bassEditorOpen}
+        onOpenChange={(v) => { setBassEditorOpen(v); if (!v) setEditingBassChord(null); }}
+        chord={editingBassChord}
+        onSave={() => refetchChords()}
+        instrument="bass"
       />
 
       {/* NotationEditor — modal de notação */}
