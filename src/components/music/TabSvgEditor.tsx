@@ -18,23 +18,36 @@ export interface TabSvgEditorProps {
   onDurationClick: (colIdx: number) => void
   hoverCell: { s: number; c: number } | null
   onHoverCell: (cell: { s: number; c: number } | null) => void
+  /** Índices das colunas APÓS as quais desenhar barra de compasso */
+  barlines?: number[]
+  /** Mapa colIdx → número do compasso (exibido no topo) */
+  barNumbers?: Map<number, number>
+  /** Hidden input ref para captura de teclado (padrão CodeMirror) */
+  inputRef?: React.RefObject<HTMLInputElement | null>
+  /** Handler de teclado para o hidden input */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
 }
 
 // ─── Layout ─────────────────────────────────────────────────────────
 
-const STRING_SPACING = 18
-/** Largura base de cada beat — varia por duração */
+const STRING_SPACING = 14
 const BEAT_WIDTHS: Record<BeatDuration, number> = {
-  w: 80, h: 60, q: 50, '8': 38, '16': 30,
+  w: 52, h: 40, q: 32, '8': 24, '16': 18,
 }
-/** Margem esquerda (nomes de corda) */
-const LEFT_MARGIN = 30
-/** Margem direita */
-const RIGHT_MARGIN = 16
-/** Margem superior */
-const TOP_MARGIN = 14
-/** Margem inferior */
-const BOTTOM_MARGIN = 14
+const LEFT_MARGIN = 26
+const RIGHT_MARGIN = 6
+const TOP_PAD = 4
+const BOTTOM_PAD = 4
+const LINE_GAP = 22
+/** Largura fixa do viewBox (cabe sempre no container) */
+const VB_WIDTH = 800
+/** Largura disponível para beats em cada linha */
+const USABLE_WIDTH = VB_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
+const CURSOR_SIZE = 16
+/** Altura extra no topo para números de compasso */
+const BAR_NUM_H = 14
+/** Quantas semínimas cabem em uma linha (para sincronizar com auto-expand) */
+export const BEATS_PER_LINE = Math.floor(USABLE_WIDTH / BEAT_WIDTHS.q)
 
 // ─── Fontes ─────────────────────────────────────────────────────────
 
@@ -51,6 +64,40 @@ const C = {
   fretBg: 'var(--card, #FFFFFF)',
   cursor: '#F59E0B',
   hoverBg: 'rgba(99, 102, 241, 0.06)',
+  barline: '#94A3B8',
+  barNumber: '#6366F1',
+}
+
+// ─── Helper: distribuir beats em linhas ─────────────────────────────
+
+interface RowLayout {
+  startCol: number
+  endCol: number // exclusive
+  beatCenters: number[] // X de cada beat relativo ao inicio da linha
+}
+
+function buildRows(columns: number, durations: BeatDuration[]): RowLayout[] {
+  const rows: RowLayout[] = []
+  let col = 0
+
+  while (col < columns) {
+    let usedW = 0
+    const startCol = col
+    const centers: number[] = []
+
+    while (col < columns) {
+      const dur = durations[col] ?? 'q'
+      const bw = BEAT_WIDTHS[dur]
+      if (usedW + bw > USABLE_WIDTH && col > startCol) break
+      centers.push(LEFT_MARGIN + usedW + bw / 2)
+      usedW += bw
+      col++
+    }
+
+    rows.push({ startCol, endCol: col, beatCenters: centers })
+  }
+
+  return rows
 }
 
 // ─── Componente Principal ───────────────────────────────────────────
@@ -67,38 +114,32 @@ export function TabSvgEditor({
   onDurationClick,
   hoverCell,
   onHoverCell,
+  barlines = [],
+  barNumbers,
+  inputRef,
+  onKeyDown,
 }: TabSvgEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const stringCount = stringNames.length
+  const staffH = (stringCount - 1) * STRING_SPACING
+  const hasBarNums = barNumbers && barNumbers.size > 0
+  const extraTop = hasBarNums ? BAR_NUM_H : 0
+  const rowH = TOP_PAD + staffH + BOTTOM_PAD
 
-  // ── Mapa: coluna → posição X central (layout linear) ──
-  const colXMap = useMemo(() => {
-    const map: number[] = []
-    let x = LEFT_MARGIN
-    for (let c = 0; c < columns; c++) {
-      const dur = durations[c] ?? 'q'
-      const bw = BEAT_WIDTHS[dur]
-      map[c] = x + bw / 2
-      x += bw
-    }
-    return map
-  }, [columns, durations])
+  // ── Distribuir beats em linhas ──
+  const rows = useMemo(() => buildRows(columns, durations), [columns, durations])
 
-  // ── Dimensões ──
-  const contentEndX = useMemo(() => {
-    let x = LEFT_MARGIN
-    for (let c = 0; c < columns; c++) {
-      x += BEAT_WIDTHS[durations[c] ?? 'q']
-    }
-    return x
-  }, [columns, durations])
-  const svgWidth = contentEndX + RIGHT_MARGIN
-  const staffTop = TOP_MARGIN
-  const staffBottom = staffTop + (stringCount - 1) * STRING_SPACING
-  const svgHeight = staffBottom + BOTTOM_MARGIN
+  // ── Dimensões do SVG ──
+  const svgHeight = extraTop + rows.length * rowH + (rows.length - 1) * LINE_GAP + TOP_PAD + BOTTOM_PAD
 
-  // ── Y de cada corda ──
-  const stringY = useCallback((s: number) => staffTop + s * STRING_SPACING, [staffTop])
+  // ── Y base de cada linha (inclui offset para números de compasso) ──
+  const rowY = useCallback((rowIdx: number) => extraTop + TOP_PAD + rowIdx * (rowH + LINE_GAP), [rowH, extraTop])
+
+  // ── Y de cada corda dentro de uma linha ──
+  const stringY = useCallback(
+    (rowIdx: number, s: number) => rowY(rowIdx) + TOP_PAD + s * STRING_SPACING,
+    [rowY],
+  )
 
   // ── Hit test: converter coords do mouse → célula ──
   const getCellFromEvent = useCallback(
@@ -106,36 +147,47 @@ export function TabSvgEditor({
       const svg = svgRef.current
       if (!svg) return null
       const rect = svg.getBoundingClientRect()
-      const scaleX = svgWidth / rect.width
+      const scaleX = VB_WIDTH / rect.width
       const scaleY = svgHeight / rect.height
       const mx = (e.clientX - rect.left) * scaleX
       const my = (e.clientY - rect.top) * scaleY
 
+      // Encontrar qual linha (row) pelo Y
+      let hitRow = -1
+      for (let r = 0; r < rows.length; r++) {
+        const ry = rowY(r)
+        if (my >= ry && my < ry + rowH) { hitRow = r; break }
+      }
+      if (hitRow < 0) return null
+
+      const row = rows[hitRow]
+
       // Encontrar coluna mais próxima pelo X
       let bestCol = -1
       let bestDist = Infinity
-      for (let c = 0; c < columns; c++) {
-        const cx = colXMap[c]
-        if (cx === undefined) continue
-        const dist = Math.abs(mx - cx)
-        const dur = durations[c] ?? 'q'
+      for (let i = 0; i < row.beatCenters.length; i++) {
+        const colIdx = row.startCol + i
+        const cx = row.beatCenters[i]
+        const dur = durations[colIdx] ?? 'q'
         const halfW = BEAT_WIDTHS[dur] / 2
+        const dist = Math.abs(mx - cx)
         if (dist < halfW && dist < bestDist) {
           bestDist = dist
-          bestCol = c
+          bestCol = colIdx
         }
       }
       if (bestCol < 0) return null
 
       // Encontrar corda
-      const relY = my - staffTop + STRING_SPACING / 2
+      const rowTopY = rowY(hitRow) + TOP_PAD
+      const relY = my - rowTopY + STRING_SPACING / 2
       if (relY < 0) return null
       const str = Math.floor(relY / STRING_SPACING)
       if (str < 0 || str >= stringCount) return null
 
       return { s: str, c: bestCol }
     },
-    [svgWidth, svgHeight, columns, colXMap, durations, staffTop, stringCount],
+    [svgHeight, rows, rowY, rowH, durations, stringCount],
   )
 
   const handleClick = useCallback(
@@ -164,125 +216,186 @@ export function TabSvgEditor({
 
   const handleMouseLeave = useCallback(() => onHoverCell(null), [onHoverCell])
 
-  // ── SVG Elements ──
-
-  // Nomes das cordas (à esquerda)
-  const stringNameLabels = useMemo(
-    () => stringNames.map((name, s) => (
-      <text
-        key={`sn-${s}`}
-        x={14} y={stringY(s)}
-        textAnchor="middle" dominantBaseline="central"
-        fontSize={10} fontWeight="600" fontFamily={FONT_UI}
-        fill={C.stringName} style={{ userSelect: 'none' }}
-      >{name}</text>
-    )),
-    [stringNames, stringY],
-  )
-
-  // Linhas das cordas
-  const stringLines = useMemo(
-    () => Array.from({ length: stringCount }, (_, s) => {
-      const y = stringY(s)
-      return (
-        <line
-          key={`str-${s}`}
-          x1={LEFT_MARGIN - 4} y1={y}
-          x2={contentEndX + 4} y2={y}
-          stroke={C.line} strokeWidth={0.8}
-        />
-      )
-    }),
-    [stringCount, stringY, contentEndX],
-  )
-
-  // Cursor / seleção — quadrado compacto, fundo branco, borda laranja
-  const CURSOR_SIZE = 18
-  const cursorHighlight = useMemo(() => {
-    if (selectedCol === null || selectedString === null) return null
-    const cx = colXMap[selectedCol]
-    if (cx === undefined) return null
-    const cy = stringY(selectedString)
-    const half = CURSOR_SIZE / 2
-
-    return (
-      <rect
-        x={cx - half} y={cy - half}
-        width={CURSOR_SIZE} height={CURSOR_SIZE}
-        fill={C.fretBg} rx={3}
-        stroke={C.cursor} strokeWidth={2}
-        style={{ pointerEvents: 'none' }}
-      />
-    )
-  }, [selectedCol, selectedString, colXMap, stringY])
-
-  // Hover — quadrado compacto sutil
-  const hoverHighlight = useMemo(() => {
-    if (!hoverCell) return null
-    if (hoverCell.s === selectedString && hoverCell.c === selectedCol) return null
-    const cx = colXMap[hoverCell.c]
-    if (cx === undefined) return null
-    const cy = stringY(hoverCell.s)
-    const half = CURSOR_SIZE / 2
-    return (
-      <rect
-        x={cx - half} y={cy - half} width={CURSOR_SIZE} height={CURSOR_SIZE}
-        fill={C.hoverBg} rx={3}
-        style={{ pointerEvents: 'none' }}
-      />
-    )
-  }, [hoverCell, selectedCol, selectedString, colXMap, stringY])
-
-  // Notas (números de traste)
-  const beatContents = useMemo(() => {
+  // ── Renderizar cada linha (sistema) ──
+  const systemElements = useMemo(() => {
     const els: React.ReactElement[] = []
 
-    for (let c = 0; c < columns; c++) {
-      const cx = colXMap[c]
-      if (cx === undefined) continue
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r]
 
+      // Nomes das cordas (só na primeira linha)
+      if (r === 0) {
+        for (let s = 0; s < stringCount; s++) {
+          els.push(
+            <text
+              key={`sn-${r}-${s}`}
+              x={14} y={stringY(r, s)}
+              textAnchor="middle" dominantBaseline="central"
+              fontSize={10} fontWeight="600" fontFamily={FONT_UI}
+              fill={C.stringName} style={{ userSelect: 'none' }}
+            >{stringNames[s]}</text>,
+          )
+        }
+      }
+
+      // Linhas das cordas
       for (let s = 0; s < stringCount; s++) {
-        const val = grid[s]?.[c] ?? null
-        if (val === null) continue
-        const cy = stringY(s)
-        const isSelected = selectedCol === c && selectedString === s
-        const textW = String(val).length === 1 ? 12 : 18
-
-        // Fundo branco atrás do número
+        const y = stringY(r, s)
         els.push(
-          <rect
-            key={`fbg-${s}-${c}`}
-            x={cx - textW / 2 - 2} y={cy - 7}
-            width={textW + 4} height={14}
-            fill={C.fretBg} rx={2}
-            style={{ pointerEvents: 'none' }}
+          <line
+            key={`line-${r}-${s}`}
+            x1={LEFT_MARGIN - 4} y1={y}
+            x2={VB_WIDTH - RIGHT_MARGIN} y2={y}
+            stroke={C.line} strokeWidth={0.8}
           />,
         )
+      }
 
-        // Número do traste
-        els.push(
-          <text
-            key={`f-${s}-${c}`}
-            x={cx} y={cy}
-            textAnchor="middle" dominantBaseline="central"
-            fontSize={12} fontWeight="bold" fontFamily={FONT_FRET}
-            fill={isSelected ? C.cursor : C.fret}
-            style={{ pointerEvents: 'none', userSelect: 'none' }}
-          >{val}</text>,
-        )
+      // Cursor / Hover / Notas para cada beat desta linha
+      for (let i = 0; i < row.beatCenters.length; i++) {
+        const colIdx = row.startCol + i
+        const cx = row.beatCenters[i]
+
+        // Cursor
+        if (selectedCol === colIdx && selectedString !== null) {
+          const cy = stringY(r, selectedString)
+          const half = CURSOR_SIZE / 2
+          els.push(
+            <rect
+              key={`cur-${colIdx}`}
+              x={cx - half} y={cy - half}
+              width={CURSOR_SIZE} height={CURSOR_SIZE}
+              fill={C.fretBg} rx={3}
+              stroke={C.cursor} strokeWidth={2}
+              style={{ pointerEvents: 'none' }}
+            />,
+          )
+        }
+
+        // Hover
+        if (hoverCell && hoverCell.c === colIdx &&
+            !(hoverCell.s === selectedString && hoverCell.c === selectedCol)) {
+          const cy = stringY(r, hoverCell.s)
+          const half = CURSOR_SIZE / 2
+          els.push(
+            <rect
+              key={`hov-${colIdx}`}
+              x={cx - half} y={cy - half}
+              width={CURSOR_SIZE} height={CURSOR_SIZE}
+              fill={C.hoverBg} rx={3}
+              style={{ pointerEvents: 'none' }}
+            />,
+          )
+        }
+
+        // Notas
+        for (let s = 0; s < stringCount; s++) {
+          const val = grid[s]?.[colIdx] ?? null
+          if (val === null) continue
+          const cy = stringY(r, s)
+          const isSelected = selectedCol === colIdx && selectedString === s
+          const textW = String(val).length === 1 ? 12 : 18
+
+          els.push(
+            <rect
+              key={`fbg-${s}-${colIdx}`}
+              x={cx - textW / 2 - 2} y={cy - 7}
+              width={textW + 4} height={14}
+              fill={C.fretBg} rx={2}
+              style={{ pointerEvents: 'none' }}
+            />,
+          )
+          els.push(
+            <text
+              key={`f-${s}-${colIdx}`}
+              x={cx} y={cy}
+              textAnchor="middle" dominantBaseline="central"
+              fontSize={12} fontWeight="bold" fontFamily={FONT_FRET}
+              fill={isSelected ? C.cursor : C.fret}
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >{val}</text>,
+          )
+        }
+      }
+
+      // Barras de compasso nesta linha
+      const barlineSet = new Set(barlines)
+      for (let i = 0; i < row.beatCenters.length; i++) {
+        const colIdx = row.startCol + i
+
+        // Barra de compasso APÓS esta coluna
+        if (barlineSet.has(colIdx) && i < row.beatCenters.length - 1) {
+          const cx = row.beatCenters[i]
+          const nextCx = row.beatCenters[i + 1]
+          const barX = (cx + nextCx) / 2
+          const y1 = stringY(r, 0)
+          const y2 = stringY(r, stringCount - 1)
+          els.push(
+            <line
+              key={`bar-${r}-${colIdx}`}
+              x1={barX} y1={y1 - 2}
+              x2={barX} y2={y2 + 2}
+              stroke={C.barline} strokeWidth={1.2}
+              style={{ pointerEvents: 'none' }}
+            />,
+          )
+        }
+
+        // Número do compasso (acima da primeira nota do compasso)
+        if (barNumbers) {
+          const barNum = barNumbers.get(colIdx)
+          if (barNum !== undefined) {
+            const cx = row.beatCenters[i]
+            const topY = rowY(r) - 2
+            els.push(
+              <text
+                key={`bn-${r}-${colIdx}`}
+                x={cx} y={topY}
+                textAnchor="middle" dominantBaseline="auto"
+                fontSize={9} fontWeight="600" fontFamily={FONT_UI}
+                fill={C.barNumber}
+                style={{ pointerEvents: 'none', userSelect: 'none' }}
+              >{barNum}</text>,
+            )
+          }
+        }
       }
     }
 
     return els
-  }, [grid, columns, stringCount, colXMap, stringY, selectedCol, selectedString])
+  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers])
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+    <div className="relative rounded-xl border border-border bg-card overflow-hidden">
+      {/* Hidden input para captura de teclado (padrão CodeMirror/Monaco) */}
+      {inputRef && onKeyDown && (
+        <input
+          ref={inputRef}
+          type="text"
+          onKeyDown={onKeyDown}
+          aria-label="Editor de tablatura - captura de teclado"
+          autoComplete="off"
+          tabIndex={-1}
+          style={{
+            position: 'absolute',
+            opacity: 0,
+            width: 1,
+            height: 1,
+            top: 0,
+            left: 0,
+            pointerEvents: 'none',
+            border: 'none',
+            padding: 0,
+            margin: 0,
+            outline: 'none',
+          }}
+        />
+      )}
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-        className="w-full"
-        style={{ display: 'block', minHeight: Math.max(svgHeight * 0.8, 140), cursor: 'default' }}
+        viewBox={`0 0 ${VB_WIDTH} ${svgHeight}`}
+        width="100%"
+        style={{ display: 'block', cursor: 'default' }}
         role="img"
         aria-label="Editor de tablatura"
         onClick={handleClick}
@@ -290,23 +403,8 @@ export function TabSvgEditor({
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Fundo */}
-        <rect x={0} y={0} width={svgWidth} height={svgHeight} fill={C.bg} />
-
-        {/* Nomes das cordas */}
-        {stringNameLabels}
-
-        {/* Linhas das cordas */}
-        {stringLines}
-
-        {/* Cursor */}
-        {cursorHighlight}
-
-        {/* Hover */}
-        {hoverHighlight}
-
-        {/* Notas */}
-        {beatContents}
+        <rect x={0} y={0} width={VB_WIDTH} height={svgHeight} fill={C.bg} />
+        {systemElements}
       </svg>
     </div>
   )

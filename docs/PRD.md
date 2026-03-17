@@ -1,11 +1,12 @@
 # 🎵 LA Journey — Product Requirements Document (PRD)
 
-**Versão:** 3.0  
-**Data:** 14 de março de 2026  
+**Versão:** 4.0  
+**Data:** 17 de março de 2026  
 **Autor:** Luciano Alf · LA Music  
 **Classificação:** Confidencial  
 **Changelog v2:** Inclusão do Editor de Material (block-based), módulos Gestão de Turmas, Visão do Professor e Integrações, novas tabelas (material_blocks, class_students, whatsapp_templates), arquitetura multi-tenant (RLS), Gemini API para imagens, tipografia atualizada.
 **Changelog v3:** AlphaTab integrado como player de tablatura interativo com MIDI. Pipeline Songsterr→GP completo (Edge Function + conversor frontend). Mixer de volumes por track. Upload de arquivos GP com auto-preenchimento de metadados via ScoreLoader. SoundFont GeneralUser GS (30MB). Modal dedicado "Importar GP" (GpImportModal). Nova coluna `gp_file_url` no repertoire. Bucket `gp-files` no Storage.
+**Changelog v4:** Editor de Notação Musical completo (NotationEditor + NotationRenderer): 4 claves (Sol/Fá/Dó/Percussão), 5 durações, alterações (#/b/♮), armaduras, pausas, ponto de aumento, noteheads de percussão (x), barras de compasso manuais (modo livre), serialização para Supabase. Editor de Tablatura completo (TablatureEditor + TabSvgEditor): editor SVG multi-linha interativo, 5 instrumentos (violão/guitarra/baixo/ukulele/7 cordas), auto-expand de colunas, AlphaTab preview integrado, fórmulas de compasso (16 opções com subdivisão automática), barras de compasso com números, durações proporcionais (semibreve a semicolcheia), Tab como backspace contínuo, substituição direta de trastes. Biblioteca Musical expandida para 5 tabs (Acordes/Escalas/Notação/Tablatura/Imagens IA). AlphaTab Viewer condicional: stems/barras/fórmula visíveis quando há compasso definido, limpo quando livre. Tabela `notation_library` + `tablature_library` no Supabase. 8961 acordes na chord_library.
 
 ---
 
@@ -224,13 +225,50 @@ Repositório estruturado de conteúdo pedagógico musical que alimenta o gerador
 Subsistema responsável por gerar os elementos visuais musicais.
 
 **Componentes:**
-- **Diagramas de acordes:** SVGuitar para violão/guitarra/ukulele, componente SVG customizado para teclado/piano
+- **Diagramas de acordes:** SVGuitar para violão/guitarra/ukulele, componente SVG customizado para teclado/piano (8961 acordes na chord_library)
 - **Notação musical na pauta:** VexFlow para claves, figuras rítmicas, escalas, intervalos, acordes na pauta
-- **Tablatura:** VexTab para tablatura de violão/guitarra/baixo
+- **Tablatura:** AlphaTab para preview profissional + TabSvgEditor para edição interativa
 - **Exercícios interativos:** Geração procedural de exercícios (ex: "calcule os intervalos") onde a IA varia os parâmetros para que cada material seja único
 - **Bracinhos de instrumento:** SVG parametrizado mostrando posições no braço do violão/guitarra com notas marcadas, dedilhado, casas
 
 Cada elemento renderizado tem um ID único no banco de dados e é armazenado como SVG inline para inclusão direta no PDF.
+
+**Editores musicais integrados:**
+
+**Editor de Notação Musical** (`NotationEditor.tsx` + `NotationRenderer.tsx`):
+- 4 claves: Sol (treble), Fá (bass), Dó (alto), Percussão
+- 5 durações: semibreve, mínima, semínima, colcheia, semicolcheia
+- Alterações: sustenido (#), bemol (b), bequadro (♮)
+- 15 armaduras (Dó maior a 7 sustenidos/bemóis)
+- Pausas com toggle de modo pausa
+- Ponto de aumento (1.5× duração)
+- Percussão: noteheads x para pratos, nomes das peças em pt-BR
+- Barras de compasso manuais (modo livre)
+- Ghost tooltip com preview da nota antes de clicar
+- Serialização completa para Supabase (notation_library)
+- VexFlow renderiza em tempo real com auto-formatting
+
+**Editor de Tablatura** (`TablatureEditor.tsx` + `TabSvgEditor.tsx`):
+- 5 instrumentos: Violão/Guitarra (6 cordas), Baixo (4), Ukulele (4), Guitarra 7 cordas
+- Editor SVG multi-linha interativo com hit-test preciso
+- 5 durações: semibreve (w), mínima (h), semínima (q), colcheia (8), semicolcheia (16)
+- Fórmulas de compasso: 16 opções (2/4, 3/4, 4/4, 5/4, 6/4, 7/4, 2/2, 3/2, 4/2, 3/8, 5/8, 6/8, 7/8, 9/8, 12/8, Livre)
+- Barras de compasso automáticas baseadas na soma de durações vs capacidade do compasso
+- Números de compasso acima da pauta
+- Durações proporcionais: colcheia = metade do espaço de semínima, etc.
+- Auto-expand de colunas (ArrowRight no final cria nova linha)
+- Tab como backspace contínuo (volta apagando notas)
+- Substituição direta de trastes ao digitar (sem precisar deletar antes)
+- AlphaTab preview integrado com fórmula de compasso, barras e stems visíveis
+- Serialização completa para Supabase (tablature_library)
+
+**AlphaTab Viewer** (`AlphaTabViewer.tsx`):
+- Viewer leve de tablatura usando AlphaTab — sem player
+- Modo livre: clean (sem barras, sem fórmula, sem stems)
+- Modo com compasso: fórmula visível, barras de compasso, stems/beams por duração
+- Conversão automática de grid → alphaTex com `\ts` como bar metadata
+- Suporte a dark/light mode com cores adaptáveis
+- Cleanup DOM pós-render para visual limpo
 
 ### 6.5 🎵 Módulo de Repertório
 
@@ -940,7 +978,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 | 03 | Gerador | `/gerador` | Configuração de geração, seleção jornada/stage/estação, branding, preview PDF, histórico |
 | 04 | Editor Material | `/editor/:id` | Editor de blocos 3 painéis: lista blocos / canvas editável / propriedades |
 | 05 | Base Curada | `/conteudo` | Tabela de conteúdos, 3 tabs (Lista/Por Tópico/Fila Curadoria), workflow de status |
-| 06 | Biblioteca Musical | `/biblioteca` | 4 tabs: Acordes (SVGuitar), Escalas (VexFlow), Notação, Imagens IA (Gemini) |
+| 06 | Biblioteca Musical | `/biblioteca` | 5 tabs: Acordes (SVGuitar, 8961), Escalas (VexFlow), Notação (VexFlow editor), Tablatura (SVG editor + AlphaTab preview), Imagens IA (Gemini) |
 | 07 | Alunos | `/alunos` | Lista com filtros, alertas de risco, progress bars, 5 tabs de status |
 | 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, importação Songsterr + Cifra Club + GP, editor de cifra, transposição, tablatura interativa com player MIDI |
 | 09 | Turmas | `/turmas` | 8 turmas incluindo Baby Class/Kids/Heart, professor/horário/jornada |
@@ -987,13 +1025,18 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [ ] Conectar frontend ao Supabase (services, hooks, queries reais)
 
 ### Fase 2 — Motor de Conteúdo (Semanas 4-6) 🔄 EM PROGRESSO
-- [x] Biblioteca de acordes (chord_library) com SVGuitar — 200+ acordes violão + piano
+- [x] Biblioteca de acordes (chord_library) com SVGuitar — 8961 acordes (violão, guitarra, piano, ukulele, baixo)
 - [x] Biblioteca de escalas com VexFlow — renderização real + posições
-- [x] Biblioteca de notação musical (notation_library)
-- [x] Componentes de renderização musical (SVGuitar, VexFlow, VexTab, componente teclado SVG)
+- [x] Biblioteca de notação musical (notation_library) com editor completo
+- [x] Biblioteca de tablatura (tablature_library) com editor SVG + AlphaTab preview
+- [x] Componentes de renderização musical (SVGuitar, VexFlow, VexTab, AlphaTab, componente teclado SVG)
 - [x] Seed de conteúdo: Violão Foundation (Fundamentos 1 e 2) com content_blocks
 - [x] Editor de Material block-based funcional (18 tipos de bloco, drag-and-drop, contenteditable)
 - [x] Novos tipos de bloco: chord_grid, keyboard, keyboard_grid, page_break, rhythm, cover
+- [x] Editor de Notação Musical (NotationEditor): 4 claves, 5 durações, alterações, armaduras, pausas, ponto de aumento, percussão, barras manuais, serialização Supabase
+- [x] Editor de Tablatura (TablatureEditor + TabSvgEditor): 5 instrumentos, SVG multi-linha, 5 durações, 16 fórmulas de compasso, barras automáticas, AlphaTab preview com stems/barras/fórmula, Tab backspace, substituição direta
+- [x] AlphaTab Viewer condicional: modo livre (clean) vs modo com compasso (fórmula + barras + stems)
+- [x] Biblioteca Musical expandida: 5 tabs (Acordes/Escalas/Notação/Tablatura/Imagens IA)
 - [ ] Base de conteúdo curado: interface de cadastro para professores N4
 - [ ] Integração Gemini API para geração de imagens didáticas
 

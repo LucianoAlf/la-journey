@@ -60,6 +60,8 @@ interface AlphaTabViewerProps {
   layout?: 'horizontal' | 'page'
   /** Escala de renderização (default: 0.8) */
   scale?: number
+  /** Mostrar fórmula de compasso, barras e números (default: false) */
+  showTimeSignature?: boolean
 }
 
 /** CSS para limpar visualmente o alphaTab — esconde branding */
@@ -69,7 +71,7 @@ const CLEAN_TAB_CSS = `
 `
 
 /** Limpeza DOM pós-render: esconde clef TAB, time signature, bar number, "Free time", branding */
-function cleanupAlphaTabDom(container: HTMLDivElement | null) {
+function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature = false) {
   if (!container) return
 
   // Remover texto "rendered by alphaTab"
@@ -87,21 +89,23 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null) {
   // Limpar SVGs: esconder clef TAB, time signature, bar number, "Free time"
   const svgs = container.querySelectorAll('svg')
   svgs.forEach(svg => {
-    // Esconder time signature glyphs (translateX 65..110) mas MANTER TAB clef (translateX < 65)
-    const gElements = svg.querySelectorAll(':scope > g[transform]')
-    gElements.forEach(g => {
-      const transform = g.getAttribute('transform') || ''
-      const match = transform.match(/translate\(\s*([\d.]+)/)
-      if (match) {
-        const tx = parseFloat(match[1])
-        // Time signature fica na faixa 65-110; TAB clef fica em ~50
-        if (tx >= 65 && tx < 110) {
-          ;(g as SVGElement).style.display = 'none'
+    if (!showTimeSignature) {
+      // Esconder time signature glyphs (translateX 65..110) mas MANTER TAB clef (translateX < 65)
+      const gElements = svg.querySelectorAll(':scope > g[transform]')
+      gElements.forEach(g => {
+        const transform = g.getAttribute('transform') || ''
+        const match = transform.match(/translate\(\s*([\d.]+)/)
+        if (match) {
+          const tx = parseFloat(match[1])
+          // Time signature fica na faixa 65-110; TAB clef fica em ~50
+          if (tx >= 65 && tx < 110) {
+            ;(g as SVGElement).style.display = 'none'
+          }
         }
-      }
-    })
+      })
+    }
 
-    // Esconder textos: bar number (vermelho), "Free time"
+    // Esconder textos: bar number (vermelho — sempre), "Free time" (só se não tem TS)
     const texts = svg.querySelectorAll('text')
     texts.forEach(t => {
       const content = t.textContent?.trim() || ''
@@ -109,30 +113,33 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null) {
       if (fill.includes('C80000') || fill.includes('c80000')) {
         ;(t as SVGElement).style.display = 'none'
       }
-      if (content.toLowerCase().includes('free time')) {
+      if (!showTimeSignature && content.toLowerCase().includes('free time')) {
         ;(t as SVGElement).style.display = 'none'
       }
     })
 
-    // Esconder paths (brackets de free time) — são curvas na região esquerda
-    const paths = svg.querySelectorAll(':scope > path')
-    paths.forEach(p => {
-      // Brackets de free time são os únicos <path> diretos no SVG
-      ;(p as SVGElement).style.display = 'none'
-    })
+    if (!showTimeSignature) {
+      // Esconder paths (brackets de free time) — são curvas na região esquerda
+      const paths = svg.querySelectorAll(':scope > path')
+      paths.forEach(p => {
+        ;(p as SVGElement).style.display = 'none'
+      })
+    }
 
-    // Estender staff lines de x=0 até a borda direita do SVG (full width)
+    // Estender staff lines até a borda direita do SVG (linhas completas)
     const svgWidth = parseFloat(svg.getAttribute('width') || '0')
     if (svgWidth > 0) {
       const rects = svg.querySelectorAll(':scope > rect')
       rects.forEach(r => {
-        const x = parseFloat(r.getAttribute('x') || '0')
         const w = parseFloat(r.getAttribute('width') || '0')
         const h = parseFloat(r.getAttribute('height') || '0')
-        // Staff lines: começam em x~35, height ~0.9 (linhas finas)
-        if (x >= 30 && x <= 40 && h > 0.5 && h < 2 && w > 50) {
-          r.setAttribute('x', '0')
-          r.setAttribute('width', String(svgWidth))
+        // Staff lines: retângulos finos (height < 2) com largura > 30
+        if (h > 0.3 && h < 2 && w > 30) {
+          const rightEdge = parseFloat(r.getAttribute('x') || '0') + w
+          // Só estender se a linha não vai até o final
+          if (rightEdge < svgWidth - 5) {
+            r.setAttribute('width', String(svgWidth - parseFloat(r.getAttribute('x') || '0')))
+          }
         }
       })
     }
@@ -149,6 +156,7 @@ export function AlphaTabViewer({
   className = '',
   layout = 'page',
   scale = 0.8,
+  showTimeSignature = false,
 }: AlphaTabViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
@@ -187,6 +195,8 @@ export function AlphaTabViewer({
       ? alphaTabModule.LayoutMode.Horizontal
       : alphaTabModule.LayoutMode.Page
     settings.display.scale = scale
+    // Espaçamento entre sistemas (linhas) no layout page
+    settings.display.systemPaddingBottom = 20
     // Forçar apenas tablatura (sem pauta standard)
     settings.display.staveProfile = alphaTabModule.StaveProfile.Tab
 
@@ -194,8 +204,10 @@ export function AlphaTabViewer({
     settings.player.enablePlayer = false
     settings.player.enableCursor = false
 
-    // Esconder hastes/stems das notas na tab
-    settings.notation.rhythmMode = alphaTabModule.TabRhythmMode.Hidden
+    // Mostrar hastes/stems quando tem fórmula de compasso, esconder quando livre
+    settings.notation.rhythmMode = showTimeSignature
+      ? alphaTabModule.TabRhythmMode.ShowWithBars
+      : alphaTabModule.TabRhythmMode.Hidden
     // Modo SongBook: mais limpo
     settings.notation.notationMode = alphaTabModule.NotationMode.SongBook
 
@@ -223,12 +235,18 @@ export function AlphaTabViewer({
     // Número de compasso, clef TAB, fórmula de compasso, barras
     elements.set(NE.BarNumber, false)
 
-    // Esconder barras de compasso tornando-as transparentes
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
       || document.documentElement.classList.contains('dark')
     const res = settings.display.resources
-    // Barras de compasso invisíveis
-    res.barSeparatorColor = new alphaTabModule.model.Color(0, 0, 0, 0)
+    // Barras de compasso: visíveis quando tem fórmula, invisíveis quando livre
+    if (!showTimeSignature) {
+      res.barSeparatorColor = new alphaTabModule.model.Color(0, 0, 0, 0)
+    } else {
+      // Cor das barras de compasso — sutil
+      res.barSeparatorColor = isDark
+        ? new alphaTabModule.model.Color(120, 130, 150, 200)
+        : new alphaTabModule.model.Color(148, 163, 184, 220)
+    }
     if (isDark) {
       res.mainGlyphColor = new alphaTabModule.model.Color(220, 225, 235, 255)
       res.secondaryGlyphColor = new alphaTabModule.model.Color(150, 160, 180, 255)
@@ -246,10 +264,12 @@ export function AlphaTabViewer({
 
     // Manipular o modelo antes da renderização
     api.scoreLoaded.on((score: any) => {
-      // Marcar todos os compassos como free time → remove barras de compasso
       for (let i = 0; i < score.masterBars.length; i++) {
         const mb = score.masterBars[i]
-        mb.isFreeTime = true
+        // Só marcar free time se NÃO tem fórmula de compasso
+        if (!showTimeSignature) {
+          mb.isFreeTime = true
+        }
         // Limpar tempo automations para não mostrar BPM
         mb.tempoAutomations = []
       }
@@ -270,7 +290,7 @@ export function AlphaTabViewer({
     api.renderFinished.on(() => {
       setLoading(false)
       // Delay para garantir que SVGs estejam no DOM
-      setTimeout(() => cleanupAlphaTabDom(containerRef.current), 50)
+      setTimeout(() => cleanupAlphaTabDom(containerRef.current, showTimeSignature), 50)
     })
 
     api.error.on((e: any) => {
@@ -286,7 +306,7 @@ export function AlphaTabViewer({
       api.destroy()
       apiRef.current = null
     }
-  }, [tex, layout, scale])
+  }, [tex, layout, scale, showTimeSignature])
 
   if (!tex) return null
 

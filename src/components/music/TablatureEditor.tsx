@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { FloppyDisk, Plus, Minus, Trash, ArrowLeft, ArrowRight, Guitar, MusicNote, Timer } from '@phosphor-icons/react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { FloppyDisk, Trash, Guitar, MusicNote, Timer, X } from '@phosphor-icons/react'
+import { createPortal } from 'react-dom'
 import { AlphaTabViewer } from './AlphaTabViewer'
-import { TabSvgEditor } from './TabSvgEditor'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { TabSvgEditor, BEATS_PER_LINE } from './TabSvgEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -101,10 +101,131 @@ const DURATION_OPTIONS: { value: BeatDuration; label: string; symbol: string; be
 
 const DURATION_ALPHATEX: Record<BeatDuration, number> = { w: 1, h: 2, q: 4, '8': 8, '16': 16 }
 
+/** Valor de cada duração em quarter-note beats (semínima = 1) */
+const DURATION_QUARTER_BEATS: Record<BeatDuration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+
+// ─── Fórmulas de compasso ───────────────────────────────────────────
+
+export type TimeSignature = '2/4' | '3/4' | '4/4' | '5/4' | '6/4' | '7/4' |
+  '2/2' | '3/2' | '4/2' |
+  '3/8' | '5/8' | '6/8' | '7/8' | '9/8' | '12/8' | 'free'
+
+interface TimeSignatureConfig {
+  label: string
+  /** Numerador */
+  numerator: number
+  /** Denominador */
+  denominator: number
+  /** Total de quarter beats por compasso */
+  quarterBeatsPerBar: number
+  /** Grupamento de subdivisions dentro do compasso (em quarter beats) */
+  grouping: number[]
+}
+
+const TIME_SIGNATURES: Record<TimeSignature, TimeSignatureConfig> = {
+  '2/4': { label: '2/4', numerator: 2, denominator: 4, quarterBeatsPerBar: 2, grouping: [1, 1] },
+  '3/4': { label: '3/4', numerator: 3, denominator: 4, quarterBeatsPerBar: 3, grouping: [1, 1, 1] },
+  '4/4': { label: '4/4', numerator: 4, denominator: 4, quarterBeatsPerBar: 4, grouping: [1, 1, 1, 1] },
+  '5/4': { label: '5/4', numerator: 5, denominator: 4, quarterBeatsPerBar: 5, grouping: [3, 2] },
+  '6/4': { label: '6/4', numerator: 6, denominator: 4, quarterBeatsPerBar: 6, grouping: [3, 3] },
+  '7/4': { label: '7/4', numerator: 7, denominator: 4, quarterBeatsPerBar: 7, grouping: [4, 3] },
+  '2/2': { label: '2/2', numerator: 2, denominator: 2, quarterBeatsPerBar: 4, grouping: [2, 2] },
+  '3/2': { label: '3/2', numerator: 3, denominator: 2, quarterBeatsPerBar: 6, grouping: [2, 2, 2] },
+  '4/2': { label: '4/2', numerator: 4, denominator: 2, quarterBeatsPerBar: 8, grouping: [2, 2, 2, 2] },
+  '3/8': { label: '3/8', numerator: 3, denominator: 8, quarterBeatsPerBar: 1.5, grouping: [1.5] },
+  '5/8': { label: '5/8', numerator: 5, denominator: 8, quarterBeatsPerBar: 2.5, grouping: [1.5, 1] },
+  '6/8': { label: '6/8', numerator: 6, denominator: 8, quarterBeatsPerBar: 3, grouping: [1.5, 1.5] },
+  '7/8': { label: '7/8', numerator: 7, denominator: 8, quarterBeatsPerBar: 3.5, grouping: [1.5, 1, 1] },
+  '9/8': { label: '9/8', numerator: 9, denominator: 8, quarterBeatsPerBar: 4.5, grouping: [1.5, 1.5, 1.5] },
+  '12/8': { label: '12/8', numerator: 12, denominator: 8, quarterBeatsPerBar: 6, grouping: [1.5, 1.5, 1.5, 1.5] },
+  free: { label: 'Livre', numerator: 0, denominator: 0, quarterBeatsPerBar: 0, grouping: [] },
+}
+
+const TIME_SIGNATURE_OPTIONS: { value: TimeSignature; label: string; category: string }[] = [
+  { value: 'free', label: 'Livre (sem compasso)', category: 'Livre' },
+  { value: '2/4', label: '2/4', category: 'Simples' },
+  { value: '3/4', label: '3/4 — Valsa', category: 'Simples' },
+  { value: '4/4', label: '4/4 — Quaternário', category: 'Simples' },
+  { value: '5/4', label: '5/4', category: 'Simples' },
+  { value: '6/4', label: '6/4', category: 'Simples' },
+  { value: '7/4', label: '7/4', category: 'Simples' },
+  { value: '2/2', label: '2/2 — Alla breve', category: 'Composto' },
+  { value: '3/2', label: '3/2', category: 'Composto' },
+  { value: '4/2', label: '4/2', category: 'Composto' },
+  { value: '3/8', label: '3/8', category: 'Composto' },
+  { value: '5/8', label: '5/8', category: 'Composto' },
+  { value: '6/8', label: '6/8 — Balada', category: 'Composto' },
+  { value: '7/8', label: '7/8', category: 'Composto' },
+  { value: '9/8', label: '9/8', category: 'Composto' },
+  { value: '12/8', label: '12/8 — Blues', category: 'Composto' },
+]
+
+/** Calcula posições de barras de compasso (índice da coluna APÓS a qual desenhar barra) */
+export function computeBarlines(
+  durations: BeatDuration[],
+  columns: number,
+  timeSignature: TimeSignature,
+): number[] {
+  if (timeSignature === 'free') return []
+  const tsConfig = TIME_SIGNATURES[timeSignature]
+  if (!tsConfig || tsConfig.quarterBeatsPerBar <= 0) return []
+
+  const barlines: number[] = []
+  let accumulated = 0
+
+  for (let c = 0; c < columns; c++) {
+    const dur = durations[c] ?? 'q'
+    accumulated += DURATION_QUARTER_BEATS[dur]
+
+    // Quando acumulamos beats suficientes para um compasso completo
+    if (accumulated >= tsConfig.quarterBeatsPerBar - 0.001) {
+      // Só adiciona barline se não for a última coluna (não precisa barra no fim)
+      if (c < columns - 1) {
+        barlines.push(c)
+      }
+      accumulated = accumulated - tsConfig.quarterBeatsPerBar
+    }
+  }
+
+  return barlines
+}
+
+/** Calcula números dos compassos (retorna mapa colIdx → número do compasso) */
+export function computeBarNumbers(
+  durations: BeatDuration[],
+  columns: number,
+  timeSignature: TimeSignature,
+): Map<number, number> {
+  const map = new Map<number, number>()
+  if (timeSignature === 'free') return map
+  const tsConfig = TIME_SIGNATURES[timeSignature]
+  if (!tsConfig || tsConfig.quarterBeatsPerBar <= 0) return map
+
+  let accumulated = 0
+  let barNumber = 1
+  map.set(0, barNumber) // Primeiro compasso começa na coluna 0
+
+  for (let c = 0; c < columns; c++) {
+    const dur = durations[c] ?? 'q'
+    accumulated += DURATION_QUARTER_BEATS[dur]
+
+    if (accumulated >= tsConfig.quarterBeatsPerBar - 0.001) {
+      accumulated = accumulated - tsConfig.quarterBeatsPerBar
+      barNumber++
+      // A próxima coluna inicia novo compasso
+      if (c + 1 < columns) {
+        map.set(c + 1, barNumber)
+      }
+    }
+  }
+
+  return map
+}
+
 // ─── Constantes ─────────────────────────────────────────────────────
 
 const MIN_COLUMNS = 8
-const MAX_COLUMNS = 40
+const MAX_COLUMNS = BEATS_PER_LINE * 3 // 3 linhas completas
 
 // ─── Tipos ──────────────────────────────────────────────────────────
 
@@ -120,6 +241,7 @@ export interface TablatureData {
   columns: number
   durations: BeatDuration[]
   label?: string
+  timeSignature?: TimeSignature
 }
 
 export interface TablatureEditorProps {
@@ -243,16 +365,21 @@ function gridToAlphaTex(
   durations: BeatDuration[],
   instrumentConfig: InstrumentConfig,
   label?: string,
+  timeSignature: TimeSignature = 'free',
 ): string {
   const stringCount = instrumentConfig.stringCount
-  let hasNotes = false
-  for (let s = 0; s < stringCount; s++) {
-    for (let c = 0; c < columns; c++) {
-      if (grid[s]?.[c] !== null) { hasNotes = true; break }
+
+  // Encontrar última coluna com nota (ignorar vazias do final)
+  let lastNoteCol = -1
+  for (let c = columns - 1; c >= 0; c--) {
+    for (let s = 0; s < stringCount; s++) {
+      if (grid[s]?.[c] !== null) { lastNoteCol = c; break }
     }
-    if (hasNotes) break
+    if (lastNoteCol >= 0) break
   }
-  if (!hasNotes) return ''
+  if (lastNoteCol < 0) return ''
+
+  const effectiveCols = lastNoteCol + 1
 
   const lines: string[] = []
   if (label) lines.push(`\\title "${label}"`)
@@ -262,10 +389,14 @@ function gridToAlphaTex(
   lines.push(`\\instrument ${instrumentConfig.alphaTabInstrument}`)
   lines.push('.')
 
-  // Cada coluna = um beat com duração configurável
-  // Cordas no grid: [0]=agudo(string 1), ..., [N-1]=grave(string N)
-  const beats: string[] = []
-  for (let c = 0; c < columns; c++) {
+  // Fórmula de compasso como bar metadata (após o .)
+  const tsPrefix = (timeSignature !== 'free')
+    ? `\\ts ${TIME_SIGNATURES[timeSignature].numerator} ${TIME_SIGNATURES[timeSignature].denominator} `
+    : ''
+
+  // Gerar beats apenas até a última coluna com nota
+  const allBeats: string[] = []
+  for (let c = 0; c < effectiveCols; c++) {
     const dur = DURATION_ALPHATEX[durations[c] ?? 'q']
     const notesInCol: string[] = []
     for (let s = 0; s < stringCount; s++) {
@@ -275,20 +406,38 @@ function gridToAlphaTex(
       }
     }
     if (notesInCol.length === 0) {
-      beats.push(`r.${dur}`)
+      allBeats.push(`r.${dur}`)
     } else if (notesInCol.length === 1) {
-      beats.push(`${notesInCol[0]}.${dur}`)
+      allBeats.push(`${notesInCol[0]}.${dur}`)
     } else {
-      beats.push(`(${notesInCol.join(' ')}).${dur}`)
+      allBeats.push(`(${notesInCol.join(' ')}).${dur}`)
     }
   }
 
-  // Agrupar em compassos de 4 beats
-  const bars: string[] = []
-  for (let i = 0; i < beats.length; i += 4) {
-    bars.push(beats.slice(i, i + 4).join(' '))
+  // Separar em compassos usando barlines calculadas
+  if (timeSignature !== 'free') {
+    const barlineSet = new Set(computeBarlines(durations, effectiveCols, timeSignature))
+    const bars: string[] = []
+    let currentBar: string[] = []
+    for (let c = 0; c < allBeats.length; c++) {
+      currentBar.push(allBeats[c])
+      if (barlineSet.has(c)) {
+        bars.push(currentBar.join(' '))
+        currentBar = []
+      }
+    }
+    if (currentBar.length > 0) bars.push(currentBar.join(' '))
+    // Prefixar \ts no primeiro compasso
+    if (bars.length > 0) bars[0] = tsPrefix + bars[0]
+    lines.push(bars.join(' |\n'))
+  } else {
+    // Modo livre: agrupar em blocos de 4 beats
+    const bars: string[] = []
+    for (let i = 0; i < allBeats.length; i += 4) {
+      bars.push(allBeats.slice(i, i + 4).join(' '))
+    }
+    lines.push(bars.join(' |\n'))
   }
-  lines.push(bars.join(' | \n'))
 
   return lines.join('\n')
 }
@@ -312,7 +461,7 @@ export function TablatureEditor({
   const [selectedString, setSelectedString] = useState<number | null>(null)
   const [hoverCell, setHoverCell] = useState<{ s: number; c: number } | null>(null)
   const [fretInput, setFretInput] = useState('')
-  const fretInputRef = useRef<HTMLInputElement>(null)
+  const [timeSignature, setTimeSignature] = useState<TimeSignature>('free')
 
   // Reset quando abrir com novos dados
   useEffect(() => {
@@ -324,6 +473,7 @@ export function TablatureEditor({
       setColumns(initialData.columns)
       setDurations([...initialData.durations])
       setLabel(initialData.label ?? initialLabel ?? '')
+      setTimeSignature(initialData.timeSignature ?? 'free')
     } else {
       // Formato legado (linhas de texto) ou vazio
       const inst = initialInstrument ?? 'guitar'
@@ -334,6 +484,7 @@ export function TablatureEditor({
       setColumns(c)
       setDurations(createDefaultDurations(c))
       setLabel(initialLabel ?? '')
+      setTimeSignature('free')
     }
     setCurrentDuration('q')
     setSelectedCol(null)
@@ -375,7 +526,10 @@ export function TablatureEditor({
     setSelectedString(s)
     const val = grid[s]?.[c]
     setFretInput(val !== null ? String(val) : '')
-    setTimeout(() => fretInputRef.current?.focus(), 50)
+    // Focar o hidden input para capturar teclado
+    requestAnimationFrame(() => {
+      hiddenInputRef.current?.focus()
+    })
   }, [grid])
 
   // Duplo clique — remover valor
@@ -492,10 +646,26 @@ export function TablatureEditor({
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (selectedCol === null || selectedString === null) return
 
+    // Helper: expandir grid até completar a próxima linha inteira
+    const expandToNextFullLine = () => {
+      const nextLineEnd = Math.ceil((columns + 1) / BEATS_PER_LINE) * BEATS_PER_LINE
+      const target = Math.min(nextLineEnd, MAX_COLUMNS)
+      const toAdd = target - columns
+      if (toAdd <= 0) return
+      setGrid(prev => prev.map(row => [...row, ...Array(toAdd).fill(null)]))
+      setDurations(prev => [...prev, ...Array(toAdd).fill(currentDuration)])
+      setColumns(target)
+      setSelectedCol(selectedCol + 1)
+    }
+
     switch (e.key) {
       case 'ArrowRight':
         e.preventDefault()
-        if (selectedCol < columns - 1) setSelectedCol(selectedCol + 1)
+        if (selectedCol < columns - 1) {
+          setSelectedCol(selectedCol + 1)
+        } else if (columns < MAX_COLUMNS) {
+          expandToNextFullLine()
+        }
         break
       case 'ArrowLeft':
         e.preventDefault()
@@ -510,32 +680,109 @@ export function TablatureEditor({
         if (selectedString > 0) setSelectedString(selectedString - 1)
         break
       case 'Delete':
-      case 'Backspace':
         e.preventDefault()
         clearCell()
         break
-      case 'Tab':
+      case 'Backspace':
         e.preventDefault()
-        if (e.shiftKey) {
-          if (selectedCol > 0) setSelectedCol(selectedCol - 1)
-        } else {
-          if (selectedCol < columns - 1) setSelectedCol(selectedCol + 1)
+        if (selectedCol > 0) {
+          const currentCol = selectedCol
+          setGrid(prev => {
+            const next = prev.map(row => [...row])
+            for (let s = 0; s < next.length; s++) {
+              next[s][currentCol] = null
+            }
+            return next
+          })
+          setSelectedCol(currentCol - 1)
+        } else if (selectedCol === 0) {
+          setGrid(prev => {
+            const next = prev.map(row => [...row])
+            for (let s = 0; s < next.length; s++) {
+              next[s][0] = null
+            }
+            return next
+          })
         }
         break
     }
 
     // Números diretos (0-9)
+    // Se célula tem 1 dígito e concatenar é válido (≤ maxFret), concatena (ex: 1→12)
+    // Senão, substitui o valor existente (ex: 4→3)
     if (e.key >= '0' && e.key <= '9') {
       e.preventDefault()
       const current = grid[selectedString]?.[selectedCol]
-      const currentStr = current !== null ? String(current) : ''
-      const newVal = currentStr.length >= 2 ? e.key : currentStr + e.key
+      let newVal = e.key
+      let shouldAdvance = true
+
+      if (current !== null) {
+        const currentStr = String(current)
+        if (currentStr.length === 1) {
+          const concat = currentStr + e.key
+          const concatNum = parseInt(concat)
+          if (concatNum <= maxFret) {
+            newVal = concat
+            shouldAdvance = false
+          }
+        }
+      }
       const num = parseInt(newVal)
       if (num >= 0 && num <= maxFret) {
         setFretValue(newVal)
+        // Aplicar a duração ativa à coluna ao inserir nota
+        setDurations(prev => {
+          if (prev[selectedCol] === currentDuration) return prev
+          const next = [...prev]
+          next[selectedCol] = currentDuration
+          return next
+        })
+
+        // Auto-avançar cursor para próxima coluna
+        if (shouldAdvance) {
+          if (selectedCol < columns - 1) {
+            setSelectedCol(selectedCol + 1)
+          } else if (columns < MAX_COLUMNS) {
+            const nextLineEnd = Math.ceil((columns + 1) / BEATS_PER_LINE) * BEATS_PER_LINE
+            const target = Math.min(nextLineEnd, MAX_COLUMNS)
+            const toAdd = target - columns
+            if (toAdd > 0) {
+              setGrid(prev => prev.map(row => [...row, ...Array(toAdd).fill(null)]))
+              setDurations(prev => [...prev, ...Array(toAdd).fill(currentDuration)])
+              setColumns(target)
+            }
+            setSelectedCol(selectedCol + 1)
+          }
+        }
       }
     }
-  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue])
+  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration])
+
+  // Hidden input ref para captura de teclado (padrão CodeMirror/Monaco)
+  const hiddenInputRef = useRef<HTMLInputElement>(null)
+
+  // Focar o hidden input quando o modal abre
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => {
+      hiddenInputRef.current?.focus()
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [open])
+
+  // Refocar o hidden input após mudança de seleção
+  useEffect(() => {
+    if (selectedCol !== null && selectedString !== null) {
+      hiddenInputRef.current?.focus()
+    }
+  }, [selectedCol, selectedString])
+
+  // Helper: devolver foco pro hidden input após ações da toolbar
+  const focusGrid = useCallback(() => {
+    requestAnimationFrame(() => {
+      hiddenInputRef.current?.focus()
+    })
+  }, [])
 
   // Preview de texto
   const previewLines = useMemo(
@@ -554,10 +801,20 @@ export function TablatureEditor({
     return count
   }, [grid, columns])
 
+  // Barras de compasso
+  const barlines = useMemo(
+    () => computeBarlines(durations, columns, timeSignature),
+    [durations, columns, timeSignature],
+  )
+  const barNumbers = useMemo(
+    () => computeBarNumbers(durations, columns, timeSignature),
+    [durations, columns, timeSignature],
+  )
+
   // AlphaTex para preview
   const alphaTex = useMemo(
-    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined),
-    [grid, columns, durations, instrumentConfig, label],
+    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature),
+    [grid, columns, durations, instrumentConfig, label, timeSignature],
   )
 
   // Salvar
@@ -568,25 +825,38 @@ export function TablatureEditor({
       columns,
       durations: [...durations],
       label: label || undefined,
+      timeSignature: timeSignature !== 'free' ? timeSignature : undefined,
     }
     onSave(previewLines, label, data)
     onOpenChange(false)
   }, [instrument, grid, columns, durations, label, previewLines, onSave, onOpenChange])
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-[960px] max-h-[90vh] overflow-y-auto bg-surface border-border"
-        onInteractOutside={(e) => e.preventDefault()}
-        onKeyDown={handleKeyDown}
-      >
-        <DialogHeader>
-          <DialogTitle className="font-serif text-[22px]">
-            Editor de <span className="text-accent">Tablatura</span>
-          </DialogTitle>
-        </DialogHeader>
+  if (!open) return null
 
-        <div className="space-y-4 mt-2">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Overlay */}
+      <div className="fixed inset-0 bg-black/80 animate-in fade-in-0" onClick={() => onOpenChange(false)} />
+
+      {/* Content */}
+      <div
+        className="relative z-50 w-full sm:max-w-[960px] max-h-[90vh] overflow-y-auto bg-surface border border-border rounded-xl shadow-2xl p-6 mx-4 outline-none animate-in fade-in-0 zoom-in-95"
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="font-serif text-[22px]">
+            Editor de <span className="text-accent">Tablatura</span>
+          </h2>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          >
+            <X size={18} />
+            <span className="sr-only">Fechar</span>
+          </button>
+        </div>
+
+        <div className="space-y-4 overflow-hidden min-w-0">
 
           {/* Linha 1: Instrumento + Label */}
           <div className="flex items-center gap-3 flex-wrap">
@@ -620,6 +890,25 @@ export function TablatureEditor({
               />
             </div>
 
+            <div className="h-6 w-px bg-border" />
+
+            {/* Fórmula de compasso */}
+            <div className="flex items-center gap-2">
+              <Label className="text-[11px] text-text3 uppercase tracking-wider whitespace-nowrap">Compasso:</Label>
+              <Select value={timeSignature} onValueChange={(v) => setTimeSignature(v as TimeSignature)}>
+                <SelectTrigger className="h-8 w-[160px] text-[12px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_SIGNATURE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-[12px]">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex-1" />
 
             {/* Info */}
@@ -643,7 +932,7 @@ export function TablatureEditor({
                         variant={currentDuration === d.value ? 'default' : 'ghost'}
                         size="sm"
                         className={`h-7 w-8 p-0 text-[14px] ${currentDuration === d.value ? '' : 'text-text3/60'}`}
-                        onClick={() => setCurrentDuration(d.value)}
+                        onClick={() => { setCurrentDuration(d.value); focusGrid() }}
                       >
                         {d.symbol}
                       </Button>
@@ -654,67 +943,9 @@ export function TablatureEditor({
               ))}
             </div>
 
-            <div className="h-6 w-px bg-border mx-1" />
-
-            {/* Colunas */}
-            <div className="flex items-center gap-1">
-              <Label className="text-[11px] text-text3 uppercase tracking-wider whitespace-nowrap">Posições:</Label>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={removeColumn} disabled={columns <= MIN_COLUMNS}>
-                      <Minus size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p className="text-xs">Remover última coluna</p></TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <Badge variant="secondary" className="text-[11px] font-mono min-w-[2rem] justify-center">
-                {columns}
-              </Badge>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={addColumn} disabled={columns >= MAX_COLUMNS}>
-                      <Plus size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p className="text-xs">Adicionar coluna</p></TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-
-            <div className="h-6 w-px bg-border mx-1" />
-
-            {/* Inserir/remover na posição */}
-            {selectedCol !== null && (
-              <>
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px] text-text3" onClick={insertColumnAt} disabled={columns >= MAX_COLUMNS}>
-                        <ArrowRight size={12} /> Inserir após {selectedCol + 1}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p className="text-xs">Inserir coluna vazia após a posição selecionada</p></TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px] text-vermelho" onClick={removeColumnAt} disabled={columns <= MIN_COLUMNS}>
-                        <Trash size={12} /> Remover {selectedCol + 1}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p className="text-xs">Remover coluna selecionada</p></TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </>
-            )}
-
             <div className="flex-1" />
 
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px] text-text3 hover:text-vermelho" onClick={clearAll}>
+            <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px] text-text3 hover:text-vermelho" onClick={() => { clearAll(); focusGrid() }}>
               <Trash size={12} /> Limpar tudo
             </Button>
           </div>
@@ -725,11 +956,12 @@ export function TablatureEditor({
             <span className="text-accent font-semibold"> Duplo clique</span> = apagar ·
             <span className="text-accent font-semibold"> Setas</span> = navegar ·
             <span className="text-accent font-semibold"> 0–9</span> = traste ·
-            <span className="text-accent font-semibold"> Del</span> = apagar ·
+            <span className="text-accent font-semibold"> Backspace</span> = apagar e voltar ·
+            <span className="text-accent font-semibold"> Del</span> = apagar célula ·
             <span className="text-accent font-semibold"> Clique no símbolo ♩</span> = aplicar duração
           </div>
 
-          {/* Editor SVG interativo */}
+          {/* Editor SVG interativo + hidden input para captura de teclado */}
           <TabSvgEditor
             grid={grid}
             columns={columns}
@@ -742,6 +974,10 @@ export function TablatureEditor({
             onDurationClick={handleDurationClick}
             hoverCell={hoverCell}
             onHoverCell={setHoverCell}
+            barlines={barlines}
+            barNumbers={barNumbers}
+            inputRef={hiddenInputRef}
+            onKeyDown={handleKeyDown}
           />
 
           {/* Preview (alphaTab) */}
@@ -756,9 +992,10 @@ export function TablatureEditor({
               <div className="rounded-lg border border-border overflow-hidden">
                 <AlphaTabViewer
                   tex={alphaTex}
-                  layout="horizontal"
-                  scale={0.7}
-                  minHeight={140}
+                  layout="page"
+                  scale={0.8}
+                  minHeight={100}
+                  showTimeSignature={timeSignature !== 'free'}
                 />
               </div>
             ) : (
@@ -769,13 +1006,15 @@ export function TablatureEditor({
           </div>
         </div>
 
-        <DialogFooter className="mt-4">
+        {/* Footer */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end mt-4 pt-4 border-t border-border">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={handleSave} className="gap-1.5">
             <FloppyDisk size={16} /> Salvar Tablatura
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }
