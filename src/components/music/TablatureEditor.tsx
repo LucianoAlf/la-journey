@@ -817,6 +817,15 @@ export function TablatureEditor({
     [grid, columns, durations, instrumentConfig, label, timeSignature],
   )
 
+  // Debounce: só atualiza o preview AlphaTab 800ms após última mudança
+  const [debouncedAlphaTex, setDebouncedAlphaTex] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedAlphaTex(alphaTex)
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [alphaTex])
+
   // Salvar
   const handleSave = useCallback(() => {
     const data: TablatureData = {
@@ -988,10 +997,10 @@ export function TablatureEditor({
                 {instrumentConfig.label}
               </Badge>
             </div>
-            {noteCount > 0 && alphaTex ? (
+            {noteCount > 0 && debouncedAlphaTex ? (
               <div className="rounded-lg border border-border overflow-hidden">
                 <AlphaTabViewer
-                  tex={alphaTex}
+                  tex={debouncedAlphaTex}
                   layout="page"
                   scale={0.8}
                   minHeight={100}
