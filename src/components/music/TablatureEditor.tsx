@@ -27,7 +27,7 @@ interface InstrumentConfig {
   maxFret: number
 }
 
-const INSTRUMENTS: Record<TabInstrument, InstrumentConfig> = {
+export const INSTRUMENTS: Record<TabInstrument, InstrumentConfig> = {
   guitar: {
     label: 'Violão / Guitarra',
     stringCount: 6,
@@ -106,6 +106,17 @@ const DURATION_ALPHATEX: Record<BeatDuration, number> = { w: 1, h: 2, q: 4, '8':
 /** Valor de cada duração em quarter-note beats (semínima = 1) */
 const DURATION_QUARTER_BEATS: Record<BeatDuration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
 
+/** Pontos de aumento: 0 = sem, 1 = ponto, 2 = duplo ponto */
+export type DotType = 0 | 1 | 2
+
+/** Multiplicadores para pontos: 1.0, 1.5, 1.75 */
+const DOT_MULTIPLIERS: Record<DotType, number> = { 0: 1, 1: 1.5, 2: 1.75 }
+
+/** Calcula o valor efetivo de uma duração com ponto */
+export function getEffectiveBeats(duration: BeatDuration, dot: DotType = 0): number {
+  return DURATION_QUARTER_BEATS[duration] * DOT_MULTIPLIERS[dot]
+}
+
 // ─── Fórmulas de compasso ───────────────────────────────────────────
 
 export type TimeSignature = '2/4' | '3/4' | '4/4' | '5/4' | '6/4' | '7/4' |
@@ -122,6 +133,10 @@ interface TimeSignatureConfig {
   quarterBeatsPerBar: number
   /** Grupamento de subdivisions dentro do compasso (em quarter beats) */
   grouping: number[]
+  /** Compasso composto? (6/8, 9/8, 12/8) */
+  compound?: boolean
+  /** Duração padrão sugerida ao selecionar este compasso */
+  defaultDuration?: BeatDuration
 }
 
 const TIME_SIGNATURES: Record<TimeSignature, TimeSignatureConfig> = {
@@ -136,10 +151,10 @@ const TIME_SIGNATURES: Record<TimeSignature, TimeSignatureConfig> = {
   '4/2': { label: '4/2', numerator: 4, denominator: 2, quarterBeatsPerBar: 8, grouping: [2, 2, 2, 2] },
   '3/8': { label: '3/8', numerator: 3, denominator: 8, quarterBeatsPerBar: 1.5, grouping: [1.5] },
   '5/8': { label: '5/8', numerator: 5, denominator: 8, quarterBeatsPerBar: 2.5, grouping: [1.5, 1] },
-  '6/8': { label: '6/8', numerator: 6, denominator: 8, quarterBeatsPerBar: 3, grouping: [1.5, 1.5] },
+  '6/8': { label: '6/8', numerator: 6, denominator: 8, quarterBeatsPerBar: 3, grouping: [1.5, 1.5], compound: true, defaultDuration: '8' },
   '7/8': { label: '7/8', numerator: 7, denominator: 8, quarterBeatsPerBar: 3.5, grouping: [1.5, 1, 1] },
-  '9/8': { label: '9/8', numerator: 9, denominator: 8, quarterBeatsPerBar: 4.5, grouping: [1.5, 1.5, 1.5] },
-  '12/8': { label: '12/8', numerator: 12, denominator: 8, quarterBeatsPerBar: 6, grouping: [1.5, 1.5, 1.5, 1.5] },
+  '9/8': { label: '9/8', numerator: 9, denominator: 8, quarterBeatsPerBar: 4.5, grouping: [1.5, 1.5, 1.5], compound: true, defaultDuration: '8' },
+  '12/8': { label: '12/8', numerator: 12, denominator: 8, quarterBeatsPerBar: 6, grouping: [1.5, 1.5, 1.5, 1.5], compound: true, defaultDuration: '8' },
   free: { label: 'Livre', numerator: 0, denominator: 0, quarterBeatsPerBar: 0, grouping: [] },
 }
 
@@ -151,13 +166,13 @@ const TIME_SIGNATURE_OPTIONS: { value: TimeSignature; label: string; category: s
   { value: '5/4', label: '5/4', category: 'Simples' },
   { value: '6/4', label: '6/4', category: 'Simples' },
   { value: '7/4', label: '7/4', category: 'Simples' },
-  { value: '2/2', label: '2/2 — Alla breve', category: 'Composto' },
-  { value: '3/2', label: '3/2', category: 'Composto' },
-  { value: '4/2', label: '4/2', category: 'Composto' },
-  { value: '3/8', label: '3/8', category: 'Composto' },
-  { value: '5/8', label: '5/8', category: 'Composto' },
+  { value: '2/2', label: '2/2 — Alla breve', category: 'Simples' },
+  { value: '3/2', label: '3/2', category: 'Simples' },
+  { value: '4/2', label: '4/2', category: 'Simples' },
+  { value: '3/8', label: '3/8', category: 'Irregular' },
+  { value: '5/8', label: '5/8', category: 'Irregular' },
+  { value: '7/8', label: '7/8', category: 'Irregular' },
   { value: '6/8', label: '6/8 — Balada', category: 'Composto' },
-  { value: '7/8', label: '7/8', category: 'Composto' },
   { value: '9/8', label: '9/8', category: 'Composto' },
   { value: '12/8', label: '12/8 — Blues', category: 'Composto' },
 ]
@@ -167,6 +182,7 @@ export function computeBarlines(
   durations: BeatDuration[],
   columns: number,
   timeSignature: TimeSignature,
+  dots: DotType[] = [],
 ): number[] {
   if (timeSignature === 'free') return []
   const tsConfig = TIME_SIGNATURES[timeSignature]
@@ -177,7 +193,7 @@ export function computeBarlines(
 
   for (let c = 0; c < columns; c++) {
     const dur = durations[c] ?? 'q'
-    accumulated += DURATION_QUARTER_BEATS[dur]
+    accumulated += getEffectiveBeats(dur, dots[c] ?? 0)
 
     // Quando acumulamos beats suficientes para um compasso completo
     if (accumulated >= tsConfig.quarterBeatsPerBar - 0.001) {
@@ -197,6 +213,7 @@ export function computeBarNumbers(
   durations: BeatDuration[],
   columns: number,
   timeSignature: TimeSignature,
+  dots: DotType[] = [],
 ): Map<number, number> {
   const map = new Map<number, number>()
   if (timeSignature === 'free') return map
@@ -209,7 +226,7 @@ export function computeBarNumbers(
 
   for (let c = 0; c < columns; c++) {
     const dur = durations[c] ?? 'q'
-    accumulated += DURATION_QUARTER_BEATS[dur]
+    accumulated += getEffectiveBeats(dur, dots[c] ?? 0)
 
     if (accumulated >= tsConfig.quarterBeatsPerBar - 0.001) {
       accumulated = accumulated - tsConfig.quarterBeatsPerBar
@@ -246,6 +263,8 @@ export interface TablatureData {
   timeSignature?: TimeSignature
   /** Ligaduras: Set serializado como array de strings "col-string" */
   ties?: string[]
+  /** Pontos de aumento por coluna (0 = sem, 1 = ponto, 2 = duplo, 3 = triplo) */
+  dots?: DotType[]
 }
 
 export interface TablatureEditorProps {
@@ -361,9 +380,13 @@ function createDefaultDurations(columns: number): BeatDuration[] {
   return Array(columns).fill('q')
 }
 
+function createDefaultDots(columns: number): DotType[] {
+  return Array(columns).fill(0)
+}
+
 // ─── Conversor: grid → alphaTex (dinâmico) ──────────────────────────
 
-function gridToAlphaTex(
+export function gridToAlphaTex(
   grid: TabGrid,
   columns: number,
   durations: BeatDuration[],
@@ -371,6 +394,7 @@ function gridToAlphaTex(
   label?: string,
   timeSignature: TimeSignature = 'free',
   ties: Set<string> = new Set(),
+  dots: DotType[] = [],
 ): string {
   const stringCount = instrumentConfig.stringCount
 
@@ -404,6 +428,7 @@ function gridToAlphaTex(
   for (let c = 0; c < effectiveCols; c++) {
     const dur = DURATION_ALPHATEX[durations[c] ?? 'q']
     const notesInCol: string[] = []
+    const beatEffects: string[] = []
     for (let s = 0; s < stringCount; s++) {
       const val = grid[s]?.[c]
       if (val !== null) {
@@ -412,18 +437,23 @@ function gridToAlphaTex(
         notesInCol.push(hasTie ? `${val}.${s + 1}{h}` : `${val}.${s + 1}`)
       }
     }
+    // Efeito de ponto: d = ponto, dd = duplo, ddd = triplo
+    const dot = dots[c] ?? 0
+    if (dot === 1) beatEffects.push('d')
+    else if (dot >= 2) beatEffects.push('dd') // AlphaTab suporta até duplo ponto
+    const beatSuffix = beatEffects.length > 0 ? `{${beatEffects.join(' ')}}` : ''
     if (notesInCol.length === 0) {
-      allBeats.push(`r.${dur}`)
+      allBeats.push(`r.${dur}${beatSuffix}`)
     } else if (notesInCol.length === 1) {
-      allBeats.push(`${notesInCol[0]}.${dur}`)
+      allBeats.push(`${notesInCol[0]}.${dur}${beatSuffix}`)
     } else {
-      allBeats.push(`(${notesInCol.join(' ')}).${dur}`)
+      allBeats.push(`(${notesInCol.join(' ')}).${dur}${beatSuffix}`)
     }
   }
 
   // Separar em compassos usando barlines calculadas
   if (timeSignature !== 'free') {
-    const barlineSet = new Set(computeBarlines(durations, effectiveCols, timeSignature))
+    const barlineSet = new Set(computeBarlines(durations, effectiveCols, timeSignature, dots))
     const bars: string[] = []
     let currentBar: string[] = []
     for (let c = 0; c < allBeats.length; c++) {
@@ -470,6 +500,8 @@ export function TablatureEditor({
   const [fretInput, setFretInput] = useState('')
   const [timeSignature, setTimeSignature] = useState<TimeSignature>('free')
   const [ties, setTies] = useState<Set<string>>(new Set())
+  const [dots, setDots] = useState<DotType[]>(() => createDefaultDots(MIN_COLUMNS))
+  const [currentDot, setCurrentDot] = useState<DotType>(0)
 
   // Reset quando abrir com novos dados
   useEffect(() => {
@@ -483,6 +515,7 @@ export function TablatureEditor({
       setLabel(initialData.label ?? initialLabel ?? '')
       setTimeSignature(initialData.timeSignature ?? 'free')
       setTies(initialData.ties ? new Set(initialData.ties) : new Set())
+      setDots(initialData.dots ? [...initialData.dots] : createDefaultDots(initialData.columns))
     } else {
       // Formato legado (linhas de texto) ou vazio
       const inst = initialInstrument ?? 'guitar'
@@ -495,8 +528,10 @@ export function TablatureEditor({
       setLabel(initialLabel ?? '')
       setTimeSignature('free')
       setTies(new Set())
+      setDots(createDefaultDots(c))
     }
     setCurrentDuration('q')
+    setCurrentDot(0)
     setSelectedCol(null)
     setSelectedString(null)
     setFretInput('')
@@ -552,14 +587,19 @@ export function TablatureEditor({
     setFretInput('')
   }, [])
 
-  // Clique na duração de uma coluna — ciclar duração
+  // Clique na duração de uma coluna — aplicar duração e ponto ativos
   const handleDurationClick = useCallback((colIdx: number) => {
     setDurations(prev => {
       const next = [...prev]
       next[colIdx] = currentDuration
       return next
     })
-  }, [currentDuration])
+    setDots(prev => {
+      const next = [...prev]
+      next[colIdx] = currentDot
+      return next
+    })
+  }, [currentDuration, currentDot])
 
   // Definir traste na célula selecionada
   const maxFret = instrumentConfig.maxFret
@@ -591,14 +631,16 @@ export function TablatureEditor({
     if (columns >= MAX_COLUMNS) return
     setGrid(prev => prev.map(row => [...row, null]))
     setDurations(prev => [...prev, currentDuration])
+    setDots(prev => [...prev, currentDot])
     setColumns(prev => prev + 1)
-  }, [columns, currentDuration])
+  }, [columns, currentDuration, currentDot])
 
   // Remover última coluna
   const removeColumn = useCallback(() => {
     if (columns <= MIN_COLUMNS) return
     setGrid(prev => prev.map(row => row.slice(0, -1)))
     setDurations(prev => prev.slice(0, -1))
+    setDots(prev => prev.slice(0, -1))
     setColumns(prev => prev - 1)
     if (selectedCol !== null && selectedCol >= columns - 1) {
       setSelectedCol(null)
@@ -622,9 +664,14 @@ export function TablatureEditor({
       next.splice(selectedCol + 1, 0, currentDuration)
       return next
     })
+    setDots(prev => {
+      const next = [...prev]
+      next.splice(selectedCol + 1, 0, currentDot)
+      return next
+    })
     setColumns(prev => prev + 1)
     setSelectedCol(prev => prev !== null ? prev + 1 : null)
-  }, [columns, selectedCol, currentDuration])
+  }, [columns, selectedCol, currentDuration, currentDot])
 
   // Remover coluna na posição selecionada
   const removeColumnAt = useCallback(() => {
@@ -638,6 +685,11 @@ export function TablatureEditor({
       return next
     })
     setDurations(prev => {
+      const next = [...prev]
+      next.splice(selectedCol, 1)
+      return next
+    })
+    setDots(prev => {
       const next = [...prev]
       next.splice(selectedCol, 1)
       return next
@@ -656,6 +708,7 @@ export function TablatureEditor({
     setSelectedString(null)
     setFretInput('')
     setTies(new Set())
+    setDots(createDefaultDots(columns))
   }, [columns, instrumentConfig.stringCount])
 
   // Toggle ligadura na célula selecionada → liga à próxima coluna
@@ -691,6 +744,7 @@ export function TablatureEditor({
       if (toAdd <= 0) return
       setGrid(prev => prev.map(row => [...row, ...Array(toAdd).fill(null)]))
       setDurations(prev => [...prev, ...Array(toAdd).fill(currentDuration)])
+      setDots(prev => [...prev, ...Array(toAdd).fill(currentDot)])
       setColumns(target)
       setSelectedCol(selectedCol + 1)
     }
@@ -746,6 +800,7 @@ export function TablatureEditor({
           if (newColumns < columns) {
             setGrid(newGrid.map(row => row.slice(0, newColumns)))
             setDurations(prev => prev.slice(0, newColumns))
+            setDots(prev => prev.slice(0, newColumns))
             setColumns(newColumns)
           } else {
             setGrid(newGrid)
@@ -762,6 +817,20 @@ export function TablatureEditor({
           })
         }
         break
+    }
+
+    // Ponto (.) — ciclar ponto de aumento na coluna selecionada (0→1→2→3→0)
+    if (e.key === '.') {
+      e.preventDefault()
+      setDots(prev => {
+        const next = [...prev]
+        const cur = (next[selectedCol] ?? 0) as DotType
+        next[selectedCol] = ((cur + 1) % 3) as DotType
+        return next
+      })
+      // Também atualizar currentDot para o novo valor
+      setCurrentDot(prev => ((prev + 1) % 3) as DotType)
+      return
     }
 
     // Ligadura (L) — toggle tie na célula selecionada
@@ -801,6 +870,13 @@ export function TablatureEditor({
           next[selectedCol] = currentDuration
           return next
         })
+        // Aplicar ponto ativo à coluna ao inserir nota
+        setDots(prev => {
+          if (prev[selectedCol] === currentDot) return prev
+          const next = [...prev]
+          next[selectedCol] = currentDot
+          return next
+        })
 
         // Auto-avançar cursor para próxima coluna
         if (shouldAdvance) {
@@ -813,6 +889,7 @@ export function TablatureEditor({
             if (toAdd > 0) {
               setGrid(prev => prev.map(row => [...row, ...Array(toAdd).fill(null)]))
               setDurations(prev => [...prev, ...Array(toAdd).fill(currentDuration)])
+              setDots(prev => [...prev, ...Array(toAdd).fill(currentDot)])
               setColumns(target)
             }
             setSelectedCol(selectedCol + 1)
@@ -820,7 +897,7 @@ export function TablatureEditor({
         }
       }
     }
-  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration, toggleTie])
+  }, [selectedCol, selectedString, columns, stringCount, grid, maxFret, clearCell, setFretValue, currentDuration, currentDot, toggleTie])
 
   // Hidden input ref para captura de teclado (padrão CodeMirror/Monaco)
   const hiddenInputRef = useRef<HTMLInputElement>(null)
@@ -879,18 +956,18 @@ export function TablatureEditor({
 
   // Barras de compasso (só até onde tem notas)
   const barlines = useMemo(
-    () => computeBarlines(durations, effectiveCols, timeSignature),
-    [durations, effectiveCols, timeSignature],
+    () => computeBarlines(durations, effectiveCols, timeSignature, dots),
+    [durations, effectiveCols, timeSignature, dots],
   )
   const barNumbers = useMemo(
-    () => computeBarNumbers(durations, effectiveCols, timeSignature),
-    [durations, effectiveCols, timeSignature],
+    () => computeBarNumbers(durations, effectiveCols, timeSignature, dots),
+    [durations, effectiveCols, timeSignature, dots],
   )
 
   // AlphaTex para preview
   const alphaTex = useMemo(
-    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature, ties),
-    [grid, columns, durations, instrumentConfig, label, timeSignature, ties],
+    () => gridToAlphaTex(grid, columns, durations, instrumentConfig, label || undefined, timeSignature, ties, dots),
+    [grid, columns, durations, instrumentConfig, label, timeSignature, ties, dots],
   )
 
   // Debounce: só atualiza o preview AlphaTab 800ms após última mudança
@@ -912,10 +989,11 @@ export function TablatureEditor({
       label: label || undefined,
       timeSignature: timeSignature !== 'free' ? timeSignature : undefined,
       ties: ties.size > 0 ? Array.from(ties) : undefined,
+      dots: dots.some(d => d > 0) ? [...dots] : undefined,
     }
     onSave(previewLines, label, data)
     onOpenChange(false)
-  }, [instrument, grid, columns, durations, label, ties, previewLines, onSave, onOpenChange])
+  }, [instrument, grid, columns, durations, label, ties, dots, previewLines, onSave, onOpenChange])
 
   if (!open) return null
 
@@ -981,7 +1059,16 @@ export function TablatureEditor({
             {/* Fórmula de compasso */}
             <div className="flex items-center gap-2">
               <Label className="text-[11px] text-text3 uppercase tracking-wider whitespace-nowrap">Compasso:</Label>
-              <Select value={timeSignature} onValueChange={(v) => setTimeSignature(v as TimeSignature)}>
+              <Select value={timeSignature} onValueChange={(v) => {
+                const ts = v as TimeSignature
+                setTimeSignature(ts)
+                const tsConfig = TIME_SIGNATURES[ts]
+                // Em compasso composto, ajustar duração padrão para colcheia e resetar ponto
+                if (tsConfig.defaultDuration) {
+                  setCurrentDuration(tsConfig.defaultDuration)
+                  setCurrentDot(0)
+                }
+              }}>
                 <SelectTrigger className="h-8 w-[160px] text-[12px]">
                   <SelectValue />
                 </SelectTrigger>
@@ -1006,40 +1093,119 @@ export function TablatureEditor({
 
           {/* Linha 2: Duração (Select) + Ligadura + Ações */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Duração ativa — Select compacto */}
+            {/* Duração ativa — Select compacto (com atalhos pontuados em compasso composto) */}
             <div className="flex items-center gap-1.5">
               <Timer size={14} className="text-text3" />
-              <Select value={currentDuration} onValueChange={(v) => { setCurrentDuration(v as BeatDuration); focusGrid() }}>
-                <SelectTrigger className="h-7 w-[90px] text-[13px] gap-1 px-2">
-                  <SelectValue>
-                    {DURATION_OPTIONS.find(d => d.value === currentDuration)?.symbol}{' '}
-                    <span className="text-[10px] text-text3/70">{DURATION_OPTIONS.find(d => d.value === currentDuration)?.label}</span>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {DURATION_OPTIONS.map(d => (
-                    <SelectItem key={d.value} value={d.value} className="text-[13px]">
-                      <span className="mr-2">{d.symbol}</span> {d.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {(() => {
+                const isCompound = TIME_SIGNATURES[timeSignature]?.compound === true
+                // Valor composto para o select: "dur" ou "dur:dot"
+                const selectValue = currentDot > 0 ? `${currentDuration}:${currentDot}` : currentDuration
+                const currentOpt = DURATION_OPTIONS.find(d => d.value === currentDuration)
+
+                // Opções pontuadas para compasso composto (unidades de tempo/compasso naturais)
+                const dottedOptions = isCompound ? [
+                  { value: 'q:1', label: '♩. Sem. pont.', symbol: '♩·', dur: 'q' as BeatDuration, dot: 1 as DotType },
+                  { value: 'h:1', label: '𝅗𝅥. Mín. pont.', symbol: '𝅗𝅥·', dur: 'h' as BeatDuration, dot: 1 as DotType },
+                ] : []
+
+                return (
+                  <Select
+                    value={selectValue}
+                    onValueChange={(v) => {
+                      if (v.includes(':')) {
+                        // Atalho pontuado: "dur:dot"
+                        const [dur, dot] = v.split(':')
+                        setCurrentDuration(dur as BeatDuration)
+                        setCurrentDot(parseInt(dot) as DotType)
+                      } else {
+                        setCurrentDuration(v as BeatDuration)
+                        setCurrentDot(0)
+                      }
+                      focusGrid()
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-[110px] text-[13px] gap-1 px-2">
+                      <SelectValue>
+                        {currentOpt?.symbol}{currentDot > 0 ? '·'.repeat(currentDot) : ''}{' '}
+                        <span className="text-[10px] text-text3/70">
+                          {currentOpt?.label}{currentDot > 0 ? ' pont.' : ''}
+                        </span>
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isCompound && dottedOptions.length > 0 && (
+                        <>
+                          <div className="px-2 py-1 text-[10px] text-text3/60 uppercase tracking-wider">Pontuadas</div>
+                          {dottedOptions.map(d => (
+                            <SelectItem key={d.value} value={d.value} className="text-[13px]">
+                              <span className="mr-2">{d.symbol}</span> {d.label}
+                            </SelectItem>
+                          ))}
+                          <div className="px-2 py-1 text-[10px] text-text3/60 uppercase tracking-wider border-t mt-1 pt-1">Normais</div>
+                        </>
+                      )}
+                      {DURATION_OPTIONS.map(d => (
+                        <SelectItem key={d.value} value={d.value} className="text-[13px]">
+                          <span className="mr-2">{d.symbol}</span> {d.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              })()}
             </div>
+
+            {/* Ponto de aumento — toggle cíclico */}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`inline-flex items-center justify-center h-7 min-w-8 px-1.5 rounded-md border text-[13px] font-bold transition-colors
+                      ${currentDot > 0
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-input bg-background text-text3 hover:bg-accent/5 hover:text-accent'
+                      }`}
+                    onClick={() => {
+                      const nextDot = ((currentDot + 1) % 3) as DotType
+                      setCurrentDot(nextDot)
+                      // Aplicar à coluna selecionada também
+                      if (selectedCol !== null) {
+                        setDots(prev => {
+                          const next = [...prev]
+                          next[selectedCol] = nextDot
+                          return next
+                        })
+                      }
+                      focusGrid()
+                    }}
+                  >
+                    {currentDot === 0 ? '·' : currentDot === 1 ? '•' : '••'}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">
+                    {currentDot === 0 ? 'Sem ponto (.)' : currentDot === 1 ? 'Ponto simples (.)' : 'Duplo ponto (.)'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* Ligadura — só ícone */}
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant={selectedCol !== null && selectedString !== null && ties.has(`${selectedCol}-${selectedString}`) ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 w-8 p-0"
+                  <button
+                    className={`inline-flex items-center justify-center h-7 w-8 rounded-md border text-sm transition-colors
+                      ${selectedCol !== null && selectedString !== null && ties.has(`${selectedCol}-${selectedString}`)
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-input bg-background text-text3 hover:bg-accent/5 hover:text-accent'
+                      }`}
                     onClick={() => { toggleTie(); focusGrid() }}
                   >
-                    <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
-                      <path d="M3 10 Q9 2 15 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+                    <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+                      <path d="M3 9 Q8 2 13 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
                     </svg>
-                  </Button>
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent><p className="text-xs">Ligadura (L)</p></TooltipContent>
               </Tooltip>
@@ -1061,6 +1227,7 @@ export function TablatureEditor({
             <span className="text-accent font-semibold"> Backspace</span> = apagar e voltar ·
             <span className="text-accent font-semibold"> Del</span> = apagar célula ·
             <span className="text-accent font-semibold"> L</span> = ligadura ·
+            <span className="text-accent font-semibold"> .</span> = ponto ·
             <span className="text-accent font-semibold"> Clique no símbolo ♩</span> = aplicar duração
           </div>
 
@@ -1080,6 +1247,7 @@ export function TablatureEditor({
             barlines={barlines}
             barNumbers={barNumbers}
             ties={ties}
+            dots={dots}
             inputRef={hiddenInputRef}
             onKeyDown={handleKeyDown}
           />

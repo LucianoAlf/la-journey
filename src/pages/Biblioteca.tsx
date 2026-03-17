@@ -17,7 +17,8 @@ import { PianoKeyboard } from "@/components/music/PianoKeyboard";
 import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
 import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
-import { TablatureEditor } from "@/components/music/TablatureEditor";
+import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
+import { AlphaTabViewer } from "@/components/music/AlphaTabViewer";
 import { GuitarFretboardDiagram, type GuitarFretboardPositions } from "@/components/music/GuitarFretboardDiagram";
 import { GuitarFretboardEditor } from "@/components/music/GuitarFretboardEditor";
 import { createChord, updateChord, deleteChord, insertChordsBatch } from "@/services/libraryService";
@@ -1391,13 +1392,35 @@ export function Biblioteca() {
             ) : (
               <div className="grid grid-cols-2 gap-4">
                 {filteredTablatures.map(tab => {
-                  const nd = tab.notation_data as { lines?: string[]; label?: string } | null
-                  const lines = (nd?.lines ?? []) as string[]
+                  const nd = tab.notation_data as (TablatureData & { lines?: string[] }) | null
+                  const hasEnrichedData = !!(nd?.grid && nd?.columns && nd?.durations)
+                  const instrument = (nd?.instrument ?? 'guitar') as TabInstrument
+                  const instConfig = TAB_INSTRUMENTS[instrument]
                   const label = nd?.label
-                  const noteCount = lines.reduce((sum, line) => {
-                    const nums = line.match(/\d+/g)
-                    return sum + (nums?.length ?? 0)
-                  }, 0)
+
+                  // Contar notas
+                  let noteCount = 0
+                  if (hasEnrichedData && nd?.grid) {
+                    for (const row of nd.grid) {
+                      for (const cell of row) {
+                        if (cell !== null) noteCount++
+                      }
+                    }
+                  }
+
+                  // Gerar alphaTex para preview
+                  const alphaTex = hasEnrichedData && nd
+                    ? gridToAlphaTex(
+                        nd.grid,
+                        nd.columns,
+                        nd.durations,
+                        instConfig,
+                        label,
+                        nd.timeSignature ?? 'free',
+                        nd.ties ? new Set(nd.ties) : new Set(),
+                        nd.dots ?? [],
+                      )
+                    : ''
 
                   return (
                     <div
@@ -1429,36 +1452,16 @@ export function Biblioteca() {
                         </Badge>
                       </div>
 
-                      {/* Preview da tablatura */}
-                      {lines.length > 0 ? (
-                        <div className="rounded-lg bg-[var(--bg2)] border border-border/50 overflow-hidden">
-                          {label && (
-                            <div className="px-3 pt-1.5 text-[9px] font-semibold uppercase tracking-[1px] text-text3/60">
-                              {label}
-                            </div>
-                          )}
-                          <div className="px-3 py-1.5 overflow-x-auto">
-                            <pre className="font-mono text-[10px] leading-[1.4] whitespace-pre text-text2">
-                              {lines.map((line, i) => {
-                                const match = line.match(/^(\s*)([EBADGe])(\|)(.*)$/)
-                                if (!match) return <div key={i}>{line}</div>
-                                const [, indent, stringLabel, pipe, rest] = match
-                                return (
-                                  <div key={i} className="flex">
-                                    <span className="text-emerald-400 font-bold w-[1ch] text-center">{stringLabel}</span>
-                                    <span className="text-text3/30">{pipe}</span>
-                                    <span className="text-blue-400/40">
-                                      {rest.split(/(\d+)/).map((part, j) =>
-                                        /^\d+$/.test(part)
-                                          ? <span key={j} className="text-[#FF2D78] font-bold">{part}</span>
-                                          : <span key={j}>{part}</span>
-                                      )}
-                                    </span>
-                                  </div>
-                                )
-                              })}
-                            </pre>
-                          </div>
+                      {/* Preview da tablatura — AlphaTab */}
+                      {noteCount > 0 && alphaTex ? (
+                        <div className="rounded-lg border border-border/50 overflow-hidden">
+                          <AlphaTabViewer
+                            tex={alphaTex}
+                            layout="page"
+                            scale={0.7}
+                            minHeight={80}
+                            showTimeSignature={nd?.timeSignature !== undefined && nd.timeSignature !== 'free'}
+                          />
                         </div>
                       ) : (
                         <div className="h-[60px] flex items-center justify-center text-text3 text-[11px]">
@@ -1468,7 +1471,7 @@ export function Biblioteca() {
 
                       <div className="text-[11px] text-text3 mt-2">
                         <Guitar size={12} className="inline mr-1" weight="fill" />
-                        {noteCount} nota{noteCount !== 1 ? 's' : ''} · {lines.length} corda{lines.length !== 1 ? 's' : ''}
+                        {noteCount} nota{noteCount !== 1 ? 's' : ''} · {instConfig.stringCount} corda{instConfig.stringCount !== 1 ? 's' : ''}
                       </div>
                     </div>
                   )

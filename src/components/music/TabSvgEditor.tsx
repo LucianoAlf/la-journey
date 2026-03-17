@@ -1,5 +1,5 @@
 import React, { useRef, useMemo, useCallback } from 'react'
-import type { BeatDuration } from './TablatureEditor'
+import type { BeatDuration, DotType } from './TablatureEditor'
 
 // ─── Tipos ──────────────────────────────────────────────────────────
 
@@ -24,6 +24,8 @@ export interface TabSvgEditorProps {
   barNumbers?: Map<number, number>
   /** Ligaduras: Set de strings "col-string" indicando tie da coluna col, corda string para a próxima */
   ties?: Set<string>
+  /** Pontos de aumento por coluna */
+  dots?: DotType[]
   /** Hidden input ref para captura de teclado (padrão CodeMirror) */
   inputRef?: React.RefObject<HTMLInputElement | null>
   /** Handler de teclado para o hidden input */
@@ -39,7 +41,7 @@ const BEAT_WIDTHS: Record<BeatDuration, number> = {
 const LEFT_MARGIN = 26
 const RIGHT_MARGIN = 6
 const TOP_PAD = 4
-const BOTTOM_PAD = 4
+const BOTTOM_PAD = 14
 const LINE_GAP = 22
 /** Largura fixa do viewBox (cabe sempre no container) */
 const VB_WIDTH = 800
@@ -119,6 +121,7 @@ export function TabSvgEditor({
   barlines = [],
   barNumbers,
   ties,
+  dots,
   inputRef,
   onKeyDown,
 }: TabSvgEditorProps) {
@@ -291,7 +294,8 @@ export function TabSvgEditor({
           )
         }
 
-        // Notas
+        // Notas + pontos de aumento ao lado
+        const dotCount = (dots?.[colIdx] ?? 0) as number
         for (let s = 0; s < stringCount; s++) {
           const val = grid[s]?.[colIdx] ?? null
           if (val === null) continue
@@ -318,6 +322,23 @@ export function TabSvgEditor({
               style={{ pointerEvents: 'none', userSelect: 'none' }}
             >{val}</text>,
           )
+
+          // Pontos de aumento à direita do número
+          if (dotCount > 0) {
+            const dotStartX = cx + textW / 2 + 5
+            for (let d = 0; d < dotCount; d++) {
+              els.push(
+                <circle
+                  key={`dot-${colIdx}-${s}-${d}`}
+                  cx={dotStartX + d * 4}
+                  cy={cy}
+                  r={1.5}
+                  fill={isSelected ? C.cursor : '#6366F1'}
+                  style={{ pointerEvents: 'none' }}
+                />,
+              )
+            }
+          }
         }
       }
 
@@ -397,7 +418,7 @@ export function TabSvgEditor({
     }
 
     return els
-  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties])
+  }, [rows, stringCount, stringNames, stringY, rowY, grid, selectedCol, selectedString, hoverCell, barlines, barNumbers, ties, dots])
 
   return (
     <div className="relative rounded-xl border border-border bg-card overflow-hidden">
