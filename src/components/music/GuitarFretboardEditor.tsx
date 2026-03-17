@@ -534,6 +534,32 @@ export function GuitarFretboardEditor({
     }
   }, [rootNote, lastPreset, fretCount, activeTensions, currentTuningMidi])
 
+  // ── Regenerar notas ao mudar número de cordas do baixo ──
+  const prevBassStringsRef = useRef(bassStrings)
+  useEffect(() => {
+    if (prevBassStringsRef.current !== bassStrings) {
+      prevBassStringsRef.current = bassStrings
+      if (lastPreset) {
+        const intervals = PRESETS[lastPreset]
+        if (intervals) {
+          const allIntervals = [...intervals]
+          activeTensions.forEach(t => {
+            const interval = TENSION_INTERVALS[t]
+            if (interval !== undefined && !allIntervals.includes(interval % 12)) {
+              allIntervals.push(interval % 12)
+            }
+          })
+          const generatedNotes = generateFretboardNotes(rootNote, allIntervals, fretCount, presetToScaleType(lastPreset), currentTuningMidi)
+          setNotes(generatedNotes)
+          setCagedPosition(null)
+        }
+      } else if (notes.length > 0) {
+        // Notas manuais: limpar pois a numeração de cordas mudou
+        setNotes([])
+      }
+    }
+  }, [bassStrings, lastPreset, fretCount, activeTensions, rootNote, currentTuningMidi])
+
   // Re-renderizar quando notas ou config mudam
   useEffect(() => {
     if (open) {
@@ -727,7 +753,13 @@ export function GuitarFretboardEditor({
       toast.error('Informe o nome do acorde/escala')
       return
     }
-    if (notes.length === 0) {
+    // Se há posição CAGED ativa, salvar apenas as notas dessa posição
+    const activeShape = cagedActiveNotesRef.current
+    const notesToSave = activeShape && activeShape.length > 0
+      ? notes.filter(n => activeShape.some(sn => sn.string === n.string && sn.fret === n.fret))
+      : notes
+
+    if (notesToSave.length === 0) {
       toast.error('Adicione pelo menos uma nota no braço')
       return
     }
@@ -736,7 +768,7 @@ export function GuitarFretboardEditor({
     try {
       const positions: GuitarFretboardPositions = {
         format: 'fretboard_horizontal',
-        notes,
+        notes: notesToSave,
         fretRange: [0, fretCount],
         tuning: currentTuningNames,
       }
@@ -798,7 +830,7 @@ export function GuitarFretboardEditor({
     } finally {
       setSaving(false)
     }
-  }, [chord, chordName, notes, difficulty, rootNote, lastPreset, fretCount, onSave, onOpenChange])
+  }, [chord, chordName, notes, difficulty, rootNote, lastPreset, fretCount, onSave, onOpenChange, currentTuningNames, instrumentProp, instrumentLabel])
 
   // ── Excluir ──
   const handleDelete = useCallback(async () => {
@@ -842,8 +874,8 @@ export function GuitarFretboardEditor({
   const cagedAvailable = hasCagedTemplate(lastPreset)
   const cagedPositions = useMemo(() => {
     if (!lastPreset || !cagedAvailable) return null
-    return getCagedPositions(lastPreset, rootNote, fretCount, currentTuningMidi)
-  }, [lastPreset, rootNote, fretCount, cagedAvailable, currentTuningMidi])
+    return getCagedPositions(lastPreset, rootNote, fretCount, currentTuningMidi, isBass ? notes : undefined)
+  }, [lastPreset, rootNote, fretCount, cagedAvailable, currentTuningMidi, isBass, notes])
 
   const cagedLabels = useMemo(() => getCagedLabelsForRoot(rootNote), [rootNote])
 
@@ -982,7 +1014,7 @@ export function GuitarFretboardEditor({
                 <div className="w-px h-5 bg-border mx-1" />
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] uppercase tracking-[1px] font-bold text-muted-foreground">Cordas</span>
-                  <Select value={String(bassStrings)} onValueChange={v => { setBassStrings(Number(v) as BassStringCount); setNotes([]); setLastPreset(null); setCagedPosition(null) }}>
+                  <Select value={String(bassStrings)} onValueChange={v => { setBassStrings(Number(v) as BassStringCount) }}>
                     <SelectTrigger className="h-7 w-[58px] text-[11px]">
                       <SelectValue />
                     </SelectTrigger>
@@ -1292,6 +1324,7 @@ export function GuitarFretboardEditor({
             <SimpleTablature
               notes={tabNotes}
               fretCount={fretCount}
+              stringCount={currentStringCount}
             />
           </div>
         )}

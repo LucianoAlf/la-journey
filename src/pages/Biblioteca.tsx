@@ -432,18 +432,22 @@ export function Biblioteca() {
   const [tabEditorOpen, setTabEditorOpen] = useState(false);
   const [editingTab, setEditingTab] = useState<TablatureLibraryRow | null>(null);
 
-  const handleSaveTab = async (lines: string[], label: string) => {
+  const handleSaveTab = async (lines: string[], label: string, data?: any) => {
     try {
+      // Salvar dados enriquecidos (instrument, grid, durations) + legado (lines)
+      const notationData = data
+        ? { ...data, lines, label }
+        : { lines, label, columns: lines.length > 0 ? undefined : 8 };
       if (editingTab) {
         await updateTablature(editingTab.id, {
           name: label || editingTab.name,
-          notation_data: { lines, label, columns: lines.length > 0 ? undefined : 8 },
+          notation_data: notationData,
         });
         toast.success('Tablatura atualizada!');
       } else {
         await createTablature({
           name: label || 'Nova Tablatura',
-          notation_data: { lines, label },
+          notation_data: notationData,
           difficulty: 1,
         });
         toast.success('Tablatura criada!');
@@ -1557,6 +1561,7 @@ export function Biblioteca() {
         open={tabEditorOpen}
         onOpenChange={(v) => { setTabEditorOpen(v); if (!v) setEditingTab(null); }}
         initialLines={editingTab?.notation_data?.lines ?? []}
+        initialData={editingTab?.notation_data?.grid ? editingTab.notation_data as any : null}
         initialLabel={editingTab?.notation_data?.label ?? editingTab?.name ?? ''}
         onSave={handleSaveTab}
       />

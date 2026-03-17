@@ -8,6 +8,8 @@ interface SimpleTablatureProps {
   notes: FretboardNote[]
   /** Número de casas no braço (default: 15) */
   fretCount?: number
+  /** Número de cordas do instrumento (default: 6) */
+  stringCount?: number
   /** Classe CSS adicional */
   className?: string
 }
@@ -32,12 +34,14 @@ const TAB_FONT_SIZE = 14
 // ── Componente ─────────────────────────────────────────────────────────
 
 /**
- * Tablatura SVG customizada — 6 linhas horizontais com números de traste.
+ * Tablatura SVG customizada — linhas horizontais com números de traste.
  * Componente leve, sem dependências externas (alphaTab, VexFlow).
+ * Suporta número variável de cordas (4/5/6).
  */
 export function SimpleTablature({
   notes,
   fretCount = 15,
+  stringCount = 6,
   className = '',
 }: SimpleTablatureProps) {
   // Ordenar notas: corda grave (6) → aguda (1), traste crescente
@@ -73,7 +77,7 @@ export function SimpleTablature({
   }, [sortedNotes, noteSpacing, startX])
 
   // Dimensões do SVG
-  const svgHeight = TOP_MARGIN + 5 * LINE_SPACING + BOTTOM_MARGIN
+  const svgHeight = TOP_MARGIN + (stringCount - 1) * LINE_SPACING + BOTTOM_MARGIN
 
   // Cores (respeita tema)
   const lineColor = 'var(--border, #B4B9C3)'
@@ -90,8 +94,8 @@ export function SimpleTablature({
       role="img"
       aria-label="Tablatura"
     >
-      {/* ── 6 linhas horizontais (cordas) ── */}
-      {Array.from({ length: 6 }, (_, i) => {
+      {/* ── Linhas horizontais (cordas) ── */}
+      {Array.from({ length: stringCount }, (_, i) => {
         const y = TOP_MARGIN + i * LINE_SPACING
         return (
           <line
@@ -106,43 +110,26 @@ export function SimpleTablature({
         )
       })}
 
-      {/* ── TAB clef ── */}
-      <text
-        x={TAB_CLEF_WIDTH / 2}
-        y={TOP_MARGIN + 0.5 * LINE_SPACING}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={TAB_FONT_SIZE}
-        fontWeight="bold"
-        fontFamily="DM Sans, sans-serif"
-        fill={textColor}
-      >
-        T
-      </text>
-      <text
-        x={TAB_CLEF_WIDTH / 2}
-        y={TOP_MARGIN + 2 * LINE_SPACING}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={TAB_FONT_SIZE}
-        fontWeight="bold"
-        fontFamily="DM Sans, sans-serif"
-        fill={textColor}
-      >
-        A
-      </text>
-      <text
-        x={TAB_CLEF_WIDTH / 2}
-        y={TOP_MARGIN + 3.5 * LINE_SPACING}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={TAB_FONT_SIZE}
-        fontWeight="bold"
-        fontFamily="DM Sans, sans-serif"
-        fill={textColor}
-      >
-        B
-      </text>
+      {/* ── TAB clef (centralizado verticalmente) ── */}
+      {['T', 'A', 'B'].map((letter, i) => {
+        const totalHeight = (stringCount - 1) * LINE_SPACING
+        const yPos = TOP_MARGIN + (i / 2) * totalHeight
+        return (
+          <text
+            key={`tab-${letter}`}
+            x={TAB_CLEF_WIDTH / 2}
+            y={yPos}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={TAB_FONT_SIZE}
+            fontWeight="bold"
+            fontFamily="DM Sans, sans-serif"
+            fill={textColor}
+          >
+            {letter}
+          </text>
+        )
+      })}
 
       {/* ── Números dos trastes ── */}
       {notePositions.map((pos, i) => (

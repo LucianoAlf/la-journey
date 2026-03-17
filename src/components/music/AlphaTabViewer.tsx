@@ -24,11 +24,12 @@ export function notesToAlphaTex(
 
   // Header alphaTex — mínimo necessário
   const lines: string[] = []
-  lines.push('\\tuning(E4 B3 G3 D3 A2 E2)')
-  lines.push('\\instrument(AcousticGuitarSteel)')
-  lines.push('\\tempo(120)')
+  lines.push('\\tempo 120')
   lines.push('\\staff{tabs}')
-  lines.push('\\ts(32 4)')
+  lines.push('\\tuning E4 B3 G3 D3 A2 E2')
+  lines.push('\\instrument AcousticGuitarSteel')
+  lines.push('\\ts 32 4')
+  lines.push('.')
 
   // Cada nota = um beat individual (semínima)
   const texBeats: string[] = []

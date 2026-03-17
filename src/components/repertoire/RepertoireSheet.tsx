@@ -682,7 +682,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
     setTabEditorOpen(true)
   }, [])
 
-  const handleSaveTab = useCallback((newLines: string[], newLabel: string) => {
+  const handleSaveTab = useCallback((newLines: string[], newLabel: string, _data?: any) => {
     if (tabEditorBlockIdx === null || !song?.cifra_content) return
     // Reconstruir o cifra_content substituindo o bloco de tab editado
     const blocks = parseCifraBlocks(song.cifra_content)

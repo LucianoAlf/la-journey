@@ -62,12 +62,24 @@ export async function deleteNotation(id: string): Promise<void> {
 
 // ─── Tablaturas (category = 'tablature' na notation_library) ────────
 
+/** Dados flexíveis da tablatura — suporta formato legado (lines) e enriquecido (grid + instrument) */
+export type TablatureNotationData = {
+  lines?: string[]
+  label?: string
+  columns?: number
+  // Dados enriquecidos (Fase 1)
+  instrument?: string
+  grid?: (number | null)[][]
+  durations?: string[]
+  [key: string]: any
+}
+
 export interface TablatureLibraryRow {
   id: string
   name: string
   category: 'tablature'
   subcategory: string | null
-  notation_data: { lines: string[]; label?: string; columns?: number }
+  notation_data: TablatureNotationData
   description: string | null
   difficulty: number
   tags: string[] | null
@@ -87,7 +99,7 @@ export async function getTablatures(): Promise<TablatureLibraryRow[]> {
 
 export async function createTablature(tab: {
   name: string
-  notation_data: { lines: string[]; label?: string; columns?: number }
+  notation_data: TablatureNotationData
   description?: string
   difficulty?: number
   tags?: string[]
@@ -114,7 +126,7 @@ export async function createTablature(tab: {
 
 export async function updateTablature(id: string, tab: Partial<{
   name: string
-  notation_data: { lines: string[]; label?: string; columns?: number }
+  notation_data: TablatureNotationData
   description: string
   difficulty: number
   tags: string[]

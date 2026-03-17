@@ -115,7 +115,12 @@ export function shapeToFretboardNotes(
 ): FretboardNote[] {
   const tuning = tuningMidi ?? STANDARD_TUNING_MIDI
   const numStrings = tuning.length
-  return shape.map(s => {
+
+  // Filtrar notas cujo string excede o número de cordas do instrumento
+  // (templates CAGED são definidos para 6 cordas; baixo tem 4/5/6)
+  const validNotes = shape.filter(s => s.string >= 1 && s.string <= numStrings)
+
+  return validNotes.map(s => {
     // Calcular o nome da nota real a partir de string + fret
     const openStringMidi = tuning[numStrings - s.string]
     const noteMidi = openStringMidi + s.fret
@@ -145,6 +150,7 @@ export function getCagedPositions(
   root: string,
   fretCount: number = 15,
   tuningMidi?: number[],
+  allNotes?: FretboardNote[],
 ): FretboardNote[][] | null {
   const template = CAGED_TEMPLATES[presetKey]
   if (!template) return null
@@ -174,6 +180,37 @@ export function getCagedPositions(
   const rotatedTemplate = { ...template, shapes: rotatedShapes }
 
   const transposedShapes = transposeAllShapes(rotatedTemplate, root, fretCount)
+
+  const numStrings = tuningMidi ? tuningMidi.length : 6
+
+  // Para instrumentos com menos de 6 cordas (baixo), usar filtragem por faixa de casas
+  // Os templates CAGED são definidos para 6 cordas e não podem ser mapeados nota-a-nota.
+  // Em vez disso, extraímos a faixa de casas de cada shape e filtramos as notas do braço.
+  if (numStrings < 6 && allNotes && allNotes.length > 0) {
+    // Graus válidos do template (ex: tríade Maior = [1, 3, 5])
+    const validDegrees = new Set(template.shapes[0]?.map(n => n.degree) ?? [])
+
+    return transposedShapes.map(shape => {
+      // Filtrar: cordas do instrumento + graus válidos (excluir notas de projeção)
+      const coreNotes = shape.filter(s =>
+        s.string >= 1 && s.string <= numStrings && validDegrees.has(s.degree)
+      )
+      const frets = coreNotes.map(n => n.fret).filter(f => f >= 0)
+      if (frets.length === 0) return []
+
+      const minFret = Math.min(...frets)
+      const maxFret = Math.max(...frets)
+
+      // Filtrar notas do braço completo que caem na faixa de casas do shape
+      return allNotes.filter(n => {
+        // Corda aberta (fret 0) só entra se a faixa começa em 0
+        if (n.fret === 0) return minFret === 0
+        return n.fret >= minFret && n.fret <= maxFret
+      })
+    })
+  }
+
+  // Para guitarra (6 cordas): usar mapeamento direto dos templates
   return transposedShapes.map(shape => shapeToFretboardNotes(shape, root, scaleType, tuningMidi))
 }
 
