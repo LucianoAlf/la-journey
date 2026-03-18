@@ -14,12 +14,95 @@ export interface MaterialBlock {
   render_data?: any
 }
 
+export interface CoverOverlayElement {
+  id: string
+  image_url: string
+  label: string
+  x: number
+  y: number
+  width: number
+  rotation: number
+  opacity: number
+  shadow: boolean
+  zIndex: number
+  flipX: boolean
+}
+
+export interface CoverTextShadow {
+  enabled: boolean
+  color: string
+  blur: number
+  offsetX: number
+  offsetY: number
+}
+
+export interface CoverTextOutline {
+  enabled: boolean
+  color: string
+  width: number
+}
+
+export interface CoverTextBackground {
+  enabled: boolean
+  color: string
+  padding: number
+  borderRadius: number
+}
+
+export interface CoverTextElement {
+  id: string
+  content: string
+  x: number
+  y: number
+  fontFamily: string
+  fontSize: number
+  fontWeight: number
+  fontStyle?: 'normal' | 'italic'
+  color: string
+  align: 'left' | 'center' | 'right'
+  uppercase: boolean
+  letterSpacing: number
+  lineHeight: number
+  shadow: CoverTextShadow
+  outline: CoverTextOutline
+  background: CoverTextBackground
+  maxWidth: number
+  zIndex: number
+}
+
+export const COVER_FONTS = [
+  { value: 'Montserrat', label: 'Montserrat', category: 'Sans-serif' },
+  { value: 'Poppins', label: 'Poppins', category: 'Sans-serif' },
+  { value: 'DM Sans', label: 'DM Sans', category: 'Sans-serif' },
+  { value: 'Raleway', label: 'Raleway', category: 'Sans-serif' },
+  { value: 'Oswald', label: 'Oswald', category: 'Sans-serif' },
+  { value: 'Bebas Neue', label: 'Bebas Neue', category: 'Display' },
+  { value: 'Righteous', label: 'Righteous', category: 'Display' },
+  { value: 'Playfair Display', label: 'Playfair Display', category: 'Serif' },
+  { value: 'Lora', label: 'Lora', category: 'Serif' },
+  { value: 'Pacifico', label: 'Pacifico', category: 'Script' },
+] as const
+
+export const DEFAULT_TEXT_SHADOW: CoverTextShadow = { enabled: false, color: '#000000', blur: 4, offsetX: 1, offsetY: 1 }
+export const DEFAULT_TEXT_OUTLINE: CoverTextOutline = { enabled: false, color: '#000000', width: 2 }
+export const DEFAULT_TEXT_BG: CoverTextBackground = { enabled: false, color: '#00000080', padding: 8, borderRadius: 4 }
+
 interface MaterialPreviewProps {
   blocks: MaterialBlock[]
   coverEditable?: boolean
   onCoverPositionChange?: (field: string, pos: { x: number; y: number }) => void
   coverTitleEditing?: boolean
   onCoverTitleChange?: (value: string) => void
+  overlayElements?: CoverOverlayElement[]
+  selectedOverlayId?: string | null
+  onOverlaySelect?: (id: string | null) => void
+  onOverlayUpdate?: (id: string, patch: Partial<CoverOverlayElement>) => void
+  textElements?: CoverTextElement[]
+  selectedTextId?: string | null
+  editingTextId?: string | null
+  onTextSelect?: (id: string | null) => void
+  onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
+  onTextEditStart?: (id: string | null) => void
 }
 
 const DIMENSION_COLORS: Record<string, string> = {
@@ -394,12 +477,22 @@ const COVER_TEMPLATES: Record<string, string> = {
   vibrant: 'Vibrante',
 }
 
-function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange }: {
+function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: {
   block: MaterialBlock
   editable?: boolean
   onPositionChange?: (field: string, pos: { x: number; y: number }) => void
   titleEditing?: boolean
   onTitleChange?: (value: string) => void
+  overlayElements?: CoverOverlayElement[]
+  selectedOverlayId?: string | null
+  onOverlaySelect?: (id: string | null) => void
+  onOverlayUpdate?: (id: string, patch: Partial<CoverOverlayElement>) => void
+  textElements?: CoverTextElement[]
+  selectedTextId?: string | null
+  editingTextId?: string | null
+  onTextSelect?: (id: string | null) => void
+  onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
+  onTextEditStart?: (id: string | null) => void
 }) {
   const rd = block.render_data ?? {}
   const template = (rd.template as string) ?? 'minimal'
@@ -414,10 +507,21 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const logoUrl = (rd.logo_url as string) ?? ''
   const logoSize = (rd.logo_size as number) ?? 80
 
+  // Tipografia legada (fallback se não houver text_elements)
+  const titleFontSize = (rd.title_font_size as number) ?? 36
+  const titleColor = (rd.title_color as string) ?? ''
+  const titleAlign = (rd.title_align as string) ?? 'center'
+
   // Posições dos grupos (em %)
   const contentPos = (rd.content_pos as { x: number; y: number }) ?? { x: 50, y: 45 }
   const footerPos = (rd.footer_pos as { x: number; y: number }) ?? { x: 50, y: 88 }
   const logoPos = (rd.logo_pos as { x: number; y: number }) ?? { x: 50, y: 8 }
+
+  // text_elements: usa props se disponível, senão lê do render_data, senão fallback legado
+  const resolvedTextElements: CoverTextElement[] = textElements
+    ?? (rd.text_elements as CoverTextElement[] | undefined)
+    ?? []  // vazio = modo legado
+  const hasTextElements = resolvedTextElements.length > 0
 
   const coverRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -482,7 +586,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const hasFooter = professor || escola || data
 
   return (
-    <div ref={coverRef} className={classes} style={bgStyle}>
+    <div ref={coverRef} className={classes} style={bgStyle} onClick={() => { onTextSelect?.(null); onOverlaySelect?.(null); onTextEditStart?.(null) }}>
       {/* Overlay escuro quando tem imagem de fundo */}
       {hasImage && <div className="cover-overlay" />}
 
@@ -530,7 +634,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             left: `${logoPos.x}%`,
             top: `${logoPos.y}%`,
             transform: 'translate(-50%, -50%)',
-            zIndex: 2,
+            zIndex: 30,
           }}
           onMouseDown={e => handleMouseDown(e, 'logo_pos', logoPos)}
         >
@@ -543,35 +647,188 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
         </div>
       )}
 
-      {/* Conteúdo principal — posição absoluta */}
-      <div
-        className={`cover-content ${editable ? 'cover-draggable' : ''}`}
-        style={{
-          position: 'absolute',
-          left: `${contentPos.x}%`,
-          top: `${contentPos.y}%`,
-          transform: 'translate(-50%, -50%)',
-        }}
-        onMouseDown={e => handleMouseDown(e, 'content_pos', contentPos)}
-      >
-        {instrumento && (
-          <div className="cover-instrument">{instrumento}{nivel ? ` · ${nivel}` : ''}</div>
-        )}
-        {titleEditing && onTitleChange ? (
-          <input
-            className="cover-title"
-            value={titulo}
-            onChange={e => onTitleChange(e.target.value)}
-            autoFocus
-            onClick={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
-            style={{ background: 'rgba(0,0,0,.2)', border: 'none', outline: '2px dashed rgba(255,255,255,.5)', outlineOffset: '4px', textAlign: 'center', width: '100%', color: 'inherit', padding: '8px 12px', borderRadius: '8px' }}
-          />
-        ) : (
-          <h1 className="cover-title">{titulo}</h1>
-        )}
-        {subtitulo && <p className="cover-subtitle">{subtitulo}</p>}
-      </div>
+      {/* ── Text Elements (modo avançado) ── */}
+      {hasTextElements && resolvedTextElements.map((text) => (
+        <div
+          key={text.id}
+          className={`absolute select-none ${editable ? 'cursor-move' : ''} ${
+            selectedTextId === text.id ? 'ring-2 ring-[#8B5CF6] ring-offset-1' : ''
+          }`}
+          style={{
+            left: `${text.x}%`,
+            top: `${text.y}%`,
+            transform: 'translate(-50%, -50%)',
+            maxWidth: `${text.maxWidth}%`,
+            zIndex: text.zIndex,
+            fontFamily: `'${text.fontFamily}', sans-serif`,
+            fontSize: `${text.fontSize}px`,
+            fontWeight: text.fontWeight,
+            fontStyle: text.fontStyle === 'italic' ? 'italic' : 'normal',
+            color: text.color,
+            textAlign: text.align,
+            textTransform: text.uppercase ? 'uppercase' : 'none',
+            letterSpacing: `${text.letterSpacing}px`,
+            lineHeight: text.lineHeight,
+            textShadow: text.shadow.enabled
+              ? `${text.shadow.offsetX}px ${text.shadow.offsetY}px ${text.shadow.blur}px ${text.shadow.color}`
+              : 'none',
+            WebkitTextStroke: text.outline.enabled
+              ? `${text.outline.width}px ${text.outline.color}`
+              : undefined,
+            paintOrder: text.outline.enabled ? 'stroke fill' : undefined,
+            backgroundColor: text.background.enabled ? text.background.color : 'transparent',
+            padding: text.background.enabled ? `${text.background.padding}px` : '0',
+            borderRadius: text.background.enabled ? `${text.background.borderRadius}px` : '0',
+          }}
+          onMouseDown={e => {
+            if (!editable || !onTextUpdate) return
+            e.preventDefault()
+            e.stopPropagation()
+            onTextSelect?.(text.id)
+            const container = coverRef.current
+            if (!container) return
+            const rect = container.getBoundingClientRect()
+            const startX = e.clientX
+            const startY = e.clientY
+            const startElX = text.x
+            const startElY = text.y
+            const move = (ev: MouseEvent) => {
+              const dx = ((ev.clientX - startX) / rect.width) * 100
+              const dy = ((ev.clientY - startY) / rect.height) * 100
+              const sx = snapValue(startElX + dx)
+              const sy = snapValue(startElY + dy)
+              setActiveGuides({ x: sx.guide, y: sy.guide })
+              onTextUpdate(text.id, {
+                x: Math.max(0, Math.min(100, Math.round(sx.snapped * 10) / 10)),
+                y: Math.max(0, Math.min(100, Math.round(sy.snapped * 10) / 10)),
+              })
+            }
+            const up = () => {
+              setActiveGuides({ x: null, y: null })
+              document.removeEventListener('mousemove', move)
+              document.removeEventListener('mouseup', up)
+            }
+            document.addEventListener('mousemove', move)
+            document.addEventListener('mouseup', up)
+          }}
+          onClick={e => { e.stopPropagation(); onTextSelect?.(text.id) }}
+          onDoubleClick={e => { e.stopPropagation(); onTextEditStart?.(text.id) }}
+        >
+          {editingTextId === text.id ? (
+            <input
+              type="text"
+              value={text.content}
+              onChange={e => onTextUpdate?.(text.id, { content: e.target.value })}
+              onBlur={() => onTextEditStart?.(null)}
+              onKeyDown={e => { if (e.key === 'Enter') onTextEditStart?.(null) }}
+              autoFocus
+              className="bg-transparent border-b-2 border-[#8B5CF6] outline-none text-center w-full"
+              style={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit', fontFamily: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit' as any }}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+            />
+          ) : (
+            <span className="pointer-events-none">{text.content}</span>
+          )}
+        </div>
+      ))}
+
+      {/* ── Conteúdo legado (se não tem text_elements) ── */}
+      {!hasTextElements && (
+        <div
+          className={`cover-content ${editable ? 'cover-draggable' : ''}`}
+          style={{
+            position: 'absolute',
+            left: `${contentPos.x}%`,
+            top: `${contentPos.y}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+          onMouseDown={e => handleMouseDown(e, 'content_pos', contentPos)}
+        >
+          {instrumento && (
+            <div className="cover-instrument">{instrumento}{nivel ? ` · ${nivel}` : ''}</div>
+          )}
+          {titleEditing && onTitleChange ? (
+            <input
+              className="cover-title"
+              value={titulo}
+              onChange={e => onTitleChange(e.target.value)}
+              autoFocus
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              style={{ background: 'rgba(0,0,0,.2)', border: 'none', outline: '2px dashed rgba(255,255,255,.5)', outlineOffset: '4px', textAlign: titleAlign as any, width: '100%', color: titleColor || 'inherit', padding: '8px 12px', borderRadius: '8px', fontSize: `${titleFontSize}px` }}
+            />
+          ) : (
+            <h1 className="cover-title" style={{ fontSize: `${titleFontSize}px`, ...(titleColor ? { color: titleColor } : {}), textAlign: titleAlign as any }}>{titulo}</h1>
+          )}
+          {subtitulo && <p className="cover-subtitle">{subtitulo}</p>}
+        </div>
+      )}
+
+      {/* Overlay Elements — acima do background, abaixo do texto */}
+      {(overlayElements ?? ((rd.overlay_elements as CoverOverlayElement[]) || []))
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((el) => (
+          <div
+            key={el.id}
+            className={`absolute select-none ${
+              editable ? 'cursor-move' : ''
+            } ${
+              selectedOverlayId === el.id ? 'ring-2 ring-[#6366F1] ring-offset-1' : ''
+            }`}
+            style={{
+              left: `${el.x}%`,
+              top: `${el.y}%`,
+              width: `${el.width}%`,
+              transform: `translate(-50%, -50%) rotate(${el.rotation}deg)${el.flipX ? ' scaleX(-1)' : ''}`,
+              opacity: el.opacity,
+              zIndex: el.zIndex + 10,
+              filter: el.shadow ? 'drop-shadow(2px 4px 6px rgba(0,0,0,0.4))' : 'none',
+              transition: 'box-shadow 0.15s',
+            }}
+            onMouseDown={e => {
+              if (!editable || !onOverlayUpdate) return
+              e.preventDefault()
+              e.stopPropagation()
+              onOverlaySelect?.(el.id)
+              const container = coverRef.current
+              if (!container) return
+              const rect = container.getBoundingClientRect()
+              const startX = e.clientX
+              const startY = e.clientY
+              const startElX = el.x
+              const startElY = el.y
+              const move = (ev: MouseEvent) => {
+                const dx = ((ev.clientX - startX) / rect.width) * 100
+                const dy = ((ev.clientY - startY) / rect.height) * 100
+                const rawX = startElX + dx
+                const rawY = startElY + dy
+                const sx = snapValue(rawX)
+                const sy = snapValue(rawY)
+                setActiveGuides({ x: sx.guide, y: sy.guide })
+                onOverlayUpdate(el.id, {
+                  x: Math.max(0, Math.min(100, Math.round(sx.snapped * 10) / 10)),
+                  y: Math.max(0, Math.min(100, Math.round(sy.snapped * 10) / 10)),
+                })
+              }
+              const up = () => {
+                setActiveGuides({ x: null, y: null })
+                document.removeEventListener('mousemove', move)
+                document.removeEventListener('mouseup', up)
+              }
+              document.addEventListener('mousemove', move)
+              document.addEventListener('mouseup', up)
+            }}
+            onClick={e => { e.stopPropagation(); onOverlaySelect?.(el.id) }}
+          >
+            <img
+              src={el.image_url}
+              alt={el.label}
+              className="w-full h-auto pointer-events-none select-none"
+              draggable={false}
+            />
+          </div>
+        ))}
 
       {hasFooter && (
         <div
@@ -742,7 +999,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   columns: BlockColumns,
 }
 
-export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -755,7 +1012,7 @@ export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, 
     <div className="space-y-1">
       {blocks.map((block, i) => {
         if (block.block_type === 'cover') {
-          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} />
+          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} />
         }
         const Renderer = BLOCK_RENDERERS[block.block_type]
         if (!Renderer) {

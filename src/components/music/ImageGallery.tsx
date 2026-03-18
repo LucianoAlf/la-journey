@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   MagnifyingGlass, Heart, Trash, Download, Copy,
-  Sparkle, ImageSquare, CircleNotch, Star, X,
+  ImageSquare, CircleNotch, Star, X, Plus, Warning,
 } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import {
@@ -20,10 +21,17 @@ import {
 
 const SCHOOL_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 
-const MODEL_BADGES: Record<string, { label: string; className: string }> = {
-  'recraft-v3': { label: 'Recraft V3', className: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20' },
-  'nano-banana-pro': { label: 'Nano Banana', className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' },
-  'flux-2-pro': { label: 'Flux 2 Pro', className: 'bg-blue-500/15 text-blue-400 border-blue-500/20' },
+function getModelBadge(model: string): { label: string; className: string } {
+  if (model.includes('gemini') || model.includes('nano-banana')) {
+    return { label: 'Gemini NB2', className: 'bg-blue-500/15 text-blue-400 border-blue-500/20' }
+  }
+  if (model.includes('recraft')) {
+    return { label: 'Recraft V3', className: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20' }
+  }
+  if (model.includes('ideogram')) {
+    return { label: 'Personagem', className: 'bg-pink-500/15 text-pink-400 border-pink-500/20' }
+  }
+  return { label: model, className: 'bg-gray-500/15 text-gray-400 border-gray-500/20' }
 }
 
 const FORMAT_BADGES: Record<string, { label: string; className: string }> = {
@@ -46,6 +54,7 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
   const [categoryFilter, setCategoryFilter] = useState<string>('todas')
   const [showFavorites, setShowFavorites] = useState(false)
   const [selectedImage, setSelectedImage] = useState<ImageLibraryItem | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ImageLibraryItem | null>(null)
 
   // Buscar imagens do banco
   const loadImages = useCallback(async () => {
@@ -111,19 +120,25 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
     }
   }, [selectedImage])
 
-  // Deletar imagem
-  const handleDelete = useCallback(async (img: ImageLibraryItem, e?: React.MouseEvent) => {
+  // Deletar imagem — abre dialog de confirmação
+  const handleDeleteRequest = useCallback((img: ImageLibraryItem, e?: React.MouseEvent) => {
     e?.stopPropagation()
-    if (!confirm(`Deletar "${img.label}"?`)) return
+    setDeleteTarget(img)
+  }, [])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
     try {
-      await deleteImage(img.id, img.image_url)
-      setImages(prev => prev.filter(i => i.id !== img.id))
-      if (selectedImage?.id === img.id) setSelectedImage(null)
+      await deleteImage(deleteTarget.id, deleteTarget.image_url)
+      setImages(prev => prev.filter(i => i.id !== deleteTarget.id))
+      if (selectedImage?.id === deleteTarget.id) setSelectedImage(null)
       toast.success('Imagem deletada')
     } catch {
       toast.error('Erro ao deletar imagem')
+    } finally {
+      setDeleteTarget(null)
     }
-  }, [selectedImage])
+  }, [deleteTarget, selectedImage])
 
   // Copiar URL
   const handleCopyUrl = useCallback((img: ImageLibraryItem) => {
@@ -134,17 +149,24 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
     }
   }, [])
 
-  // Download
-  const handleDownload = useCallback((img: ImageLibraryItem) => {
+  // Download via fetch+blob (funciona com URLs cross-origin)
+  const handleDownload = useCallback(async (img: ImageLibraryItem) => {
     const url = img.image_url
     if (!url) return
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${img.label.replace(/\s+/g, '_')}.${img.image_format || 'png'}`
-    a.target = '_blank'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = `${img.label.replace(/\s+/g, '_')}.${img.image_format || 'png'}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      toast.error('Erro ao baixar imagem')
+    }
   }, [])
 
   // Formatar data
@@ -160,59 +182,49 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
 
   return (
     <div>
-      {/* Banner */}
-      <div className="flex items-center gap-2.5 py-3.5 px-5 bg-foundation-soft border border-[rgba(99,102,241,0.2)] rounded-[var(--radius)] mb-4">
-        <span className="text-lg">🤖</span>
-        <div className="flex-1">
-          <div className="font-bold text-foundation">Geração de Imagens via IA (fal.ai)</div>
-          <div className="text-sm text-text2">Gere imagens reais para materiais: instrumentos, anatomia vocal, cenas musicais, diagramas</div>
-        </div>
-        <Button size="sm" onClick={onOpenGenerator}>
-          <Sparkle size={16} weight="fill" /> Gerar Imagem
-        </Button>
-      </div>
-
       {/* Filtros */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-xs">
-          <MagnifyingGlass size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text3" />
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar imagens..."
-            className="pl-8 h-8 text-sm"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text3 hover:text-text"
-            >
-              <X size={14} />
-            </button>
-          )}
+      <div className="card mb-4">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 max-w-xs">
+            <MagnifyingGlass size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text3" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar imagens..."
+              className="pl-8 h-8 text-sm"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text3 hover:text-text"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-[160px] h-8 text-sm">
+              <SelectValue placeholder="Categoria" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas categorias</SelectItem>
+              {IMAGE_CATEGORIES.map(cat => (
+                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant={showFavorites ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setShowFavorites(!showFavorites)}
+            className="h-8"
+          >
+            <Star size={16} weight={showFavorites ? 'fill' : 'regular'} />
+            Favoritos
+          </Button>
         </div>
-
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[160px] h-8 text-sm">
-            <SelectValue placeholder="Categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas categorias</SelectItem>
-            {IMAGE_CATEGORIES.map(cat => (
-              <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Button
-          variant={showFavorites ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => setShowFavorites(!showFavorites)}
-          className="h-8"
-        >
-          <Star size={16} weight={showFavorites ? 'fill' : 'regular'} />
-          Favoritos
-        </Button>
       </div>
 
       {/* Loading */}
@@ -237,7 +249,7 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
           </div>
           {images.length === 0 && (
             <Button onClick={onOpenGenerator}>
-              <Sparkle size={16} weight="fill" /> Gerar Primeira Imagem
+              <Plus size={16} /> Gerar Primeira Imagem
             </Button>
           )}
         </div>
@@ -252,7 +264,13 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
                 onClick={() => setSelectedImage(img)}
               >
                 {/* Thumbnail */}
-                <div className="aspect-[4/3] bg-black/5 flex items-center justify-center overflow-hidden relative">
+                <div
+                  className="aspect-[4/3] flex items-center justify-center overflow-hidden relative"
+                  style={img.tags?.includes('fundo-transparente') ? {
+                    backgroundImage: 'repeating-conic-gradient(#e0e0e0 0% 25%, #ffffff 0% 50%)',
+                    backgroundSize: '12px 12px',
+                  } : { background: 'rgba(0,0,0,0.05)' }}
+                >
                   {img.svg_code ? (
                     <div
                       className="w-full h-full flex items-center justify-center p-2 [&>svg]:max-w-full [&>svg]:max-h-full"
@@ -279,7 +297,7 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
                       <Heart size={14} weight={img.is_favorite ? 'fill' : 'regular'} className={img.is_favorite ? 'text-red-400' : ''} />
                     </button>
                     <button
-                      onClick={(e) => handleDelete(img, e)}
+                      onClick={(e) => handleDeleteRequest(img, e)}
                       className="p-1 rounded-md bg-black/40 text-white hover:bg-red-500/80 transition-colors"
                       title="Deletar"
                     >
@@ -292,9 +310,9 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
                 <div className="p-2.5">
                   <div className="font-bold text-xs truncate mb-1">{img.label}</div>
                   <div className="flex items-center gap-1 flex-wrap">
-                    {MODEL_BADGES[img.model_used] && (
-                      <Badge variant="outline" className={`text-[9px] px-1 py-0 border ${MODEL_BADGES[img.model_used].className}`}>
-                        {MODEL_BADGES[img.model_used].label}
+                    {img.category && (
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 border border-accent/20 text-accent/70">
+                        {IMAGE_CATEGORIES.find(c => c.value === img.category)?.label || img.category}
                       </Badge>
                     )}
                     {FORMAT_BADGES[img.image_format] && (
@@ -326,7 +344,16 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
             </DialogHeader>
 
             {/* Imagem grande */}
-            <div className="rounded-xl overflow-hidden border border-border bg-black/5 flex items-center justify-center" style={{ maxHeight: 400 }}>
+            <div
+              className="rounded-xl overflow-hidden border border-border flex items-center justify-center"
+              style={{
+                maxHeight: 400,
+                ...(selectedImage.tags?.includes('fundo-transparente') ? {
+                  backgroundImage: 'repeating-conic-gradient(#e0e0e0 0% 25%, #ffffff 0% 50%)',
+                  backgroundSize: '16px 16px',
+                } : { background: 'rgba(0,0,0,0.05)' }),
+              }}
+            >
               {selectedImage.svg_code ? (
                 <div
                   className="w-full flex items-center justify-center p-4 [&>svg]:max-w-full [&>svg]:max-h-[380px]"
@@ -345,7 +372,7 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-text2 mt-2">
               <div>
                 <span className="text-text3">Modelo:</span>{' '}
-                <span className="font-medium">{MODEL_BADGES[selectedImage.model_used]?.label || selectedImage.model_used}</span>
+                <span className="font-medium">{getModelBadge(selectedImage.model_used).label}</span>
               </div>
               <div>
                 <span className="text-text3">Formato:</span>{' '}
@@ -404,13 +431,38 @@ export function ImageGallery({ onOpenGenerator, newImage }: ImageGalleryProps) {
                 <Heart size={14} weight={selectedImage.is_favorite ? 'fill' : 'regular'} className={selectedImage.is_favorite ? 'text-red-400' : ''} />
                 {selectedImage.is_favorite ? 'Desfavoritar' : 'Favoritar'}
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => handleDelete(selectedImage)}>
+              <Button variant="destructive" size="sm" onClick={() => handleDeleteRequest(selectedImage)}>
                 <Trash size={14} /> Deletar
               </Button>
             </DialogFooter>
           </DialogContent>
         )}
       </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
+        <AlertDialogContent className="bg-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-[16px]">
+              <Warning size={20} className="text-destructive" />
+              Excluir imagem
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-text2 text-[13px]">
+              Tem certeza que deseja excluir <strong className="text-text">"{deleteTarget?.label}"</strong>?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              <Trash size={14} /> Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

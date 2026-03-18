@@ -10,6 +10,7 @@ import {
   MagnifyingGlassPlus, MagnifyingGlassMinus, Gear, Hash,
   TextAlignLeft, TextAlignCenter, TextAlignRight,
   BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera, DownloadSimple,
+  PlusCircle, SlidersHorizontal, Drop, ArrowsClockwise, ArrowFatUp, TextT, ArrowFatDown,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,12 +42,13 @@ import {
   deleteMaterialBlock, updateMaterial,
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
-import { MaterialPreview, type MaterialBlock } from "@/components/material/MaterialPreview";
+import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, COVER_FONTS, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
 import type { ChordPositions } from "@/components/music/ChordDiagram";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
-import { generateImage, generateText } from "@/services/aiService";
+import { generateText } from "@/services/aiService";
+import { generateCoverImageRaw, enhancePromptWithAI, IMAGE_STYLES, fetchImageLibrary, type ImageLibraryItem, type ImageStyle } from "@/services/imageGenerationService";
 import { supabase } from "@/lib/supabase";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -330,9 +332,12 @@ function MaterialList() {
 
 function MaterialEditor({ materialId }: { materialId: string }) {
   const navigate = useNavigate()
+  const { data: school } = useSchool()
   const { data: rawData, loading, error, refetch } = useMaterialWithBlocks(materialId)
 
   const [blocks, setBlocks] = useState<EditorBlock[]>([])
+  const blocksRef = useRef<EditorBlock[]>([])
+  blocksRef.current = blocks
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialMeta, setMaterialMeta] = useState<MaterialWithBlocks | null>(null)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
@@ -706,7 +711,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [coverImageLoading, setCoverImageLoading] = useState(false)
   const [coverPromptLoading, setCoverPromptLoading] = useState(false)
 
-  // Melhorar prompt do usuário com IA
+  // Imagens de referência visual para a capa (opcional)
+  const [coverReferenceFiles, setCoverReferenceFiles] = useState<File[]>([])
+  const [coverReferencePreviews, setCoverReferencePreviews] = useState<string[]>([])
+  const coverRefInputRef = useRef<HTMLInputElement>(null)
+
+  // Melhorar prompt do usuário com IA (usa enhancePromptWithAI do imageGenerationService)
   const handleEnhanceCoverPrompt = useCallback(async () => {
     if (!selectedBlock) return
     const rd = selectedBlock.render_data as any ?? {}
@@ -715,27 +725,22 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       toast.error('Escreva uma descrição antes de melhorar')
       return
     }
+    const coverStyle = (rd.cover_style as ImageStyle) ?? 'illustration'
     setCoverPromptLoading(true)
     try {
-      const titulo = rd.titulo || selectedBlock.title || materialTitle || ''
-      const instrumento = rd.instrumento || ''
-      const systemPrompt = `Você é um especialista em design de capas de livros e material didático musical. Sua tarefa é melhorar o prompt do usuário para gerar uma imagem de capa impressionante. Responda APENAS com o prompt melhorado em inglês, sem explicações. O prompt deve ser para gerar uma imagem de capa profissional.`
-      const enhancePrompt = `Melhore este prompt para gerar uma capa de livro didático musical:
-Prompt do usuário: "${userPrompt}"
-Contexto: Título="${titulo}", Instrumento="${instrumento}"
-Responda APENAS com o prompt melhorado em inglês, otimizado para geração de imagem.`
-      const result = await generateText(enhancePrompt, undefined, systemPrompt)
-      updateSelectedRenderData('cover_prompt', result.text.trim())
+      const enhanced = await enhancePromptWithAI(userPrompt.trim(), 'cover', coverStyle)
+      updateSelectedRenderData('cover_prompt', enhanced)
       toast.success('Prompt melhorado!')
     } catch (e: any) {
       toast.error('Erro ao melhorar prompt: ' + (e?.message?.slice(0, 80) ?? ''))
     } finally {
       setCoverPromptLoading(false)
     }
-  }, [selectedBlock, materialTitle, updateSelectedRenderData])
+  }, [selectedBlock, updateSelectedRenderData])
 
   const handleGenerateCoverImage = useCallback(async (blockId: string) => {
-    const block = blocks.find(b => b.id === blockId)
+    // Usa blocksRef.current para ler o estado mais recente (evita closure stale no "Regenerar")
+    const block = blocksRef.current.find(b => b.id === blockId)
     if (!block) return
     const rd = block.render_data as any ?? {}
     const titulo = rd.titulo || block.title || materialTitle || 'Material Didático Musical'
@@ -743,33 +748,32 @@ Responda APENAS com o prompt melhorado em inglês, otimizado para geração de i
     const nivel = rd.nivel || ''
     const escola = rd.escola || ''
     const template = rd.template || 'minimal'
+    const coverStyle = (rd.cover_style as ImageStyle) ?? 'illustration'
     const userPrompt = (rd.cover_prompt as string) ?? ''
 
     // Se o usuário escreveu um prompt personalizado, usar ele como base
     const prompt = userPrompt.trim()
-      ? `${userPrompt.trim()} Portrait orientation (3:4 aspect ratio). No text in the image — only visual design elements. High quality, professional graphic design.`
+      ? userPrompt.trim()
       : [
-        `Create a stunning, professional book cover design for a music education textbook.`,
-        `Title: "${titulo}".`,
-        instrumento && `Instrument: ${instrumento}.`,
+        `Artistic background image for a music school workbook cover.`,
+        instrumento && `Theme: ${instrumento} (show the instrument prominently).`,
+        !instrumento && `Theme: music education.`,
         nivel && `Level: ${nivel}.`,
         escola && `School: ${escola}.`,
-        `Style: modern, clean, visually striking with musical elements (instruments, notes, sound waves).`,
-        `The design should be elegant and suitable for a professional music school.`,
-        `Portrait orientation (3:4 aspect ratio). No text in the image — only visual design elements.`,
-        `High quality, vibrant colors, professional graphic design aesthetics.`,
-        template === 'geometric' && 'Use geometric shapes and bold angular compositions.',
-        template === 'gradient' && 'Use smooth gradient backgrounds with depth.',
-        template === 'musical' && 'Feature musical instruments and notation prominently.',
-        template === 'bold' && 'Use high contrast, dramatic lighting, dark background.',
-        template === 'elegant' && 'Use refined, minimal composition with warm tones.',
-        template === 'vibrant' && 'Use bright, energetic colors and dynamic shapes.',
-        template === 'colorful' && 'Use a vibrant gradient with abstract musical elements.',
+        `Clean, professional composition. Leave clear space in the upper area for the title.`,
+        template === 'geometric' && 'Geometric shapes and bold angular compositions.',
+        template === 'gradient' && 'Smooth gradient backgrounds with depth and lighting.',
+        template === 'bold' && 'High contrast, dramatic lighting, dark background.',
+        template === 'elegant' && 'Refined, minimal composition with warm tones.',
+        template === 'vibrant' && 'Bright, energetic colors and dynamic shapes.',
+        template === 'colorful' && 'Vibrant gradient with abstract design elements.',
       ].filter(Boolean).join(' ')
 
     setCoverImageLoading(true)
+    const startTime = performance.now()
     try {
-      const result = await generateImage(prompt, true)
+      // Gerar via Gemini (Nano Banana 2) com style enhancer + referências opcionais
+      const result = await generateCoverImageRaw(prompt, coverStyle, coverReferenceFiles.length > 0 ? coverReferenceFiles : undefined)
 
       // Upload para Supabase Storage (content-images bucket)
       const ext = result.mimeType === 'image/jpeg' ? 'jpg' : 'png'
@@ -797,14 +801,228 @@ Responda APENAS com o prompt melhorado em inglês, otimizado para geração de i
           ? { ...b, render_data: { ...(b.render_data ?? {}), cover_image_url: publicUrl } }
           : b,
       ))
-      toast.success(`Capa gerada em ${(result.latencyMs / 1000).toFixed(1)}s`)
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1)
+      toast.success(`Capa gerada em ${elapsed}s`)
     } catch (e: any) {
       console.error('Erro ao gerar capa:', e)
       toast.error(e?.message?.slice(0, 100) || 'Erro ao gerar imagem da capa')
     } finally {
       setCoverImageLoading(false)
     }
-  }, [blocks, materialTitle, materialId])
+  }, [materialTitle, materialId, coverReferenceFiles])
+
+  const handleCoverRefAdd = useCallback((files: FileList | File[]) => {
+    const maxFiles = 5
+    const maxSize = 5 * 1024 * 1024
+    const allowed = ['image/png', 'image/jpeg', 'image/webp']
+    const newFiles: File[] = []
+    const newPreviews: string[] = []
+
+    for (const file of Array.from(files)) {
+      if (coverReferenceFiles.length + newFiles.length >= maxFiles) break
+      if (!allowed.includes(file.type)) { toast.error(`${file.name}: formato inválido`); continue }
+      if (file.size > maxSize) { toast.error(`${file.name}: máximo 5MB`); continue }
+      newFiles.push(file)
+      newPreviews.push(URL.createObjectURL(file))
+    }
+
+    if (newFiles.length > 0) {
+      setCoverReferenceFiles(prev => [...prev, ...newFiles])
+      setCoverReferencePreviews(prev => [...prev, ...newPreviews])
+    }
+  }, [coverReferenceFiles])
+
+  const handleCoverRefRemove = useCallback((index: number) => {
+    setCoverReferencePreviews(prev => {
+      URL.revokeObjectURL(prev[index])
+      return prev.filter((_, i) => i !== index)
+    })
+    setCoverReferenceFiles(prev => prev.filter((_, i) => i !== index))
+  }, [])
+
+  // Importar imagem da biblioteca para a capa
+  const [coverLibraryOpen, setCoverLibraryOpen] = useState(false)
+  const [coverLibraryImages, setCoverLibraryImages] = useState<ImageLibraryItem[]>([])
+  const [coverLibraryLoading, setCoverLibraryLoading] = useState(false)
+  const [coverLibrarySearch, setCoverLibrarySearch] = useState('')
+
+  const loadLibraryImages = useCallback(async () => {
+    setCoverLibraryLoading(true)
+    try {
+      const schoolId = school?.id || 'a1b2c3d4-0001-4000-8000-000000000001'
+      const images = await fetchImageLibrary(schoolId)
+      setCoverLibraryImages(images)
+    } catch (e: any) {
+      toast.error('Erro ao carregar biblioteca: ' + (e?.message?.slice(0, 60) ?? ''))
+    } finally {
+      setCoverLibraryLoading(false)
+    }
+  }, [school])
+
+  const handleOpenCoverLibrary = useCallback(async () => {
+    setCoverLibraryOpen(true)
+    loadLibraryImages()
+  }, [loadLibraryImages])
+
+  const handleSelectLibraryImage = useCallback((imageUrl: string) => {
+    if (!selectedBlockId) return
+    updateSelectedRenderData('cover_image_url', imageUrl)
+    setCoverLibraryOpen(false)
+    toast.success('Imagem aplicada como fundo da capa')
+  }, [selectedBlockId, updateSelectedRenderData])
+
+  const filteredLibraryImages = useMemo(() => {
+    if (!coverLibrarySearch.trim()) return coverLibraryImages
+    const q = coverLibrarySearch.toLowerCase()
+    return coverLibraryImages.filter(img =>
+      img.label.toLowerCase().includes(q) || img.tags?.some(t => t.toLowerCase().includes(q))
+    )
+  }, [coverLibraryImages, coverLibrarySearch])
+
+  // ── Overlay Elements (camadas sobrepostas na capa) ──
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
+  const [elementPickerOpen, setElementPickerOpen] = useState(false)
+
+  const overlayElements: CoverOverlayElement[] = useMemo(() => {
+    if (!selectedBlock || selectedBlock.block_type !== 'cover') return []
+    return ((selectedBlock.render_data as any)?.overlay_elements as CoverOverlayElement[]) ?? []
+  }, [selectedBlock])
+
+  const addOverlayElement = useCallback((image: ImageLibraryItem) => {
+    if (!selectedBlockId) return
+    const el: CoverOverlayElement = {
+      id: crypto.randomUUID(),
+      image_url: image.image_url ?? '',
+      label: image.label ?? 'Elemento',
+      x: 50, y: 50,
+      width: 20,
+      rotation: 0,
+      opacity: 1,
+      shadow: false,
+      zIndex: overlayElements.length + 1,
+      flipX: false,
+    }
+    updateSelectedRenderData('overlay_elements', [...overlayElements, el])
+    setElementPickerOpen(false)
+    setSelectedOverlayId(el.id)
+    toast.success(`"${el.label}" adicionado à capa`)
+  }, [selectedBlockId, overlayElements, updateSelectedRenderData])
+
+  const updateOverlayElement = useCallback((id: string, patch: Partial<CoverOverlayElement>) => {
+    const updated = overlayElements.map(el => el.id === id ? { ...el, ...patch } : el)
+    updateSelectedRenderData('overlay_elements', updated)
+  }, [overlayElements, updateSelectedRenderData])
+
+  const removeOverlayElement = useCallback((id: string) => {
+    updateSelectedRenderData('overlay_elements', overlayElements.filter(el => el.id !== id))
+    if (selectedOverlayId === id) setSelectedOverlayId(null)
+  }, [overlayElements, selectedOverlayId, updateSelectedRenderData])
+
+  const selectedOverlay = useMemo(() =>
+    overlayElements.find(el => el.id === selectedOverlayId) ?? null
+  , [overlayElements, selectedOverlayId])
+
+  // ── Text Elements (tipografia avançada na capa) ──
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
+  const [editingTextId, setEditingTextId] = useState<string | null>(null)
+
+  const textElements: CoverTextElement[] = useMemo(() => {
+    if (!selectedBlock || selectedBlock.block_type !== 'cover') return []
+    const rd = selectedBlock.render_data as any ?? {}
+    // Se já tem text_elements, usa diretamente
+    if (Array.isArray(rd.text_elements) && rd.text_elements.length > 0) {
+      return rd.text_elements as CoverTextElement[]
+    }
+    return []
+  }, [selectedBlock])
+
+  // Migra campos legados para text_elements (chamado ao ativar tipografia avançada)
+  const initTextElements = useCallback(() => {
+    if (!selectedBlock || selectedBlock.block_type !== 'cover') return
+    const rd = selectedBlock.render_data as any ?? {}
+    if (Array.isArray(rd.text_elements) && rd.text_elements.length > 0) return // já migrado
+    const titulo = rd.titulo || selectedBlock.title || materialTitle || 'Material Didático'
+    const subtitulo = rd.subtitulo || ''
+    const instrumento = rd.instrumento || ''
+    const nivel = rd.nivel || ''
+    const contentPos = rd.content_pos ?? { x: 50, y: 45 }
+    const elements: CoverTextElement[] = []
+    // Badge instrumento
+    if (instrumento) {
+      elements.push({
+        id: 'instrument',
+        content: instrumento + (nivel ? ` · ${nivel}` : ''),
+        x: contentPos.x, y: contentPos.y - 8,
+        fontFamily: 'DM Sans', fontSize: 13, fontWeight: 500,
+        color: '#ffffffcc', align: 'center', uppercase: true,
+        letterSpacing: 3, lineHeight: 1.2,
+        shadow: { ...DEFAULT_TEXT_SHADOW }, outline: { ...DEFAULT_TEXT_OUTLINE },
+        background: { ...DEFAULT_TEXT_BG }, maxWidth: 60, zIndex: 20,
+      })
+    }
+    // Título
+    elements.push({
+      id: 'title',
+      content: titulo,
+      x: contentPos.x, y: contentPos.y,
+      fontFamily: 'Playfair Display',
+      fontSize: rd.title_font_size ?? 36,
+      fontWeight: 700,
+      color: rd.title_color || '#ffffff',
+      align: (rd.title_align as 'left' | 'center' | 'right') ?? 'center',
+      uppercase: false, letterSpacing: 1, lineHeight: 1.1,
+      shadow: { enabled: true, color: '#000000', blur: 8, offsetX: 2, offsetY: 2 },
+      outline: { ...DEFAULT_TEXT_OUTLINE },
+      background: { ...DEFAULT_TEXT_BG }, maxWidth: 80, zIndex: 21,
+    })
+    // Subtítulo
+    if (subtitulo) {
+      elements.push({
+        id: 'subtitle',
+        content: subtitulo,
+        x: contentPos.x, y: contentPos.y + 8,
+        fontFamily: 'DM Sans', fontSize: 18, fontWeight: 400,
+        color: '#ffffffcc', align: 'center', uppercase: false,
+        letterSpacing: 1, lineHeight: 1.4,
+        shadow: { ...DEFAULT_TEXT_SHADOW }, outline: { ...DEFAULT_TEXT_OUTLINE },
+        background: { ...DEFAULT_TEXT_BG }, maxWidth: 60, zIndex: 22,
+      })
+    }
+    updateSelectedRenderData('text_elements', elements)
+    setSelectedTextId('title')
+  }, [selectedBlock, materialTitle, updateSelectedRenderData])
+
+  const addTextElement = useCallback(() => {
+    if (!selectedBlockId) return
+    const el: CoverTextElement = {
+      id: crypto.randomUUID(),
+      content: 'Novo texto',
+      x: 50, y: 70,
+      fontFamily: 'Montserrat', fontSize: 20, fontWeight: 400,
+      color: '#ffffff', align: 'center', uppercase: false,
+      letterSpacing: 0, lineHeight: 1.3,
+      shadow: { ...DEFAULT_TEXT_SHADOW }, outline: { ...DEFAULT_TEXT_OUTLINE },
+      background: { ...DEFAULT_TEXT_BG }, maxWidth: 60,
+      zIndex: 22 + textElements.length,
+    }
+    updateSelectedRenderData('text_elements', [...textElements, el])
+    setSelectedTextId(el.id)
+    setEditingTextId(el.id)
+  }, [selectedBlockId, textElements, updateSelectedRenderData])
+
+  const updateTextElement = useCallback((id: string, patch: Partial<CoverTextElement>) => {
+    const updated = textElements.map(el => el.id === id ? { ...el, ...patch } : el)
+    updateSelectedRenderData('text_elements', updated)
+  }, [textElements, updateSelectedRenderData])
+
+  const removeTextElement = useCallback((id: string) => {
+    updateSelectedRenderData('text_elements', textElements.filter(el => el.id !== id))
+    if (selectedTextId === id) setSelectedTextId(null)
+  }, [textElements, selectedTextId, updateSelectedRenderData])
+
+  const selectedText = useMemo(() =>
+    textElements.find(el => el.id === selectedTextId) ?? null
+  , [textElements, selectedTextId])
 
   // Upload de logomarca para a capa
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -1402,6 +1620,22 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
       // Remover classes de edição
       clone.querySelectorAll('.cover-draggable').forEach(el => el.classList.remove('cover-draggable'))
       clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
+      // Limpar rings/cursors de edição dos text_elements e overlays da capa
+      clone.querySelectorAll('[class*="ring-"], [class*="cursor-move"]').forEach(el => {
+        const cls = el.getAttribute('class') || ''
+        const cleaned = cls.split(' ').filter(c => !c.startsWith('ring-') && c !== 'cursor-move' && c !== 'cursor-grab').join(' ')
+        el.setAttribute('class', cleaned)
+      })
+
+      // Injetar classes semânticas para blocos de dica (amarelo) e exercício (verde)
+      clone.querySelectorAll('[class*="bg-dourado-soft"]').forEach(el => {
+        el.classList.add('block-tip')
+      })
+      clone.querySelectorAll('[class*="bg-advance"]').forEach(el => {
+        if ((el.getAttribute('class') || '').includes('bg-advance/10') || (el.getAttribute('class') || '').includes('bg-advance')) {
+          el.classList.add('block-exercise')
+        }
+      })
 
       // Notação musical: converter SVGs para imagens PNG (garante renderização correta)
       const notationContainers = clone.querySelectorAll('.notation-container')
@@ -1435,8 +1669,10 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
       }
 
       // Page break entre páginas (exceto a última)
+      const isCover = clone.classList.contains('a4-page--cover')
       const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;' : ''
-      pagesHtmlParts.push(`<div style="margin-bottom:40px;${pageBreak}">${clone.innerHTML}</div>`)
+      const coverBg = isCover ? 'background:#0f172a;min-height:1123px;' : ''
+      pagesHtmlParts.push(`<div class="${clone.className}" style="margin-bottom:40px;${coverBg}${pageBreak}">${clone.innerHTML}</div>`)
     }
     const pagesHtml = pagesHtmlParts.join('\n')
 
@@ -1446,7 +1682,7 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${materialTitle || 'Material Didático'}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=DM+Mono&family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400;1,700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Oswald:wght@400;500;700&family=Bebas+Neue&family=Righteous&family=Pacifico&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:#f8fafc;color:#1E293B;line-height:1.7}
@@ -1467,14 +1703,24 @@ p{margin:0 0 12px}
 .cover-title{font-size:36px;font-weight:700;line-height:1.2}
 .cover-subtitle{font-size:16px;opacity:.8}
 .cover-instrument{font-size:13px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;font-weight:600}
-.cover-footer{font-size:12px;opacity:.7}
+.cover-footer{font-size:12px;opacity:.7;color:#fff;text-align:center}
 .cover-professor{font-weight:600}
+.cover-escola,.cover-data{opacity:.8}
 img{max-width:100%}
+.absolute{position:absolute}
+.select-none{user-select:none}
+.pointer-events-none{pointer-events:none}
 .notation-container{background:#fff;border-radius:4px;overflow:hidden;margin:8px 0}
 .notation-container svg{filter:none!important;display:block;max-width:100%}
 svg{max-width:100%}
 .block-columns{display:grid;gap:16px;align-items:start}
 .block-column{min-width:0}
+.block-tip{margin-bottom:16px;padding:16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px}
+.block-tip .tip-icon{color:#F59E0B;font-weight:700;margin-right:6px}
+.block-tip h3,.block-tip .tip-title{color:#F59E0B;font-weight:700;font-size:14px;margin-bottom:4px}
+.block-exercise{margin-bottom:16px;padding:16px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px}
+.block-exercise .exercise-icon{color:#22C55E;font-weight:700;margin-right:6px}
+.block-exercise h3,.block-exercise .exercise-title{color:#22C55E;font-weight:700;font-size:14px;margin-bottom:4px}
 @media print{
   body{background:#fff}
   .a4-page{box-shadow:none;page-break-after:always;break-after:page;margin:0}
@@ -1563,6 +1809,22 @@ ${pagesHtml}
       })
       clone.querySelectorAll('.cover-draggable').forEach(el => el.classList.remove('cover-draggable'))
       clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
+      // Limpar rings/cursors de edição dos text_elements e overlays da capa
+      clone.querySelectorAll('[class*="ring-"], [class*="cursor-move"]').forEach(el => {
+        const cls = el.getAttribute('class') || ''
+        const cleaned = cls.split(' ').filter(c => !c.startsWith('ring-') && c !== 'cursor-move' && c !== 'cursor-grab').join(' ')
+        el.setAttribute('class', cleaned)
+      })
+
+      // Injetar classes semânticas para blocos de dica (amarelo) e exercício (verde)
+      clone.querySelectorAll('[class*="bg-dourado-soft"]').forEach(el => {
+        el.classList.add('block-tip')
+      })
+      clone.querySelectorAll('[class*="bg-advance"]').forEach(el => {
+        if ((el.getAttribute('class') || '').includes('bg-advance/10') || (el.getAttribute('class') || '').includes('bg-advance')) {
+          el.classList.add('block-exercise')
+        }
+      })
 
       // Converter SVGs de notação para imagens PNG
       const allOrigSvgs = page.querySelectorAll('.notation-container svg')
@@ -1601,7 +1863,7 @@ ${pagesHtml}
 <head>
 <meta charset="UTF-8">
 <title>${materialTitle || 'Material Didático'} — PDF</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=DM+Mono&family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400;1,700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Oswald:wght@400;500;700&family=Bebas+Neue&family=Righteous&family=Pacifico&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:#fff;color:#1E293B;line-height:1.7}
@@ -1624,15 +1886,23 @@ strong{font-weight:600} p{margin:0 0 12px}
 .cover-content{z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:90%;max-width:90%;color:#fff;text-align:center}
 .cover-footer{font-size:12px;opacity:.7;color:#fff;text-align:center}
 .cover-professor{font-weight:600}
+.cover-escola,.cover-data{opacity:.8}
 .cover-logo{z-index:2}
 .cover-logo img{filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
 .a4-page--cover .a4-page-content{padding:0}
 .a4-page--cover .canvas-block{padding:0;margin:0;border:none}
+.absolute{position:absolute}
+.select-none{user-select:none}
+.pointer-events-none{pointer-events:none}
 img{max-width:100%}
 .notation-container{background:#fff;border-radius:4px;border:1px solid #e2e8f0;overflow:hidden;margin:8px 0;padding:16px}
 .notation-container img{display:block;max-width:100%}
 .block-columns{display:grid;gap:16px;align-items:start}
 .block-column{min-width:0}
+.block-tip{margin-bottom:16px;padding:16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px}
+.block-tip h3,.block-tip .tip-title{color:#F59E0B;font-weight:700;font-size:14px;margin-bottom:4px}
+.block-exercise{margin-bottom:16px;padding:16px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px}
+.block-exercise h3,.block-exercise .exercise-title{color:#22C55E;font-weight:700;font-size:14px;margin-bottom:4px}
 .block-cover--geometric{background:#0f172a;position:relative;overflow:hidden}
 .block-cover--geometric .cover-deco-1,.block-cover--geometric .cover-deco-2,.block-cover--geometric .cover-deco-3{position:absolute;border-radius:50%}
 .block-cover--geometric .cover-deco-1{width:300px;height:300px;background:rgba(30,58,138,.7);top:-60px;right:-60px}
@@ -2000,6 +2270,16 @@ ${pagesHtml}
                             onCoverTitleChange={block.block_type === 'cover' ? (value) => {
                               updateSelectedRenderData('titulo', value)
                             } : undefined}
+                            overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
+                            selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
+                            onOverlaySelect={block.block_type === 'cover' ? setSelectedOverlayId : undefined}
+                            onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
+                            textElements={block.block_type === 'cover' ? textElements : undefined}
+                            selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
+                            editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
+                            onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
+                            onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
+                            onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
                           />
                         )}
                       </div>
@@ -2377,6 +2657,72 @@ ${pagesHtml}
                       </SelectContent>
                     </Select>
                   </div>
+                  {/* Estilo IA */}
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Estilo IA</label>
+                    <div className="grid grid-cols-4 gap-1">
+                      {IMAGE_STYLES.map(s => (
+                        <button
+                          key={s.value}
+                          onClick={() => updateSelectedRenderData('cover_style', s.value)}
+                          className={`h-7 text-[9px] rounded-md border transition-all ${
+                            ((selectedBlock.render_data as any)?.cover_style ?? 'illustration') === s.value
+                              ? 'border-accent bg-accent/10 text-accent font-semibold'
+                              : 'border-border text-text3 hover:border-accent/40 hover:bg-bg2'
+                          }`}
+                          title={s.description}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Referência visual (opcional) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-text3 block">
+                      Referência Visual <span className="text-text3/50">(opcional · até 5)</span>
+                    </label>
+                    <p className="text-[9px] text-text3/60 leading-relaxed">
+                      Envie exemplos de capas que você gosta. A IA vai seguir o estilo visual.
+                    </p>
+                    <input
+                      ref={coverRefInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={e => { if (e.target.files) handleCoverRefAdd(e.target.files); e.target.value = '' }}
+                    />
+                    {coverReferencePreviews.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {coverReferencePreviews.map((src, i) => (
+                          <div key={i} className="relative group">
+                            <img
+                              src={src}
+                              alt={`Ref ${i + 1}`}
+                              className="w-14 h-14 rounded-md object-cover border border-border"
+                            />
+                            <button
+                              onClick={() => handleCoverRefRemove(i)}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-vermelho text-white flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {coverReferenceFiles.length < 5 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full h-7 text-[10px] gap-1 border-dashed"
+                        onClick={() => coverRefInputRef.current?.click()}
+                      >
+                        <ImageIcon size={12} /> {coverReferenceFiles.length > 0 ? 'Adicionar mais' : 'Enviar referências'}
+                      </Button>
+                    )}
+                  </div>
                   {/* Imagem de fundo IA */}
                   <div>
                     <label className="text-[10px] text-text3 block mb-1">Imagem de Fundo (IA)</label>
@@ -2397,7 +2743,7 @@ ${pagesHtml}
                             onClick={() => handleGenerateCoverImage(selectedBlock.id)}
                             disabled={coverImageLoading}
                           >
-                            <Sparkle size={12} weight="bold" /> Regenerar
+                            {coverImageLoading ? <SpinnerGap size={12} className="animate-spin" /> : <Sparkle size={12} weight="bold" />} Regenerar
                           </Button>
                           <Button
                             size="sm"
@@ -2408,21 +2754,39 @@ ${pagesHtml}
                             <Trash size={12} />
                           </Button>
                         </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center gap-2 h-6 text-[9px]"
+                          onClick={handleOpenCoverLibrary}
+                        >
+                          <ImageIcon size={11} /> Trocar por imagem da Biblioteca
+                        </Button>
                       </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full justify-center gap-2 border-accent/30 text-accent hover:bg-accent/10"
-                        onClick={() => handleGenerateCoverImage(selectedBlock.id)}
-                        disabled={coverImageLoading}
-                      >
-                        {coverImageLoading ? (
-                          <><SpinnerGap size={14} className="animate-spin" /> Gerando...</>
-                        ) : (
-                          <><Sparkle size={14} weight="bold" /> Gerar Capa com IA</>
-                        )}
-                      </Button>
+                      <div className="space-y-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center gap-2 border-accent/30 text-accent hover:bg-accent/10"
+                          onClick={() => handleGenerateCoverImage(selectedBlock.id)}
+                          disabled={coverImageLoading}
+                        >
+                          {coverImageLoading ? (
+                            <><SpinnerGap size={14} className="animate-spin" /> Gerando...</>
+                          ) : (
+                            <><Sparkle size={14} weight="bold" /> Gerar Capa com IA</>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center gap-2 h-7 text-[10px]"
+                          onClick={handleOpenCoverLibrary}
+                        >
+                          <ImageIcon size={12} /> Importar da Biblioteca
+                        </Button>
+                      </div>
                     )}
                   </div>
                   {/* Prompt personalizado para IA */}
@@ -2524,23 +2888,422 @@ ${pagesHtml}
                       </Button>
                     )}
                   </div>
-                  <div>
-                    <label className="text-[10px] text-text3 block mb-1">Título da capa</label>
-                    <Input
-                      value={(selectedBlock.render_data as any)?.titulo ?? ''}
-                      onChange={e => updateSelectedRenderData('titulo', e.target.value)}
-                      placeholder={materialTitle || 'Título do material'}
-                      className="h-8 text-[12px]"
-                    />
+                  {/* ── Elementos Sobrepostos ── */}
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-text3 uppercase tracking-wider font-medium">
+                        Elementos
+                      </label>
+                      <button
+                        onClick={() => { setElementPickerOpen(true); loadLibraryImages() }}
+                        className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5"
+                      >
+                        <PlusCircle size={13} /> Adicionar
+                      </button>
+                    </div>
+
+                    {overlayElements.length === 0 && (
+                      <p className="text-[9px] text-text3/60 leading-relaxed">
+                        Adicione imagens da biblioteca como camadas sobrepostas na capa. Arraste para posicionar.
+                      </p>
+                    )}
+
+                    {overlayElements.map(el => (
+                      <div
+                        key={el.id}
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          selectedOverlayId === el.id
+                            ? 'border-accent bg-accent/5'
+                            : 'border-border bg-card hover:border-accent/30'
+                        }`}
+                        onClick={() => setSelectedOverlayId(selectedOverlayId === el.id ? null : el.id)}
+                      >
+                        <img src={el.image_url} alt={el.label} className="w-8 h-8 object-contain rounded" />
+                        <span className="text-[10px] text-text2 flex-1 truncate">{el.label}</span>
+                        <button
+                          onClick={e => { e.stopPropagation(); setSelectedOverlayId(el.id) }}
+                          className="p-0.5 text-text3 hover:text-accent"
+                          title="Editar"
+                        >
+                          <SlidersHorizontal size={13} />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); removeOverlayElement(el.id) }}
+                          className="p-0.5 text-text3 hover:text-vermelho"
+                          title="Remover"
+                        >
+                          <Trash size={13} />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Controles do elemento selecionado */}
+                    {selectedOverlay && (
+                      <div className="space-y-2 p-2 bg-card/50 rounded-lg border border-accent/20">
+                        <span className="text-[10px] text-accent font-medium">{selectedOverlay.label}</span>
+
+                        {/* Tamanho */}
+                        <div className="flex items-center gap-2">
+                          <ImageIcon size={11} className="text-text3 shrink-0" />
+                          <input
+                            type="range" min={5} max={80} step={1}
+                            value={selectedOverlay.width}
+                            onChange={e => updateOverlayElement(selectedOverlay.id, { width: +e.target.value })}
+                            className="flex-1 h-1 accent-accent"
+                          />
+                          <span className="text-[9px] text-text3 w-8 text-right">{selectedOverlay.width}%</span>
+                        </div>
+
+                        {/* Rotação */}
+                        <div className="flex items-center gap-2">
+                          <ArrowsClockwise size={11} className="text-text3 shrink-0" />
+                          <input
+                            type="range" min={0} max={360} step={1}
+                            value={selectedOverlay.rotation}
+                            onChange={e => updateOverlayElement(selectedOverlay.id, { rotation: +e.target.value })}
+                            className="flex-1 h-1 accent-accent"
+                          />
+                          <span className="text-[9px] text-text3 w-8 text-right">{selectedOverlay.rotation}°</span>
+                        </div>
+
+                        {/* Opacidade */}
+                        <div className="flex items-center gap-2">
+                          <Drop size={11} className="text-text3 shrink-0" />
+                          <input
+                            type="range" min={0} max={100} step={5}
+                            value={Math.round(selectedOverlay.opacity * 100)}
+                            onChange={e => updateOverlayElement(selectedOverlay.id, { opacity: +e.target.value / 100 })}
+                            className="flex-1 h-1 accent-accent"
+                          />
+                          <span className="text-[9px] text-text3 w-8 text-right">{Math.round(selectedOverlay.opacity * 100)}%</span>
+                        </div>
+
+                        {/* Botões rápidos */}
+                        <div className="flex gap-1 flex-wrap">
+                          <button
+                            onClick={() => updateOverlayElement(selectedOverlay.id, { shadow: !selectedOverlay.shadow })}
+                            className={`px-2 py-0.5 rounded text-[9px] border transition-all ${
+                              selectedOverlay.shadow ? 'bg-accent/15 text-accent border-accent/30' : 'bg-card text-text3 border-border'
+                            }`}
+                          >
+                            Sombra
+                          </button>
+                          <button
+                            onClick={() => updateOverlayElement(selectedOverlay.id, { flipX: !selectedOverlay.flipX })}
+                            className={`px-2 py-0.5 rounded text-[9px] border transition-all ${
+                              selectedOverlay.flipX ? 'bg-accent/15 text-accent border-accent/30' : 'bg-card text-text3 border-border'
+                            }`}
+                          >
+                            Espelhar
+                          </button>
+                          <button
+                            onClick={() => {
+                              const maxZ = Math.max(...overlayElements.map(e => e.zIndex), 0)
+                              updateOverlayElement(selectedOverlay.id, { zIndex: maxZ + 1 })
+                            }}
+                            className="px-2 py-0.5 rounded text-[9px] bg-card text-text3 border border-border hover:border-accent/30"
+                          >
+                            <ArrowFatUp size={10} className="inline mr-0.5" /> Frente
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="text-[10px] text-text3 block mb-1">Subtítulo</label>
-                    <Input
-                      value={(selectedBlock.render_data as any)?.subtitulo ?? ''}
-                      onChange={e => updateSelectedRenderData('subtitulo', e.target.value)}
-                      placeholder="Descrição ou complemento"
-                      className="h-8 text-[12px]"
-                    />
+
+                  {/* ── Tipografia Avançada ── */}
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-text3 uppercase tracking-wider font-medium">Textos</label>
+                      {textElements.length === 0 ? (
+                        <button onClick={initTextElements} className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5">
+                          <TextT size={13} /> Ativar Tipografia
+                        </button>
+                      ) : (
+                        <button onClick={addTextElement} className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5">
+                          <PlusCircle size={13} /> Adicionar
+                        </button>
+                      )}
+                    </div>
+
+                    {textElements.length === 0 && (
+                      <>
+                        <p className="text-[9px] text-text3/60 leading-relaxed">
+                          Clique em "Ativar Tipografia" para controlar fontes, cores, sombras e contorno dos textos da capa.
+                        </p>
+                        <div>
+                          <label className="text-[10px] text-text3 block mb-1">Título da capa</label>
+                          <Input
+                            value={(selectedBlock.render_data as any)?.titulo ?? ''}
+                            onChange={e => updateSelectedRenderData('titulo', e.target.value)}
+                            placeholder={materialTitle || 'Título do material'}
+                            className="h-8 text-[12px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-text3 block mb-1">Tipografia do Título</label>
+                          <div className="grid grid-cols-[1fr_auto_auto] gap-1.5 items-center">
+                            <div className="flex items-center gap-1">
+                              <input type="range" min={20} max={64}
+                                value={(selectedBlock.render_data as any)?.title_font_size ?? 36}
+                                onChange={e => updateSelectedRenderData('title_font_size', Number(e.target.value))}
+                                className="flex-1 h-1 accent-accent" />
+                              <span className="text-[9px] text-text3 w-8 text-right">{(selectedBlock.render_data as any)?.title_font_size ?? 36}px</span>
+                            </div>
+                            <input type="color" value={(selectedBlock.render_data as any)?.title_color ?? '#ffffff'}
+                              onChange={e => updateSelectedRenderData('title_color', e.target.value)}
+                              className="w-7 h-7 rounded border border-border cursor-pointer p-0.5" title="Cor do título" />
+                            <div className="flex border border-border rounded overflow-hidden">
+                              {[{ value: 'left', icon: TextAlignLeft }, { value: 'center', icon: TextAlignCenter }, { value: 'right', icon: TextAlignRight }].map(({ value, icon: Icon }) => (
+                                <button key={value} onClick={() => updateSelectedRenderData('title_align', value)}
+                                  className={`p-1 ${((selectedBlock.render_data as any)?.title_align ?? 'center') === value ? 'bg-accent/15 text-accent' : 'text-text3 hover:bg-bg2'}`}
+                                  title={`Alinhar ${value}`}><Icon size={12} /></button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-text3 block mb-1">Subtítulo</label>
+                          <Input value={(selectedBlock.render_data as any)?.subtitulo ?? ''}
+                            onChange={e => updateSelectedRenderData('subtitulo', e.target.value)}
+                            placeholder="Descrição ou complemento" className="h-8 text-[12px]" />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Lista de text_elements */}
+                    {textElements.map(el => (
+                      <div key={el.id}
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          selectedTextId === el.id ? 'border-[#8B5CF6] bg-[#8B5CF6]/5' : 'border-border bg-card hover:border-[#8B5CF6]/30'
+                        }`}
+                        onClick={() => setSelectedTextId(selectedTextId === el.id ? null : el.id)}
+                      >
+                        <TextT size={14} className="text-text3 shrink-0" />
+                        <span className="text-[10px] text-text2 flex-1 truncate" style={{ fontFamily: el.fontFamily }}>
+                          {el.content}
+                        </span>
+                        {!['title', 'subtitle', 'instrument'].includes(el.id) && (
+                          <button onClick={e => { e.stopPropagation(); removeTextElement(el.id) }}
+                            className="p-0.5 text-text3 hover:text-vermelho" title="Remover">
+                            <Trash size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* ── Controles do texto selecionado ── */}
+                    {selectedText && (
+                      <div className="space-y-2.5 p-2.5 bg-card/50 rounded-lg border border-[#8B5CF6]/20">
+                        <span className="text-[10px] text-[#8B5CF6] font-medium">
+                          {selectedText.id === 'title' ? 'Título' : selectedText.id === 'subtitle' ? 'Subtítulo' : selectedText.id === 'instrument' ? 'Instrumento' : selectedText.content.slice(0, 20)}
+                        </span>
+
+                        {/* Conteúdo */}
+                        <div className="space-y-1">
+                          <label className="text-[9px] text-text3">Texto</label>
+                          <Input value={selectedText.content}
+                            onChange={e => updateTextElement(selectedText.id, { content: e.target.value })}
+                            className="h-7 text-[11px]" />
+                        </div>
+
+                        {/* Fonte */}
+                        <div className="space-y-1">
+                          <label className="text-[9px] text-text3">Fonte</label>
+                          <select value={selectedText.fontFamily}
+                            onChange={e => updateTextElement(selectedText.id, { fontFamily: e.target.value })}
+                            className="w-full bg-card border border-border rounded px-2 py-1.5 text-[11px] text-text">
+                            {COVER_FONTS.map(f => (
+                              <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                                {f.label} ({f.category})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Tamanho */}
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] text-text3">Tamanho</label>
+                          <div className="flex items-center gap-1">
+                            <input type="range" min={12} max={120} step={1} value={selectedText.fontSize}
+                              onChange={e => updateTextElement(selectedText.id, { fontSize: +e.target.value })}
+                              className="flex-1 h-1 accent-[#8B5CF6]" />
+                            <span className="text-[9px] text-text3 w-6 text-right">{selectedText.fontSize}</span>
+                          </div>
+                        </div>
+
+                        {/* Peso + Itálico */}
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] text-text3">Peso / Estilo</label>
+                          <div className="flex items-center gap-1">
+                            <div className="flex bg-card rounded border border-border overflow-hidden flex-1">
+                              {([
+                                { w: 300, label: 'L' },
+                                { w: 400, label: 'R' },
+                                { w: 600, label: 'Sb' },
+                                { w: 700, label: 'B' },
+                                { w: 900, label: 'Bk' },
+                              ] as const).map(({ w, label }) => (
+                                <button key={w} onClick={() => updateTextElement(selectedText.id, { fontWeight: w })}
+                                  className={`flex-1 py-1 text-[9px] transition-colors ${selectedText.fontWeight === w ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] font-semibold' : 'text-text3 hover:bg-bg2'}`}
+                                  title={w === 300 ? 'Light' : w === 400 ? 'Regular' : w === 600 ? 'Semibold' : w === 700 ? 'Bold' : 'Black'}>
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <button onClick={() => updateTextElement(selectedText.id, { fontStyle: (selectedText.fontStyle ?? 'normal') === 'italic' ? 'normal' : 'italic' })}
+                              className={`px-2 py-1 rounded border text-[10px] italic font-serif ${(selectedText.fontStyle ?? 'normal') === 'italic' ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border-[#8B5CF6]/30' : 'bg-card text-text3 border-border hover:bg-bg2'}`}
+                              title="Itálico">
+                              I
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Cor */}
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] text-text3">Cor</label>
+                          <div className="flex items-center gap-1.5">
+                            <input type="color" value={selectedText.color.slice(0, 7)}
+                              onChange={e => updateTextElement(selectedText.id, { color: e.target.value })}
+                              className="w-6 h-6 rounded border border-border cursor-pointer p-0" />
+                            <div className="flex gap-0.5">
+                              {['#ffffff', '#000000', '#f43f5e', '#3b82f6', '#eab308', '#22c55e'].map(c => (
+                                <button key={c} onClick={() => updateTextElement(selectedText.id, { color: c })}
+                                  className="w-4 h-4 rounded-full border border-border/50" style={{ backgroundColor: c }} />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Alinhamento + Caixa Alta */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex bg-card rounded border border-border">
+                            {(['left', 'center', 'right'] as const).map(a => (
+                              <button key={a} onClick={() => updateTextElement(selectedText.id, { align: a })}
+                                className={`px-2 py-1 text-[11px] ${selectedText.align === a ? 'bg-[#8B5CF6]/20 text-[#8B5CF6]' : 'text-text3'}`}>
+                                {a === 'left' ? <TextAlignLeft size={13} /> : a === 'center' ? <TextAlignCenter size={13} /> : <TextAlignRight size={13} />}
+                              </button>
+                            ))}
+                          </div>
+                          <button onClick={() => updateTextElement(selectedText.id, { uppercase: !selectedText.uppercase })}
+                            className={`px-2 py-1 rounded border text-[9px] font-bold ${selectedText.uppercase ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border-[#8B5CF6]/30' : 'bg-card text-text3 border-border'}`}>
+                            AA
+                          </button>
+                        </div>
+
+                        {/* Espaçamento + Altura Linha */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] text-text3">Espaçamento</label>
+                            <div className="flex items-center gap-1">
+                              <input type="range" min={0} max={20} step={0.5} value={selectedText.letterSpacing}
+                                onChange={e => updateTextElement(selectedText.id, { letterSpacing: +e.target.value })}
+                                className="flex-1 h-1 accent-[#8B5CF6]" />
+                              <span className="text-[9px] text-text3 w-4">{selectedText.letterSpacing}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[9px] text-text3">Alt. linha</label>
+                            <div className="flex items-center gap-1">
+                              <input type="range" min={0.8} max={2.5} step={0.1} value={selectedText.lineHeight}
+                                onChange={e => updateTextElement(selectedText.id, { lineHeight: +e.target.value })}
+                                className="flex-1 h-1 accent-[#8B5CF6]" />
+                              <span className="text-[9px] text-text3 w-4">{selectedText.lineHeight}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Largura máxima */}
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] text-text3">Largura máx.</label>
+                          <div className="flex items-center gap-1">
+                            <input type="range" min={20} max={100} step={5} value={selectedText.maxWidth}
+                              onChange={e => updateTextElement(selectedText.id, { maxWidth: +e.target.value })}
+                              className="flex-1 h-1 accent-[#8B5CF6]" />
+                            <span className="text-[9px] text-text3 w-7">{selectedText.maxWidth}%</span>
+                          </div>
+                        </div>
+
+                        {/* ── Efeitos ── */}
+                        <div className="space-y-1.5 border-t border-border pt-2">
+                          <label className="text-[9px] text-text3 uppercase tracking-wider">Efeitos</label>
+
+                          {/* Sombra */}
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={selectedText.shadow.enabled}
+                              onChange={e => updateTextElement(selectedText.id, { shadow: { ...selectedText.shadow, enabled: e.target.checked } })}
+                              className="w-3 h-3 rounded accent-[#8B5CF6]" />
+                            <span className="text-[10px] text-text2">Sombra</span>
+                          </label>
+                          {selectedText.shadow.enabled && (
+                            <div className="space-y-1.5 pl-5">
+                              <div className="flex items-center gap-1">
+                                <label className="text-[8px] text-text3 w-5">Cor</label>
+                                <input type="color" value={selectedText.shadow.color}
+                                  onChange={e => updateTextElement(selectedText.id, { shadow: { ...selectedText.shadow, color: e.target.value } })}
+                                  className="w-5 h-5 rounded border border-border cursor-pointer p-0" />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <label className="text-[8px] text-text3 w-5 shrink-0">Blur</label>
+                                <input type="range" min={0} max={20} step={1} value={selectedText.shadow.blur}
+                                  onChange={e => updateTextElement(selectedText.id, { shadow: { ...selectedText.shadow, blur: +e.target.value } })}
+                                  className="flex-1 min-w-0 h-1 accent-[#8B5CF6]" />
+                                <span className="text-[8px] text-text3 w-4 text-right shrink-0">{selectedText.shadow.blur}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Contorno */}
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={selectedText.outline.enabled}
+                              onChange={e => updateTextElement(selectedText.id, { outline: { ...selectedText.outline, enabled: e.target.checked } })}
+                              className="w-3 h-3 rounded accent-[#8B5CF6]" />
+                            <span className="text-[10px] text-text2">Contorno</span>
+                          </label>
+                          {selectedText.outline.enabled && (
+                            <div className="space-y-1.5 pl-5">
+                              <div className="flex items-center gap-1">
+                                <label className="text-[8px] text-text3 w-5">Cor</label>
+                                <input type="color" value={selectedText.outline.color}
+                                  onChange={e => updateTextElement(selectedText.id, { outline: { ...selectedText.outline, color: e.target.value } })}
+                                  className="w-5 h-5 rounded border border-border cursor-pointer p-0" />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <label className="text-[8px] text-text3 w-5 shrink-0">Esp.</label>
+                                <input type="range" min={1} max={5} step={0.5} value={selectedText.outline.width}
+                                  onChange={e => updateTextElement(selectedText.id, { outline: { ...selectedText.outline, width: +e.target.value } })}
+                                  className="flex-1 min-w-0 h-1 accent-[#8B5CF6]" />
+                                <span className="text-[8px] text-text3 w-4 text-right shrink-0">{selectedText.outline.width}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Fundo do texto */}
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={selectedText.background.enabled}
+                              onChange={e => updateTextElement(selectedText.id, { background: { ...selectedText.background, enabled: e.target.checked } })}
+                              className="w-3 h-3 rounded accent-[#8B5CF6]" />
+                            <span className="text-[10px] text-text2">Fundo</span>
+                          </label>
+                          {selectedText.background.enabled && (
+                            <div className="space-y-1.5 pl-5">
+                              <div className="flex items-center gap-1">
+                                <label className="text-[8px] text-text3 w-5">Cor</label>
+                                <input type="color" value={selectedText.background.color.slice(0, 7)}
+                                  onChange={e => updateTextElement(selectedText.id, { background: { ...selectedText.background, color: e.target.value + '80' } })}
+                                  className="w-5 h-5 rounded border border-border cursor-pointer p-0" />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <label className="text-[8px] text-text3 w-8 shrink-0">Radius</label>
+                                <input type="range" min={0} max={20} step={1} value={selectedText.background.borderRadius}
+                                  onChange={e => updateTextElement(selectedText.id, { background: { ...selectedText.background, borderRadius: +e.target.value } })}
+                                  className="flex-1 min-w-0 h-1 accent-[#8B5CF6]" />
+                                <span className="text-[8px] text-text3 w-4 text-right shrink-0">{selectedText.background.borderRadius}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -3211,6 +3974,123 @@ ${pagesHtml}
         })() : null}
         onSave={handleKeyboardEditorSave}
       />
+      {/* Dialog — Importar imagem da Biblioteca para capa */}
+      <Dialog open={coverLibraryOpen} onOpenChange={setCoverLibraryOpen}>
+        <DialogContent className="sm:max-w-[720px] max-h-[80vh] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[20px]">
+              Importar da <span className="text-accent">Biblioteca</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              value={coverLibrarySearch}
+              onChange={e => setCoverLibrarySearch(e.target.value)}
+              placeholder="Buscar imagem por nome ou tag..."
+              className="h-9 text-[12px]"
+            />
+            {coverLibraryLoading ? (
+              <div className="flex items-center justify-center py-12 gap-2 text-text3">
+                <SpinnerGap size={20} className="animate-spin" /> Carregando biblioteca...
+              </div>
+            ) : filteredLibraryImages.length === 0 ? (
+              <div className="text-center py-12 text-text3 text-[13px]">
+                Nenhuma imagem encontrada na biblioteca.
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+                {filteredLibraryImages.map(img => (
+                  <button
+                    key={img.id}
+                    onClick={() => img.image_url && handleSelectLibraryImage(img.image_url)}
+                    className="group relative rounded-lg overflow-hidden border border-border hover:border-accent transition-all hover:shadow-md"
+                  >
+                    <div
+                      className="aspect-square flex items-center justify-center"
+                      style={img.tags?.includes('fundo-transparente') ? {
+                        backgroundImage: 'repeating-conic-gradient(#e0e0e0 0% 25%, #ffffff 0% 50%)',
+                        backgroundSize: '10px 10px',
+                      } : { background: 'rgba(0,0,0,0.03)' }}
+                    >
+                      <img
+                        src={img.image_url}
+                        alt={img.label}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="p-1.5 bg-surface">
+                      <div className="text-[9px] font-medium text-text truncate">{img.label}</div>
+                      <div className="text-[8px] text-text3 uppercase">{img.category} · {img.image_format}</div>
+                    </div>
+                    <div className="absolute inset-0 bg-accent/0 group-hover:bg-accent/5 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Dialog — Element Picker (adicionar overlay element da Biblioteca) */}
+      <Dialog open={elementPickerOpen} onOpenChange={setElementPickerOpen}>
+        <DialogContent className="sm:max-w-[720px] max-h-[80vh] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[20px]">
+              Adicionar <span className="text-accent">Elemento</span>
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-[11px] text-text3 -mt-1">
+            Escolha uma imagem da biblioteca para sobrepor na capa. Arraste para posicionar.
+          </p>
+          <div className="space-y-3">
+            <Input
+              value={coverLibrarySearch}
+              onChange={e => setCoverLibrarySearch(e.target.value)}
+              placeholder="Buscar imagem por nome ou tag..."
+              className="h-9 text-[12px]"
+            />
+            {coverLibraryLoading ? (
+              <div className="flex items-center justify-center py-12 gap-2 text-text3">
+                <SpinnerGap size={20} className="animate-spin" /> Carregando biblioteca...
+              </div>
+            ) : filteredLibraryImages.length === 0 ? (
+              <div className="text-center py-12 text-text3 text-[13px]">
+                Nenhuma imagem encontrada na biblioteca.
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+                {filteredLibraryImages.map(img => (
+                  <button
+                    key={img.id}
+                    onClick={() => addOverlayElement(img)}
+                    className="group relative rounded-lg overflow-hidden border border-border hover:border-accent transition-all hover:shadow-md"
+                  >
+                    <div
+                      className="aspect-square flex items-center justify-center"
+                      style={img.tags?.includes('fundo-transparente') ? {
+                        backgroundImage: 'repeating-conic-gradient(#e0e0e0 0% 25%, #ffffff 0% 50%)',
+                        backgroundSize: '10px 10px',
+                      } : { background: 'rgba(0,0,0,0.03)' }}
+                    >
+                      <img
+                        src={img.image_url}
+                        alt={img.label}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="p-1.5 bg-surface">
+                      <div className="text-[9px] font-medium text-text truncate">{img.label}</div>
+                      <div className="text-[8px] text-text3 uppercase">{img.category} · {img.image_format}</div>
+                    </div>
+                    <div className="absolute inset-0 bg-accent/0 group-hover:bg-accent/5 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

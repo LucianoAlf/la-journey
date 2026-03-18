@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, Trash, Database, Lightning, Funnel, MagnifyingGlass } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect, memo } from "react";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
@@ -8,11 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useChords, useScales } from "@/hooks/useLibrary";
+import { useChords } from "@/hooks/useLibrary";
 import { ChordDiagram } from "@/components/music/ChordDiagram";
-import { StaffNotation } from "@/components/music/StaffNotation";
-import { RhythmNotation } from "@/components/music/RhythmNotation";
-import { Tablature } from "@/components/music/Tablature";
 import { PianoKeyboard } from "@/components/music/PianoKeyboard";
 import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
@@ -29,23 +26,6 @@ import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
-
-
-/** Converte notas de escala para formato VexFlow */
-function scaleNotesToVexflow(notes: string[]): string[] {
-  const noteOctaveMap: Record<string, string> = {
-    C: 'c/4', D: 'd/4', E: 'e/4', F: 'f/4', G: 'g/4', A: 'a/4', B: 'b/4',
-    Eb: 'eb/4', Bb: 'bb/4', 'F#': 'f#/4', 'C#': 'c#/4',
-  }
-  return notes.map(n => {
-    const base = noteOctaveMap[n] ?? `${n.toLowerCase()}/4`
-    return `${base}:q`
-  })
-}
-
-const STAGE_BADGES: Record<string, 'foundation' | 'grow' | 'advance' | 'master'> = {
-  foundation: 'foundation', grow: 'grow', advance: 'advance', master: 'master',
-}
 
 /** Traduz family do banco para texto em pt-BR */
 const FAMILY_LABELS: Record<string, string> = {
@@ -206,17 +186,13 @@ const NOTATION_CATEGORY_BADGES: Record<string, { label: string; variant: string 
 
 type InstrumentFilter = 'guitar' | 'electric_guitar' | 'piano' | 'bass' | 'ukulele'
 
-const INSTRUMENTS: { value: InstrumentFilter; label: string; icon: typeof Guitar }[] = [
-  { value: 'guitar', label: 'Violão', icon: Guitar },
-  { value: 'electric_guitar', label: 'Guitarra', icon: Guitar },
-  { value: 'piano', label: 'Piano', icon: PianoKeys },
-  { value: 'bass', label: 'Baixo', icon: Guitar },
-  { value: 'ukulele', label: 'Ukulele', icon: Guitar },
-]
 
 export function Biblioteca() {
-  const [activeTab, setActiveTab] = useState("acordes");
-  const [instrument, setInstrument] = useState<InstrumentFilter>('guitar');
+  const [activeTab, setActiveTab] = useState<string>('guitar');
+  // Derivar instrumento da aba ativa (abas de instrumento = accordion de acordes)
+  const INSTRUMENT_TABS = ['guitar', 'electric_guitar', 'bass', 'ukulele', 'piano'] as const;
+  const isInstrumentTab = INSTRUMENT_TABS.includes(activeTab as any);
+  const instrument: InstrumentFilter = isInstrumentTab ? (activeTab as InstrumentFilter) : 'guitar';
   const { openModal } = useAppContext();
 
   // Estado da galeria de imagens IA
@@ -261,7 +237,7 @@ export function Biblioteca() {
   const accidental = accidentalFilter !== 'todos' ? accidentalFilter as 'natural' | 'sharp_flat' : undefined;
   const voicingPositionVal = voicingFilter !== 'todos' ? voicingFilter : undefined;
   const { data: chords, loading: chordsLoading, refetch: refetchChords, count: chordsCount, page: chordsPage, totalPages: chordsTotalPages, setPage: setChordsPage } = useChords(instrument as any, { search: debouncedSearch || undefined, difficulty: diffFilterNum, rootNote: rootNoteVal, family: familyVal, excludeSlash, onlySlash, slashType, accidental, hasBarre, voicingPosition: voicingPositionVal });
-  const { data: scales, loading: scalesLoading } = useScales();
+  // Escalas removidas — serão substituídas por Exercícios no futuro
   const { data: notations, loading: notationsLoading, refetch: refetchNotations } = useNotations();
   const { data: tablatures, loading: tablaturesLoading, refetch: refetchTablatures } = useTablatures();
 
@@ -528,7 +504,7 @@ export function Biblioteca() {
             Biblioteca <em className="not-italic text-accent">Musical</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            {chordsCount} acordes · {(scales ?? []).length} escalas · {(notations ?? []).length} notações · {(tablatures ?? []).length} tablaturas
+            {chordsCount} acordes · {(notations ?? []).length} notações · {(tablatures ?? []).length} tablaturas
           </p>
         </div>
         <Button onClick={() => {
@@ -540,71 +516,57 @@ export function Biblioteca() {
           } else if (activeTab === 'tablatura') {
             setEditingTab(null);
             setTabEditorOpen(true);
-          } else if (instrument === 'piano') {
+          } else if (activeTab === 'piano') {
             setEditingPianoChord(null);
             setPianoEditorOpen(true);
-          } else if (instrument === 'electric_guitar') {
+          } else if (activeTab === 'electric_guitar') {
             setEditingGuitarChord(null);
             setGuitarEditorOpen(true);
-          } else if (instrument === 'bass') {
+          } else if (activeTab === 'bass') {
             setEditingBassChord(null);
             setBassEditorOpen(true);
           } else {
             openModal('modal-acorde');
           }
         }}>
-          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (instrument === 'electric_guitar' || instrument === 'bass') ? 'Nova Escala/Acorde' : 'Novo Acorde'}
+          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (activeTab === 'electric_guitar' || activeTab === 'bass') ? 'Nova Escala/Acorde' : 'Novo Acorde'}
         </Button>
       </div>
 
-      <Tabs defaultValue="acordes" className="mb-6" onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="acordes">🎸 Acordes ({chordsCount})</TabsTrigger>
-          <TabsTrigger value="escalas">📊 Escalas ({(scales ?? []).length})</TabsTrigger>
-          <TabsTrigger value="notacao">🎵 Notação ({(notations ?? []).length})</TabsTrigger>
-          <TabsTrigger value="tablatura">🎼 Tablatura ({(tablatures ?? []).length})</TabsTrigger>
-          <TabsTrigger value="imagens">🖼 Imagens IA</TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="guitar" className="mb-6" onValueChange={setActiveTab}>
+        <div className="flex items-center gap-3">
+          <TabsList>
+            <TabsTrigger value="guitar"><Guitar size={15} /> Violão</TabsTrigger>
+            <TabsTrigger value="electric_guitar"><Guitar size={15} /> Guitarra</TabsTrigger>
+            <TabsTrigger value="bass"><Guitar size={15} /> Baixo</TabsTrigger>
+            <TabsTrigger value="ukulele"><Guitar size={15} /> Ukulele</TabsTrigger>
+            <TabsTrigger value="piano"><PianoKeys size={15} /> Piano</TabsTrigger>
+            <TabsTrigger value="notacao"><MusicNotesSimple size={15} /> Notação ({(notations ?? []).length})</TabsTrigger>
+            <TabsTrigger value="tablatura"><ListBullets size={15} /> Tablatura ({(tablatures ?? []).length})</TabsTrigger>
+            <TabsTrigger value="imagens"><ImageSquare size={15} /> Imagens IA</TabsTrigger>
+          </TabsList>
+          {isInstrumentTab && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePopulateChords}
+              disabled={populating}
+              className="gap-1.5 text-[12px] ml-auto"
+            >
+              {populating ? (
+                <SpinnerGap size={14} className="animate-spin" />
+              ) : (
+                <Database size={14} />
+              )}
+              {populating ? 'Populando...' : 'Popular Biblioteca'}
+            </Button>
+          )}
+        </div>
 
-        <TabsContent value="acordes">
+        {/* ====== CONTEÚDO DE ACORDES — renderizado para qualquer aba de instrumento ====== */}
+        {INSTRUMENT_TABS.map(tabValue => (
+        <TabsContent key={tabValue} value={tabValue}>
           <div>
-            {/* Filtro de instrumento + botão popular */}
-            <div className="flex items-center gap-2 mb-4">
-              {INSTRUMENTS.map(inst => {
-                const Icon = inst.icon
-                const active = instrument === inst.value
-                return (
-                  <button
-                    key={inst.value}
-                    onClick={() => { setInstrument(inst.value); if (inst.value !== 'guitar') { setCagedMode(false); setVoicingMode(false) } }}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-all ${
-                      active
-                        ? 'bg-accent/15 text-accent border border-accent/30'
-                        : 'bg-surface border border-border text-text2 hover:text-text hover:border-text3'
-                    }`}
-                  >
-                    <Icon size={16} weight={active ? 'fill' : 'regular'} />
-                    {inst.label}
-                  </button>
-                )
-              })}
-              <div className="ml-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePopulateChords}
-                  disabled={populating}
-                  className="gap-1.5 text-[12px]"
-                >
-                  {populating ? (
-                    <SpinnerGap size={14} className="animate-spin" />
-                  ) : (
-                    <Database size={14} />
-                  )}
-                  {populating ? 'Populando...' : 'Popular Biblioteca'}
-                </Button>
-              </div>
-            </div>
 
             {/* ====== FILTROS (padrão Repertório) ====== */}
             <div className="rounded-[14px] bg-card border border-border p-4 space-y-3 mb-4">
@@ -1173,93 +1135,7 @@ export function Biblioteca() {
             )}
           </div>
         </TabsContent>
-
-        <TabsContent value="escalas">
-          {/* Filtro de instrumento (mesmos botões) */}
-          <div className="flex gap-2 mb-4">
-            {INSTRUMENTS.map(inst => {
-              const Icon = inst.icon
-              const active = instrument === inst.value
-              return (
-                <button
-                  key={inst.value}
-                  onClick={() => setInstrument(inst.value)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-all ${
-                    active
-                      ? 'bg-accent/15 text-accent border border-accent/30'
-                      : 'bg-surface border border-border text-text2 hover:text-text hover:border-text3'
-                  }`}
-                >
-                  <Icon size={16} weight={active ? 'fill' : 'regular'} />
-                  {inst.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {scalesLoading ? (
-            <div className="flex items-center justify-center h-40 gap-2 text-text2">
-              <SpinnerGap size={20} className="animate-spin" /> Carregando escalas...
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {(scales ?? []).map(scale => {
-                const notes = (scale.notes ?? []) as string[]
-                const intervals = (scale.intervals ?? []) as string[]
-                const vexNotes = scaleNotesToVexflow(notes)
-                const badgeVariant = STAGE_BADGES[scale.difficulty_level as string] ?? 'secondary'
-                const instPositions = (scale as any).instrument_positions as Record<string, any> | null
-                const pianoPos = instPositions?.piano as { keys_rh?: string[]; fingering_rh?: number[]; range?: string } | undefined
-
-                return (
-                  <div key={scale.id} className="card">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <div className="font-bold text-[15px]">{scale.name}</div>
-                        <div className="text-[12px] text-text3 font-mono mt-0.5">
-                          Notas: {notes.join(' – ')} · Intervalos: {intervals.join(' ')}
-                        </div>
-                      </div>
-                      <Badge variant={badgeVariant as any} className="capitalize">{scale.difficulty_level}</Badge>
-                    </div>
-
-                    {/* Notação na pauta (sempre visível) */}
-                    <StaffNotation
-                      notes={vexNotes}
-                      clef="treble"
-                      width={500}
-                      height={130}
-                    />
-
-                    {/* Dados de piano (quando selecionado e disponível) */}
-                    {instrument === 'piano' && pianoPos && (
-                      <div className="mt-3 p-3 rounded-lg bg-foundation-soft border border-foundation/20">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <PianoKeys size={14} className="text-foundation" />
-                          <span className="text-[11px] font-semibold text-foundation uppercase tracking-wider">Piano</span>
-                          {pianoPos.range && (
-                            <span className="text-[11px] text-text3 ml-auto font-mono">{pianoPos.range}</span>
-                          )}
-                        </div>
-                        {pianoPos.keys_rh && (
-                          <div className="text-[12px] font-mono text-text2">
-                            <span className="text-text3">MD:</span>{' '}
-                            {pianoPos.keys_rh.join(' · ')}
-                            {pianoPos.fingering_rh && (
-                              <span className="ml-3 text-text3">
-                                Ded: {pianoPos.fingering_rh.join('-')}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </TabsContent>
+        ))}
 
         <TabsContent value="notacao">
           <div>
