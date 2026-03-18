@@ -26,6 +26,9 @@ import { generateAllChordsForPopulation } from "@/services/chordAutoFillService"
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
 import { createTablature, updateTablature, deleteTablature, type TablatureLibraryRow } from "@/services/notationService";
 import { useNotations, useTablatures } from "@/hooks/useNotations";
+import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
+import { ImageGallery } from "@/components/music/ImageGallery";
+import type { ImageLibraryItem } from "@/services/imageGenerationService";
 
 
 /** Converte notas de escala para formato VexFlow */
@@ -215,6 +218,10 @@ export function Biblioteca() {
   const [activeTab, setActiveTab] = useState("acordes");
   const [instrument, setInstrument] = useState<InstrumentFilter>('guitar');
   const { openModal } = useAppContext();
+
+  // Estado da galeria de imagens IA
+  const [imageGenOpen, setImageGenOpen] = useState(false);
+  const [lastGeneratedImage, setLastGeneratedImage] = useState<ImageLibraryItem | null>(null);
   const [chordSearch, setChordSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [populating, setPopulating] = useState(false);
@@ -526,7 +533,7 @@ export function Biblioteca() {
         </div>
         <Button onClick={() => {
           if (activeTab === 'imagens') {
-            openModal('modal-imagem');
+            setImageGenOpen(true);
           } else if (activeTab === 'notacao') {
             setEditingNotation(null);
             setNotationEditorOpen(true);
@@ -1498,32 +1505,10 @@ export function Biblioteca() {
         </TabsContent>
 
         <TabsContent value="imagens">
-          <div>
-            <div className="flex items-center gap-2.5 py-3.5 px-5 bg-foundation-soft border border-[rgba(99,102,241,0.2)] rounded-[var(--radius)] mb-4">
-              <span className="text-lg">🤖</span>
-              <div className="flex-1">
-                <div className="font-bold text-foundation">Geração de Imagens via IA (Imagen 4)</div>
-                <div className="text-sm text-text2">Gere imagens reais para materiais: instrumentos, anatomia vocal, cenas musicais, história da música</div>
-              </div>
-              <Button size="sm" onClick={() => openModal('modal-imagem')}>✨ Gerar Imagem</Button>
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              <div className="card p-3">
-                <div className="aspect-[4/3] bg-gradient-to-br from-azul-soft to-accent-soft rounded-lg flex items-center justify-center mb-2">
-                  <span className="text-[36px]">🎸</span>
-                </div>
-                <div className="font-bold text-xs">Violão clássico</div>
-                <div className="text-[11px] text-text3">Imagen 4 · 512x512</div>
-              </div>
-              <div className="card p-3">
-                <div className="aspect-[4/3] bg-gradient-to-br from-master-soft to-accent-soft rounded-lg flex items-center justify-center mb-2">
-                  <span className="text-[36px]">🎤</span>
-                </div>
-                <div className="font-bold text-xs">Aparelho fonador</div>
-                <div className="text-[11px] text-text3">Imagen 4 · Anatomia vocal</div>
-              </div>
-            </div>
-          </div>
+          <ImageGallery
+            onOpenGenerator={() => setImageGenOpen(true)}
+            newImage={lastGeneratedImage}
+          />
         </TabsContent>
       </Tabs>
 
@@ -1570,6 +1555,13 @@ export function Biblioteca() {
         initialData={editingTab?.notation_data?.grid ? editingTab.notation_data as any : null}
         initialLabel={editingTab?.notation_data?.label ?? editingTab?.name ?? ''}
         onSave={handleSaveTab}
+      />
+
+      {/* ImageGeneratorModal — geração de imagens IA */}
+      <ImageGeneratorModal
+        open={imageGenOpen}
+        onOpenChange={setImageGenOpen}
+        onImageGenerated={(img) => setLastGeneratedImage(img)}
       />
     </div>
   );

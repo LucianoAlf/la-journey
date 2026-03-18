@@ -258,51 +258,6 @@ export function Modals() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Imagem IA */}
-      <Dialog open={isModalOpen('modal-imagem')} onOpenChange={() => closeModal('modal-imagem')}>
-        <DialogContent className="sm:max-w-[640px] bg-surface border-border">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-[22px]">Gerar <span className="text-accent">Imagem IA</span></DialogTitle>
-          </DialogHeader>
-          <div className="space-y-1.5 mb-4">
-            <Label>Descrição da imagem</Label>
-            <Textarea placeholder="Ex: Foto profissional de um violão clássico sobre fundo escuro, iluminação lateral suave, estilo editorial para material didático musical" />
-          </div>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="space-y-1.5">
-              <Label>Estilo</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="foto">Fotográfico (realista)</SelectItem>
-                  <SelectItem value="ilustracao">Ilustração didática</SelectItem>
-                  <SelectItem value="diagrama">Diagrama técnico</SelectItem>
-                  <SelectItem value="artistico">Artístico / Editorial</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Resolução</Label>
-              <Select defaultValue="512"><SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="512">512x512</SelectItem><SelectItem value="1024">1024x1024</SelectItem>
-                  <SelectItem value="768x512">768x512 (paisagem)</SelectItem><SelectItem value="512x768">512x768 (retrato)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="p-3.5 bg-azul-soft rounded-[var(--radius-sm)] mb-4">
-            <div className="text-[11px] text-text3 mb-1">💡 SUGESTÕES DE USO</div>
-            <div className="text-xs text-text2">Aparelho fonador para material de canto · Instrumentos para capas · Cenas históricas (blues, jazz, MPB) · Postura corporal · Sala de aula musical · Sarau</div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => closeModal('modal-imagem')}>Cancelar</Button>
-            <Button className="bg-accent hover:bg-accent/90" onClick={() => { closeModal('modal-imagem'); toast.info('Imagem sendo gerada via Gemini API...'); }}>
-              <Sparkle size={16} /> Gerar com Gemini
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Modal Conteúdo — CRUD real */}
       <Dialog open={isModalOpen('modal-conteudo')} onOpenChange={() => closeModal('modal-conteudo')}>
         <DialogContent className="sm:max-w-[640px] bg-surface border-border">
