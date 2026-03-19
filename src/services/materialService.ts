@@ -28,6 +28,7 @@ export interface MaterialWithBlocks {
   school_name: string | null
   generation_config: Record<string, unknown> | null
   generated_at: string | null
+  page_config: Record<string, unknown> | null
   // Campos do bloco (cada row = 1 bloco)
   block_id: string | null
   block_type: string | null

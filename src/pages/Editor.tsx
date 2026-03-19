@@ -11,6 +11,7 @@ import {
   TextAlignLeft, TextAlignCenter, TextAlignRight,
   BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera, DownloadSimple,
   PlusCircle, SlidersHorizontal, Drop, ArrowsClockwise, ArrowFatUp, TextT, ArrowFatDown,
+  Copy, ArrowUUpRight, ArrowUDownRight,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useMaterials, useMaterialWithBlocks } from "@/hooks/useMaterials";
 import { useSchool } from "@/hooks/useSchool";
+import { useUndoRedo } from "@/hooks/useUndoRedo";
 import {
   updateMaterialBlockRpc, reorderMaterialBlocks, addMaterialBlock,
   deleteMaterialBlock, updateMaterial,
@@ -54,6 +56,24 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BlockStylePanel } from "@/components/editor/BlockStylePanel";
+import { SeparatorStylePanel } from "@/components/editor/SeparatorStylePanel";
+import { PageBackgroundPanel } from "@/components/editor/PageBackgroundPanel";
+import { type BlockStyle, type SeparatorStyle, type PageBackground, DEFAULT_BLOCK_STYLE, DEFAULT_SEPARATOR_STYLE, DEFAULT_PAGE_BACKGROUND, mergeBlockStyle, mergeSeparatorStyle, blockStyleToCSS } from "@/lib/blockStyles";
+import { FloatingElementRenderer } from "@/components/editor/FloatingElementRenderer";
+import { FloatingTextProperties } from "@/components/editor/FloatingTextProperties";
+import { FloatingImageProperties } from "@/components/editor/FloatingImageProperties";
+import { FloatingShapeProperties } from "@/components/editor/FloatingShapeProperties";
+import { LayersPanel } from "@/components/editor/LayersPanel";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
+  DEFAULT_FLOATING_TEXT, DEFAULT_FLOATING_IMAGE, DEFAULT_SHAPE,
+  snapValue as floatingSnapValue,
+} from "@/lib/floatingElements";
 
 // --- Tipos internos ---
 
@@ -73,6 +93,8 @@ interface PageConfig {
     showPageNumber: boolean
     pageNumberPosition: 'left' | 'center' | 'right'
   }
+  background?: PageBackground
+  floating_elements?: FloatingElement[]
 }
 
 const DEFAULT_PAGE_CONFIG: PageConfig = {
@@ -170,9 +192,9 @@ function editorBlockToPreview(b: EditorBlock): MaterialBlock {
 // --- Componente Sortable para sidebar ---
 
 function SortableBlockItem({
-  block, isSelected, onSelect, onDelete,
+  block, isSelected, onSelect, onDelete, onDuplicate,
 }: {
-  block: EditorBlock; isSelected: boolean; onSelect: () => void; onDelete: () => void
+  block: EditorBlock; isSelected: boolean; onSelect: () => void; onDelete: () => void; onDuplicate: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
@@ -202,6 +224,9 @@ function SortableBlockItem({
         {block.is_edited && (
           <span className="text-[9px] text-dourado font-bold mr-1">editado</span>
         )}
+        <button onClick={e => { e.stopPropagation(); onDuplicate() }} title="Duplicar bloco" className="hover:text-accent transition-colors">
+          <Copy size={12} />
+        </button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <button onClick={e => e.stopPropagation()} title="Remover">
@@ -356,6 +381,38 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   // Configuração de cabeçalho/rodapé da página
   const [pageConfig, setPageConfig] = useState<PageConfig>(DEFAULT_PAGE_CONFIG)
 
+  // Undo/Redo global
+  const { pushSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo<EditorBlock[]>()
+  const isUndoRedoAction = useRef(false)
+
+  /** setBlocks com snapshot automático para undo (exceto durante undo/redo) */
+  const setBlocksWithHistory = useCallback((updater: EditorBlock[] | ((prev: EditorBlock[]) => EditorBlock[])) => {
+    if (!isUndoRedoAction.current) {
+      pushSnapshot(blocksRef.current)
+    }
+    setBlocks(updater)
+  }, [pushSnapshot])
+
+  const handleUndo = useCallback(() => {
+    const previous = undo(blocksRef.current)
+    if (previous) {
+      isUndoRedoAction.current = true
+      setBlocks(previous)
+      isUndoRedoAction.current = false
+      toast.info('Desfazer', { duration: 1500 })
+    }
+  }, [undo])
+
+  const handleRedo = useCallback(() => {
+    const next = redo(blocksRef.current)
+    if (next) {
+      isUndoRedoAction.current = true
+      setBlocks(next)
+      isUndoRedoAction.current = false
+      toast.info('Refazer', { duration: 1500 })
+    }
+  }, [redo])
+
   // Estados dos editores visuais integrados
   const [notationEditorOpen, setNotationEditorOpen] = useState(false)
   const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
@@ -365,6 +422,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [chordEditorName, setChordEditorName] = useState('')
   const [chordEditorStartFret, setChordEditorStartFret] = useState(1)
 
+  // Autosave — estado de alterações não salvas
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialLoadDone = useRef(false)
+
   // Parsear dados vindos da RPC
   useEffect(() => {
     if (rawData && rawData.length > 0) {
@@ -372,9 +435,19 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       setMaterialMeta(material)
       setMaterialTitle(material.material_title)
       setBlocks(parsed)
+      // Limpar histórico apenas no primeiro carregamento
+      if (!initialLoadDone.current) {
+        clearHistory()
+      }
       if (!selectedBlockId && parsed.length > 0) {
         setSelectedBlockId(parsed[0].id)
       }
+      // Carregar page_config do banco (se existir)
+      if (!initialLoadDone.current && material.page_config) {
+        const pc = material.page_config as unknown as PageConfig
+        if (pc.header && pc.footer) setPageConfig(pc)
+      }
+      initialLoadDone.current = true
     }
   }, [rawData])
 
@@ -452,6 +525,53 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return result
   }, [blocks, blockHeights])
 
+  // --- Autosave: salvar bloco selecionado a cada 3s de inatividade ---
+  const lastSavedBlockRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!initialLoadDone.current || !selectedBlockId) return
+    const block = blocksRef.current.find(b => b.id === selectedBlockId)
+    if (!block || block.id.startsWith('temp_')) return
+
+    setAutoSaveStatus('unsaved')
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const current = blocksRef.current.find(b => b.id === selectedBlockId)
+      if (!current || current.id.startsWith('temp_')) return
+      setAutoSaveStatus('saving')
+      try {
+        await updateMaterialBlockRpc({
+          blockId: current.id,
+          title: current.title,
+          content: current.content,
+          renderData: current.render_data,
+        })
+        lastSavedBlockRef.current = current.id
+        setAutoSaveStatus('saved')
+        setHasUnsavedChanges(false)
+      } catch {
+        setAutoSaveStatus('unsaved')
+      }
+    }, 3000)
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [blocks, selectedBlockId])
+
+  // --- Persistir pageConfig quando muda ---
+  useEffect(() => {
+    if (!initialLoadDone.current || !materialId) return
+    const timer = setTimeout(async () => {
+      try {
+        await updateMaterial(materialId, { page_config: pageConfig } as any)
+      } catch {
+        // silencioso — pageConfig é secundário
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [pageConfig, materialId])
+
   // DnD
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -465,7 +585,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const oldIndex = blocks.findIndex(b => b.id === active.id)
     const newIndex = blocks.findIndex(b => b.id === over.id)
     const newBlocks = arrayMove(blocks, oldIndex, newIndex)
-    setBlocks(newBlocks)
+    setBlocksWithHistory(newBlocks)
 
     try {
       await reorderMaterialBlocks(materialId, newBlocks.map(b => b.id))
@@ -530,13 +650,49 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const handleDeleteBlock = useCallback(async (blockId: string) => {
     try {
       await deleteMaterialBlock(blockId)
-      setBlocks(prev => prev.filter(b => b.id !== blockId))
+      setBlocksWithHistory(prev => prev.filter(b => b.id !== blockId))
       if (selectedBlockId === blockId) setSelectedBlockId(null)
       toast.success('Bloco removido')
     } catch (e: any) {
       toast.error('Erro ao remover bloco: ' + (e?.message ?? ''))
     }
   }, [selectedBlockId])
+
+  // Duplicar bloco
+  const handleDuplicateBlock = useCallback(async (blockId: string) => {
+    const block = blocks.find(b => b.id === blockId)
+    if (!block) return
+    const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
+    pushSnapshot(blocksRef.current)
+    try {
+      await addMaterialBlock({
+        materialId,
+        blockType: block.block_type,
+        title: block.title ? `${block.title} (cópia)` : null,
+        content: block.content ? { ...block.content } : null,
+        renderData: block.render_data ? { ...block.render_data } : null,
+        afterOrder: block.sort_order,
+      })
+      toast.success('Bloco duplicado')
+      refetch()
+    } catch (e: any) {
+      // Fallback local
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const newBlock: EditorBlock = {
+        id: tempId,
+        block_type: block.block_type,
+        title: block.title ? `${block.title} (cópia)` : null,
+        content: block.content ? { ...block.content } : null,
+        render_data: block.render_data ? { ...block.render_data } : null,
+        sort_order: block.sort_order + 1,
+        is_edited: false,
+        original_content: null,
+      }
+      const idx = blocks.findIndex(b => b.id === blockId)
+      setBlocksWithHistory(prev => [...prev.slice(0, idx + 1), newBlock, ...prev.slice(idx + 1)])
+      toast.info('Bloco duplicado localmente')
+    }
+  }, [blocks, materialId, refetch])
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
@@ -564,7 +720,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const handleRevertBlock = useCallback(async () => {
     if (!selectedBlock?.original_content) return
     const reverted = { ...selectedBlock, content: selectedBlock.original_content, is_edited: false }
-    setBlocks(prev => prev.map(b => b.id === selectedBlock.id ? reverted : b))
+    setBlocksWithHistory(prev => prev.map(b => b.id === selectedBlock.id ? reverted : b))
     try {
       await updateMaterialBlockRpc({
         blockId: selectedBlock.id,
@@ -593,6 +749,28 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setBlocks(prev => prev.map(b => {
       if (b.id !== selectedBlockId) return b
       return { ...b, render_data: { ...(b.render_data ?? {}), [field]: value } }
+    }))
+  }, [selectedBlockId])
+
+  // Atualizar estilo visual do bloco selecionado (render_data.style)
+  const updateBlockStyle = useCallback((updates: Partial<BlockStyle>) => {
+    if (!selectedBlockId) return
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== selectedBlockId) return b
+      const currentStyle = (b.render_data?.style as BlockStyle | undefined) ?? undefined
+      const newStyle = mergeBlockStyle(currentStyle, updates)
+      return { ...b, render_data: { ...(b.render_data ?? {}), style: newStyle } }
+    }))
+  }, [selectedBlockId])
+
+  // Atualizar estilo do separador (render_data.separatorStyle)
+  const updateSeparatorStyle = useCallback((updates: Partial<SeparatorStyle>) => {
+    if (!selectedBlockId) return
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== selectedBlockId) return b
+      const currentStyle = (b.render_data?.separatorStyle as SeparatorStyle | undefined) ?? undefined
+      const newStyle = mergeSeparatorStyle(currentStyle, updates)
+      return { ...b, render_data: { ...(b.render_data ?? {}), separatorStyle: newStyle } }
     }))
   }, [selectedBlockId])
 
@@ -629,7 +807,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       octave_count: data.positions.octave_count,
       hand: 'rh',
     }
-    setBlocks(prev => prev.map(b => {
+    setBlocksWithHistory(prev => prev.map(b => {
       if (b.id !== keyboardGridTargetBlockId) return b
       const existingKbs = ((b.render_data as any)?.keyboards ?? []) as any[]
       return { ...b, render_data: { ...(b.render_data ?? {}), keyboards: [...existingKbs, newKeyboard] } }
@@ -659,7 +837,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       octave_count: data.positions.octave_count,
       hand: 'rh',
     }
-    setBlocks(prev => prev.map(b =>
+    setBlocksWithHistory(prev => prev.map(b =>
       b.id === keyboardEditorBlockId ? { ...b, title: data.name || b.title, render_data: newRenderData } : b,
     ))
     try {
@@ -698,7 +876,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       muted: positions.muted,
       position: chordEditorStartFret,
     }
-    setBlocks(prev => prev.map(b => {
+    setBlocksWithHistory(prev => prev.map(b => {
       if (b.id !== chordGridTargetBlockId) return b
       const existingChords = ((b.render_data as any)?.chords ?? []) as any[]
       return { ...b, render_data: { ...(b.render_data ?? {}), chords: [...existingChords, newChord] } }
@@ -796,7 +974,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       const publicUrl = urlData.publicUrl
 
       // Atualizar o render_data do bloco com a URL pública
-      setBlocks(prev => prev.map(b =>
+      setBlocksWithHistory(prev => prev.map(b =>
         b.id === blockId
           ? { ...b, render_data: { ...(b.render_data ?? {}), cover_image_url: publicUrl } }
           : b,
@@ -1024,6 +1202,164 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     textElements.find(el => el.id === selectedTextId) ?? null
   , [textElements, selectedTextId])
 
+  // ── Floating Elements (Fase 3 — elementos livres) ──
+  const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([])
+  const [selectedFloatingId, setSelectedFloatingId] = useState<string | null>(null)
+  const [editingFloatingId, setEditingFloatingId] = useState<string | null>(null)
+  const [showLayersPanel, setShowLayersPanel] = useState(false)
+  const [floatingImagePickerOpen, setFloatingImagePickerOpen] = useState(false)
+  const floatingImageInputRef = useRef<HTMLInputElement>(null)
+
+  // Carregar floating elements do pageConfig
+  useEffect(() => {
+    if (pageConfig.floating_elements && pageConfig.floating_elements.length > 0) {
+      setFloatingElements(pageConfig.floating_elements)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps — apenas no mount
+
+  // Persistir floating elements no pageConfig
+  useEffect(() => {
+    if (!initialLoadDone.current) return
+    setPageConfig(prev => ({ ...prev, floating_elements: floatingElements }))
+  }, [floatingElements]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedFloating = useMemo(() =>
+    floatingElements.find(el => el.id === selectedFloatingId) ?? null
+  , [floatingElements, selectedFloatingId])
+
+  // Qual página está visível no canvas (baseado no scroll)
+  const getCurrentVisiblePageIndex = useCallback((): number => {
+    const scrollEl = canvasScrollRef.current
+    if (!scrollEl) return 0
+    const pageEls = scrollEl.querySelectorAll('.a4-page')
+    if (!pageEls.length) return 0
+    const scrollTop = scrollEl.scrollTop + scrollEl.clientHeight / 2
+    let closest = 0
+    let minDist = Infinity
+    pageEls.forEach((el, i) => {
+      const rect = (el as HTMLElement).offsetTop
+      const dist = Math.abs(rect - scrollTop)
+      if (dist < minDist) { minDist = dist; closest = i }
+    })
+    return closest
+  }, [])
+
+  const addFloatingElement = useCallback((type: 'floating_text' | 'shape') => {
+    const currentPage = getCurrentVisiblePageIndex()
+    const base = type === 'floating_text' ? { ...DEFAULT_FLOATING_TEXT } : { ...DEFAULT_SHAPE }
+    const count = floatingElements.filter(e => e.type === type).length
+    const newEl: FloatingElement = {
+      ...base,
+      id: crypto.randomUUID(),
+      pageIndex: currentPage,
+      zIndex: (floatingElements.length + 1) * 10,
+      name: type === 'floating_text'
+        ? `Texto ${count + 1}`
+        : `Forma ${count + 1}`,
+    } as FloatingElement
+    setFloatingElements(prev => [...prev, newEl])
+    setSelectedFloatingId(newEl.id)
+    setSelectedBlockId(null) // desselecionar bloco normal
+  }, [floatingElements, getCurrentVisiblePageIndex])
+
+  const addFloatingImage = useCallback((imageUrl: string, label: string) => {
+    const currentPage = getCurrentVisiblePageIndex()
+    const count = floatingElements.filter(e => e.type === 'floating_image').length
+    const newEl: FloatingImage = {
+      ...DEFAULT_FLOATING_IMAGE,
+      id: crypto.randomUUID(),
+      imageUrl,
+      pageIndex: currentPage,
+      zIndex: (floatingElements.length + 1) * 10,
+      name: label || `Imagem ${count + 1}`,
+    } as FloatingImage
+    setFloatingElements(prev => [...prev, newEl])
+    setSelectedFloatingId(newEl.id)
+    setSelectedBlockId(null)
+    setFloatingImagePickerOpen(false)
+  }, [floatingElements, getCurrentVisiblePageIndex])
+
+  const updateFloatingElement = useCallback((id: string, updates: Record<string, unknown>) => {
+    setFloatingElements(prev => {
+      const next: FloatingElement[] = []
+      for (const el of prev) {
+        if (el.id === id) {
+          next.push(Object.assign({}, el, updates) as FloatingElement)
+        } else {
+          next.push(el)
+        }
+      }
+      return next
+    })
+  }, [])
+
+  const removeFloatingElement = useCallback((id: string) => {
+    setFloatingElements(prev => prev.filter(el => el.id !== id))
+    if (selectedFloatingId === id) setSelectedFloatingId(null)
+    if (editingFloatingId === id) setEditingFloatingId(null)
+  }, [selectedFloatingId, editingFloatingId])
+
+  const handleFloatingDragStart = useCallback((e: React.MouseEvent, elementId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const element = floatingElements.find(el => el.id === elementId)
+    if (!element || element.locked) return
+
+    const pageEls = document.querySelectorAll('.a4-page')
+    const pageEl = pageEls[element.pageIndex] as HTMLElement
+    if (!pageEl) return
+
+    const rect = pageEl.getBoundingClientRect()
+    const startX = e.clientX
+    const startY = e.clientY
+    const startElX = element.x
+    const startElY = element.y
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100
+      const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100
+      const sx = floatingSnapValue(Math.max(0, Math.min(100, startElX + deltaX)))
+      const sy = floatingSnapValue(Math.max(0, Math.min(100, startElY + deltaY)))
+      updateFloatingElement(elementId, {
+        x: Math.round(sx.snapped * 10) / 10,
+        y: Math.round(sy.snapped * 10) / 10,
+      })
+    }
+
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }, [floatingElements, updateFloatingElement])
+
+  // Upload de imagem para floating_image
+  const handleFloatingImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const maxSize = 5 * 1024 * 1024
+    if (file.size > maxSize) { toast.error('Imagem deve ter no máximo 5MB'); return }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use PNG, JPG ou WebP'); return
+    }
+    try {
+      const ext = file.name.split('.').pop() ?? 'png'
+      const filePath = `floating/${materialId}/${crypto.randomUUID()}.${ext}`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('content-images')
+        .upload(filePath, file, { contentType: file.type, upsert: true })
+      if (uploadError) throw new Error(uploadError.message)
+      const { data: urlData } = supabase.storage.from('content-images').getPublicUrl(uploadData.path)
+      addFloatingImage(urlData.publicUrl, file.name.replace(/\.[^/.]+$/, ''))
+      toast.success('Imagem adicionada!')
+    } catch (err: any) {
+      toast.error('Erro ao enviar: ' + (err?.message?.slice(0, 60) ?? ''))
+    }
+    e.target.value = '' // reset input
+  }, [materialId, addFloatingImage])
+
   // Upload de logomarca para a capa
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [logoUploading, setLogoUploading] = useState(false)
@@ -1187,7 +1523,7 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
         afterOrder: lastOrder,
       })
 
-      setBlocks(prev => [...prev, {
+      setBlocksWithHistory(prev => [...prev, {
         id: newBlockId,
         block_type: blockType,
         title: blockData.title ?? 'Bloco gerado',
@@ -1239,7 +1575,7 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
     const plain = html.replace(/<[^>]+>/g, '')
     try {
       const id = await addMaterialBlock({ materialId, blockType: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, afterOrder: lastOrder })
-      setBlocks(prev => [...prev, { id, block_type: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, render_data: null, sort_order: lastOrder + 1, is_edited: false, original_content: null }])
+      setBlocksWithHistory(prev => [...prev, { id, block_type: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, render_data: null, sort_order: lastOrder + 1, is_edited: false, original_content: null }])
       toast.success(`Bloco "${aiSuggestion.title}" aceito!`)
       setAiSuggestion(null)
     } catch (e: any) {
@@ -1378,7 +1714,7 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
     }
 
     // Atualizar localmente
-    setBlocks(prev => prev.map(b =>
+    setBlocksWithHistory(prev => prev.map(b =>
       b.id === notationEditorBlockId ? { ...b, title: data.name || b.title, render_data: newRenderData } : b,
     ))
 
@@ -1429,7 +1765,7 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
       position: chordEditorStartFret,
     }
 
-    setBlocks(prev => prev.map(b =>
+    setBlocksWithHistory(prev => prev.map(b =>
       b.id === chordEditorBlockId ? { ...b, title: chordEditorName || b.title, render_data: newRenderData } : b,
     ))
 
@@ -1453,61 +1789,14 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
 
   // Exportação
   const handlePrint = useCallback(() => {
-    // 1. Salvar tema e forçar light (remove filter:invert das notações SVG)
+    // Forçar tema light para notações SVG (remove filter:invert do dark mode)
     const currentTheme = document.documentElement.getAttribute('data-theme')
     document.documentElement.setAttribute('data-theme', 'light')
 
-    // 2. Esconder elementos que geram espaço ANTES das páginas A4
-    // (o @media print faz isso, mas precisamos fazer ANTES para o Chrome calcular layout correto)
-    const hideEls: HTMLElement[] = []
-    document.querySelectorAll<HTMLElement>(
-      'nav, .editor-header, .editor-sidebar, .editor-properties, [aria-hidden="true"]'
-    ).forEach(el => {
-      hideEls.push(el)
-      el.dataset.printPrevDisplay = el.style.display
-      el.style.display = 'none'
-    })
-
-    // 3. Resetar containers (margin/padding/height) para layout de print
-    const mainEl = document.querySelector('main') as HTMLElement | null
-    const mainDiv = mainEl?.querySelector(':scope > div') as HTMLElement | null
-    const editorLayout = document.querySelector('.editor-layout') as HTMLElement | null
-    const editorCanvas = document.querySelector('.editor-canvas') as HTMLElement | null
-    const canvasWrapper = document.querySelector('.a4-canvas-wrapper') as HTMLElement | null
-    const animateIn = document.querySelector('.animate-in') as HTMLElement | null
-
-    const saved: { el: HTMLElement; css: string }[] = []
-    const apply = (el: HTMLElement | null, css: string) => {
-      if (!el) return
-      saved.push({ el, css: el.getAttribute('style') || '' })
-      el.style.cssText += ';' + css
-    }
-    apply(mainEl, 'margin-left:0!important;padding:0!important;height:auto!important;overflow:visible!important;width:100%!important')
-    apply(mainDiv, 'height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important;max-height:none!important')
-    apply(animateIn, 'margin:0!important;padding:0!important')
-    apply(editorLayout, 'display:block!important;margin:0!important;padding:0!important;height:auto!important;overflow:visible!important')
-    apply(editorCanvas, 'width:100%!important;margin:0!important;padding:0!important;background:white!important;box-shadow:none!important;overflow:visible!important;height:auto!important;background-image:none!important')
-    apply(canvasWrapper, 'transform:none!important;min-height:0!important;gap:0!important;padding:0!important;overflow:visible!important;flex-direction:column!important')
-
-    // Resetar .a4-page
-    document.querySelectorAll<HTMLElement>('.a4-page').forEach(p => {
-      saved.push({ el: p, css: p.getAttribute('style') || '' })
-      p.style.cssText += ';width:100%!important;height:auto!important;min-height:0!important;overflow:visible!important;box-shadow:none!important;border-radius:0!important'
-    })
-    // Capa precisa de min-height
-    document.querySelectorAll<HTMLElement>('.a4-page--cover').forEach(p => {
-      p.style.cssText += ';min-height:1123px!important;background:#0f172a!important'
-    })
-
-    // 4. Dar tempo ao browser re-renderizar, depois imprimir
+    // Aguardar re-render, imprimir, restaurar tema
+    // O @media print CSS cuida de TUDO: esconde sidebar/nav, reseta containers, dimensiona páginas A4
     setTimeout(() => {
       window.print()
-      // 5. Restaurar tudo
-      hideEls.forEach(el => {
-        el.style.display = el.dataset.printPrevDisplay || ''
-        delete el.dataset.printPrevDisplay
-      })
-      saved.forEach(({ el, css }) => el.setAttribute('style', css))
       if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
       else document.documentElement.removeAttribute('data-theme')
     }, 150)
@@ -1668,11 +1957,24 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
         ;(container as HTMLElement).style.background = '#fff'
       }
 
-      // Page break entre páginas (exceto a última)
+      // Se é capa, copiar background computado do .block-cover para inline
+      // (as classes CSS do template não existem no HTML standalone)
       const isCover = clone.classList.contains('a4-page--cover')
+      if (isCover) {
+        const origBlockCover = page.querySelector('.block-cover') as HTMLElement | null
+        const cloneBlockCover = clone.querySelector('.block-cover') as HTMLElement | null
+        if (origBlockCover && cloneBlockCover) {
+          const computed = getComputedStyle(origBlockCover)
+          cloneBlockCover.style.background = computed.background
+          cloneBlockCover.style.backgroundColor = computed.backgroundColor
+          cloneBlockCover.style.color = computed.color
+        }
+      }
+
+      // Page break entre páginas (exceto a última)
       const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;' : ''
-      const coverBg = isCover ? 'background:#0f172a;min-height:1123px;' : ''
-      pagesHtmlParts.push(`<div class="${clone.className}" style="margin-bottom:40px;${coverBg}${pageBreak}">${clone.innerHTML}</div>`)
+      const coverStyle = isCover ? 'min-height:297mm;background:transparent;' : ''
+      pagesHtmlParts.push(`<div class="${clone.className}" style="margin-bottom:40px;${coverStyle}${pageBreak}">${clone.innerHTML}</div>`)
     }
     const pagesHtml = pagesHtmlParts.join('\n')
 
@@ -1690,11 +1992,13 @@ h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
 h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
 strong{font-weight:600}
 p{margin:0 0 12px}
-.a4-page{max-width:794px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:1123px}
-.a4-page--cover{background:#0f172a;min-height:1123px}
-.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0}
-.a4-page-content{padding:12px 60px;flex:1}
-.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between}
+.a4-page{max-width:794px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:1123px;display:flex;flex-direction:column}
+.a4-page--cover{background:transparent;min-height:1123px;border-radius:0;margin:0 auto 24px;box-shadow:none;overflow:hidden}
+.a4-page--cover .a4-page-content{padding:0;overflow:hidden}
+.a4-page--cover .canvas-block{padding:0;margin:0}
+.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;flex-shrink:0}
+.a4-page-content{padding:12px 60px;flex:1;overflow:hidden}
+.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0}
 .canvas-block{padding:10px 16px;margin-bottom:4px}
 .block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
 .block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
@@ -1726,6 +2030,9 @@ svg{max-width:100%}
   .a4-page{box-shadow:none;page-break-after:always;break-after:page;margin:0}
   .a4-page:last-child{page-break-after:auto}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  .canvas-block,.notation-container,.block-tip,.block-exercise,.mb-4,img,svg,table,pre,figure{page-break-inside:avoid!important;break-inside:avoid!important}
+  h1,h2,h3,h4{page-break-after:avoid!important;break-after:avoid!important}
+  [class*="bg-dourado-soft"],[class*="bg-advance"]{page-break-inside:avoid!important;break-inside:avoid!important}
   @page{size:A4 portrait;margin:0}
 }
 </style>
@@ -1782,7 +2089,6 @@ ${pagesHtml}
           const w = parseInt(cl.getAttribute('width') || '500')
           const h = parseInt(cl.getAttribute('height') || '200')
           const svgData = new XMLSerializer().serializeToString(cl)
-          // Blob URL permite @font-face dentro do SVG (data: URL não permite)
           const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
           const blobUrl = URL.createObjectURL(svgBlob)
           const img = new Image()
@@ -1809,14 +2115,13 @@ ${pagesHtml}
       })
       clone.querySelectorAll('.cover-draggable').forEach(el => el.classList.remove('cover-draggable'))
       clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
-      // Limpar rings/cursors de edição dos text_elements e overlays da capa
       clone.querySelectorAll('[class*="ring-"], [class*="cursor-move"]').forEach(el => {
         const cls = el.getAttribute('class') || ''
         const cleaned = cls.split(' ').filter(c => !c.startsWith('ring-') && c !== 'cursor-move' && c !== 'cursor-grab').join(' ')
         el.setAttribute('class', cleaned)
       })
 
-      // Injetar classes semânticas para blocos de dica (amarelo) e exercício (verde)
+      // Injetar classes semânticas para blocos de dica e exercício
       clone.querySelectorAll('[class*="bg-dourado-soft"]').forEach(el => {
         el.classList.add('block-tip')
       })
@@ -1847,10 +2152,22 @@ ${pagesHtml}
       }
       clone.querySelectorAll('.notation-container').forEach(el => { (el as HTMLElement).style.background = '#fff' })
 
+      // Se é capa, copiar background computado do .block-cover para inline
       const isCover = clone.classList.contains('a4-page--cover')
+      if (isCover) {
+        const origBlockCover = page.querySelector('.block-cover') as HTMLElement | null
+        const cloneBlockCover = clone.querySelector('.block-cover') as HTMLElement | null
+        if (origBlockCover && cloneBlockCover) {
+          const computed = getComputedStyle(origBlockCover)
+          cloneBlockCover.style.background = computed.background
+          cloneBlockCover.style.backgroundColor = computed.backgroundColor
+          cloneBlockCover.style.color = computed.color
+        }
+      }
+
       const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;break-after:page;' : ''
-      const coverBg = isCover ? 'background:#0f172a;min-height:1123px;' : ''
-      pagesHtmlParts.push(`<div class="${clone.className}" style="${coverBg}${pageBreak}">${clone.innerHTML}</div>`)
+      const coverStyle = isCover ? 'min-height:297mm;background:transparent;' : ''
+      pagesHtmlParts.push(`<div class="${clone.className}" style="${coverStyle}${pageBreak}">${clone.innerHTML}</div>`)
     }
 
     // Restaurar tema
@@ -1870,11 +2187,11 @@ body{font-family:'DM Sans',sans-serif;background:#fff;color:#1E293B;line-height:
 h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
 h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
 strong{font-weight:600} p{margin:0 0 12px}
-.a4-page{width:794px;margin:0 auto;background:#fff;overflow:hidden}
-.a4-page--cover{background:#0f172a;min-height:1123px}
-.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0}
-.a4-page-content{padding:12px 60px;flex:1}
-.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between}
+.a4-page{width:210mm;height:297mm;margin:0 auto;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.a4-page--cover{background:transparent;height:297mm;min-height:297mm}
+.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;flex-shrink:0}
+.a4-page-content{padding:12px 60px;flex:1;overflow:hidden}
+.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0}
 .canvas-block{padding:10px 16px;margin-bottom:4px}
 .block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
 .block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
@@ -1900,8 +2217,10 @@ img{max-width:100%}
 .block-columns{display:grid;gap:16px;align-items:start}
 .block-column{min-width:0}
 .block-tip{margin-bottom:16px;padding:16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px}
+.block-tip .tip-icon{color:#F59E0B;font-weight:700;margin-right:6px}
 .block-tip h3,.block-tip .tip-title{color:#F59E0B;font-weight:700;font-size:14px;margin-bottom:4px}
 .block-exercise{margin-bottom:16px;padding:16px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px}
+.block-exercise .exercise-icon{color:#22C55E;font-weight:700;margin-right:6px}
 .block-exercise h3,.block-exercise .exercise-title{color:#22C55E;font-weight:700;font-size:14px;margin-bottom:4px}
 .block-cover--geometric{background:#0f172a;position:relative;overflow:hidden}
 .block-cover--geometric .cover-deco-1,.block-cover--geometric .cover-deco-2,.block-cover--geometric .cover-deco-3{position:absolute;border-radius:50%}
@@ -1915,10 +2234,16 @@ img{max-width:100%}
 @media print{
   body{background:#fff;margin:0;padding:0}
   #print-btn{display:none!important}
-  .a4-page{box-shadow:none;page-break-after:always;break-after:page;margin:0;width:100%}
+  .a4-page{width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;page-break-after:always;break-after:page;margin:0!important;background:white!important}
   .a4-page:last-child{page-break-after:auto}
-  .a4-page--cover{background:#0f172a!important;min-height:100vh}
+  .a4-page--cover{background:transparent!important;height:297mm!important;min-height:297mm!important}
+  .a4-page-content{flex:1!important;overflow:hidden!important}
+  .a4-page-header{flex-shrink:0!important}
+  .a4-page-footer{flex-shrink:0!important}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  .canvas-block,.notation-container,.block-tip,.block-exercise,.mb-4,img,svg,table,pre,figure{page-break-inside:avoid!important;break-inside:avoid!important}
+  h1,h2,h3,h4{page-break-after:avoid!important;break-after:avoid!important}
+  [class*="bg-dourado-soft"],[class*="bg-advance"]{page-break-inside:avoid!important;break-inside:avoid!important}
   @page{size:A4 portrait;margin:0}
 }
 </style>
@@ -1934,6 +2259,84 @@ ${pagesHtml}
     window.open(url, '_blank')
     toast.success('PDF aberto em nova aba — use "Salvar como PDF" no diálogo de impressão')
   }, [materialTitle, loadVexFlowFonts])
+
+  // --- Atalhos de teclado globais ---
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
+
+      // Ctrl+Z — Undo (funciona mesmo em inputs, exceto contentEditable)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
+        e.preventDefault()
+        handleUndo()
+        return
+      }
+      // Ctrl+Y ou Ctrl+Shift+Z — Redo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
+        e.preventDefault()
+        handleRedo()
+        return
+      }
+      // Ctrl+S — Salvar bloco
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        handleSaveBlock()
+        return
+      }
+      // Ctrl+D — Duplicar bloco
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedBlockId) {
+        e.preventDefault()
+        handleDuplicateBlock(selectedBlockId)
+        return
+      }
+
+      // Os atalhos abaixo NÃO funcionam dentro de inputs/textareas
+      if (isInput) return
+
+      // Shift+Delete — Remover bloco ou floating element sem confirmação
+      if (e.key === 'Delete' && e.shiftKey) {
+        e.preventDefault()
+        if (selectedFloatingId) {
+          removeFloatingElement(selectedFloatingId)
+        } else if (selectedBlockId) {
+          handleDeleteBlock(selectedBlockId)
+        }
+        return
+      }
+      // Escape — Desselecionar / sair do inline editing
+      if (e.key === 'Escape') {
+        if (editingFloatingId) {
+          setEditingFloatingId(null)
+        } else if (selectedFloatingId) {
+          setSelectedFloatingId(null)
+        } else if (inlineEditingBlockId) {
+          setInlineEditingBlockId(null)
+        } else if (coverTitleEditing) {
+          setCoverTitleEditing(false)
+        } else {
+          setSelectedBlockId(null)
+        }
+        return
+      }
+      // Setas ↑↓ — Navegar entre blocos
+      if (e.key === 'ArrowUp' && selectedBlockId) {
+        e.preventDefault()
+        const idx = blocks.findIndex(b => b.id === selectedBlockId)
+        if (idx > 0) selectBlock(blocks[idx - 1].id)
+        return
+      }
+      if (e.key === 'ArrowDown' && selectedBlockId) {
+        e.preventDefault()
+        const idx = blocks.findIndex(b => b.id === selectedBlockId)
+        if (idx < blocks.length - 1) selectBlock(blocks[idx + 1].id)
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement])
 
   // --- Loading/Error ---
   if (loading) {
@@ -1989,10 +2392,27 @@ ${pagesHtml}
                 : <Badge variant="advance" className="text-[9px]">Publicado</Badge>
               }
               <span className="text-[11px] text-text3">v{materialMeta?.version ?? 1} · {blocks.length} blocos</span>
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
+                autoSaveStatus === 'saved' ? 'bg-verde/10 text-verde' :
+                autoSaveStatus === 'saving' ? 'bg-dourado/10 text-dourado' :
+                'bg-vermelho/10 text-vermelho'
+              }`}>
+                {autoSaveStatus === 'saved' ? 'Salvo' : autoSaveStatus === 'saving' ? 'Salvando...' : 'Alterações pendentes'}
+              </span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {/* Undo/Redo */}
+          <div className="flex items-center gap-0.5 mr-1">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleUndo} disabled={!canUndo()} title="Desfazer (Ctrl+Z)">
+              <ArrowCounterClockwise size={15} />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleRedo} disabled={!canRedo()} title="Refazer (Ctrl+Y)">
+              <ArrowCounterClockwise size={15} className="scale-x-[-1]" />
+            </Button>
+          </div>
+
           {/* Zoom controls */}
           <div className="flex items-center gap-1 mr-2 px-2 py-1 bg-bg2 rounded-md">
             <Button
@@ -2049,6 +2469,7 @@ ${pagesHtml}
                     isSelected={block.id === selectedBlockId}
                     onSelect={() => selectBlock(block.id)}
                     onDelete={() => handleDeleteBlock(block.id)}
+                    onDuplicate={() => handleDuplicateBlock(block.id)}
                   />
                 ))}
               </div>
@@ -2128,6 +2549,93 @@ ${pagesHtml}
               </div>
             )}
           </div>
+
+          {/* ── Elementos Livres (Fase 3) ── */}
+          <div className="border-t border-border pt-3 mt-3">
+            <div className="flex items-center justify-between px-1 mb-2">
+              <label className="text-[11px] text-text3 uppercase tracking-wider font-medium">
+                Elementos Livres
+              </label>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-10 w-full flex flex-col gap-0.5 text-text3 hover:text-roxo"
+                      onClick={() => addFloatingElement('floating_text')}
+                    >
+                      <TextT size={18} />
+                      <span className="text-[8px]">Texto</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Caixa de texto livre</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-10 w-full flex flex-col gap-0.5 text-text3 hover:text-roxo"
+                      onClick={() => { setFloatingImagePickerOpen(true); loadLibraryImages() }}
+                    >
+                      <ImageIcon size={18} />
+                      <span className="text-[8px]">Imagem</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Imagem da biblioteca ou upload</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-10 w-full flex flex-col gap-0.5 text-text3 hover:text-roxo"
+                      onClick={() => addFloatingElement('shape')}
+                    >
+                      <Hash size={18} />
+                      <span className="text-[8px]">Forma</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Forma geométrica (retângulo, círculo, linha)</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-10 w-full flex flex-col gap-0.5 text-text3 hover:text-roxo"
+                      onClick={() => setShowLayersPanel(!showLayersPanel)}
+                    >
+                      <Rows size={18} />
+                      <span className="text-[8px]">Camadas</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Painel de camadas</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            {/* Painel de camadas */}
+            {showLayersPanel && (
+              <LayersPanel
+                elements={floatingElements}
+                currentPageIndex={getCurrentVisiblePageIndex()}
+                selectedId={selectedFloatingId}
+                onSelect={(id) => { setSelectedFloatingId(id); setSelectedBlockId(null) }}
+                onUpdate={updateFloatingElement}
+                onClose={() => setShowLayersPanel(false)}
+              />
+            )}
+          </div>
         </div>
 
         {/* Container de medição oculto — mede alturas reais dos blocos */}
@@ -2155,7 +2663,7 @@ ${pagesHtml}
         <div
           ref={canvasScrollRef}
           className="editor-canvas"
-          onClick={() => { setSelectedBlockId(null); if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
+          onClick={() => { setSelectedBlockId(null); setSelectedFloatingId(null); setEditingFloatingId(null); if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
           onWheel={(e) => {
             if (e.ctrlKey) {
               e.preventDefault()
@@ -2176,8 +2684,49 @@ ${pagesHtml}
               const showHeader = !isCoverPage && pageConfig.header.enabled && (pageConfig.header.showOnFirstPage || pageIdx > 0)
               const showFooter = !isCoverPage && pageConfig.footer.enabled
 
+              const pageBgColor = !isCoverPage ? (pageConfig.background?.color || '#ffffff') : undefined
+              const watermark = !isCoverPage ? pageConfig.background?.watermark : undefined
+
               return (
-              <div key={pageIdx} className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}>
+              <div
+                key={pageIdx}
+                className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
+                style={{ position: 'relative', ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
+              >
+                {/* Marca d'água */}
+                {watermark?.enabled && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+                    {watermark.type === 'text' ? (
+                      <span style={{
+                        fontSize: `${watermark.fontSize || 80}px`,
+                        fontWeight: 900,
+                        color: `rgba(0, 0, 0, ${watermark.opacity || 0.08})`,
+                        transform: `rotate(${watermark.rotation || -30}deg)`,
+                        whiteSpace: 'nowrap',
+                        userSelect: 'none',
+                        letterSpacing: '8px',
+                        textTransform: 'uppercase',
+                      }}>
+                        {watermark.text || 'RASCUNHO'}
+                      </span>
+                    ) : watermark.imageUrl ? (
+                      <img
+                        src={watermark.imageUrl}
+                        alt=""
+                        style={{
+                          opacity: watermark.opacity || 0.08,
+                          transform: `rotate(${watermark.rotation || 0}deg)`,
+                          maxWidth: '60%',
+                          maxHeight: '60%',
+                          objectFit: 'contain',
+                          userSelect: 'none',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                )}
+
                 {/* Cabeçalho */}
                 {showHeader ? (
                   <div className="a4-page-header">
@@ -2206,12 +2755,18 @@ ${pagesHtml}
                   {pageBlocks.map(block => {
                     const isTextBlock = ['text', 'tip', 'exercise', 'title'].includes(block.block_type)
                     const isInlineEditing = inlineEditingBlockId === block.id
+                    const canInlineEditTitle = !['cover', 'separator', 'page_break'].includes(block.block_type)
+
+                    const bStyle = !['cover', 'page_break', 'separator'].includes(block.block_type)
+                      ? blockStyleToCSS(block.render_data?.style as BlockStyle | undefined)
+                      : {}
 
                     return (
                       <div
                         key={block.id}
                         ref={el => { canvasRefs.current[block.id] = el }}
                         className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''} ${isInlineEditing ? 'inline-editing' : ''}`}
+                        style={bStyle}
                         onClick={(e) => {
                           e.stopPropagation()
                           selectBlock(block.id)
@@ -2222,7 +2777,7 @@ ${pagesHtml}
                           if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
                           else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
                           else if (block.block_type === 'cover') setCoverTitleEditing(true)
-                          else if (isTextBlock && !isInlineEditing) setInlineEditingBlockId(block.id)
+                          else if ((isTextBlock || canInlineEditTitle) && !isInlineEditing) setInlineEditingBlockId(block.id)
                         }}
                       >
                         {isInlineEditing && isTextBlock ? (
@@ -2252,7 +2807,27 @@ ${pagesHtml}
                               onAIAction={handleAITextAction}
                             />
                             <div className="text-[10px] text-text3 mt-2 text-right opacity-60">
-                              Clique fora para sair da edição
+                              Clique fora para sair da edição · Esc para cancelar
+                            </div>
+                          </div>
+                        ) : isInlineEditing && !isTextBlock && canInlineEditTitle ? (
+                          <div onClick={e => e.stopPropagation()}>
+                            <Input
+                              value={block.title ?? ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                setBlocks(prev => prev.map(b => b.id !== block.id ? b : { ...b, title: val }))
+                              }}
+                              onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setInlineEditingBlockId(null) }}
+                              className="font-bold text-[14px] text-text mb-2 border-b border-accent/30 bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                              placeholder="Título do bloco"
+                              autoFocus
+                            />
+                            <MaterialPreview
+                              blocks={[editorBlockToPreview(block)]}
+                            />
+                            <div className="text-[10px] text-text3 mt-1 text-right opacity-60">
+                              Enter ou Esc para sair
                             </div>
                           </div>
                         ) : (
@@ -2324,6 +2899,30 @@ ${pagesHtml}
                 ) : !isCoverPage ? (
                   <div className="a4-page-footer" style={{ borderTop: 'none', padding: '0 60px 8px' }} />
                 ) : null}
+
+                {/* ── Floating Elements desta página ── */}
+                {floatingElements
+                  .filter((el) => el.pageIndex === pageIdx && el.visible)
+                  .sort((a, b) => a.zIndex - b.zIndex)
+                  .map((el) => (
+                    <FloatingElementRenderer
+                      key={el.id}
+                      element={el}
+                      isSelected={selectedFloatingId === el.id}
+                      isEditing={editingFloatingId === el.id}
+                      onSelect={() => {
+                        setSelectedFloatingId(el.id)
+                        setSelectedBlockId(null)
+                      }}
+                      onDoubleClick={() => {
+                        if (el.type === 'floating_text' && !el.locked) {
+                          setEditingFloatingId(el.id)
+                        }
+                      }}
+                      onDragStart={(e) => handleFloatingDragStart(e, el.id)}
+                      onUpdate={(updates) => updateFloatingElement(el.id, updates)}
+                    />
+                  ))}
               </div>
               )
             })}
@@ -2332,7 +2931,151 @@ ${pagesHtml}
 
         {/* Coluna 3 — Propriedades */}
         <div className="editor-properties">
-          {!selectedBlock ? (
+          {/* ── Painel de propriedades do Floating Element ── */}
+          {selectedFloating && !selectedBlock ? (
+            <div className="space-y-3 pb-4">
+              {/* Header com nome e tipo */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {selectedFloating.type === 'floating_text' && <TextT size={16} className="text-accent" />}
+                  {selectedFloating.type === 'floating_image' && <ImageIcon size={16} className="text-accent" />}
+                  {selectedFloating.type === 'shape' && <Hash size={16} className="text-accent" />}
+                  <Input
+                    value={selectedFloating.name}
+                    onChange={(e) => updateFloatingElement(selectedFloating.id, { name: e.target.value })}
+                    className="h-7 text-[12px] font-medium border-none bg-transparent p-0"
+                  />
+                </div>
+                <div className="flex gap-1">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost" size="sm" className="h-7 w-7 p-0"
+                          onClick={() => updateFloatingElement(selectedFloating.id, { locked: !selectedFloating.locked })}
+                        >
+                          {selectedFloating.locked
+                            ? <Eye size={14} className="text-dourado" />
+                            : <EyeSlash size={14} />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{selectedFloating.locked ? 'Desbloquear' : 'Bloquear'}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Button
+                    variant="ghost" size="sm"
+                    className="h-7 w-7 p-0 text-text3 hover:text-vermelho"
+                    onClick={() => removeFloatingElement(selectedFloating.id)}
+                  >
+                    <Trash size={14} />
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Posição e Tamanho */}
+              <div className="space-y-2">
+                <Label className="text-[10px] text-text3 uppercase tracking-wider">Posição e Tamanho</Label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-[9px] text-text3">X</Label>
+                    <input type="range" min={0} max={100} step={1}
+                      value={selectedFloating.x}
+                      onChange={(e) => updateFloatingElement(selectedFloating.id, { x: Number(e.target.value) })}
+                      className="w-full accent-accent h-1.5"
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-[9px] text-text3">Y</Label>
+                    <input type="range" min={0} max={100} step={1}
+                      value={selectedFloating.y}
+                      onChange={(e) => updateFloatingElement(selectedFloating.id, { y: Number(e.target.value) })}
+                      className="w-full accent-accent h-1.5"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-0.5">
+                  <Label className="text-[9px] text-text3">Largura</Label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={5} max={100} step={1}
+                      value={selectedFloating.width}
+                      onChange={(e) => updateFloatingElement(selectedFloating.id, { width: Number(e.target.value) })}
+                      className="flex-1 accent-accent h-1.5"
+                    />
+                    <span className="text-[10px] text-text3 w-8 font-mono">{selectedFloating.width}%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-0.5">
+                  <Label className="text-[9px] text-text3">Rotação</Label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={0} max={360} step={1}
+                      value={selectedFloating.rotation}
+                      onChange={(e) => updateFloatingElement(selectedFloating.id, { rotation: Number(e.target.value) })}
+                      className="flex-1 accent-accent h-1.5"
+                    />
+                    <span className="text-[10px] text-text3 w-8 font-mono">{selectedFloating.rotation}°</span>
+                  </div>
+                </div>
+
+                <div className="space-y-0.5">
+                  <Label className="text-[9px] text-text3">Opacidade</Label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={0} max={100} step={5}
+                      value={Math.round(selectedFloating.opacity * 100)}
+                      onChange={(e) => updateFloatingElement(selectedFloating.id, { opacity: Number(e.target.value) / 100 })}
+                      className="flex-1 accent-accent h-1.5"
+                    />
+                    <span className="text-[10px] text-text3 w-8 font-mono">{Math.round(selectedFloating.opacity * 100)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Controles específicos por tipo */}
+              {selectedFloating.type === 'floating_text' && (
+                <FloatingTextProperties
+                  element={selectedFloating as FloatingText}
+                  onUpdate={(updates) => updateFloatingElement(selectedFloating.id, updates)}
+                />
+              )}
+              {selectedFloating.type === 'floating_image' && (
+                <FloatingImageProperties
+                  element={selectedFloating as FloatingImage}
+                  onUpdate={(updates) => updateFloatingElement(selectedFloating.id, updates)}
+                />
+              )}
+              {selectedFloating.type === 'shape' && (
+                <FloatingShapeProperties
+                  element={selectedFloating as FloatingShape}
+                  onUpdate={(updates) => updateFloatingElement(selectedFloating.id, updates)}
+                />
+              )}
+
+              <Separator />
+
+              {/* Camadas rápidas */}
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" className="flex-1 h-7 text-[10px]"
+                  onClick={() => {
+                    const maxZ = Math.max(...floatingElements.map(e => e.zIndex), 0)
+                    updateFloatingElement(selectedFloating.id, { zIndex: maxZ + 10 })
+                  }}
+                >
+                  <ArrowFatUp size={12} className="mr-1" /> Frente
+                </Button>
+                <Button variant="ghost" size="sm" className="flex-1 h-7 text-[10px]"
+                  onClick={() => updateFloatingElement(selectedFloating.id, { zIndex: 1 })}
+                >
+                  <ArrowFatDown size={12} className="mr-1" /> Trás
+                </Button>
+              </div>
+            </div>
+          ) : !selectedBlock ? (
             <div className="space-y-4 pb-4">
               <div className="prop-label mb-1" style={{ color: 'var(--accent)' }}>
                 <Gear size={12} className="inline-block mr-1 mb-0.5" />
@@ -2478,6 +3221,15 @@ ${pagesHtml}
                   </div>
                 )}
               </div>
+
+              {/* Background da Página */}
+              <PageBackgroundPanel
+                background={pageConfig.background ?? DEFAULT_PAGE_BACKGROUND}
+                onChange={(updates) => setPageConfig(prev => ({
+                  ...prev,
+                  background: { ...(prev.background ?? DEFAULT_PAGE_BACKGROUND), ...updates },
+                }))}
+              />
 
               <hr className="border-border" />
 
@@ -3776,6 +4528,23 @@ ${pagesHtml}
                 </div>
               )}
 
+              {/* Estilo do Bloco — para qualquer bloco exceto cover e page_break */}
+              {!['cover', 'page_break'].includes(selectedBlock.block_type) && selectedBlock.block_type !== 'separator' && (
+                <BlockStylePanel
+                  style={(selectedBlock.render_data?.style as BlockStyle) ?? DEFAULT_BLOCK_STYLE}
+                  onChange={updateBlockStyle}
+                />
+              )}
+
+              {/* Separador customizável */}
+              {selectedBlock.block_type === 'separator' && (
+                <SeparatorStylePanel
+                  style={(selectedBlock.render_data?.separatorStyle as SeparatorStyle) ?? DEFAULT_SEPARATOR_STYLE}
+                  onChange={updateSeparatorStyle}
+                  pageBackgroundColor={pageConfig.background?.color ?? '#ffffff'}
+                />
+              )}
+
               <hr className="border-border my-4" />
 
               {/* Ações */}
@@ -3802,6 +4571,15 @@ ${pagesHtml}
                       <ArrowCounterClockwise size={14} /> Reverter Original
                     </Button>
                   )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center gap-1.5"
+                    onClick={() => handleDuplicateBlock(selectedBlock.id)}
+                  >
+                    <Copy size={14} /> Duplicar Bloco
+                  </Button>
                 </div>
               </div>
 
@@ -4084,6 +4862,73 @@ ${pagesHtml}
                       <div className="text-[8px] text-text3 uppercase">{img.category} · {img.image_format}</div>
                     </div>
                     <div className="absolute inset-0 bg-accent/0 group-hover:bg-accent/5 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog — Floating Image Picker */}
+      <Dialog open={floatingImagePickerOpen} onOpenChange={setFloatingImagePickerOpen}>
+        <DialogContent className="sm:max-w-[640px] max-h-[80vh] bg-surface border-border">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-[20px]">
+              Adicionar <span className="text-accent">Imagem</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {/* Upload */}
+            <div
+              className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-accent/30 transition-colors"
+              onClick={() => floatingImageInputRef.current?.click()}
+            >
+              <ImageIcon size={28} className="text-text3/40 mb-1" />
+              <span className="text-[12px] text-text3/60">Clique para fazer upload</span>
+              <span className="text-[10px] text-text3/40">PNG, JPG, WebP até 5MB</span>
+              <input
+                ref={floatingImageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleFloatingImageUpload}
+              />
+            </div>
+
+            {/* Biblioteca */}
+            <div className="text-[11px] text-text3 font-medium uppercase tracking-wider">Da Biblioteca</div>
+            {coverLibraryLoading ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-text3">
+                <SpinnerGap size={20} className="animate-spin" /> Carregando...
+              </div>
+            ) : filteredLibraryImages.length === 0 ? (
+              <div className="text-center py-8 text-text3 text-[13px]">
+                Nenhuma imagem encontrada.
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto pr-1">
+                {filteredLibraryImages.map(img => (
+                  <button
+                    key={img.id}
+                    onClick={() => img.image_url && addFloatingImage(img.image_url, img.label)}
+                    className="group relative rounded-lg border border-border overflow-hidden hover:ring-2 hover:ring-accent transition-all"
+                    style={img.tags?.includes('fundo-transparente') ? {
+                      backgroundImage: 'repeating-conic-gradient(#e0e0e0 0% 25%, #fff 0% 50%)',
+                      backgroundSize: '12px 12px',
+                    } : undefined}
+                  >
+                    <div className="aspect-square">
+                      <img
+                        src={img.image_url ?? ''}
+                        alt={img.label}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="p-1 bg-surface">
+                      <div className="text-[9px] font-medium text-text truncate">{img.label}</div>
+                    </div>
                   </button>
                 ))}
               </div>

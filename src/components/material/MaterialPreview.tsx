@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useState } from 'react'
 import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
+import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { StaffNotation } from '@/components/music/StaffNotation'
@@ -8,7 +9,7 @@ import { Tablature } from '@/components/music/Tablature'
 import { NotationRenderer } from '@/components/music/NotationRenderer'
 
 export interface MaterialBlock {
-  block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns'
+  block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
   title?: string
   content?: { text?: string; [key: string]: any }
   render_data?: any
@@ -962,6 +963,51 @@ function BlockColumns({ block }: { block: MaterialBlock }) {
   )
 }
 
+// ─── Bloco Separador Customizável ─────────────────────────────────
+
+function BlockSeparator({ block }: { block: MaterialBlock }) {
+  const rd = block.render_data ?? {}
+  const s: SeparatorStyle = {
+    ...DEFAULT_SEPARATOR_STYLE,
+    ...(rd.separatorStyle as Partial<SeparatorStyle> | undefined),
+  }
+  const decoration = getSeparatorDecoration(s.decoration)
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center',
+        padding: `${s.spacing}px 0`,
+      }}
+    >
+      <div style={{ position: 'relative', width: `${s.widthPercent}%` }}>
+        <hr style={{
+          border: 'none',
+          borderTop: s.style === 'double'
+            ? `${s.width}px double ${s.color}`
+            : `${s.width}px ${s.style} ${s.color}`,
+          margin: 0,
+        }} />
+        {decoration && (
+          <span style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: '#ffffff',
+            padding: '0 8px',
+            fontSize: '14px',
+            color: s.color,
+          }}>
+            {decoration}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const BLOCK_RENDERERS_INNER: Record<string, React.FC<{ block: MaterialBlock }>> = {
   title: BlockTitle,
   text: BlockText,
@@ -977,6 +1023,7 @@ const BLOCK_RENDERERS_INNER: Record<string, React.FC<{ block: MaterialBlock }>> 
   video: BlockVideo,
   keyboard: BlockKeyboard,
   keyboard_grid: BlockKeyboardGrid,
+  separator: BlockSeparator,
 }
 
 const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
@@ -997,6 +1044,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   keyboard: BlockKeyboard,
   keyboard_grid: BlockKeyboardGrid,
   columns: BlockColumns,
+  separator: BlockSeparator,
 }
 
 export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
