@@ -288,9 +288,12 @@
 
 /* EDITOR */
 .editor-layout{display:grid;grid-template-columns:260px 1fr 300px;gap:0;height:100vh;margin:-28px;overflow:hidden}
-.editor-sidebar{border-right:1px solid var(--border);padding:16px;overflow-y:auto;background:var(--surface)}
-.editor-canvas{padding:32px 24px;overflow-y:auto;background:var(--bg2);background-image:radial-gradient(circle,var(--border) 0.5px,transparent 0.5px);background-size:16px 16px}
-.editor-properties{border-left:1px solid var(--border);padding:16px;overflow-y:auto;background:var(--surface)}
+.editor-layout.editor-layout--flex{display:flex;grid-template-columns:none}
+.editor-sidebar{shrink:0;overflow:hidden;background:var(--surface)}
+.editor-layout:not(.editor-layout--flex) .editor-sidebar{border-right:1px solid var(--border);padding:16px;overflow-y:auto}
+.editor-canvas{flex:1;min-width:0;padding:32px 24px;overflow-y:auto;background:var(--bg2);background-image:radial-gradient(circle,var(--border) 0.5px,transparent 0.5px);background-size:16px 16px}
+.editor-properties{shrink:0;overflow:hidden;background:var(--surface)}
+.editor-layout:not(.editor-layout--flex) .editor-properties{border-left:1px solid var(--border);padding:16px;overflow-y:auto}
 .block-item{border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:var(--transition);position:relative;background:var(--card)}
 .block-item:hover{border-color:rgba(30,58,95,.25);box-shadow:var(--shadow)}
 .block-item.selected{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px rgba(255,45,120,.1)}

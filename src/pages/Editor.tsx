@@ -12,6 +12,7 @@ import {
   BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera, DownloadSimple,
   PlusCircle, SlidersHorizontal, Drop, ArrowsClockwise, ArrowFatUp, TextT, ArrowFatDown,
   Copy, ArrowUUpRight, ArrowUDownRight,
+  CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ import { FloatingTextProperties } from "@/components/editor/FloatingTextProperti
 import { FloatingImageProperties } from "@/components/editor/FloatingImageProperties";
 import { FloatingShapeProperties } from "@/components/editor/FloatingShapeProperties";
 import { LayersPanel } from "@/components/editor/LayersPanel";
+import { ContextualToolbar } from "@/components/editor/ContextualToolbar";
 import { HeaderFooterBar } from "@/components/editor/HeaderFooterBar";
 import { HeaderFooterEditor } from "@/components/editor/HeaderFooterEditor";
 import {
@@ -370,6 +372,17 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Configuração de cabeçalho/rodapé da página
   const [pageConfig, setPageConfig] = useState<PageConfig>(DEFAULT_PAGE_CONFIG)
+
+  // Sidebar retrátil
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => {
+    try { const s = localStorage.getItem('editor-sidebar-state'); return s ? JSON.parse(s).left !== false : true } catch { return true }
+  })
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => {
+    try { const s = localStorage.getItem('editor-sidebar-state'); return s ? JSON.parse(s).right !== false : true } catch { return true }
+  })
+
+  // Toolbar contextual position
+  const [toolbarPosition, setToolbarPosition] = useState<{ top: number; left: number } | null>(null)
 
   // Undo/Redo global
   const { pushSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo<EditorBlock[]>()
@@ -683,6 +696,23 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       toast.info('Bloco duplicado localmente')
     }
   }, [blocks, materialId, refetch])
+
+  // Mover bloco acima/abaixo
+  const handleMoveBlock = useCallback((blockId: string, direction: 'up' | 'down') => {
+    const idx = blocks.findIndex(b => b.id === blockId)
+    if (idx < 0) return
+    if (direction === 'up' && idx === 0) return
+    if (direction === 'down' && idx === blocks.length - 1) return
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    setBlocksWithHistory(prev => {
+      const next = [...prev]
+      const tempOrder = next[idx].sort_order
+      next[idx] = { ...next[idx], sort_order: next[swapIdx].sort_order }
+      next[swapIdx] = { ...next[swapIdx], sort_order: tempOrder }
+      ;[next[idx], next[swapIdx]] = [next[swapIdx], next[idx]]
+      return next
+    })
+  }, [blocks, setBlocksWithHistory])
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
@@ -2281,6 +2311,29 @@ ${pagesHtml}
         return
       }
 
+      // Ctrl+\ — Toggle modo foco
+      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+        e.preventDefault()
+        setLeftSidebarOpen(prev => {
+          const nextVal = !(prev || rightSidebarOpen)
+          setRightSidebarOpen(nextVal)
+          return nextVal
+        })
+        return
+      }
+      // Ctrl+[ — Toggle sidebar esquerda
+      if ((e.ctrlKey || e.metaKey) && e.key === '[') {
+        e.preventDefault()
+        setLeftSidebarOpen(prev => !prev)
+        return
+      }
+      // Ctrl+] — Toggle sidebar direita
+      if ((e.ctrlKey || e.metaKey) && e.key === ']') {
+        e.preventDefault()
+        setRightSidebarOpen(prev => !prev)
+        return
+      }
+
       // Os atalhos abaixo NÃO funcionam dentro de inputs/textareas
       if (isInput) return
 
@@ -2326,7 +2379,37 @@ ${pagesHtml}
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen])
+
+  // Persistir estado da sidebar no localStorage
+  useEffect(() => {
+    localStorage.setItem('editor-sidebar-state', JSON.stringify({ left: leftSidebarOpen, right: rightSidebarOpen }))
+  }, [leftSidebarOpen, rightSidebarOpen])
+
+  // Posicionar toolbar contextual sobre o bloco selecionado
+  useEffect(() => {
+    if (!selectedBlockId || inlineEditingBlockId) {
+      setToolbarPosition(null)
+      return
+    }
+    const updatePosition = () => {
+      const blockEl = canvasRefs.current[selectedBlockId]
+      if (!blockEl) { setToolbarPosition(null); return }
+      const rect = blockEl.getBoundingClientRect()
+      setToolbarPosition({
+        top: rect.top - 44,
+        left: rect.left + rect.width / 2,
+      })
+    }
+    updatePosition()
+    const canvas = canvasScrollRef.current
+    canvas?.addEventListener('scroll', updatePosition)
+    window.addEventListener('resize', updatePosition)
+    return () => {
+      canvas?.removeEventListener('scroll', updatePosition)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [selectedBlockId, blocks, inlineEditingBlockId, zoom])
 
   // --- Loading/Error ---
   if (loading) {
@@ -2441,10 +2524,11 @@ ${pagesHtml}
         </div>
       </div>
 
-      {/* Layout 3 colunas */}
-      <div className="editor-layout" style={{ marginTop: 0 }}>
-        {/* Coluna 1 — Sidebar: Lista de Blocos */}
-        <div className="editor-sidebar">
+      {/* Layout 3 colunas com sidebars retráteis */}
+      <div className="editor-layout editor-layout--flex" style={{ marginTop: 0 }}>
+        {/* Coluna 1 — Sidebar Esquerda: Lista de Blocos */}
+        <div className={`editor-sidebar transition-all duration-300 ease-in-out overflow-hidden ${leftSidebarOpen ? 'w-[260px] border-r border-border' : 'w-0 border-r-0'}`}>
+          <div className="w-[260px] h-full overflow-y-auto p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
           </div>
@@ -2626,7 +2710,27 @@ ${pagesHtml}
               />
             )}
           </div>
-        </div>
+          </div>{/* fim w-[260px] wrapper */}
+        </div>{/* fim editor-sidebar */}
+
+        {/* Botão toggle sidebar esquerda */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost" size="sm"
+                className="self-start mt-3 z-40 h-8 w-6 p-0 rounded-l-none shrink-0
+                           bg-card border border-l-0 border-border hover:bg-accent/10"
+                onClick={() => setLeftSidebarOpen(prev => !prev)}
+              >
+                {leftSidebarOpen ? <CaretLeft size={12} /> : <CaretRight size={12} />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>{leftSidebarOpen ? 'Esconder blocos (Ctrl+[)' : 'Mostrar blocos (Ctrl+[)'}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {/* Container de medição oculto — mede alturas reais dos blocos */}
         <div
@@ -2652,7 +2756,7 @@ ${pagesHtml}
         {/* Coluna 2 — Canvas A4 (Preview) */}
         <div
           ref={canvasScrollRef}
-          className="editor-canvas"
+          className="editor-canvas relative"
           onClick={() => { setSelectedBlockId(null); setSelectedFloatingId(null); setEditingFloatingId(null); if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
           onWheel={(e) => {
             if (e.ctrlKey) {
@@ -2661,6 +2765,34 @@ ${pagesHtml}
             }
           }}
         >
+          {/* Botão Modo Foco */}
+          <div className="sticky top-2 z-30 flex justify-end pr-2 pointer-events-none" style={{ marginBottom: '-32px' }}>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost" size="sm"
+                    className="h-7 px-2 text-[10px] text-text3 bg-card/80 backdrop-blur-sm
+                               border border-border rounded-lg pointer-events-auto"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const bothOpen = leftSidebarOpen || rightSidebarOpen
+                      setLeftSidebarOpen(!bothOpen)
+                      setRightSidebarOpen(!bothOpen)
+                    }}
+                  >
+                    {(leftSidebarOpen || rightSidebarOpen) ? (
+                      <><ArrowsInSimple size={14} className="mr-1" /> Foco</>
+                    ) : (
+                      <><ArrowsOutSimple size={14} className="mr-1" /> Normal</>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Modo foco (Ctrl+\)</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
           <div
             className="a4-canvas-wrapper"
             style={{
@@ -2900,8 +3032,28 @@ ${pagesHtml}
           </div>
         </div>
 
+        {/* Botão toggle sidebar direita */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost" size="sm"
+                className="self-start mt-3 z-40 h-8 w-6 p-0 rounded-r-none shrink-0
+                           bg-card border border-r-0 border-border hover:bg-accent/10"
+                onClick={() => setRightSidebarOpen(prev => !prev)}
+              >
+                {rightSidebarOpen ? <CaretRight size={12} /> : <CaretLeft size={12} />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p>{rightSidebarOpen ? 'Esconder propriedades (Ctrl+])' : 'Mostrar propriedades (Ctrl+])'}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
         {/* Coluna 3 — Propriedades */}
-        <div className="editor-properties">
+        <div className={`editor-properties transition-all duration-300 ease-in-out overflow-hidden ${rightSidebarOpen ? 'w-[300px] border-l border-border' : 'w-0 border-l-0'}`}>
+          <div className="w-[300px] h-full overflow-y-auto p-4">
           {/* ── Painel de propriedades do Floating Element ── */}
           {selectedFloating && !selectedBlock ? (
             <div className="space-y-3 pb-4">
@@ -4441,8 +4593,24 @@ ${pagesHtml}
               </div>
             </>
           )}
-        </div>
-      </div>
+          </div>{/* fim w-[300px] wrapper */}
+        </div>{/* fim editor-properties */}
+      </div>{/* fim editor-layout */}
+
+      {/* ── Toolbar contextual flutuante ── */}
+      {selectedBlock && toolbarPosition && !inlineEditingBlockId && (
+        <ContextualToolbar
+          blockType={selectedBlock.block_type}
+          position={toolbarPosition}
+          onDuplicate={() => handleDuplicateBlock(selectedBlock.id)}
+          onDelete={() => handleDeleteBlock(selectedBlock.id)}
+          onMoveUp={() => handleMoveBlock(selectedBlock.id, 'up')}
+          onMoveDown={() => handleMoveBlock(selectedBlock.id, 'down')}
+          onStyleChange={updateBlockStyle}
+          isFirst={blocks.findIndex(b => b.id === selectedBlock.id) === 0}
+          isLast={blocks.findIndex(b => b.id === selectedBlock.id) === blocks.length - 1}
+        />
+      )}
 
       {/* ── Modais dos editores visuais integrados ── */}
 

@@ -18,6 +18,7 @@ import {
   Eraser, ArrowCounterClockwise, ArrowClockwise, Palette,
   Sparkle, SpinnerGap,
 } from '@phosphor-icons/react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 // ─── Cores rápidas ────────────────────────────────────────────────
 const QUICK_COLORS = [
@@ -319,23 +320,83 @@ export function RichTextEditor({
       {!inline && (variant === 'title' ? titleToolbar : toolbar)}
       <BubbleMenu editor={editor} options={{ placement: 'top', offset: 8 }}>
         <div className="flex items-center gap-0.5 p-1.5 bg-surface border border-border rounded-lg shadow-lg">
-          <ToolbarBtn icon={TextB} label="Negrito" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
-          <ToolbarBtn icon={TextItalic} label="Itálico" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
-          <ToolbarBtn icon={TextUnderline} label="Sublinhado" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
-          <ToolbarBtn icon={HighlighterCircle} label="Destacar" active={editor.isActive('highlight')} onClick={() => editor.chain().focus().toggleHighlight({ color: '#fef08a' }).run()} />
+          {/* Formatação básica */}
+          <ToolbarBtn icon={TextB} label="Negrito (Ctrl+B)" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
+          <ToolbarBtn icon={TextItalic} label="Itálico (Ctrl+I)" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+          <ToolbarBtn icon={TextUnderline} label="Sublinhado (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
+          <ToolbarBtn icon={TextStrikethrough} label="Tachado" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
           <ToolbarSep />
+
+          {/* Highlight multicolor */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                title="Marca-texto"
+                className={`w-7 h-7 flex items-center justify-center rounded-md text-[13px] transition-colors ${editor.isActive('highlight') ? 'bg-accent/20 text-accent' : 'text-text2 hover:bg-bg2 hover:text-text'}`}
+              >
+                <HighlighterCircle size={15} weight={editor.isActive('highlight') ? 'bold' : 'regular'} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-2" side="bottom" align="center">
+              <div className="grid grid-cols-4 gap-1">
+                {['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'].map((c) => (
+                  <button key={c} type="button" onClick={() => editor.chain().focus().toggleHighlight({ color: c }).run()}
+                    className="w-5 h-5 rounded border border-border/50 hover:scale-125 transition-transform"
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+                <button type="button" onClick={() => editor.chain().focus().unsetHighlight().run()}
+                  title="Remover destaque"
+                  className="w-5 h-5 rounded border border-border/50 hover:scale-125 transition-transform flex items-center justify-center text-[8px] text-text3"
+                  style={{ backgroundImage: 'repeating-conic-gradient(#ddd 0% 25%, transparent 0% 50%)', backgroundSize: '6px 6px' }}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Cor do texto */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                title="Cor do texto"
+                className="w-7 h-7 flex items-center justify-center rounded-md text-[13px] transition-colors text-text2 hover:bg-bg2 hover:text-text"
+              >
+                <Palette size={15} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-2" side="bottom" align="center">
+              <div className="grid grid-cols-6 gap-1">
+                {['#1e293b', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6',
+                  '#6366f1', '#a855f7', '#ec4899', '#64748b', '#ffffff', '#000000'].map((c) => (
+                  <button key={c} type="button" onClick={() => setColor(c)}
+                    className="w-5 h-5 rounded-full border border-border/50 hover:scale-125 transition-transform"
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <button type="button" onClick={() => setColor('')}
+                className="mt-1.5 w-full text-[9px] text-text3 hover:text-text text-center py-0.5 rounded hover:bg-bg2 transition-colors"
+              >
+                Cor padrão
+              </button>
+            </PopoverContent>
+          </Popover>
+
+          <ToolbarSep />
+
+          {/* Alinhamento */}
+          <ToolbarBtn icon={TextAlignLeft} label="Alinhar esquerda" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()} />
+          <ToolbarBtn icon={TextAlignCenter} label="Centralizar" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()} />
+          <ToolbarBtn icon={TextAlignRight} label="Alinhar direita" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()} />
+
+          <ToolbarSep />
+
+          {/* Link */}
           <ToolbarBtn icon={LinkSimple} label="Link" active={editor.isActive('link')} onClick={setLink} />
-          <ToolbarSep />
-          {QUICK_COLORS.slice(1, 7).map(c => (
-            <button
-              key={c.value}
-              type="button"
-              title={c.label}
-              onClick={() => setColor(c.value)}
-              className="w-3.5 h-3.5 rounded-full border border-border/50 hover:scale-125 transition-transform"
-              style={{ background: c.value }}
-            />
-          ))}
+
+          {/* IA */}
           {onAIAction && (
             <>
               <ToolbarSep />
