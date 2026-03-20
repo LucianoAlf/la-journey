@@ -7,7 +7,7 @@ export const AI_CONFIG = {
   },
   generation: {
     provider: 'google' as const,
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3-flash-preview',
     apiKey: import.meta.env.VITE_GOOGLE_AI_KEY as string,
     maxTokens: 8192,
   },

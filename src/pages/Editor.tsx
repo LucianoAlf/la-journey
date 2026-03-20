@@ -13,6 +13,8 @@ import {
   PlusCircle, SlidersHorizontal, Drop, ArrowsClockwise, ArrowFatUp, TextT, ArrowFatDown,
   Copy, ArrowUUpRight, ArrowUDownRight,
   CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
+  MagicWand, Translate, Brain, Lightning,
+  Ruler, Layout, ClockCounterClockwise, MapTrifold,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +69,14 @@ import { FloatingImageProperties } from "@/components/editor/FloatingImageProper
 import { FloatingShapeProperties } from "@/components/editor/FloatingShapeProperties";
 import { LayersPanel } from "@/components/editor/LayersPanel";
 import { ContextualToolbar } from "@/components/editor/ContextualToolbar";
+import { AIVariationsDialog } from "@/components/editor/AIVariationsDialog";
+import { CanvasRuler } from "@/components/editor/CanvasRuler";
+import { PageMinimap } from "@/components/editor/PageMinimap";
+import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
+import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
+import { type MaterialTemplate } from "@/lib/materialTemplates";
+import { saveVersion } from "@/services/materialVersionService";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HeaderFooterBar } from "@/components/editor/HeaderFooterBar";
 import { HeaderFooterEditor } from "@/components/editor/HeaderFooterEditor";
 import {
@@ -728,13 +738,21 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       setBlocks(prev => prev.map(b =>
         b.id === selectedBlock.id ? { ...b, is_edited: true } : b,
       ))
-      toast.success('Bloco salvo')
+
+      // 7.4 — Criar versão automática no save manual
+      const schoolId = school?.id || 'a1b2c3d4-0001-4000-8000-000000000001'
+      try {
+        await saveVersion(materialId, schoolId, blocksRef.current, pageConfig)
+        toast.success('Bloco salvo — versão criada')
+      } catch {
+        toast.success('Bloco salvo')
+      }
     } catch (e: any) {
       toast.error('Erro ao salvar bloco: ' + (e?.message ?? ''))
     } finally {
       setSaving(false)
     }
-  }, [selectedBlock])
+  }, [selectedBlock, school, materialId, pageConfig])
 
   // Reverter bloco ao original
   const handleRevertBlock = useCallback(async () => {
@@ -1602,6 +1620,416 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
       toast.error('Erro ao salvar sugestão')
     }
   }, [aiSuggestion, blocks, materialId])
+
+  // ── Fase 6: IA Avançada — States ──────────────────────────────────
+
+  // 6.1 — Reescrever bloco
+  const [isAIProcessing, setIsAIProcessing] = useState(false)
+  const [aiCustomInstruction, setAiCustomInstruction] = useState('')
+
+  // 6.2 — Variações
+  const [showVariationsDialog, setShowVariationsDialog] = useState(false)
+  const [variations, setVariations] = useState<string[]>([])
+  const [isGeneratingVariations, setIsGeneratingVariations] = useState(false)
+
+  // 6.3 — Traduzir
+  const [translateTarget, setTranslateTarget] = useState('en')
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [translateProgress, setTranslateProgress] = useState('')
+
+  // 6.4 — Ortografia
+  const [isSpellChecking, setIsSpellChecking] = useState(false)
+  const [spellCheckProgress, setSpellCheckProgress] = useState('')
+
+  // ── Fase 7: Polimento — States ──────────────────────────────────
+
+  // 7.1 — Régua visual
+  const [showRulers, setShowRulers] = useState(() => {
+    try { return localStorage.getItem('editor-show-rulers') === 'true' } catch { return false }
+  })
+
+  // 7.2 — Mini-mapa de páginas
+  const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
+
+  // 7.3 — Templates
+  const [showTemplatesDialog, setShowTemplatesDialog] = useState(false)
+
+  // 7.4 — Histórico de versões
+  const [showVersionsDialog, setShowVersionsDialog] = useState(false)
+
+  // ── Fase 6: IA Avançada — Handlers ────────────────────────────────
+
+  type AIRewriteAction = 'rewrite' | 'simplify' | 'expand' | 'formal' | 'custom'
+
+  const AI_REWRITE_PROMPTS: Record<Exclude<AIRewriteAction, 'custom'>, string> = {
+    rewrite: 'Reescreva este conteúdo de material didático musical mantendo o mesmo significado mas com palavras e estrutura diferentes. Mantenha o tom educativo e acessível.',
+    simplify: 'Simplifique este conteúdo para que seja mais fácil de entender por iniciantes em música. Use vocabulário simples, frases curtas e exemplos práticos.',
+    expand: 'Expanda este conteúdo adicionando mais detalhes, exemplos práticos, curiosidades musicais e dicas pedagógicas. Mantenha o tom educativo.',
+    formal: 'Reescreva este conteúdo em um tom mais formal e acadêmico, adequado para um material didático profissional de escola de música.',
+  }
+
+  // 6.1 — Reescrever bloco inteiro
+  const handleAIRewrite = useCallback(async (action: AIRewriteAction, customInstruction?: string) => {
+    if (!selectedBlock) return
+    setIsAIProcessing(true)
+    pushSnapshot(blocksRef.current)
+
+    try {
+      const currentContent = (selectedBlock.content as any)?.html
+        ?? (selectedBlock.content as any)?.text
+        ?? selectedBlock.title ?? ''
+
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = currentContent
+      const plainText = tempDiv.textContent || ''
+
+      const systemPrompt = `Você é um assistente especializado em criar material didático para escolas de música.
+Plataforma LA Journey, metodologia "Ancoragem de Fundamentos".
+Material: ${materialTitle || 'Material didático musical'}
+Tipo de bloco: ${selectedBlock.block_type}
+${selectedBlock.block_type === 'tip' ? 'Este é um bloco de DICA (informação complementar, destaque).' : ''}
+${selectedBlock.block_type === 'exercise' ? 'Este é um bloco de EXERCÍCIO (atividade prática para o aluno).' : ''}
+
+Regras:
+- Responda APENAS com o conteúdo reescrito em HTML simples (use <p>, <strong>, <em>, <ul>, <li>, <h3>)
+- NÃO inclua explicações, comentários ou markdown
+- Mantenha o mesmo idioma (português brasileiro)
+- Mantenha a formatação HTML compatível com TipTap editor`
+
+      const userPrompt = action === 'custom'
+        ? `${customInstruction}\n\nConteúdo original:\n${plainText}`
+        : `${AI_REWRITE_PROMPTS[action]}\n\nConteúdo original:\n${plainText}`
+
+      const result = await generateText(userPrompt, undefined, systemPrompt)
+      let newContent = result.text.trim()
+      newContent = newContent.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim()
+
+      setBlocks(prev => prev.map(b => {
+        if (b.id !== selectedBlock.id) return b
+        return { ...b, content: { ...(b.content ?? {}), html: newContent, text: newContent.replace(/<[^>]+>/g, '') } }
+      }))
+
+      const actionLabels: Record<AIRewriteAction, string> = {
+        rewrite: 'Conteúdo reescrito', simplify: 'Conteúdo simplificado',
+        expand: 'Conteúdo expandido', formal: 'Conteúdo formalizado', custom: 'Instrução aplicada',
+      }
+      toast.success(`IA: ${actionLabels[action]} (${(result.latencyMs / 1000).toFixed(1)}s)`)
+    } catch (err) {
+      console.error('AI rewrite failed:', err)
+      toast.error('Falha ao processar com IA')
+    } finally {
+      setIsAIProcessing(false)
+    }
+  }, [selectedBlock, materialTitle, pushSnapshot])
+
+  // 6.2 — Gerar variações
+  const handleGenerateVariations = useCallback(async () => {
+    if (!selectedBlock) return
+    setIsGeneratingVariations(true)
+    setVariations([])
+
+    try {
+      const currentContent = (selectedBlock.content as any)?.html
+        ?? (selectedBlock.content as any)?.text
+        ?? selectedBlock.title ?? ''
+
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = currentContent
+      const plainText = tempDiv.textContent || ''
+
+      const systemPrompt = `Você é um assistente especializado em criar material didático para escolas de música.
+Plataforma LA Journey, metodologia "Ancoragem de Fundamentos".
+Material: ${materialTitle || 'Material didático musical'}
+Tipo de bloco: ${selectedBlock.block_type}
+
+Gere EXATAMENTE 3 variações diferentes do conteúdo abaixo.
+Cada variação deve:
+- Manter o mesmo tema e informações essenciais
+- Ter abordagem, tom ou estrutura diferente
+- Usar HTML simples (<p>, <strong>, <em>, <ul>, <li>, <h3>)
+- Ser em português brasileiro
+
+Responda no formato JSON EXATO (sem markdown, sem backticks):
+["<p>Variação 1...</p>","<p>Variação 2...</p>","<p>Variação 3...</p>"]`
+
+      const result = await generateText(`Conteúdo original:\n${plainText}`, undefined, systemPrompt)
+      let raw = result.text.trim()
+      raw = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim()
+
+      const parsed = JSON.parse(raw) as string[]
+      setVariations(parsed.slice(0, 3))
+    } catch (err) {
+      console.error('Generate variations failed:', err)
+      toast.error('Falha ao gerar variações')
+    } finally {
+      setIsGeneratingVariations(false)
+    }
+  }, [selectedBlock, materialTitle])
+
+  const handleApplyVariation = useCallback((variationIndex: number) => {
+    if (!selectedBlock || !variations[variationIndex]) return
+    pushSnapshot(blocksRef.current)
+    const newContent = variations[variationIndex]
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== selectedBlock.id) return b
+      return { ...b, content: { ...(b.content ?? {}), html: newContent, text: newContent.replace(/<[^>]+>/g, '') } }
+    }))
+    setShowVariationsDialog(false)
+    toast.success('Variação aplicada')
+  }, [selectedBlock, variations, pushSnapshot])
+
+  // 6.3 — Traduzir material inteiro
+  const handleTranslateAll = useCallback(async () => {
+    const textBlocks = blocks.filter(b =>
+      ['text', 'tip', 'exercise', 'title'].includes(b.block_type)
+    )
+    if (textBlocks.length === 0) {
+      toast.info('Nenhum bloco de texto para traduzir')
+      return
+    }
+
+    setIsTranslating(true)
+    pushSnapshot(blocksRef.current)
+
+    const langMap: Record<string, string> = { en: 'inglês', pt: 'português brasileiro', es: 'espanhol' }
+    const targetLang = langMap[translateTarget] || 'inglês'
+
+    try {
+      for (let i = 0; i < textBlocks.length; i++) {
+        const block = textBlocks[i]
+        setTranslateProgress(`${i + 1}/${textBlocks.length}`)
+
+        const currentContent = (block.content as any)?.html
+          ?? (block.content as any)?.text ?? ''
+        if (!currentContent.trim()) continue
+
+        const sys = `Você é um tradutor profissional especializado em material didático musical.
+Traduza o conteúdo HTML abaixo para ${targetLang}.
+Regras:
+- Mantenha TODA a formatação HTML (<p>, <strong>, <em>, <ul>, <li>, <h3>, etc.)
+- Traduza APENAS o texto, não altere tags HTML
+- Mantenha termos musicais técnicos quando apropriado (ex: "staccato" permanece)
+- Responda APENAS com o HTML traduzido, sem explicações`
+
+        try {
+          const result = await generateText(currentContent, undefined, sys)
+          let translated = result.text.trim()
+          translated = translated.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim()
+
+          if (translated) {
+            setBlocks(prev => prev.map(b => {
+              if (b.id !== block.id) return b
+              return { ...b, content: { ...(b.content ?? {}), html: translated, text: translated.replace(/<[^>]+>/g, '') } }
+            }))
+          }
+        } catch { /* pula bloco com erro */ }
+
+        if (i < textBlocks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+
+      toast.success(`Tradução concluída: ${textBlocks.length} blocos traduzidos`)
+    } catch (err) {
+      console.error('Translation failed:', err)
+      toast.error('Erro na tradução')
+    } finally {
+      setIsTranslating(false)
+      setTranslateProgress('')
+    }
+  }, [blocks, translateTarget, pushSnapshot])
+
+  // 6.4 — Corrigir ortografia do material inteiro
+  const handleSpellCheckAll = useCallback(async () => {
+    const textBlocks = blocks.filter(b =>
+      ['text', 'tip', 'exercise', 'title'].includes(b.block_type)
+    )
+    if (textBlocks.length === 0) {
+      toast.info('Nenhum bloco de texto para revisar')
+      return
+    }
+
+    setIsSpellChecking(true)
+    pushSnapshot(blocksRef.current)
+    let correctionsCount = 0
+
+    try {
+      for (let i = 0; i < textBlocks.length; i++) {
+        const block = textBlocks[i]
+        setSpellCheckProgress(`${i + 1}/${textBlocks.length}`)
+
+        const currentContent = (block.content as any)?.html
+          ?? (block.content as any)?.text ?? ''
+        if (!currentContent.trim()) continue
+
+        const sys = `Você é um revisor de português brasileiro especializado em material didático musical.
+Corrija APENAS erros de: ortografia, gramática, concordância verbal e nominal, acentuação, pontuação.
+Regras:
+- Mantenha TODA a formatação HTML intacta
+- NÃO altere o estilo, tom ou significado do texto
+- NÃO reescreva frases que estão corretas
+- Se o texto não tem erros, retorne-o exatamente como está
+- Responda APENAS com o HTML corrigido, sem explicações
+- Mantenha termos musicais técnicos como estão`
+
+        try {
+          const result = await generateText(currentContent, undefined, sys)
+          let corrected = result.text.trim()
+          corrected = corrected.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim()
+
+          if (corrected && corrected !== currentContent) {
+            setBlocks(prev => prev.map(b => {
+              if (b.id !== block.id) return b
+              return { ...b, content: { ...(b.content ?? {}), html: corrected, text: corrected.replace(/<[^>]+>/g, '') } }
+            }))
+            correctionsCount++
+          }
+        } catch { /* pula bloco com erro */ }
+
+        if (i < textBlocks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+
+      toast.success(
+        correctionsCount > 0
+          ? `Revisão concluída: ${correctionsCount} bloco(s) corrigido(s). Ctrl+Z para desfazer.`
+          : 'Revisão concluída: nenhuma correção necessária!'
+      )
+    } catch (err) {
+      console.error('Spell check failed:', err)
+      toast.error('Erro na revisão ortográfica')
+    } finally {
+      setIsSpellChecking(false)
+      setSpellCheckProgress('')
+    }
+  }, [blocks, pushSnapshot])
+
+  // ── Fase 7: Polimento — Handlers ──────────────────────────────────
+
+  // 7.2 — scrollToPage + IntersectionObserver
+  const scrollToPage = useCallback((pageIndex: number) => {
+    const pages = document.querySelectorAll('.a4-page')
+    const page = pages[pageIndex]
+    page?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasScrollRef.current
+    if (!canvas) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let maxRatio = 0
+        let maxIndex = 0
+        entries.forEach((entry) => {
+          const idx = Number((entry.target as HTMLElement).dataset.pageIndex || 0)
+          if (entry.intersectionRatio > maxRatio) {
+            maxRatio = entry.intersectionRatio
+            maxIndex = idx
+          }
+        })
+        if (maxRatio > 0) setCurrentVisiblePage(maxIndex)
+      },
+      { root: canvas, threshold: [0, 0.25, 0.5, 0.75, 1] },
+    )
+
+    const timer = setTimeout(() => {
+      const pageEls = document.querySelectorAll('.a4-page')
+      pageEls.forEach((page, i) => {
+        ;(page as HTMLElement).dataset.pageIndex = String(i)
+        observer.observe(page)
+      })
+    }, 500)
+
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [blocks, pages])
+
+  // 7.3 — Aplicar template
+  const handleApplyTemplate = useCallback(async (template: MaterialTemplate) => {
+    pushSnapshot(blocksRef.current)
+
+    toast.info(`Aplicando template "${template.name}"...`)
+
+    try {
+      // Deletar blocos atuais
+      for (const block of blocks) {
+        try { await deleteMaterialBlock(block.id) } catch { /* ignora blocos temp */ }
+      }
+
+      // Criar blocos do template
+      const newBlocks: EditorBlock[] = []
+      for (let i = 0; i < template.blocks.length; i++) {
+        const tmpl = template.blocks[i]
+        const content = tmpl.content ? { html: tmpl.content, text: tmpl.content.replace(/<[^>]+>/g, '') } : {}
+        try {
+          const id = await addMaterialBlock({
+            materialId,
+            blockType: tmpl.block_type,
+            title: tmpl.title,
+            content: Object.keys(content).length > 0 ? content : null,
+            renderData: tmpl.render_data || null,
+            afterOrder: i > 0 ? i - 1 : null,
+          })
+          newBlocks.push({
+            id,
+            block_type: tmpl.block_type,
+            title: tmpl.title,
+            content: Object.keys(content).length > 0 ? content : null,
+            render_data: tmpl.render_data || null,
+            sort_order: i,
+            is_edited: false,
+            original_content: null,
+          })
+        } catch (err) {
+          console.error(`Erro ao criar bloco ${tmpl.title}:`, err)
+        }
+      }
+
+      setBlocks(newBlocks)
+      if (newBlocks.length > 0) setSelectedBlockId(newBlocks[0].id)
+      toast.success(`Template "${template.name}" aplicado com ${newBlocks.length} blocos`)
+    } catch (err) {
+      console.error('Apply template failed:', err)
+      toast.error('Erro ao aplicar template')
+    }
+  }, [blocks, materialId, pushSnapshot])
+
+  // 7.4 — Restaurar versão
+  const handleRestoreVersion = useCallback(async (snapshot: { blocks: any[]; page_config: any }) => {
+    const schoolId = school?.id || 'a1b2c3d4-0001-4000-8000-000000000001'
+
+    // Salvar estado atual como versão antes de restaurar
+    try {
+      await saveVersion(materialId, schoolId, blocks, pageConfig, 'Antes de restaurar')
+    } catch { /* não bloquear */ }
+
+    pushSnapshot(blocksRef.current)
+
+    // Aplicar snapshot
+    setBlocks(snapshot.blocks)
+    if (snapshot.page_config) {
+      setPageConfig(snapshot.page_config)
+      try {
+        await updateMaterial(materialId, { page_config: snapshot.page_config } as any)
+      } catch { /* silencioso */ }
+    }
+
+    // Salvar blocos restaurados no banco
+    for (const block of snapshot.blocks) {
+      try {
+        await updateMaterialBlockRpc({
+          blockId: block.id,
+          title: block.title,
+          content: block.content,
+          renderData: block.render_data,
+        })
+      } catch { /* ignora se bloco não existe mais */ }
+    }
+  }, [blocks, pageConfig, materialId, school, pushSnapshot])
 
   // Salvar título do material
   const handleSaveTitle = useCallback(async () => {
@@ -2515,6 +2943,109 @@ ${pagesHtml}
             <span className="text-[10px] text-text3 w-8 text-center font-mono">{Math.round(zoom * 100)}%</span>
           </div>
 
+          {/* 7.1 — Toggle Régua */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showRulers ? 'default' : 'ghost'}
+                  size="sm" className="h-8 w-8 p-0"
+                  onClick={() => {
+                    setShowRulers(!showRulers)
+                    localStorage.setItem('editor-show-rulers', String(!showRulers))
+                  }}
+                >
+                  <Ruler size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Régua</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* 7.3 — Templates */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-8 gap-1 text-[11px]"
+                  onClick={() => setShowTemplatesDialog(true)}
+                >
+                  <Layout size={14} /> Templates
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Aplicar template de material</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* 7.4 — Versões */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-8 gap-1 text-[11px]"
+                  onClick={() => setShowVersionsDialog(true)}
+                >
+                  <ClockCounterClockwise size={14} /> Versões
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Histórico de versões</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* 6.3 — Traduzir material */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 gap-1 text-[11px]" disabled={isTranslating}>
+                {isTranslating
+                  ? <><SpinnerGap size={14} className="animate-spin" /> Traduzindo ({translateProgress})...</>
+                  : <><Translate size={14} /> Traduzir</>
+                }
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[280px] p-3" side="bottom">
+              <div className="space-y-3">
+                <Label className="text-[11px] text-text3 uppercase tracking-wider">
+                  Traduzir material completo
+                </Label>
+                <p className="text-[10px] text-text3/70">
+                  Traduz todos os blocos de texto mantendo a formatação. Use Ctrl+Z para desfazer.
+                </p>
+                <Select value={translateTarget} onValueChange={setTranslateTarget}>
+                  <SelectTrigger className="h-8 text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">Português → Inglês</SelectItem>
+                    <SelectItem value="pt">Inglês → Português</SelectItem>
+                    <SelectItem value="es">Português → Espanhol</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  className="w-full h-8 text-[11px] gap-1"
+                  onClick={handleTranslateAll}
+                  disabled={isTranslating}
+                >
+                  <Translate size={14} /> Traduzir tudo
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* 6.4 — Ortografia */}
+          <Button
+            variant="outline" size="sm"
+            className="h-8 gap-1 text-[11px]"
+            onClick={handleSpellCheckAll}
+            disabled={isSpellChecking}
+          >
+            {isSpellChecking
+              ? <><SpinnerGap size={14} className="animate-spin" /> Corrigindo ({spellCheckProgress})...</>
+              : <><TextAa size={14} /> Ortografia</>
+            }
+          </Button>
+
           <Button variant="ghost" size="sm" onClick={handlePrint} title="Imprimir / PDF">
             <Printer size={16} />
           </Button>
@@ -2528,7 +3059,14 @@ ${pagesHtml}
       <div className="editor-layout editor-layout--flex" style={{ marginTop: 0 }}>
         {/* Coluna 1 — Sidebar Esquerda: Lista de Blocos */}
         <div className={`editor-sidebar transition-all duration-300 ease-in-out overflow-hidden ${leftSidebarOpen ? 'w-[260px] border-r border-border' : 'w-0 border-r-0'}`}>
-          <div className="w-[260px] h-full overflow-y-auto p-4">
+          <div className="w-[260px] h-full flex flex-col">
+          <Tabs defaultValue="blocks" className="flex flex-col h-full">
+            <TabsList className="grid grid-cols-2 mx-3 mt-2 h-8 shrink-0">
+              <TabsTrigger value="blocks" className="text-[10px] gap-1">Blocos</TabsTrigger>
+              <TabsTrigger value="pages" className="text-[10px] gap-1"><MapTrifold size={12} /> Páginas</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="blocks" className="flex-1 overflow-y-auto p-4 pt-2 mt-0">
           <div className="flex items-center justify-between mb-3">
             <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
           </div>
@@ -2710,6 +3248,16 @@ ${pagesHtml}
               />
             )}
           </div>
+            </TabsContent>{/* fim tab blocos */}
+
+            <TabsContent value="pages" className="flex-1 overflow-hidden mt-0">
+              <PageMinimap
+                totalPages={pages.length}
+                currentPage={currentVisiblePage}
+                onNavigate={scrollToPage}
+              />
+            </TabsContent>
+          </Tabs>
           </div>{/* fim w-[260px] wrapper */}
         </div>{/* fim editor-sidebar */}
 
@@ -2793,6 +3341,13 @@ ${pagesHtml}
             </TooltipProvider>
           </div>
 
+          {/* 7.1 — Régua visual */}
+          {showRulers && (
+            <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
+              <CanvasRuler zoom={1} />
+            </div>
+          )}
+
           <div
             className="a4-canvas-wrapper"
             style={{
@@ -2825,6 +3380,7 @@ ${pagesHtml}
               <div
                 key={pageIdx}
                 className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
+                data-page-index={pageIdx}
                 style={{ position: 'relative', ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
               >
                 {/* Marca d'água */}
@@ -3352,6 +3908,34 @@ ${pagesHtml}
                       {(selectedBlock.render_data as any)?.notation?.staves?.[0]?.notes?.length ?? 0} notas · clave {(selectedBlock.render_data as any)?.clef ?? 'Sol'}
                     </div>
                   )}
+
+                  {/* Labels das pautas — editáveis */}
+                  {(() => {
+                    const staves = (selectedBlock.render_data as any)?.notation?.staves as any[] | undefined
+                    if (!staves || staves.length === 0) return null
+                    const hasLabels = staves.some((s: any) => s.label !== undefined)
+                    if (!hasLabels && staves.length <= 1) return null
+                    return (
+                      <div className="mt-2.5 space-y-1.5">
+                        <div className="text-[10px] text-text3 font-medium uppercase tracking-wider">Legendas das pautas</div>
+                        {staves.map((stave: any, idx: number) => (
+                          <Input
+                            key={idx}
+                            value={stave.label ?? ''}
+                            onChange={e => {
+                              const newStaves = staves.map((s: any, i: number) =>
+                                i === idx ? { ...s, label: e.target.value } : s
+                              )
+                              const notation = { ...(selectedBlock.render_data as any)?.notation, staves: newStaves }
+                              updateSelectedRenderData('notation', notation)
+                            }}
+                            placeholder={`Legenda da pauta ${idx + 1}`}
+                            className="h-7 text-[11px]"
+                          />
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
 
@@ -4536,6 +5120,84 @@ ${pagesHtml}
                 />
               )}
 
+              {/* 6.1 — Assistente IA (só para blocos de texto) */}
+              {selectedBlock && ['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type) && (
+                <>
+                  <hr className="border-border my-4" />
+                  <div className="prop-section">
+                    <Label className="text-[11px] text-text3 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                      <Brain size={14} /> Assistente IA
+                    </Label>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-8 text-[10px] gap-1"
+                        onClick={() => handleAIRewrite('rewrite')}
+                        disabled={isAIProcessing}
+                      >
+                        <ArrowsClockwise size={12} /> Reescrever
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-8 text-[10px] gap-1"
+                        onClick={() => handleAIRewrite('simplify')}
+                        disabled={isAIProcessing}
+                      >
+                        <TextAa size={12} /> Simplificar
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-8 text-[10px] gap-1"
+                        onClick={() => handleAIRewrite('expand')}
+                        disabled={isAIProcessing}
+                      >
+                        <Sparkle size={12} /> Expandir
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-8 text-[10px] gap-1"
+                        onClick={() => handleAIRewrite('formal')}
+                        disabled={isAIProcessing}
+                      >
+                        <PencilSimple size={12} /> Formalizar
+                      </Button>
+                    </div>
+
+                    {/* Instrução customizada */}
+                    <div className="flex gap-1.5 mt-2">
+                      <Textarea
+                        value={aiCustomInstruction}
+                        onChange={(e) => setAiCustomInstruction(e.target.value)}
+                        placeholder="Instrução personalizada... Ex: 'Adapte para crianças de 6 anos'"
+                        className="text-[11px] min-h-[60px] resize-none"
+                      />
+                      <Button
+                        variant="default" size="sm"
+                        className="h-auto px-2 shrink-0"
+                        onClick={() => handleAIRewrite('custom', aiCustomInstruction)}
+                        disabled={isAIProcessing || !aiCustomInstruction.trim()}
+                      >
+                        {isAIProcessing ? <SpinnerGap size={14} className="animate-spin" /> : <Lightning size={14} />}
+                      </Button>
+                    </div>
+
+                    {/* 6.2 — Gerar variações */}
+                    <Button
+                      variant="outline" size="sm"
+                      className="w-full h-8 text-[10px] gap-1 mt-2"
+                      onClick={() => {
+                        setShowVariationsDialog(true)
+                        handleGenerateVariations()
+                      }}
+                      disabled={isAIProcessing || isGeneratingVariations}
+                    >
+                      <Sparkle size={12} /> Gerar 3 variações
+                    </Button>
+                  </div>
+                </>
+              )}
+
               <hr className="border-border my-4" />
 
               {/* Ações */}
@@ -4609,8 +5271,36 @@ ${pagesHtml}
           onStyleChange={updateBlockStyle}
           isFirst={blocks.findIndex(b => b.id === selectedBlock.id) === 0}
           isLast={blocks.findIndex(b => b.id === selectedBlock.id) === blocks.length - 1}
+          onAIRewrite={() => handleAIRewrite('rewrite')}
+          isAIProcessing={isAIProcessing}
         />
       )}
+
+      {/* 6.2 — Dialog de variações */}
+      <AIVariationsDialog
+        open={showVariationsDialog}
+        onOpenChange={setShowVariationsDialog}
+        variations={variations}
+        isGenerating={isGeneratingVariations}
+        onRegenerate={handleGenerateVariations}
+        onApply={handleApplyVariation}
+        originalContent={selectedBlock ? ((selectedBlock.content as any)?.html ?? '') : ''}
+      />
+
+      {/* 7.3 — Dialog de Templates */}
+      <MaterialTemplatesDialog
+        open={showTemplatesDialog}
+        onOpenChange={setShowTemplatesDialog}
+        onApply={handleApplyTemplate}
+      />
+
+      {/* 7.4 — Dialog de Versões */}
+      <VersionHistoryDialog
+        open={showVersionsDialog}
+        onOpenChange={setShowVersionsDialog}
+        materialId={materialId}
+        onRestore={handleRestoreVersion}
+      />
 
       {/* ── Modais dos editores visuais integrados ── */}
 

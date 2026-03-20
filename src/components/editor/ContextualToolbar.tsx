@@ -4,7 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  Copy, Trash, ArrowUp, ArrowDown, ArrowsOutSimple, PaintBucket,
+  Copy, Trash, ArrowUp, ArrowDown, ArrowsOutSimple, PaintBucket, MagicWand,
 } from '@phosphor-icons/react'
 import type { BlockStyle } from '@/lib/blockStyles'
 
@@ -53,11 +53,13 @@ interface ContextualToolbarProps {
   onStyleChange: (style: Partial<BlockStyle>) => void
   isFirst: boolean
   isLast: boolean
+  onAIRewrite?: () => void
+  isAIProcessing?: boolean
 }
 
 export function ContextualToolbar({
   blockType, position, onDuplicate, onDelete, onMoveUp, onMoveDown,
-  onStyleChange, isFirst, isLast,
+  onStyleChange, isFirst, isLast, onAIRewrite, isAIProcessing,
 }: ContextualToolbarProps) {
   const [showBgPicker, setShowBgPicker] = useState(false)
 
@@ -193,6 +195,28 @@ export function ContextualToolbar({
           </div>
         </PopoverContent>
       </Popover>
+
+      {/* IA Reescrever — só para blocos de texto */}
+      {['text', 'tip', 'exercise', 'title'].includes(blockType) && onAIRewrite && (
+        <>
+          <Separator orientation="vertical" className="h-5" />
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-7 w-7 p-0 text-roxo"
+                  onClick={onAIRewrite}
+                  disabled={isAIProcessing}
+                >
+                  <MagicWand size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p>Reescrever com IA</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </>
+      )}
 
       <Separator orientation="vertical" className="h-5" />
 
