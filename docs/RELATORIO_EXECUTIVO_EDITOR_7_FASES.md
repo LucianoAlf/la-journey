@@ -19,7 +19,7 @@ Resultado: o editor passou de um fluxo técnico para um fluxo de produção did�
 - e recursos de polimento (régua, mini-mapa, templates e histórico de versões).
 
 ---
-
+    
 ## 2) Objetivos da iniciativa
 
 - Reduzir fricção de edição para usuários não técnicos.

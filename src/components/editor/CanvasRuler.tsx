@@ -1,158 +1,163 @@
-import { useMemo, useState, useCallback, useRef } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import type { PageGuide, PageMargins } from '@/lib/blockStyles'
 
 interface CanvasRulerProps {
   zoom: number
+  /** Escala real do container pai (transform: scale) — usado para corrigir coordenadas do mouse */
+  parentScale?: number
   margins?: PageMargins
   guides?: PageGuide[]
   onGuidesChange?: (guides: PageGuide[]) => void
   orientation?: 'horizontal' | 'vertical'
 }
 
-// A4 dimensions in mm
-const A4_WIDTH_MM = 210
-const A4_HEIGHT_MM = 297
-const PX_PER_MM = 3.78
+// A4 em mm
+const A4_W = 210
+const A4_H = 297
+const PX_MM = 3.78
 
-export function CanvasRuler({ 
-  zoom, 
-  margins, 
-  guides = [], 
+/**
+ * Converte coordenada do mouse (screen px) para posição interna da régua (layout px),
+ * levando em conta que o container pai pode ter transform: scale().
+ * getBoundingClientRect() retorna valores já escalados pelo browser,
+ * então dividimos o offset pela escala real do pai.
+ */
+function screenToLocal(
+  mousePos: number,
+  rectStart: number,
+  rectSize: number,
+  parentScale: number,
+  totalLayoutPx: number,
+) {
+  // rectSize já é o tamanho visual (escalado)
+  // A posição interna = offset / parentScale
+  const offset = mousePos - rectStart
+  const local = offset / parentScale
+  return Math.max(0, Math.min(totalLayoutPx, Math.round(local)))
+}
+
+export function CanvasRuler({
+  zoom,
+  parentScale = 1,
+  margins,
+  guides = [],
   onGuidesChange,
-  orientation = 'horizontal' 
+  orientation = 'horizontal',
 }: CanvasRulerProps) {
-  const pxPerMm = PX_PER_MM * zoom
-  const isHorizontal = orientation === 'horizontal'
-  const totalMm = isHorizontal ? A4_WIDTH_MM : A4_HEIGHT_MM
-  const totalPx = totalMm * pxPerMm
+  const pxMm = PX_MM * zoom
+  const isH = orientation === 'horizontal'
+  const totalMm = isH ? A4_W : A4_H
+  const totalPx = totalMm * pxMm
 
-  const [draggingGuide, setDraggingGuide] = useState<string | null>(null)
+  const [dragging, setDragging] = useState<string | null>(null)
   const rulerRef = useRef<HTMLDivElement>(null)
+  // Ref para guides — evita stale closure no mousemove
+  const guidesRef = useRef(guides)
+  useEffect(() => { guidesRef.current = guides }, [guides])
+  const onChangeRef = useRef(onGuidesChange)
+  useEffect(() => { onChangeRef.current = onGuidesChange }, [onGuidesChange])
 
   const marks = useMemo(() => {
-    const result: { mm: number; major: boolean }[] = []
-    for (let mm = 0; mm <= totalMm; mm += 5) {
-      result.push({ mm, major: mm % 10 === 0 })
-    }
-    return result
+    const r: { mm: number; major: boolean }[] = []
+    for (let mm = 0; mm <= totalMm; mm += 5) r.push({ mm, major: mm % 10 === 0 })
+    return r
   }, [totalMm])
 
-  // Converter margens de px para mm para mostrar na régua
   const marginMarks = useMemo(() => {
     if (!margins) return []
-    const result: { position: number; side: string }[] = []
-    if (isHorizontal) {
-      result.push({ position: margins.left / PX_PER_MM, side: 'left' })
-      result.push({ position: A4_WIDTH_MM - (margins.right / PX_PER_MM), side: 'right' })
+    const r: { pos: number; side: string }[] = []
+    if (isH) {
+      r.push({ pos: margins.left / PX_MM, side: 'left' })
+      r.push({ pos: A4_W - margins.right / PX_MM, side: 'right' })
     } else {
-      result.push({ position: margins.top / PX_PER_MM, side: 'top' })
-      result.push({ position: A4_HEIGHT_MM - (margins.bottom / PX_PER_MM), side: 'bottom' })
+      r.push({ pos: margins.top / PX_MM, side: 'top' })
+      r.push({ pos: A4_H - margins.bottom / PX_MM, side: 'bottom' })
     }
-    return result
-  }, [margins, isHorizontal])
+    return r
+  }, [margins, isH])
 
-  // Adicionar nova guia ao clicar duas vezes na régua
+  // Duplo-clique na régua → criar guia
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (!onGuidesChange) return
+    if (!onChangeRef.current) return
     const rect = rulerRef.current?.getBoundingClientRect()
     if (!rect) return
-
-    const pos = isHorizontal 
-      ? (e.clientX - rect.left) / zoom
-      : (e.clientY - rect.top) / zoom
-
+    const pos = isH
+      ? screenToLocal(e.clientX, rect.left, rect.width, parentScale, totalPx)
+      : screenToLocal(e.clientY, rect.top, rect.height, parentScale, totalPx)
     const newGuide: PageGuide = {
       id: crypto.randomUUID(),
-      type: isHorizontal ? 'vertical' : 'horizontal',
-      position: Math.round(pos),
+      type: isH ? 'vertical' : 'horizontal',
+      position: pos,
       color: '#6366f1',
     }
-    onGuidesChange([...guides, newGuide])
-  }, [guides, onGuidesChange, zoom, isHorizontal])
+    onChangeRef.current([...guidesRef.current, newGuide])
+  }, [isH, parentScale, totalPx])
 
-  // Arrastar guia existente
+  // Iniciar drag na guia
   const handleGuideMouseDown = useCallback((e: React.MouseEvent, guideId: string) => {
     e.stopPropagation()
-    setDraggingGuide(guideId)
+    e.preventDefault()
+    setDragging(guideId)
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!rulerRef.current || !onGuidesChange) return
-      const rect = rulerRef.current.getBoundingClientRect()
-      const pos = isHorizontal
-        ? (moveEvent.clientX - rect.left) / zoom
-        : (moveEvent.clientY - rect.top) / zoom
-
-      onGuidesChange(guides.map(g => 
-        g.id === guideId ? { ...g, position: Math.max(0, Math.round(pos)) } : g
-      ))
+    const onMove = (ev: MouseEvent) => {
+      const rect = rulerRef.current?.getBoundingClientRect()
+      if (!rect || !onChangeRef.current) return
+      const pos = isH
+        ? screenToLocal(ev.clientX, rect.left, rect.width, parentScale, totalPx)
+        : screenToLocal(ev.clientY, rect.top, rect.height, parentScale, totalPx)
+      onChangeRef.current(
+        guidesRef.current.map(g => g.id === guideId ? { ...g, position: pos } : g)
+      )
     }
 
-    const handleMouseUp = () => {
-      setDraggingGuide(null)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+    const onUp = () => {
+      setDragging(null)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
     }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }, [guides, onGuidesChange, zoom, isHorizontal])
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [isH, parentScale, totalPx])
 
-  // Remover guia ao arrastar para fora
+  // Duplo-clique na guia → remover
   const handleGuideDoubleClick = useCallback((e: React.MouseEvent, guideId: string) => {
     e.stopPropagation()
-    if (!onGuidesChange) return
-    onGuidesChange(guides.filter(g => g.id !== guideId))
-  }, [guides, onGuidesChange])
+    onChangeRef.current?.(guidesRef.current.filter(g => g.id !== guideId))
+  }, [])
 
-  // Filtrar guias por orientação
-  const relevantGuides = guides.filter(g => 
-    (isHorizontal && g.type === 'vertical') || (!isHorizontal && g.type === 'horizontal')
+  const relevantGuides = guides.filter(g =>
+    (isH && g.type === 'vertical') || (!isH && g.type === 'horizontal')
   )
 
-  if (isHorizontal) {
+  // ─── Horizontal ───────────────────────────────────────────────────
+  if (isH) {
     return (
       <div
         ref={rulerRef}
-        className="h-5 bg-card/80 border-b border-border flex items-end overflow-visible select-none relative"
-        style={{ width: `${totalPx}px`, marginLeft: 'auto', marginRight: 'auto' }}
+        className="h-6 bg-card/80 border-b border-border flex items-end select-none relative"
+        style={{ width: `${totalPx}px`, marginLeft: 'auto', marginRight: 'auto', overflow: 'visible' }}
         onDoubleClick={handleDoubleClick}
         title="Duplo-clique para adicionar guia"
       >
-        <svg width={totalPx} height={20} className="overflow-visible">
-          {/* Marcas da régua */}
+        <svg width={totalPx} height={24} className="overflow-visible pointer-events-none">
           {marks.map(({ mm, major }) => {
-            const x = mm * pxPerMm
+            const x = mm * pxMm
             return (
               <g key={mm}>
-                <line
-                  x1={x} y1={major ? 8 : 14}
-                  x2={x} y2={20}
-                  stroke="currentColor"
-                  className="text-text3/40"
-                  strokeWidth={major ? 0.8 : 0.4}
-                />
+                <line x1={x} y1={major ? 10 : 16} x2={x} y2={24}
+                  stroke="currentColor" className="text-text3/40"
+                  strokeWidth={major ? 0.8 : 0.4} />
                 {mm % 50 === 0 && (
-                  <text x={x + 2} y={9} fontSize={8} className="fill-text3/50">
-                    {mm}
-                  </text>
+                  <text x={x + 2} y={10} fontSize={8} className="fill-text3/50">{mm}</text>
                 )}
               </g>
             )
           })}
-
-          {/* Indicadores de margem */}
-          {marginMarks.map(({ position, side }) => (
-            <line
-              key={side}
-              x1={position * pxPerMm}
-              y1={0}
-              x2={position * pxPerMm}
-              y2={20}
-              stroke="#f43f5e"
-              strokeWidth={1.5}
-              strokeDasharray="2,2"
-              className="pointer-events-none"
-            />
+          {marginMarks.map(({ pos, side }) => (
+            <line key={side}
+              x1={pos * pxMm} y1={0} x2={pos * pxMm} y2={24}
+              stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="2,2" />
           ))}
         </svg>
 
@@ -160,86 +165,62 @@ export function CanvasRuler({
         {relevantGuides.map(guide => (
           <div
             key={guide.id}
-            className={`absolute top-0 h-full cursor-ew-resize group ${draggingGuide === guide.id ? 'z-50' : 'z-10'}`}
-            style={{ 
-              left: `${guide.position * zoom}px`,
+            className={`absolute top-0 cursor-ew-resize group ${dragging === guide.id ? 'z-50' : 'z-10'}`}
+            style={{
+              left: `${guide.position}px`,
               transform: 'translateX(-50%)',
+              width: '20px',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
             }}
             onMouseDown={e => handleGuideMouseDown(e, guide.id)}
             onDoubleClick={e => handleGuideDoubleClick(e, guide.id)}
-            title="Arraste para mover • Duplo-clique para remover"
+            title="Arraste para mover · Duplo-clique para remover"
           >
-            {/* Triângulo indicador */}
-            <div 
-              className="w-0 h-0 mx-auto"
-              style={{
-                borderLeft: '5px solid transparent',
-                borderRight: '5px solid transparent',
-                borderTop: `6px solid ${guide.color}`,
-              }}
-            />
-            {/* Linha da guia (visual) */}
-            <div 
-              className="w-0.5 h-3 mx-auto opacity-60 group-hover:opacity-100 transition-opacity"
-              style={{ backgroundColor: guide.color }}
-            />
+            <div style={{
+              width: 0, height: 0,
+              borderLeft: '7px solid transparent',
+              borderRight: '7px solid transparent',
+              borderTop: `9px solid ${guide.color}`,
+            }} />
+            <div className="opacity-70 group-hover:opacity-100 transition-opacity"
+              style={{ width: '2px', flex: 1, backgroundColor: guide.color }} />
           </div>
         ))}
       </div>
     )
   }
 
-  // Régua vertical
+  // ─── Vertical ─────────────────────────────────────────────────────
   return (
     <div
       ref={rulerRef}
-      className="w-5 bg-card/80 border-r border-border flex items-start overflow-visible select-none relative"
-      style={{ height: `${totalPx}px` }}
+      className="bg-card/80 border-r border-border select-none relative"
+      style={{ width: '24px', height: `${totalPx}px`, overflow: 'visible', flexShrink: 0 }}
       onDoubleClick={handleDoubleClick}
       title="Duplo-clique para adicionar guia"
     >
-      <svg width={20} height={totalPx} className="overflow-visible">
+      <svg width={24} height={totalPx} className="overflow-visible pointer-events-none">
         {marks.map(({ mm, major }) => {
-          const y = mm * pxPerMm
+          const y = mm * pxMm
           return (
             <g key={mm}>
-              <line
-                x1={major ? 8 : 14}
-                y1={y}
-                x2={20}
-                y2={y}
-                stroke="currentColor"
-                className="text-text3/40"
-                strokeWidth={major ? 0.8 : 0.4}
-              />
+              <line x1={major ? 10 : 16} y1={y} x2={24} y2={y}
+                stroke="currentColor" className="text-text3/40"
+                strokeWidth={major ? 0.8 : 0.4} />
               {mm % 50 === 0 && (
-                <text 
-                  x={2} 
-                  y={y + 3} 
-                  fontSize={7} 
-                  className="fill-text3/50"
-                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
-                >
-                  {mm}
-                </text>
+                <text x={3} y={y + 3} fontSize={7} className="fill-text3/50"
+                  transform={`rotate(-90, 3, ${y + 3})`}>{mm}</text>
               )}
             </g>
           )
         })}
-
-        {/* Indicadores de margem */}
-        {marginMarks.map(({ position, side }) => (
-          <line
-            key={side}
-            x1={0}
-            y1={position * pxPerMm}
-            x2={20}
-            y2={position * pxPerMm}
-            stroke="#f43f5e"
-            strokeWidth={1.5}
-            strokeDasharray="2,2"
-            className="pointer-events-none"
-          />
+        {marginMarks.map(({ pos, side }) => (
+          <line key={side}
+            x1={0} y1={pos * pxMm} x2={24} y2={pos * pxMm}
+            stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="2,2" />
         ))}
       </svg>
 
@@ -247,29 +228,27 @@ export function CanvasRuler({
       {relevantGuides.map(guide => (
         <div
           key={guide.id}
-          className={`absolute left-0 w-full cursor-ns-resize group ${draggingGuide === guide.id ? 'z-50' : 'z-10'}`}
-          style={{ 
-            top: `${guide.position * zoom}px`,
+          className={`absolute left-0 cursor-ns-resize group ${dragging === guide.id ? 'z-50' : 'z-10'}`}
+          style={{
+            top: `${guide.position}px`,
             transform: 'translateY(-50%)',
+            width: '100%',
+            height: '20px',
+            display: 'flex',
+            alignItems: 'center',
           }}
           onMouseDown={e => handleGuideMouseDown(e, guide.id)}
           onDoubleClick={e => handleGuideDoubleClick(e, guide.id)}
-          title="Arraste para mover • Duplo-clique para remover"
+          title="Arraste para mover · Duplo-clique para remover"
         >
-          {/* Triângulo indicador */}
-          <div 
-            className="h-0 w-0 my-auto"
-            style={{
-              borderTop: '5px solid transparent',
-              borderBottom: '5px solid transparent',
-              borderLeft: `6px solid ${guide.color}`,
-            }}
-          />
-          {/* Linha da guia (visual) */}
-          <div 
-            className="h-0.5 w-3 my-auto opacity-60 group-hover:opacity-100 transition-opacity"
-            style={{ backgroundColor: guide.color }}
-          />
+          <div style={{
+            width: 0, height: 0,
+            borderTop: '7px solid transparent',
+            borderBottom: '7px solid transparent',
+            borderLeft: `9px solid ${guide.color}`,
+          }} />
+          <div className="opacity-70 group-hover:opacity-100 transition-opacity"
+            style={{ height: '2px', flex: 1, backgroundColor: guide.color }} />
         </div>
       ))}
     </div>

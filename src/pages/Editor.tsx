@@ -2687,6 +2687,7 @@ img{max-width:100%}
 @media print{
   body{background:#fff;margin:0;padding:0}
   #print-btn{display:none!important}
+  [data-canvas-ruler],[data-guide-overlay]{display:none!important}
   .a4-page{width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;page-break-after:always;break-after:page;margin:0!important;background:white!important}
   .a4-page:last-child{page-break-after:auto}
   .a4-page--cover{background:transparent!important;height:297mm!important;min-height:297mm!important}
@@ -3346,24 +3347,60 @@ ${pagesHtml}
             </TooltipProvider>
           </div>
 
-          {/* 7.1 — Régua visual com guias arrastáveis */}
-          {showRulers && (
-            <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-              <CanvasRuler 
-                zoom={1} 
-                margins={pageConfig.margins}
-                guides={pageConfig.guides}
-                onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
-                orientation="horizontal"
-              />
-            </div>
-          )}
+          {/* 7.1 — Grid réguas + canvas (tudo dentro do mesmo scale) */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: showRulers ? '24px 1fr' : '1fr',
+            gridTemplateRows: showRulers ? '24px 1fr' : '1fr',
+            width: 'fit-content',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top center',
+          }}>
+            {/* Canto superior esquerdo (interseção das réguas) */}
+            {showRulers && (
+              <div data-canvas-ruler="corner" style={{
+                gridRow: 1, gridColumn: 1,
+                backgroundColor: 'var(--card)',
+                borderBottom: '1px solid var(--border)',
+                borderRight: '1px solid var(--border)',
+              }} />
+            )}
+
+            {/* Régua horizontal */}
+            {showRulers && (
+              <div data-canvas-ruler="horizontal" style={{ gridRow: 1, gridColumn: 2 }}>
+                <CanvasRuler 
+                  zoom={1} 
+                  parentScale={zoom}
+                  margins={pageConfig.margins}
+                  guides={pageConfig.guides}
+                  onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
+                  orientation="horizontal"
+                />
+              </div>
+            )}
+
+            {/* Régua vertical */}
+            {showRulers && (
+              <div data-canvas-ruler="vertical" style={{ gridRow: 2, gridColumn: 1 }}>
+                <CanvasRuler
+                  zoom={1}
+                  parentScale={zoom}
+                  margins={pageConfig.margins}
+                  guides={pageConfig.guides}
+                  onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
+                  orientation="vertical"
+                />
+              </div>
+            )}
 
           <div
             className="a4-canvas-wrapper"
             style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: 'top center',
+              gridRow: showRulers ? 2 : 1,
+              gridColumn: showRulers ? 2 : 1,
             }}
           >
             {pages.map((pageBlocks, pageIdx) => {
@@ -3626,6 +3663,7 @@ ${pagesHtml}
               )
             })}
           </div>
+          </div>{/* fecha grid réguas+canvas */}
         </div>
 
         {/* Botão toggle sidebar direita */}
