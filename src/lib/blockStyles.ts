@@ -51,6 +51,27 @@ export interface PageBackground {
   }
 }
 
+export interface PageMargins {
+  top: number      // px
+  right: number    // px
+  bottom: number   // px
+  left: number     // px
+}
+
+export interface PageGuide {
+  id: string
+  type: 'horizontal' | 'vertical'
+  position: number  // px from top (horizontal) or left (vertical)
+  color: string
+}
+
+export const DEFAULT_PAGE_MARGINS: PageMargins = {
+  top: 60,
+  right: 60,
+  bottom: 60,
+  left: 60,
+}
+
 export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   background: {
     type: 'none',

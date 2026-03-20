@@ -50,8 +50,10 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
 
 export function HeaderFooterBar({ config, type, context, pageIndex }: HeaderFooterBarProps) {
   if (!config.enabled) return null
-  if (!config.showOnFirstPage && pageIndex === 0) return null
-  if (pageIndex < config.startFromPage) return null
+  // Se showOnFirstPage está ativo, ignora startFromPage para a página 0
+  if (pageIndex === 0 && !config.showOnFirstPage) return null
+  // Para outras páginas, respeita startFromPage (mas só se não for a primeira com showOnFirstPage)
+  if (pageIndex > 0 && pageIndex < config.startFromPage) return null
 
   return (
     <div

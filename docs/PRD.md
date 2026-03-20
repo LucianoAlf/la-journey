@@ -210,6 +210,48 @@ Editor visual de blocos pós-geração que permite ao coordenador editar, reorga
 8. Publica → material fica disponível para download/envio
 9. Exporta PDF final
 
+### 6.2.2 ✅ Atualização Executiva — Evolução do Editor (7 fases concluídas)
+
+O subprojeto de evolução do Editor de Material foi executado em 7 fases incrementais, com foco em operação pedagógica real, produtividade e segurança de edição.
+
+**Fase 1 — Editor rico + edição inline**
+- Toolbar completa de formatação (WYSIWYG)
+- Edição inline no canvas com sincronização no painel
+- Compatibilidade com conteúdo legado
+
+**Fase 2 — Layout A4 + impressão**
+- Simulação de páginas A4 no canvas
+- Zoom e preview de impressão otimizados
+- Estrutura de cabeçalho/rodapé e paginação
+
+**Fase 3 — Blocos avançados**
+- Capa customizável
+- Grade de acordes e blocos de teclado
+- Suporte a layouts em colunas
+
+**Fase 4 — Mídia**
+- Blocos de imagem, áudio e vídeo
+- Fluxo de assets integrado ao editor
+
+**Fase 5 — IA no editor**
+- Reescrever/simplificar/expandir/formalizar
+- Variações de conteúdo
+- Tradução e correção ortográfica em lote
+
+**Fase 6 — UX operacional**
+- Toolbar de produtividade
+- Atalhos globais de edição
+- Melhorias de fluxo para operação contínua
+
+**Fase 7 — Polimento final**
+- Régua visual no canvas (toggle no header)
+- Mini-mapa de páginas (tabs Blocos/Páginas)
+- Templates de material (aplicação assistida)
+- Histórico de versões (listar, restaurar, excluir)
+- Edição de legendas de pauta no painel de propriedades (ex.: "Notas nas linhas..." e "Notas nos espaços...")
+
+**Resultado consolidado:** Editor pronto para operação diária da coordenação pedagógica, com maior previsibilidade visual, maior velocidade de produção e menor risco operacional.
+
 ### 6.3 📚 Base de Conteúdo Curado (RAG)
 
 Repositório estruturado de conteúdo pedagógico musical que alimenta o gerador.
@@ -265,7 +307,7 @@ Cada elemento renderizado tem um ID único no banco de dados e é armazenado com
 - Tab como backspace contínuo (volta apagando notas)
 - Substituição direta de trastes ao digitar (sem precisar deletar antes)
 - Toolbar reorganizada: grupos lógicos (duração+tuplet, efeitos com borda, palhetadas unificadas, acorde)
-- **Popover de acorde integrado com Supabase:** busca assíncrona na `chord_library` com debounce (300ms), navegação entre todas as posições do banco (ex: C = 5 posições), normalização automática de input (g→G, am7→Am7)
+- **Popover de acorde integrado com Supabase:** busca assíncrona na `chord_library` com debounce (300ms), navegação entre todas as posições do banco (ex: C = 5 posições), normalização automática de input (g→G)
 - **Diagramador de acorde (ChordEditor):** clicar no diagrama do popover abre modal com editor visual de braço do instrumento (canvas 2D), editar dedos/pestanas/cordas abertas-mutadas, criar nova posição do zero, salvar/atualizar acorde no banco `chord_library` em tempo real, recarrega posições no popover após salvar
 - AlphaTab preview integrado com fórmula de compasso, barras e stems visíveis
 - Atalhos de teclado: L (ligadura), . (ponto), D (palhetada ↓), U (palhetada ↑), T (quiáltera), C (acorde)
@@ -470,7 +512,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 
 **Tabelas com conteúdo misto (global + privado):**
 - `content_blocks` — school_id NULL = conteúdo da plataforma (curado pela LA Music), preenchido = conteúdo customizado da escola
-- `repertoire` — school_id NULL = catálogo global, preenchido = músicas adicionadas pela escola
+- `repertoire` — school_id NULL = catálogo global, preenchido = repertório privado da escola
 
 **Storage Buckets:**
 - `school-logos` — Logos das escolas (público)
@@ -546,6 +588,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | avatar_url | text | Foto de perfil |
 | is_active | boolean | Ativo/inativo |
 | created_at | timestamptz | Data de criação |
+| updated_at | timestamptz | Data de atualização |
 
 **students** — Alunos (complemento de users com role=student)
 | Campo | Tipo | Descrição |
@@ -657,13 +700,12 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | block_type | enum | text, notation, chord_diagram, tablature, exercise, keyboard_diagram, scale_diagram, rhythm_pattern, tip, example |
 | title | text | Título do bloco |
 | content | jsonb | Conteúdo estruturado (varia por tipo) |
-| render_data | jsonb | Dados para renderização (VexFlow code, SVGuitar config, etc.) |
-| sort_order | int | Ordem dentro do tópico |
-| curation_status | enum | draft, review, approved, published |
-| curated_by | uuid (FK → users) | Professor que validou |
-| version | int | Versão do conteúdo |
+| render_data | jsonb | Dados de renderização (SVG inline, URL da imagem, código VexFlow) |
+| sort_order | int | Ordem no documento |
+| is_edited | boolean | Se foi editado manualmente pelo coordenador |
+| original_content | jsonb | Conteúdo original antes da edição (para "reverter") |
 | created_at | timestamptz | Data de criação |
-| updated_at | timestamptz | Data de atualização |
+| updated_at | timestamptz | Última edição |
 
 **chord_library** — Biblioteca de acordes com diagramas
 | Campo | Tipo | Descrição |
@@ -904,11 +946,10 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 5. Clica numa imagem → abre modal "Trocar Imagem" (upload, gerar com Gemini, ou biblioteca)
 6. Clica num diagrama de acorde → abre modal "Trocar Acorde" (seleciona da chord_library)
 7. Arrasta blocos na sidebar para reordenar
-8. Clica em "+ Adicionar bloco" → modal com 12 tipos disponíveis
-9. Remove ou duplica blocos conforme necessário
-10. Salva rascunho (versão incrementada)
-11. Quando satisfeito, clica em "Publicar" → material finalizado
-12. Exporta em PDF ou envia direto via WhatsApp
+8. Adiciona/remove blocos conforme necessário
+9. Salva rascunho (versão incrementada)
+10. Publica → material fica disponível para download/envio
+11. Exporta PDF final
 
 ---
 
@@ -978,28 +1019,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - Sheet/drawer para painéis laterais no mobile
 - Skeleton loading durante geração de material
 
-### 11.4 Mapa de Páginas (16 telas)
-
-| # | Página | Rota | Descrição |
-|---|--------|------|-----------|
-| 01 | Dashboard | `/` | KPIs (alunos, materiais, jornadas, conquistas), progresso por Stage, alertas, grid 8 instrumentos |
-| 02 | Jornadas | `/jornadas` | Stage cards (Foundation/Grow/Advance/Master), estações, editor de tópicos por dimensão |
-| 03 | Gerador | `/gerador` | Configuração de geração, seleção jornada/stage/estação, branding, preview PDF, histórico |
-| 04 | Editor Material | `/editor/:id` | Editor de blocos 3 painéis: lista blocos / canvas editável / propriedades |
-| 05 | Base Curada | `/conteudo` | Tabela de conteúdos, 3 tabs (Lista/Por Tópico/Fila Curadoria), workflow de status |
-| 06 | Biblioteca Musical | `/biblioteca` | 5 tabs: Acordes (SVGuitar, 8965), Escalas (VexFlow), Notação (VexFlow editor), Tablatura (SVG editor + AlphaTab preview + ChordEditor integrado), Imagens IA (Gemini) |
-| 07 | Alunos | `/alunos` | Lista com filtros, alertas de risco, progress bars, 5 tabs de status |
-| 08 | Repertório | `/repertorio` | Músicas com acordes em badges, filtros, importação Songsterr + Cifra Club + GP, editor de cifra, transposição, tablatura interativa com player MIDI |
-| 09 | Turmas | `/turmas` | 8 turmas incluindo Baby Class/Kids/Heart, professor/horário/jornada |
-| 10 | Visão Professor | `/professor` | Chamada diária, presença/ausência, tópicos por aluno, avaliação estrelas |
-| 11 | Gamificação | `/gamificacao` | KPIs, grid conquistas, leaderboard |
-| 12 | WhatsApp | `/whatsapp` | 3 tabs: Mensagens / Templates / Automações (UAZAPI) |
-| 13 | Relatórios | `/relatorios` | KPIs agregados, gráficos por Stage e instrumento |
-| 14 | Integrações | `/integracoes` | 7 APIs ativas + 3 futuras, status de conexão |
-| 15 | Configurações | `/configuracoes` | 4 tabs: Escola / Usuários / Visual / Plano |
-| 16 | Login | `/login` | Tela de autenticação (Supabase Auth) |
-
-### 11.5 Ícones das Páginas (Phosphor Icons)
+### 11.4 Ícones das Páginas (Phosphor Icons)
 
 | Página | Ícone | Classe |
 |--------|-------|--------|
@@ -1032,7 +1052,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [x] Fix de recursão infinita e performance em RLS policies
 - [x] pgvector + infraestrutura RAG habilitada
 - [ ] Auth e multi-tenancy (Supabase Auth com JWT customizado)
-- [ ] Conectar frontend ao Supabase (services, hooks, queries reais)
+- [ ] Conectar frontend ao Supabase com Auth real (JWT customizado, multi-tenancy)
 
 ### Fase 2 — Motor de Conteúdo (Semanas 4-6) ✅ CONCLUÍDA
 - [x] Biblioteca de acordes (chord_library) com SVGuitar — 8965 acordes (violão, guitarra, piano, ukulele, baixo, cavaquinho)
@@ -1069,9 +1089,11 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [ ] Versionamento de material (rascunho → publicado)
 - [ ] Exportação PDF via Puppeteer / React-PDF
 
+> **Atualização (Editor de Material):** O subprojeto de evolução do editor foi concluído em 7 fases incrementais (seção 6.2.2), incluindo rich text, layout A4, blocos avançados, mídia, IA, UX operacional, templates e histórico de versões.
+
 ### Fase 5 — Repertório e Conteúdo Musical (Semanas 13-15) ✅ CONCLUÍDA
 - [x] Importação Songsterr: busca, metadados, cifra/acordes/tom/BPM/vídeos (3 Edge Functions)
-- [x] Importação Cifra Club: busca artista/música, scraping cifra com acordes e letra (2 Edge Functions)
+- [x] Importação Cifra Club: busca artista/música, scraping de cifra com acordes e letra (2 Edge Functions)
 - [x] Editor de cifra do zero (CifraEditor): 3 modos, toolbar completa, parser de cifra colada
 - [x] Transposição de tonalidade em tempo real (+/- semitons, diagramas auto-atualizam)
 - [x] Mini-diagramas de acordes: violão (SVGuitar) + teclado (SVG) em tempo real

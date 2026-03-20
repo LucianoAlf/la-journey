@@ -62,7 +62,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BlockStylePanel } from "@/components/editor/BlockStylePanel";
 import { SeparatorStylePanel } from "@/components/editor/SeparatorStylePanel";
 import { PageBackgroundPanel } from "@/components/editor/PageBackgroundPanel";
-import { type BlockStyle, type SeparatorStyle, type PageBackground, DEFAULT_BLOCK_STYLE, DEFAULT_SEPARATOR_STYLE, DEFAULT_PAGE_BACKGROUND, mergeBlockStyle, mergeSeparatorStyle, blockStyleToCSS } from "@/lib/blockStyles";
+import { PageMarginsPanel } from "@/components/editor/PageMarginsPanel";
+import { type BlockStyle, type SeparatorStyle, type PageBackground, type PageMargins, type PageGuide, DEFAULT_BLOCK_STYLE, DEFAULT_SEPARATOR_STYLE, DEFAULT_PAGE_BACKGROUND, DEFAULT_PAGE_MARGINS, mergeBlockStyle, mergeSeparatorStyle, blockStyleToCSS } from "@/lib/blockStyles";
 import { FloatingElementRenderer } from "@/components/editor/FloatingElementRenderer";
 import { FloatingTextProperties } from "@/components/editor/FloatingTextProperties";
 import { FloatingImageProperties } from "@/components/editor/FloatingImageProperties";
@@ -102,11 +103,15 @@ interface PageConfig {
   footer: HeaderFooterConfig
   background?: PageBackground
   floating_elements?: FloatingElement[]
+  margins?: PageMargins
+  guides?: PageGuide[]
 }
 
 const DEFAULT_PAGE_CONFIG: PageConfig = {
   header: DEFAULT_HEADER,
   footer: DEFAULT_FOOTER,
+  margins: DEFAULT_PAGE_MARGINS,
+  guides: [],
 }
 
 interface EditorBlock {
@@ -3341,10 +3346,16 @@ ${pagesHtml}
             </TooltipProvider>
           </div>
 
-          {/* 7.1 — Régua visual */}
+          {/* 7.1 — Régua visual com guias arrastáveis */}
           {showRulers && (
             <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-              <CanvasRuler zoom={1} />
+              <CanvasRuler 
+                zoom={1} 
+                margins={pageConfig.margins}
+                guides={pageConfig.guides}
+                onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
+                orientation="horizontal"
+              />
             </div>
           )}
 
@@ -3383,6 +3394,27 @@ ${pagesHtml}
                 data-page-index={pageIdx}
                 style={{ position: 'relative', ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
               >
+                {/* Guias visuais */}
+                {showRulers && pageConfig.guides && pageConfig.guides.length > 0 && (
+                  <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 100 }}>
+                    {pageConfig.guides.map(guide => (
+                      guide.type === 'vertical' ? (
+                        <div
+                          key={guide.id}
+                          className="absolute top-0 bottom-0 w-px"
+                          style={{ left: `${guide.position}px`, backgroundColor: guide.color, opacity: 0.6 }}
+                        />
+                      ) : (
+                        <div
+                          key={guide.id}
+                          className="absolute left-0 right-0 h-px"
+                          style={{ top: `${guide.position}px`, backgroundColor: guide.color, opacity: 0.6 }}
+                        />
+                      )
+                    ))}
+                  </div>
+                )}
+
                 {/* Marca d'água */}
                 {watermark?.enabled && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
@@ -3430,7 +3462,15 @@ ${pagesHtml}
                 ) : null}
 
                 {/* Conteúdo dos blocos */}
-                <div className="a4-page-content">
+                <div 
+                  className="a4-page-content"
+                  style={!isCoverPage && pageConfig.margins ? {
+                    paddingLeft: `${pageConfig.margins.left}px`,
+                    paddingRight: `${pageConfig.margins.right}px`,
+                    paddingTop: `${pageConfig.margins.top / 4}px`,
+                    paddingBottom: `${pageConfig.margins.bottom / 4}px`,
+                  } : undefined}
+                >
                   {pageBlocks.map(block => {
                     const isTextBlock = ['text', 'tip', 'exercise', 'title'].includes(block.block_type)
                     const isInlineEditing = inlineEditingBlockId === block.id
@@ -3794,6 +3834,17 @@ ${pagesHtml}
                     />
                   </TabsContent>
                 </Tabs>
+              </div>
+
+              {/* Margens da Página */}
+              <div className="space-y-3 border-t border-border pt-3">
+                <Label className="text-[11px] text-text3 uppercase tracking-wider">
+                  Margens da Página
+                </Label>
+                <PageMarginsPanel
+                  margins={pageConfig.margins ?? DEFAULT_PAGE_MARGINS}
+                  onChange={(margins) => setPageConfig(prev => ({ ...prev, margins }))}
+                />
               </div>
 
               {/* Background da Página */}

@@ -320,6 +320,23 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
               </Button>
             </div>
 
+            {/* Padding horizontal (afastar dos cantos) */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] text-text3">Recuo lateral</Label>
+                <span className="text-[10px] text-text3">{config.paddingX || 24}px</span>
+              </div>
+              <input
+                type="range"
+                min={8}
+                max={80}
+                step={4}
+                value={config.paddingX || 24}
+                onChange={(e) => update({ paddingX: Number(e.target.value) })}
+                className="w-full h-1.5 bg-border rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:rounded-full"
+              />
+            </div>
+
             {/* Linha separadora */}
             <div className="flex items-center gap-2">
               <Switch
