@@ -3352,22 +3352,14 @@ ${pagesHtml}
             display: 'grid',
             gridTemplateColumns: showRulers ? '24px 1fr' : '1fr',
             gridTemplateRows: showRulers ? '24px 1fr' : '1fr',
+            columnGap: showRulers ? '4px' : 0,
+            rowGap: showRulers ? '4px' : 0,
             width: 'fit-content',
             marginLeft: 'auto',
             marginRight: 'auto',
             transform: `scale(${zoom})`,
             transformOrigin: 'top center',
           }}>
-            {/* Canto superior esquerdo (interseção das réguas) */}
-            {showRulers && (
-              <div data-canvas-ruler="corner" style={{
-                gridRow: 1, gridColumn: 1,
-                backgroundColor: 'var(--card)',
-                borderBottom: '1px solid var(--border)',
-                borderRight: '1px solid var(--border)',
-              }} />
-            )}
-
             {/* Régua horizontal */}
             {showRulers && (
               <div data-canvas-ruler="horizontal" style={{ gridRow: 1, gridColumn: 2 }}>
