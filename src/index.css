@@ -243,11 +243,15 @@
   padding: 0 !important;
   margin: 0 !important;
   border-radius: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
 }
 /* Pauta VexFlow preenche 100% da largura disponível no editor */
 .notation-editor-vexflow .notation-container svg {
   width: 100% !important;
+  max-width: 100% !important;
   height: auto !important;
+  display: block;
 }
 /* Editor sempre fundo branco — NÃO inverter SVG no dark mode */
 [data-theme="dark"] .notation-editor-vexflow .notation-container {

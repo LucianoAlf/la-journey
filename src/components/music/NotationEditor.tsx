@@ -29,8 +29,9 @@ const DRUM_NAMES: Record<string, string> = {
 const DRUM_X_NOTEHEADS = new Set(['g/5','f/5','e/5'])
 
 const PT: Record<string, string> = { c:'Dó', d:'Ré', e:'Mi', f:'Fá', g:'Sol', a:'Lá', b:'Si' }
-const DURATION_BEATS: Record<string, number> = { w:4, h:2, q:1, '8':0.5, '16':0.25 }
-const DURATION_NAMES: Record<string, string> = { w:'Semibreve', h:'Mínima', q:'Semínima', '8':'Colcheia', '16':'Semicolcheia' }
+const DURATION_BEATS: Record<string, number> = { w:4, h:2, q:1, '8':0.5, '16':0.25, '32':0.125, '64':0.0625 }
+const DURATION_NAMES: Record<string, string> = { w:'Semibreve', h:'Mínima', q:'Semínima', '8':'Colcheia', '16':'Semicolcheia', '32':'Fusa', '64':'Semifusa' }
+const DURATION_ORDER = ['64', '32', '16', '8', 'q', 'h', 'w'] as const
 
 const CLEF_OPTIONS = [
   { value: 'treble', label: 'Sol' },
@@ -38,15 +39,29 @@ const CLEF_OPTIONS = [
   { value: 'alto', label: 'Dó' },
   { value: 'percussion', label: 'Percussão' },
 ]
-const TIME_OPTIONS = ['4/4', '3/4', '2/4', '6/8']
-const KEY_OPTIONS = [
-  { value: 'C', label: 'Dó M' },
-  { value: 'G', label: 'Sol M' },
-  { value: 'D', label: 'Ré M' },
-  { value: 'A', label: 'Lá M' },
-  { value: 'F', label: 'Fá M' },
-  { value: 'Bb', label: 'Sib M' },
-  { value: 'Eb', label: 'Mib M' },
+const TIME_GROUPS = [
+  { label: 'Simples', options: ['2/4', '3/4', '4/4', '5/4', '6/4', '7/4'] },
+  { label: 'Alla breve', options: ['2/2', '3/2', '4/2'] },
+  { label: 'Compostos', options: ['3/8', '5/8', '6/8', '7/8', '9/8', '12/8'] },
+]
+const KEY_SHARPS = [
+  { value: 'C', label: 'C / Am (sem alteração)' },
+  { value: 'G', label: 'G / Em (1♯)' },
+  { value: 'D', label: 'D / Bm (2♯)' },
+  { value: 'A', label: 'A / F♯m (3♯)' },
+  { value: 'E', label: 'E / C♯m (4♯)' },
+  { value: 'B', label: 'B / G♯m (5♯)' },
+  { value: 'F#', label: 'F♯ / D♯m (6♯)' },
+  { value: 'C#', label: 'C♯ / A♯m (7♯)' },
+]
+const KEY_FLATS = [
+  { value: 'F', label: 'F / Dm (1♭)' },
+  { value: 'Bb', label: 'B♭ / Gm (2♭)' },
+  { value: 'Eb', label: 'E♭ / Cm (3♭)' },
+  { value: 'Ab', label: 'A♭ / Fm (4♭)' },
+  { value: 'Db', label: 'D♭ / B♭m (5♭)' },
+  { value: 'Gb', label: 'G♭ / E♭m (6♭)' },
+  { value: 'Cb', label: 'C♭ / A♭m (7♭)' },
 ]
 const CATEGORY_OPTIONS = [
   { value: 'scale', label: 'Escala' },
@@ -76,6 +91,7 @@ interface Beat {
   dotted: boolean
   notehead?: 'normal' | 'x'
   barAfter?: boolean
+  stemDirection?: 'up' | 'down'
   cifra: string | null
   cifra_offset?: OffsetXY
   annotation: string | null
@@ -196,6 +212,37 @@ function loadBeatsFromData(data: any): Beat[] {
   }
 }
 
+// ─── Helpers: oitava inteligente e cromática ─────────────────────────
+const NOTE_ORDER = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const
+const CHROMATIC_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+const CHROMATIC_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
+
+function getSmartOctave(
+  noteName: string,
+  prevPitch: string | null,
+  clef: string,
+): number {
+  if (!prevPitch) {
+    if (clef === 'bass') return 3
+    if (clef === 'alto') return 4
+    return 4
+  }
+  const parts = prevPitch.split('/')
+  if (parts.length !== 2) return 4
+  const prevOctave = parseInt(parts[1])
+  const prevName = parts[0].replace(/[#bn]/g, '').toUpperCase()
+  const prevIdx = NOTE_ORDER.indexOf(prevName as any)
+  const newIdx = NOTE_ORDER.indexOf(noteName.toUpperCase() as any)
+  if (prevIdx === -1 || newIdx === -1) return prevOctave
+  const distUp = (newIdx - prevIdx + 7) % 7
+  const distDown = (prevIdx - newIdx + 7) % 7
+  if (distUp <= distDown) {
+    return newIdx < prevIdx ? prevOctave + 1 : prevOctave
+  } else {
+    return newIdx > prevIdx ? prevOctave - 1 : prevOctave
+  }
+}
+
 // ─── Multi-line: quebrar beats em linhas ─────────────────────────────
 const NOTES_PER_LINE_OPTIONS = [4, 8, 12, 16] as const
 
@@ -274,11 +321,13 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const editorColRef = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
+  const hiddenInputRef = useRef<HTMLInputElement>(null)
 
   // Estado do editor
   const [beats, setBeats] = useState<Beat[]>([])
   const [editorMode, setEditorMode] = useState<EditorMode>('free')
   const [inputMode, setInputMode] = useState<InputMode>('melodic')
+  const [isKeyboardMode, setIsKeyboardMode] = useState(false)
   const [currentDuration, setCurrentDuration] = useState('q')
   const [currentAccidental, setCurrentAccidental] = useState<string | null>(null)
   const [restMode, setRestMode] = useState(false)
@@ -356,7 +405,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const [clipboard, setClipboard] = useState<Beat[] | null>(null)
 
   // Largura dinâmica da pauta (medida do container)
-  const [staveWidth, setStaveWidth] = useState(700)
+  const [staveWidth, setStaveWidth] = useState(500)
 
   // Posições X reais dos noteheads lidas do SVG (por linha)
   const [notePositions, setNotePositions] = useState<number[][]>([])
@@ -405,6 +454,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       setEditorMode('free')
     }
     setInputMode('melodic')
+    setIsKeyboardMode(false)
     setCurrentDuration('q')
     setCurrentAccidental(null)
     setRestMode(false)
@@ -822,35 +872,170 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     }))
   }, [selectedElement, scale])
 
-  // Keyboard handler para seleção
-  useEffect(() => {
-    if (!open || !selectedElement) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault()
-        deleteSelected()
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        setSelectedElement(null)
-      } else if (e.key === 'ArrowUp' && selectedElement.type === 'note') {
-        e.preventDefault()
-        moveSelectedPitch(1)
-      } else if (e.key === 'ArrowDown' && selectedElement.type === 'note') {
-        e.preventDefault()
-        moveSelectedPitch(-1)
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        const next = selectedElement.beatIdx + 1
-        if (next < beats.length) setSelectedElement({ ...selectedElement, beatIdx: next })
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        const prev = selectedElement.beatIdx - 1
-        if (prev >= 0) setSelectedElement({ ...selectedElement, beatIdx: prev })
-      }
+  // ── Helpers: derivados para keyboard input ──────────────────────────
+  const selectedBeatIdx = selectedElement?.type === 'note' ? selectedElement.beatIdx : -1
+
+  const getLastPitch = useCallback((): string | null => {
+    if (selectedBeatIdx >= 0 && selectedBeatIdx < beats.length) {
+      const b = beats[selectedBeatIdx]
+      if (b.pitches.length > 0 && !b.isRest) return b.pitches[b.pitches.length - 1].pitch
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, selectedElement, deleteSelected, moveSelectedPitch, beats.length])
+    for (let i = beats.length - 1; i >= 0; i--) {
+      if (beats[i].pitches.length > 0 && !beats[i].isRest) return beats[i].pitches[beats[i].pitches.length - 1].pitch
+    }
+    return null
+  }, [beats, selectedBeatIdx])
+
+  const insertNoteAtCursor = useCallback((pitch: string, accidental: string | null) => {
+    const newBeat: Beat = {
+      pitches: [{ pitch, accidental }],
+      duration: currentDuration,
+      isRest: false,
+      tie: false,
+      dotted: dottedMode,
+      ...(selectedClef === 'percussion' && DRUM_X_NOTEHEADS.has(pitch) ? { notehead: 'x' as const } : {}),
+      cifra: null,
+      annotation: null,
+      lyric: null,
+    }
+    if (selectedBeatIdx >= 0) {
+      setBeats(prev => {
+        const next = [...prev]
+        next.splice(selectedBeatIdx + 1, 0, newBeat)
+        return next
+      })
+      setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx + 1 })
+    } else {
+      setBeats(prev => [...prev, newBeat])
+      setSelectedElement({ type: 'note', beatIdx: beats.length })
+    }
+    setCurrentAccidental(null)
+    setLastNote(displayNote(pitch, accidental))
+    setLastNoteInfo(DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
+  }, [currentDuration, dottedMode, selectedClef, selectedBeatIdx, beats.length])
+
+  const insertRestAtCursor = useCallback(() => {
+    const newBeat: Beat = {
+      pitches: [{ pitch: 'b/4', accidental: null }],
+      duration: currentDuration,
+      isRest: true,
+      tie: false,
+      dotted: dottedMode,
+      cifra: null,
+      annotation: null,
+      lyric: null,
+    }
+    if (selectedBeatIdx >= 0) {
+      setBeats(prev => {
+        const next = [...prev]
+        next.splice(selectedBeatIdx + 1, 0, newBeat)
+        return next
+      })
+      setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx + 1 })
+    } else {
+      setBeats(prev => [...prev, newBeat])
+      setSelectedElement({ type: 'note', beatIdx: beats.length })
+    }
+    setLastNote('𝄽')
+    setLastNoteInfo('Pausa · ' + DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
+  }, [currentDuration, dottedMode, selectedBeatIdx, beats.length])
+
+  const addNoteToChord = useCallback((noteName: string) => {
+    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) return
+    const beat = beats[selectedBeatIdx]
+    if (beat.isRest) return
+    const octave = getSmartOctave(noteName, beat.pitches[0]?.pitch || null, selectedClef)
+    const pitch = `${noteName.toLowerCase()}/${octave}`
+    if (beat.pitches.find(p => p.pitch === pitch)) return
+    const newPitches = [...beat.pitches, { pitch, accidental: currentAccidental }]
+      .sort((a, b) => {
+        const [, oA] = a.pitch.split('/')
+        const [, oB] = b.pitch.split('/')
+        if (oA !== oB) return parseInt(oA) - parseInt(oB)
+        const order = ['c', 'd', 'e', 'f', 'g', 'a', 'b']
+        return order.indexOf(a.pitch[0]) - order.indexOf(b.pitch[0])
+      })
+    setBeats(prev => prev.map((b, i) => i === selectedBeatIdx ? { ...b, pitches: newPitches } : b))
+    setCurrentAccidental(null)
+  }, [selectedBeatIdx, beats, selectedClef, currentAccidental, getLastPitch])
+
+  const movePitchSemitone = useCallback((beatIndex: number, direction: number) => {
+    if (beatIndex < 0 || beatIndex >= beats.length) return
+    const beat = beats[beatIndex]
+    if (!beat.pitches.length || beat.isRest) return
+    setBeats(prev => prev.map((b, i) => {
+      if (i !== beatIndex) return b
+      const newPitches = b.pitches.map(p => {
+        const [nameWithAcc, octStr] = p.pitch.split('/')
+        let octave = parseInt(octStr)
+        const name = nameWithAcc.replace(/[#bn]/g, '')
+        const acc = nameWithAcc.includes('#') ? '#' : nameWithAcc.includes('b') ? 'b' : ''
+        const scaleRef = acc === 'b' ? CHROMATIC_FLAT : CHROMATIC_SHARP
+        let idx = scaleRef.findIndex(n => n.toLowerCase() === (name + acc).toLowerCase())
+        if (idx === -1) idx = CHROMATIC_SHARP.findIndex(n => n.toLowerCase() === name.toLowerCase())
+        if (idx === -1) return p
+        idx += direction
+        if (idx >= 12) { idx -= 12; octave++ }
+        if (idx < 0) { idx += 12; octave-- }
+        const newName = scaleRef[idx]
+        const newAcc = newName.includes('#') ? '#' : newName.includes('b') ? 'b' : null
+        const cleanName = newName.replace(/[#b]/g, '').toLowerCase()
+        return { pitch: `${cleanName}/${octave}`, accidental: newAcc }
+      })
+      return { ...b, pitches: newPitches }
+    }))
+  }, [beats])
+
+  const movePitchOctave = useCallback((beatIndex: number, direction: number) => {
+    if (beatIndex < 0 || beatIndex >= beats.length) return
+    const beat = beats[beatIndex]
+    if (!beat.pitches.length || beat.isRest) return
+    setBeats(prev => prev.map((b, i) => {
+      if (i !== beatIndex) return b
+      const newPitches = b.pitches.map(p => {
+        const [name, octStr] = p.pitch.split('/')
+        const newOct = parseInt(octStr) + direction
+        if (newOct < 0 || newOct > 8) return p
+        return { ...p, pitch: `${name}/${newOct}` }
+      })
+      return { ...b, pitches: newPitches }
+    }))
+  }, [beats])
+
+  const changeDuration = useCallback((beatIndex: number, dir: 'increase' | 'decrease') => {
+    if (beatIndex < 0 || beatIndex >= beats.length) return
+    const idx = DURATION_ORDER.indexOf(beats[beatIndex].duration as any)
+    if (idx === -1) return
+    const newIdx = dir === 'increase' ? idx + 1 : idx - 1
+    if (newIdx < 0 || newIdx >= DURATION_ORDER.length) return
+    setBeats(prev => prev.map((b, i) => i === beatIndex ? { ...b, duration: DURATION_ORDER[newIdx] } : b))
+  }, [beats])
+
+  const toggleStemDirection = useCallback((beatIndex: number) => {
+    if (beatIndex < 0 || beatIndex >= beats.length) return
+    setBeats(prev => prev.map((b, i) => {
+      if (i !== beatIndex) return b
+      const next = b.stemDirection === 'up' ? 'down' : b.stemDirection === 'down' ? undefined : 'up'
+      return { ...b, stemDirection: next }
+    }))
+  }, [beats])
+
+  const repeatLastNote = useCallback(() => {
+    const last = [...beats].reverse().find(b => !b.isRest && b.pitches.length > 0)
+    if (!last) return
+    const clone: Beat = { ...last, tie: false, cifra: null, annotation: null, lyric: null, cifra_offset: undefined, annotation_offset: undefined, lyric_offset: undefined }
+    if (selectedBeatIdx >= 0) {
+      setBeats(prev => {
+        const next = [...prev]
+        next.splice(selectedBeatIdx + 1, 0, clone)
+        return next
+      })
+      setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx + 1 })
+    } else {
+      setBeats(prev => [...prev, clone])
+      setSelectedElement({ type: 'note', beatIdx: beats.length })
+    }
+  }, [beats, selectedBeatIdx])
 
   // ── Fase 2: Undo/Redo com Stack ──────────────────────────────────
   const pushHistory = useCallback((currentBeats: Beat[]) => {
@@ -920,7 +1105,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
     const bpm = 120
     const beatDuration = 60 / bpm
-    const DURATIONS: Record<string, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+    const DURATIONS: Record<string, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
 
     let delay = 0
     const timeouts: number[] = []
@@ -991,47 +1176,149 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     })
   }, [clipboard, selectedElement, beats.length])
 
-  // ── Fase 2: Keyboard shortcuts globais ──────────────────────────
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      // Ignorar quando está em input/textarea
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+  // ── Handler unificado de teclado (hidden input) ───────────────────
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const key = e.key
+    const upper = key.toUpperCase()
+    const tag = (e.target as HTMLElement)?.tagName
+    if (tag === 'TEXTAREA') return
+    if (tag === 'INPUT' && e.target !== hiddenInputRef.current) return
 
-      // Ctrl+Z / Ctrl+Shift+Z
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        e.preventDefault()
-        if (e.shiftKey) redo(); else undo()
-        return
-      }
-      // Ctrl+Y
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault()
-        redo()
-        return
-      }
-      // Ctrl+C
-      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-        e.preventDefault()
-        copyBeat()
-        return
-      }
-      // Ctrl+V
-      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-        e.preventDefault()
-        pasteBeat()
-        return
-      }
-      // Espaço = Play/Pause (quando não está em modo texto)
-      if (e.key === ' ' && inputMode !== 'lyric' && inputMode !== 'cifra' && inputMode !== 'annotation') {
-        e.preventDefault()
-        playAll()
-      }
+    // ── Ctrl combos (sempre ativos) ──
+    if (e.ctrlKey || e.metaKey) {
+      if (key === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return }
+      if (key === 'y') { e.preventDefault(); redo(); return }
+      if (key === 'c') { e.preventDefault(); copyBeat(); return }
+      if (key === 'v') { e.preventDefault(); pasteBeat(); return }
+      if (key === 'ArrowUp' && selectedBeatIdx >= 0) { e.preventDefault(); movePitchOctave(selectedBeatIdx, 1); return }
+      if (key === 'ArrowDown' && selectedBeatIdx >= 0) { e.preventDefault(); movePitchOctave(selectedBeatIdx, -1); return }
+      return
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, undo, redo, copyBeat, pasteBeat, playAll, inputMode])
+
+    // ── N — Toggle keyboard input mode ──
+    if (upper === 'N' && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      setIsKeyboardMode(prev => {
+        if (!prev && beats.length > 0) setSelectedElement({ type: 'note', beatIdx: beats.length - 1 })
+        return !prev
+      })
+      return
+    }
+
+    // ── Escape — Sair do modo input / desselecionar ──
+    if (key === 'Escape') {
+      if (isKeyboardMode) { e.preventDefault(); setIsKeyboardMode(false); return }
+      if (selectedElement) { e.preventDefault(); setSelectedElement(null); return }
+      return
+    }
+
+    // ── Space — Play/Pause ──
+    if (key === ' ' && inputMode !== 'lyric' && inputMode !== 'cifra' && inputMode !== 'annotation') {
+      e.preventDefault(); playAll(); return
+    }
+
+    // ── Durações 1-7 ──
+    if ('1234567'.includes(key) && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      const map: Record<string, string> = { '1': '64', '2': '32', '3': '16', '4': '8', '5': 'q', '6': 'h', '7': 'w' }
+      setCurrentDuration(map[key])
+      return
+    }
+
+    // ── Navegação ←/→ ──
+    if (key === 'ArrowLeft' && !e.shiftKey) {
+      e.preventDefault()
+      if (selectedBeatIdx > 0) setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx - 1 })
+      else if (beats.length > 0 && selectedBeatIdx === -1) setSelectedElement({ type: 'note', beatIdx: beats.length - 1 })
+      return
+    }
+    if (key === 'ArrowRight' && !e.shiftKey) {
+      e.preventDefault()
+      if (selectedBeatIdx >= 0 && selectedBeatIdx < beats.length - 1) setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx + 1 })
+      else if (beats.length > 0 && selectedBeatIdx === -1) setSelectedElement({ type: 'note', beatIdx: 0 })
+      return
+    }
+
+    // ── ↑/↓ — Mover pitch semitom ──
+    if (key === 'ArrowUp' && !e.shiftKey && selectedBeatIdx >= 0) {
+      e.preventDefault(); movePitchSemitone(selectedBeatIdx, 1); return
+    }
+    if (key === 'ArrowDown' && !e.shiftKey && selectedBeatIdx >= 0) {
+      e.preventDefault(); movePitchSemitone(selectedBeatIdx, -1); return
+    }
+
+    // ── Delete/Backspace ──
+    if ((key === 'Delete' || key === 'Backspace') && selectedElement) {
+      e.preventDefault(); deleteSelected(); return
+    }
+
+    // ── . (ponto) — Toggle ponto de aumento ──
+    if (key === '.') {
+      e.preventDefault()
+      if (selectedBeatIdx >= 0 && !isKeyboardMode) {
+        setBeats(prev => prev.map((b, i) => i === selectedBeatIdx ? { ...b, dotted: !b.dotted } : b))
+      } else {
+        setDottedMode(prev => !prev)
+      }
+      return
+    }
+
+    // ── Q/W — Diminuir/aumentar duração ──
+    if (upper === 'Q' && !e.altKey && !e.shiftKey && selectedBeatIdx >= 0) {
+      e.preventDefault(); changeDuration(selectedBeatIdx, 'decrease'); return
+    }
+    if (upper === 'W' && !e.altKey && !e.shiftKey && selectedBeatIdx >= 0) {
+      e.preventDefault(); changeDuration(selectedBeatIdx, 'increase'); return
+    }
+
+    // ── X — Inverter stem ──
+    if (upper === 'X' && !e.altKey && !e.shiftKey && selectedBeatIdx >= 0) {
+      e.preventDefault(); toggleStemDirection(selectedBeatIdx); return
+    }
+
+    // ── T — Toggle tie ──
+    if (upper === 'T' && !e.altKey && !e.shiftKey && isKeyboardMode && selectedBeatIdx >= 0) {
+      e.preventDefault()
+      setBeats(prev => prev.map((b, i) => i === selectedBeatIdx ? { ...b, tie: !b.tie } : b))
+      return
+    }
+
+    // ── 0 — Inserir pausa ──
+    if (key === '0' && isKeyboardMode) {
+      e.preventDefault(); insertRestAtCursor(); return
+    }
+
+    // ── R — Repetir última nota ──
+    if (upper === 'R' && isKeyboardMode && !e.altKey && !e.shiftKey) {
+      e.preventDefault(); repeatLastNote(); return
+    }
+
+    // ── Notas A-G (só em keyboard mode) ──
+    if (isKeyboardMode && 'ABCDEFG'.includes(upper) && !e.altKey && !e.metaKey) {
+      e.preventDefault()
+      if (e.shiftKey) {
+        addNoteToChord(upper)
+      } else {
+        const octave = getSmartOctave(upper, getLastPitch(), selectedClef)
+        const accSuffix = currentAccidental === '#' ? '#' : currentAccidental === 'b' ? 'b' : ''
+        const pitch = `${upper.toLowerCase()}${accSuffix}/${octave}`
+        insertNoteAtCursor(pitch, currentAccidental)
+      }
+      return
+    }
+  }, [
+    isKeyboardMode, selectedBeatIdx, selectedElement, beats, inputMode,
+    currentDuration, currentAccidental, dottedMode, selectedClef,
+    undo, redo, copyBeat, pasteBeat, playAll,
+    deleteSelected, movePitchSemitone, movePitchOctave,
+    changeDuration, toggleStemDirection, insertNoteAtCursor, insertRestAtCursor,
+    addNoteToChord, repeatLastNote, getLastPitch,
+  ])
+
+  // Focar hidden input ao clicar no editor
+  const focusHiddenInput = useCallback(() => {
+    hiddenInputRef.current?.focus()
+  }, [])
 
   // Clear
   const handleClear = useCallback(() => {
@@ -1127,7 +1414,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[1100px] max-h-[90vh] overflow-y-auto bg-surface border-border"
+        className="sm:max-w-[1100px] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-surface border-border"
         onInteractOutside={e => e.preventDefault()}
         onEscapeKeyDown={e => { if (inputMode === 'lyric') e.preventDefault() }}
       >
@@ -1176,7 +1463,13 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
               <Select value={selectedTime} onValueChange={setSelectedTime}>
                 <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TIME_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {TIME_GROUPS.map((group, gi) => (
+                    <div key={group.label}>
+                      {gi > 0 && <div className="h-px bg-border my-1" />}
+                      <div className="text-[9px] text-text3 px-2 py-0.5 uppercase font-semibold">{group.label}</div>
+                      {group.options.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </div>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1184,12 +1477,16 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
           {/* Armadura (esconder em percussão) */}
           {selectedClef !== 'percussion' && (
-            <div className="space-y-1 min-w-[80px]">
+            <div className="space-y-1 min-w-[120px]">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Armadura</span>
               <Select value={selectedKey} onValueChange={setSelectedKey}>
                 <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {KEY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  <div className="text-[9px] text-text3 px-2 py-0.5 uppercase font-semibold">Sustenidos</div>
+                  {KEY_SHARPS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  <div className="h-px bg-border my-1" />
+                  <div className="text-[9px] text-text3 px-2 py-0.5 uppercase font-semibold">Bemóis</div>
+                  {KEY_FLATS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1218,24 +1515,26 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           </div>
         </div>
 
-        {/* ── Toolbar (linha única) ── */}
-        <div className="flex gap-[2px] items-center rounded-[9px] mb-2.5" style={{ padding: '5px 6px', backgroundColor: '#162032' }}>
+        {/* ── Toolbar (responsiva com wrap) ── */}
+        <div className="flex flex-wrap gap-[2px] items-center rounded-[9px] mb-2.5" style={{ padding: '5px 6px', backgroundColor: '#162032' }}>
           {/* Duração */}
           {[
-            { key: 'w', label: '𝅝', tip: 'Semibreve' },
-            { key: 'h', label: '�𝅥', tip: 'Mínima' },
-            { key: 'q', label: '♩', tip: 'Semínima' },
-            { key: '8', label: '♪', tip: 'Colcheia' },
-            { key: '16', label: '𝅘𝅥𝅯', tip: 'Semicolcheia' },
+            { key: 'w', label: '𝅝', tip: 'Semibreve (7)' },
+            { key: 'h', label: '𝅗𝅥', tip: 'Mínima (6)' },
+            { key: 'q', label: '♩', tip: 'Semínima (5)' },
+            { key: '8', label: '♪', tip: 'Colcheia (4)' },
+            { key: '16', label: '𝅘𝅥𝅯', tip: 'Semicolcheia (3)' },
+            { key: '32', label: '𝅘𝅥𝅰', tip: 'Fusa (2)' },
+            { key: '64', label: '𝅘𝅥𝅱', tip: 'Semifusa (1)' },
           ].map(d => (
             <TBtn key={d.key} active={currentDuration === d.key} onClick={() => setCurrentDuration(d.key)} title={d.tip}>
               {d.label}
             </TBtn>
           ))}
-          <TBtn active={restMode} onClick={() => setRestMode(p => !p)} title="Pausa">
+          <TBtn active={restMode} onClick={() => setRestMode(p => !p)} title="Pausa (0 no modo input)">
             <span style={{ fontSize: 10, padding: '0 2px' }}>🔇</span>
           </TBtn>
-          <TBtn active={dottedMode} onClick={() => setDottedMode(p => !p)} title="Ponto de aumento">
+          <TBtn active={dottedMode} onClick={() => setDottedMode(p => !p)} title="Ponto de aumento (.)">
             <span style={{ fontSize: 13, fontWeight: 900, padding: '0 3px', lineHeight: 1 }}>•</span>
           </TBtn>
 
@@ -1267,6 +1566,24 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
           </TBtn>
           <TBtn active={inputMode === 'lyric'} onClick={enterLyricMode} title="Letra">
             <span style={{ fontSize: 10, padding: '0 2px' }}>🎤</span>
+          </TBtn>
+
+          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+
+          {/* Keyboard input mode */}
+          <TBtn
+            active={isKeyboardMode}
+            color={isKeyboardMode ? undefined : undefined}
+            onClick={() => {
+              setIsKeyboardMode(prev => {
+                if (!prev && beats.length > 0) setSelectedElement({ type: 'note', beatIdx: beats.length - 1 })
+                return !prev
+              })
+              focusHiddenInput()
+            }}
+            title="Modo teclado (N) — A-G insere notas"
+          >
+            <span style={{ fontSize: 10, padding: '0 2px', fontWeight: isKeyboardMode ? 800 : 400 }}>⌨ N</span>
           </TBtn>
 
           <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
@@ -1340,15 +1657,35 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
         </div>
 
         {/* ── Linha 3: VexFlow Preview + Painel lateral ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 14, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 10, alignItems: 'start' }}>
           {/* Área do editor: VexFlow multi-line + overlay */}
-          <div ref={editorColRef}>
+          <div ref={editorColRef} style={{ minWidth: 0 }}>
             <div
               ref={wrapRef}
-              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '12px 14px', position: 'relative', overflow: 'auto', minHeight: 140, maxHeight: 420 }}
+              onClick={focusHiddenInput}
+              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '10px 12px', position: 'relative', overflow: 'hidden', minHeight: 140, maxHeight: 420 }}
             >
+              {/* Hidden input para captura de teclado */}
+              <input
+                ref={hiddenInputRef}
+                onKeyDown={handleKeyDown}
+                style={{ position: 'absolute', opacity: 0, width: 1, height: 1, overflow: 'hidden', pointerEvents: 'none' }}
+                tabIndex={0}
+                aria-label="Entrada de notas por teclado"
+                autoComplete="off"
+              />
+
               {/* Indicador de modo (canto superior direito) */}
-              <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none', display: 'flex', gap: 6 }}>
+              <div style={{ position: 'absolute', top: 6, right: 10, zIndex: 15, pointerEvents: 'none', display: 'flex', gap: 6, alignItems: 'center' }}>
+                {isKeyboardMode && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, fontFamily: "'DM Mono', monospace",
+                    color: '#fff', background: '#22C55E', borderRadius: 4, padding: '1px 6px',
+                    letterSpacing: '.5px', animation: 'pulse 2s infinite',
+                  }}>
+                    ⌨ INPUT
+                  </span>
+                )}
                 <span style={{
                   fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
                   color: inputMode === 'chord' ? '#6366F1' : inputMode === 'tie' ? '#F97316' : inputMode === 'cifra' ? '#6366F1' : inputMode === 'annotation' ? '#94A3B8' : inputMode === 'lyric' ? '#FF2D78' : '#22C55E',
@@ -1367,7 +1704,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                   pointerEvents: dragging ? 'auto' : 'none', position: 'relative',
                   transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
                   transformOrigin: 'top left',
-                  width: zoom !== 100 ? `${10000 / zoom}%` : undefined,
+                  width: '100%',
+                  maxWidth: '100%',
                 }}
                 onMouseMove={dragging ? handleDragMove : undefined}
                 onMouseUp={dragging ? handleDragEnd : undefined}
@@ -1832,15 +2170,21 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
 
             {/* Instruções */}
             <div className="text-[11px] text-text3 text-center leading-relaxed mt-2">
-              <span className="text-accent font-semibold">Clique</span> = nota ·{' '}
-              <span className="text-accent font-semibold">Duplo clique</span> = remover ·{' '}
-              <span style={{ color: '#22D3EE' }}>↑↓</span> = mover ·{' '}
+              <span style={{ color: '#22C55E', fontWeight: 700 }}>N</span> = modo teclado ·{' '}
+              <span style={{ color: '#22C55E' }}>A-G</span> = nota ·{' '}
+              <span style={{ color: '#22C55E' }}>Shift+A-G</span> = acorde ·{' '}
+              <span style={{ color: '#94A3B8' }}>1-7</span> = duração ·{' '}
+              <span style={{ color: '#94A3B8' }}>0</span> = pausa ·{' '}
+              <span style={{ color: '#22D3EE' }}>↑↓</span> = semitom ·{' '}
+              <span style={{ color: '#22D3EE' }}>Ctrl+↑↓</span> = oitava ·{' '}
               <span style={{ color: '#94A3B8' }}>←→</span> = navegar ·{' '}
+              <span style={{ color: '#94A3B8' }}>Q/W</span> = ±duração ·{' '}
+              <span style={{ color: '#94A3B8' }}>T</span> = ligadura ·{' '}
+              <span style={{ color: '#94A3B8' }}>.</span> = ponto ·{' '}
+              <span style={{ color: '#94A3B8' }}>R</span> = repetir ·{' '}
+              <span style={{ color: '#94A3B8' }}>X</span> = stem ·{' '}
               <span style={{ color: '#94A3B8' }}>Del</span> = apagar ·{' '}
-              <span style={{ color: '#94A3B8' }}>Ctrl+Z</span> = desfazer ·{' '}
-              <span style={{ color: '#94A3B8' }}>Ctrl+Y</span> = refazer ·{' '}
-              <span style={{ color: '#94A3B8' }}>Ctrl+C/V</span> = copiar/colar ·{' '}
-              <span className="text-accent font-semibold">Espaço</span> = play/pause
+              <span className="text-accent font-semibold">Espaço</span> = play
             </div>
           </div>
 

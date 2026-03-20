@@ -29,7 +29,7 @@ export interface NotationRendererProps {
 // --- Constantes ---
 
 const DURATION_BEATS: Record<string, number> = {
-  w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25,
+  w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625,
 }
 
 const STAVE_HEIGHT = 120
