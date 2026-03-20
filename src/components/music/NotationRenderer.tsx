@@ -1,7 +1,13 @@
 import { useEffect, useRef } from 'react'
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Dot } from 'vexflow'
+import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Dot, Articulation, Beam, Tuplet, StaveHairpin, GraceNote, GraceNoteGroup, Ornament, Curve, Volta, PedalMarking } from 'vexflow'
 
 // --- Tipos ---
+
+interface GraceNoteData {
+  pitches: { pitch: string; accidental: string | null }[]
+  type: 'acciaccatura' | 'appoggiatura'
+  duration?: string
+}
 
 interface StaveData {
   clef?: 'treble' | 'bass' | 'alto' | 'percussion'
@@ -9,6 +15,15 @@ interface StaveData {
   time_signature?: string
   notes?: (string | { key: string; duration: string; label?: string })[]
   accidentals?: (string | null)[]
+  noteArticulations?: (string[] | null)[]
+  noteTuplets?: ({ groupId: string; numNotes: number; notesOccupied: number } | null)[]
+  noteDynamics?: (string | null)[]  // Fase 3: dinâmicas por nota
+  hairpins?: { type: 'crescendo' | 'decrescendo'; startNoteIdx: number; endNoteIdx: number }[]  // Fase 3
+  graceNotes?: (GraceNoteData | null)[]  // Fase 3: grace notes por nota
+  ornaments?: (string | null)[]  // Fase 3: ornamentos por nota
+  slurs?: { startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: slurs (ligaduras de expressão)
+  voltas?: { number: number; startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: volta brackets
+  pedals?: { startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: pedal markings
   intervals?: string[]
   degree_names?: string[]
   label?: string
@@ -52,8 +67,9 @@ function parseNote(noteStr: string | { key: string; duration: string; label?: st
     rawDuration = noteStr.duration || 'q'
   }
 
-  // Extrair sufixos: 'd' = dotted, 'r' = rest
-  const isDotted = rawDuration.includes('d')
+  // Extrair sufixos: 'dd' = doubleDotted, 'd' = dotted, 'r' = rest
+  const isDoubleDotted = rawDuration.includes('dd')
+  const isDotted = !isDoubleDotted && rawDuration.includes('d')
   const isRest = rawDuration.includes('r')
   const duration = rawDuration.replace(/[dr]/g, '') + (isRest ? 'r' : '')
 
@@ -64,7 +80,7 @@ function parseNote(noteStr: string | { key: string; duration: string; label?: st
   const basePitch = match ? `${match[1]}/${match[3]}` : key
   const accidental = match ? match[2] : null
 
-  return { basePitch, duration, accidental, isDotted, isRest }
+  return { basePitch, duration, accidental, isDotted, isDoubleDotted, isRest }
 }
 
 // Cores fixas — VexFlow sempre renderiza no modo "light" (preto sobre branco)
@@ -90,15 +106,18 @@ function renderStave(
   if (notes.length === 0) return
 
   const staveNotes = notes.map((noteStr, i) => {
-    const { basePitch, duration, accidental, isDotted, isRest } = parseNote(noteStr)
+    const { basePitch, duration, accidental, isDotted, isDoubleDotted, isRest } = parseNote(noteStr)
     const note = new StaveNote({
       keys: [isRest ? 'b/4' : basePitch],
       duration,
       clef: staveData.clef || 'treble',
     })
 
-    // Ponto de aumento
-    if (isDotted) {
+    // Ponto de aumento (simples ou duplo)
+    if (isDoubleDotted) {
+      Dot.buildAndAttach([note], { all: true })
+      Dot.buildAndAttach([note], { all: true })
+    } else if (isDotted) {
       Dot.buildAndAttach([note], { all: true })
     }
 
@@ -108,6 +127,46 @@ function renderStave(
         note.addModifier(new Accidental(accidental))
       } else if (staveData.accidentals?.[i]) {
         note.addModifier(new Accidental(staveData.accidentals[i]!))
+      }
+    }
+
+    // Articulações (staccato, acento, tenuto, marcato, fermata)
+    const arts = staveData.noteArticulations?.[i]
+    if (arts && arts.length > 0) {
+      arts.forEach(artCode => {
+        note.addModifier(new Articulation(artCode))
+      })
+    }
+
+    // Grace notes (Fase 3)
+    const graceData = staveData.graceNotes?.[i]
+    if (graceData && graceData.pitches.length > 0) {
+      try {
+        const graceNotes = graceData.pitches.map(gp => {
+          const gn = new GraceNote({
+            keys: [gp.pitch],
+            duration: graceData.duration || '8',
+            slash: graceData.type === 'acciaccatura',
+          })
+          if (gp.accidental) {
+            gn.addModifier(new Accidental(gp.accidental))
+          }
+          return gn
+        })
+        const graceGroup = new GraceNoteGroup(graceNotes)
+        note.addModifier(graceGroup)
+      } catch {
+        // Silenciar erros de grace note
+      }
+    }
+
+    // Ornamentos (Fase 3)
+    const ornCode = staveData.ornaments?.[i]
+    if (ornCode) {
+      try {
+        note.addModifier(new Ornament(ornCode))
+      } catch {
+        // Silenciar erros de ornamento
       }
     }
 
@@ -122,10 +181,11 @@ function renderStave(
     } else {
       rawDur = n.duration || 'q'
     }
-    const isDot = rawDur.includes('d')
+    const isDblDot = rawDur.includes('dd')
+    const isDot = !isDblDot && rawDur.includes('d')
     const baseDur = rawDur.replace(/[dr]/g, '')
     const base = DURATION_BEATS[baseDur] ?? 1
-    return sum + (isDot ? base * 1.5 : base)
+    return sum + (isDblDot ? base * 1.75 : isDot ? base * 1.5 : base)
   }, 0)
 
   const voice = new Voice({ numBeats: totalBeats, beatValue: 4 })
@@ -134,6 +194,136 @@ function renderStave(
 
   new Formatter().joinVoices([voice]).format([voice], staveWidth - 80)
   voice.draw(context, stave)
+
+  // Beams automáticos — agrupar notas com duração ≤ colcheia
+  try {
+    const beamableNotes = staveNotes.filter(n => {
+      const dur = n.getDuration()
+      // Notas beamable: 8, 16, 32, 64 (excluir pausas)
+      return ['8', '16', '32', '64'].includes(dur.replace('r', '')) && !dur.includes('r')
+    })
+    if (beamableNotes.length >= 2) {
+      const beams = Beam.generateBeams(beamableNotes)
+      beams.forEach(beam => beam.setContext(context).draw())
+    }
+  } catch {
+    // Silenciar erros de beam (notas isoladas, etc.)
+  }
+
+  // Tuplets — agrupar notas com mesmo groupId
+  if (staveData.noteTuplets?.length) {
+    try {
+      const groups = new Map<string, { noteIndices: number[]; numNotes: number; notesOccupied: number }>()
+      staveData.noteTuplets.forEach((t, i) => {
+        if (!t) return
+        if (!groups.has(t.groupId)) {
+          groups.set(t.groupId, { noteIndices: [], numNotes: t.numNotes, notesOccupied: t.notesOccupied })
+        }
+        groups.get(t.groupId)!.noteIndices.push(i)
+      })
+      groups.forEach(({ noteIndices, numNotes, notesOccupied }) => {
+        if (noteIndices.length < 2) return
+        const tupletNotes = noteIndices.map(i => staveNotes[i]).filter(Boolean)
+        if (tupletNotes.length < 2) return
+        const tuplet = new Tuplet(tupletNotes, { numNotes, notesOccupied })
+        tuplet.setContext(context).draw()
+      })
+    } catch {
+      // Silenciar erros de tuplet
+    }
+  }
+
+  // Dinâmicas — renderizar texto abaixo da pauta (Fase 3)
+  if (staveData.noteDynamics?.length) {
+    try {
+      staveNotes.forEach((staveNote, i) => {
+        const dyn = staveData.noteDynamics?.[i]
+        if (!dyn) return
+        const x = staveNote.getAbsoluteX()
+        const y = stave.getYForLine(6) + 10 // abaixo da pauta
+        context.save()
+        context.setFont('Times New Roman', 14, 'italic')
+        context.fillText(dyn, x - 8, y)
+        context.restore()
+      })
+    } catch {
+      // Silenciar erros de dinâmica
+    }
+  }
+
+  // Hairpins — crescendo/decrescendo (Fase 3)
+  if (staveData.hairpins?.length) {
+    try {
+      staveData.hairpins.forEach(hp => {
+        const firstNote = staveNotes[hp.startNoteIdx]
+        const lastNote = staveNotes[hp.endNoteIdx]
+        if (firstNote && lastNote) {
+          const hairpin = new StaveHairpin(
+            { first_note: firstNote, last_note: lastNote },
+            hp.type === 'crescendo' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC
+          )
+          hairpin.setContext(context).setPosition(4).draw() // position 4 = abaixo
+        }
+      })
+    } catch {
+      // Silenciar erros de hairpin
+    }
+  }
+
+  // Slurs — ligaduras de expressão (Fase 3)
+  if (staveData.slurs?.length) {
+    try {
+      staveData.slurs.forEach(sl => {
+        const firstNote = staveNotes[sl.startNoteIdx]
+        const lastNote = staveNotes[sl.endNoteIdx]
+        if (firstNote && lastNote) {
+          const curve = new Curve(firstNote, lastNote, {
+            cps: [{ x: 0, y: 20 }, { x: 0, y: 20 }],
+          })
+          curve.setContext(context).draw()
+        }
+      })
+    } catch {
+      // Silenciar erros de slur
+    }
+  }
+
+  // Volta brackets — 1ª vez, 2ª vez (Fase 3)
+  if (staveData.voltas?.length) {
+    try {
+      staveData.voltas.forEach(vt => {
+        const firstNote = staveNotes[vt.startNoteIdx]
+        const lastNote = staveNotes[vt.endNoteIdx]
+        if (firstNote && lastNote) {
+          const volta = new Volta(
+            Volta.type.BEGIN_END,
+            `${vt.number}.`,
+            firstNote.getAbsoluteX(),
+            lastNote.getAbsoluteX() - firstNote.getAbsoluteX() + 40
+          )
+          volta.setContext(context).setStave(stave).draw()
+        }
+      })
+    } catch {
+      // Silenciar erros de volta
+    }
+  }
+
+  // Pedal markings — Ped. ... * (Fase 3)
+  if (staveData.pedals?.length) {
+    try {
+      staveData.pedals.forEach(pd => {
+        const firstNote = staveNotes[pd.startNoteIdx]
+        const lastNote = staveNotes[pd.endNoteIdx]
+        if (firstNote && lastNote) {
+          const pedal = new PedalMarking([firstNote, lastNote])
+          pedal.setContext(context).draw()
+        }
+      })
+    } catch {
+      // Silenciar erros de pedal
+    }
+  }
 }
 
 // --- Componente Principal ---
