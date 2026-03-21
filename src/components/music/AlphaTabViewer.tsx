@@ -62,6 +62,8 @@ interface AlphaTabViewerProps {
   scale?: number
   /** Mostrar fórmula de compasso, barras e números (default: false) */
   showTimeSignature?: boolean
+  /** Perfil de pauta: 'tab' (tablatura), 'score' (notação), 'scoreTab' (ambos). Default: 'tab' */
+  staveProfile?: 'tab' | 'score' | 'scoreTab'
 }
 
 /** CSS para limpar visualmente o alphaTab — esconde branding */
@@ -160,6 +162,7 @@ export function AlphaTabViewer({
   layout = 'page',
   scale = 0.8,
   showTimeSignature = false,
+  staveProfile = 'tab',
 }: AlphaTabViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
@@ -200,8 +203,11 @@ export function AlphaTabViewer({
     settings.display.scale = scale
     // Espaçamento entre sistemas (linhas) no layout page
     settings.display.systemPaddingBottom = 20
-    // Forçar apenas tablatura (sem pauta standard)
-    settings.display.staveProfile = alphaTabModule.StaveProfile.Tab
+    // Perfil de pauta: tab (tablatura), score (notação), scoreTab (ambos)
+    settings.display.staveProfile =
+      staveProfile === 'score' ? alphaTabModule.StaveProfile.Score :
+      staveProfile === 'scoreTab' ? alphaTabModule.StaveProfile.ScoreTab :
+      alphaTabModule.StaveProfile.Tab
 
     // Sem player (leve)
     settings.player.enablePlayer = false
@@ -217,7 +223,8 @@ export function AlphaTabViewer({
     // ── Esconder elementos visuais desnecessários ──
     const NE = alphaTabModule.NotationElement
     const elements = settings.notation.elements
-    // Metadados do score
+    const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
+    // Metadados do score — sempre esconder (mostramos na UI)
     elements.set(NE.ScoreTitle, false)
     elements.set(NE.ScoreSubTitle, false)
     elements.set(NE.ScoreArtist, false)
@@ -228,15 +235,15 @@ export function AlphaTabViewer({
     elements.set(NE.ScoreCopyright, false)
     // Track/tuning info
     elements.set(NE.GuitarTuning, false)
-    elements.set(NE.TrackNames, false)
-    // Efeitos
+    elements.set(NE.TrackNames, isScoreMode) // mostrar nome do track em score
+    // Efeitos — no modo score, mostrar dinâmicas e crescendo
     elements.set(NE.EffectTempo, false)
-    elements.set(NE.EffectDynamics, false)
+    elements.set(NE.EffectDynamics, isScoreMode)
     elements.set(NE.EffectPickStroke, true)
-    elements.set(NE.EffectCrescendo, false)
+    elements.set(NE.EffectCrescendo, isScoreMode)
     elements.set(NE.EffectFreeTime, false)
-    // Número de compasso, clef TAB, fórmula de compasso, barras
-    elements.set(NE.BarNumber, false)
+    // Número de compasso — mostrar no modo score com time signature
+    elements.set(NE.BarNumber, isScoreMode && showTimeSignature)
 
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
       || document.documentElement.classList.contains('dark')
@@ -276,13 +283,16 @@ export function AlphaTabViewer({
         // Limpar tempo automations para não mostrar BPM
         mb.tempoAutomations = []
       }
-      // Limpar dinâmicas em todos os beats
-      for (const track of score.tracks) {
-        for (const staff of track.staves) {
-          for (const bar of staff.bars) {
-            for (const voice of bar.voices) {
-              for (const beat of voice.beats) {
-                beat.dynamics = alphaTabModule.model.DynamicValue.F
+      // Limpar dinâmicas em todos os beats — apenas no modo tab
+      // No modo score, preservar dinâmicas para exibição
+      if (!isScoreMode) {
+        for (const track of score.tracks) {
+          for (const staff of track.staves) {
+            for (const bar of staff.bars) {
+              for (const voice of bar.voices) {
+                for (const beat of voice.beats) {
+                  beat.dynamics = alphaTabModule.model.DynamicValue.F
+                }
               }
             }
           }
@@ -309,7 +319,7 @@ export function AlphaTabViewer({
       api.destroy()
       apiRef.current = null
     }
-  }, [tex, layout, scale, showTimeSignature])
+  }, [tex, layout, scale, showTimeSignature, staveProfile])
 
   if (!tex) return null
 
