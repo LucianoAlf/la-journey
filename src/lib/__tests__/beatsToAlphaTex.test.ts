@@ -87,7 +87,7 @@ const durBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('F/4')], duration: '8' }),
   makeBeat({ pitches: [makeNote('G/4')], duration: '16' }),
 ]
-const durTex = beatsToAlphaTexNotes(durBeats)
+const durTex = beatsToAlphaTexNotes(durBeats).tex
 assertContains(durTex, ':1 c4', 'Semibreve :1')
 assertContains(durTex, ':2 d4', 'Mínima :2')
 assertContains(durTex, ':4 e4', 'Semínima :4')
@@ -100,7 +100,7 @@ const dotBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4')], dotted: true }),
   makeBeat({ pitches: [makeNote('D/4')], doubleDotted: true }),
 ]
-const dotTex = beatsToAlphaTexNotes(dotBeats)
+const dotTex = beatsToAlphaTexNotes(dotBeats).tex
 assertContains(dotTex, '{d}', 'Ponto simples {d}')
 assertContains(dotTex, '{dd}', 'Ponto duplo {dd}')
 
@@ -111,7 +111,7 @@ const restBeats: Beat[] = [
   makeBeat({ isRest: true, duration: 'h' }),
   makeBeat({ isRest: true, duration: 'w' }),
 ]
-const restTex = beatsToAlphaTexNotes(restBeats)
+const restTex = beatsToAlphaTexNotes(restBeats).tex
 assertContains(restTex, ':4 r', 'Pausa semínima')
 assertContains(restTex, ':2 r', 'Pausa mínima')
 assertContains(restTex, ':1 r', 'Pausa semibreve')
@@ -121,7 +121,7 @@ console.log('\n--- Acordes ---')
 const chordBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4'), makeNote('E/4'), makeNote('G/4')] }),
 ]
-const chordTex = beatsToAlphaTexNotes(chordBeats)
+const chordTex = beatsToAlphaTexNotes(chordBeats).tex
 assertContains(chordTex, '(c4 e4 g4)', 'Acorde C-E-G entre parênteses')
 
 // 7. Acidentes
@@ -131,7 +131,7 @@ const accBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('D/4', 'b')] }),
   makeBeat({ pitches: [makeNote('E/4', 'n')] }),
 ]
-const accTex = beatsToAlphaTexNotes(accBeats)
+const accTex = beatsToAlphaTexNotes(accBeats).tex
 assertContains(accTex, 'c#4', 'Sustenido c#4')
 assertContains(accTex, 'db4', 'Bemol db4')
 assertContains(accTex, 'en4', 'Bequadro en4')
@@ -145,7 +145,7 @@ const artBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('F/4')], articulations: ['a^'] }),
   makeBeat({ pitches: [makeNote('G/4')], articulations: ['a@a'] }),
 ]
-const artTex = beatsToAlphaTexNotes(artBeats)
+const artTex = beatsToAlphaTexNotes(artBeats).tex
 assertContains(artTex, '{st}', 'Staccato {st}')
 assertContains(artTex, '{ac}', 'Acento {ac}')
 assertContains(artTex, '{ten}', 'Tenuto {ten}')
@@ -158,7 +158,7 @@ const dynBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4')], dynamic: 'mf' }),
   makeBeat({ pitches: [makeNote('D/4')], dynamic: 'ff' }),
 ]
-const dynTex = beatsToAlphaTexNotes(dynBeats)
+const dynTex = beatsToAlphaTexNotes(dynBeats).tex
 assertContains(dynTex, '{dy mf}', 'Dinâmica mf')
 assertContains(dynTex, '{dy ff}', 'Dinâmica ff')
 
@@ -168,7 +168,7 @@ const tieBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4')] }),
   makeBeat({ pitches: [makeNote('C/4')], tie: true }),
 ]
-const tieTex = beatsToAlphaTexNotes(tieBeats)
+const tieTex = beatsToAlphaTexNotes(tieBeats).tex
 assertContains(tieTex, '{-}', 'Tie {-}')
 
 // 11. Tuplets
@@ -178,7 +178,7 @@ const tupBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('D/4')], duration: '8', tuplet: { numNotes: 3, notesOccupied: 2, groupId: 'g1' } }),
   makeBeat({ pitches: [makeNote('E/4')], duration: '8', tuplet: { numNotes: 3, notesOccupied: 2, groupId: 'g1' } }),
 ]
-const tupTex = beatsToAlphaTexNotes(tupBeats)
+const tupTex = beatsToAlphaTexNotes(tupBeats).tex
 assertContains(tupTex, '{tu 3}', 'Tercina {tu 3}')
 
 // 12. Grace notes
@@ -189,7 +189,7 @@ const graceBeats: Beat[] = [
     graceNotes: { pitches: [makeNote('C/4')], type: 'acciaccatura' },
   }),
 ]
-const graceTex = beatsToAlphaTexNotes(graceBeats)
+const graceTex = beatsToAlphaTexNotes(graceBeats).tex
 assertContains(graceTex, '{gr}', 'Grace note acciaccatura {gr}')
 
 // 13. Barlines
@@ -198,7 +198,7 @@ const barBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4')], barAfter: true }),
   makeBeat({ pitches: [makeNote('D/4')] }),
 ]
-const barTex = beatsToAlphaTexNotes(barBeats)
+const barTex = beatsToAlphaTexNotes(barBeats).tex
 assertContains(barTex, '|', 'Barline |')
 
 // 14. Grande pauta (piano)
@@ -222,7 +222,7 @@ const cifraBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4')], cifra: 'C' }),
   makeBeat({ pitches: [makeNote('G/4')], cifra: 'G7' }),
 ]
-const cifraTex = beatsToAlphaTexNotes(cifraBeats)
+const cifraTex = beatsToAlphaTexNotes(cifraBeats).tex
 assertContains(cifraTex, '{ch "C"}', 'Cifra C')
 assertContains(cifraTex, '{ch "G7"}', 'Cifra G7')
 
@@ -248,7 +248,7 @@ const hairBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4')], hairpinStart: 'crescendo' }),
   makeBeat({ pitches: [makeNote('D/4')], hairpinStart: 'decrescendo' }),
 ]
-const hairTex = beatsToAlphaTexNotes(hairBeats)
+const hairTex = beatsToAlphaTexNotes(hairBeats).tex
 assertContains(hairTex, 'cre', 'Crescendo cre')
 assertContains(hairTex, 'dec', 'Decrescendo dec')
 

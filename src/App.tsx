@@ -18,6 +18,7 @@ import { Relatorios } from './pages/Relatorios'
 import { Integracoes } from './pages/Integracoes'
 import { Configuracoes } from './pages/Configuracoes'
 import { AlphaTexPlayground } from './pages/AlphaTexPlayground'
+import NotationEditorV2Playground from './pages/NotationEditorV2Playground'
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="integracoes" element={<Integracoes />} />
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="playground/alphatex" element={<AlphaTexPlayground />} />
+          <Route path="playground/notation-v2" element={<NotationEditorV2Playground />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 import * as alphaTabModule from '@coderline/alphatab'
 import { SpinnerGap } from '@phosphor-icons/react'
 import type { FretboardNote } from './GuitarFretboardDiagram'
@@ -49,6 +49,14 @@ export function notesToAlphaTex(
 
 // ── Componente AlphaTabViewer ──────────────────────────────────────────
 
+/** Handle exposto via ref pelo AlphaTabViewer */
+export interface AlphaTabViewerHandle {
+  /** Instância da API AlphaTab (null até inicializar) */
+  api: alphaTabModule.AlphaTabApi | null
+  /** Container DOM do viewer */
+  container: HTMLDivElement | null
+}
+
 interface AlphaTabViewerProps {
   /** Conteúdo alphaTex para renderizar */
   tex: string
@@ -64,6 +72,16 @@ interface AlphaTabViewerProps {
   showTimeSignature?: boolean
   /** Perfil de pauta: 'tab' (tablatura), 'score' (notação), 'scoreTab' (ambos). Default: 'tab' */
   staveProfile?: 'tab' | 'score' | 'scoreTab'
+  /** Habilitar bounds de notas individuais para interação (default: false) */
+  includeNoteBounds?: boolean
+  /** Callback quando um beat é clicado */
+  onBeatMouseDown?: (beat: alphaTabModule.model.Beat) => void
+  /** Callback quando mouse move sobre um beat */
+  onBeatMouseMove?: (beat: alphaTabModule.model.Beat) => void
+  /** Callback quando uma nota é clicada */
+  onNoteMouseDown?: (note: alphaTabModule.model.Note) => void
+  /** Callback quando render termina */
+  onRenderFinished?: () => void
 }
 
 /** CSS para limpar visualmente o alphaTab — esconde branding */
@@ -154,190 +172,253 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
 /**
  * Viewer leve de tablatura usando alphaTab — sem player, sem controles.
  * Mostra apenas a tablatura (TAB) limpa, sem pauta, sem barras, sem metadados.
+ *
+ * Suporta forwardRef para expor a API AlphaTab (para interação no editor de notação).
+ * Reutiliza a instância quando apenas o tex muda (sem destruir/recriar).
  */
-export function AlphaTabViewer({
-  tex,
-  minHeight = 120,
-  className = '',
-  layout = 'page',
-  scale = 0.8,
-  showTimeSignature = false,
-  staveProfile = 'tab',
-}: AlphaTabViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerProps>(
+  function AlphaTabViewerInner({
+    tex,
+    minHeight = 120,
+    className = '',
+    layout = 'page',
+    scale = 0.8,
+    showTimeSignature = false,
+    staveProfile = 'tab',
+    includeNoteBounds = false,
+    onBeatMouseDown,
+    onBeatMouseMove,
+    onNoteMouseDown,
+    onRenderFinished,
+  }, ref) {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    // Refs estáveis para callbacks (evita re-criar API quando callbacks mudam)
+    const onBeatMouseDownRef = useRef(onBeatMouseDown)
+    onBeatMouseDownRef.current = onBeatMouseDown
+    const onBeatMouseMoveRef = useRef(onBeatMouseMove)
+    onBeatMouseMoveRef.current = onBeatMouseMove
+    const onNoteMouseDownRef = useRef(onNoteMouseDown)
+    onNoteMouseDownRef.current = onNoteMouseDown
+    const onRenderFinishedRef = useRef(onRenderFinished)
+    onRenderFinishedRef.current = onRenderFinished
+    // Guardar config anterior para detectar se precisa recriar instância ou só atualizar tex
+    const configKeyRef = useRef('')
 
-  // Injetar CSS uma vez
-  useEffect(() => {
-    const id = 'at-viewer-clean-css'
-    if (!document.getElementById(id)) {
-      const style = document.createElement('style')
-      style.id = id
-      style.textContent = CLEAN_TAB_CSS
-      document.head.appendChild(style)
-    }
-  }, [])
+    // Expor API via ref
+    useImperativeHandle(ref, () => ({
+      get api() { return apiRef.current },
+      get container() { return containerRef.current },
+    }), [])
 
-  useEffect(() => {
-    if (!containerRef.current || !tex) return
-
-    setLoading(true)
-    setError(null)
-
-    // Destruir instância anterior
-    if (apiRef.current) {
-      apiRef.current.destroy()
-      apiRef.current = null
-    }
-
-    const settings = new alphaTabModule.Settings()
-    settings.core.fontDirectory = window.location.origin + '/font/'
-    settings.core.tex = true
-
-    // Layout page → preenche a largura do container
-    settings.display.layoutMode = layout === 'horizontal'
-      ? alphaTabModule.LayoutMode.Horizontal
-      : alphaTabModule.LayoutMode.Page
-    settings.display.scale = scale
-    // Espaçamento entre sistemas (linhas) no layout page
-    settings.display.systemPaddingBottom = 20
-    // Perfil de pauta: tab (tablatura), score (notação), scoreTab (ambos)
-    settings.display.staveProfile =
-      staveProfile === 'score' ? alphaTabModule.StaveProfile.Score :
-      staveProfile === 'scoreTab' ? alphaTabModule.StaveProfile.ScoreTab :
-      alphaTabModule.StaveProfile.Tab
-
-    // Sem player (leve)
-    settings.player.enablePlayer = false
-    settings.player.enableCursor = false
-
-    // Mostrar hastes/stems quando tem fórmula de compasso, esconder quando livre
-    settings.notation.rhythmMode = showTimeSignature
-      ? alphaTabModule.TabRhythmMode.ShowWithBars
-      : alphaTabModule.TabRhythmMode.Hidden
-    // Modo SongBook: mais limpo
-    settings.notation.notationMode = alphaTabModule.NotationMode.SongBook
-
-    // ── Esconder elementos visuais desnecessários ──
-    const NE = alphaTabModule.NotationElement
-    const elements = settings.notation.elements
-    const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
-    // Metadados do score — sempre esconder (mostramos na UI)
-    elements.set(NE.ScoreTitle, false)
-    elements.set(NE.ScoreSubTitle, false)
-    elements.set(NE.ScoreArtist, false)
-    elements.set(NE.ScoreAlbum, false)
-    elements.set(NE.ScoreWords, false)
-    elements.set(NE.ScoreMusic, false)
-    elements.set(NE.ScoreWordsAndMusic, false)
-    elements.set(NE.ScoreCopyright, false)
-    // Track/tuning info
-    elements.set(NE.GuitarTuning, false)
-    elements.set(NE.TrackNames, isScoreMode) // mostrar nome do track em score
-    // Efeitos — no modo score, mostrar dinâmicas e crescendo
-    elements.set(NE.EffectTempo, false)
-    elements.set(NE.EffectDynamics, isScoreMode)
-    elements.set(NE.EffectPickStroke, true)
-    elements.set(NE.EffectCrescendo, isScoreMode)
-    elements.set(NE.EffectFreeTime, false)
-    // Número de compasso — mostrar no modo score com time signature
-    elements.set(NE.BarNumber, isScoreMode && showTimeSignature)
-
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
-      || document.documentElement.classList.contains('dark')
-    const res = settings.display.resources
-    // Barras de compasso: visíveis quando tem fórmula, invisíveis quando livre
-    if (!showTimeSignature) {
-      res.barSeparatorColor = new alphaTabModule.model.Color(0, 0, 0, 0)
-    } else {
-      // Cor das barras de compasso — sutil
-      res.barSeparatorColor = isDark
-        ? new alphaTabModule.model.Color(120, 130, 150, 200)
-        : new alphaTabModule.model.Color(148, 163, 184, 220)
-    }
-    if (isDark) {
-      res.mainGlyphColor = new alphaTabModule.model.Color(220, 225, 235, 255)
-      res.secondaryGlyphColor = new alphaTabModule.model.Color(150, 160, 180, 255)
-      res.staffLineColor = new alphaTabModule.model.Color(80, 90, 110, 255)
-      res.scoreInfoColor = new alphaTabModule.model.Color(200, 210, 225, 255)
-    } else {
-      res.mainGlyphColor = new alphaTabModule.model.Color(30, 30, 40, 255)
-      res.secondaryGlyphColor = new alphaTabModule.model.Color(100, 100, 120, 255)
-      res.staffLineColor = new alphaTabModule.model.Color(180, 185, 195, 255)
-      res.scoreInfoColor = new alphaTabModule.model.Color(40, 40, 55, 255)
-    }
-
-    const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
-    apiRef.current = api
-
-    // Manipular o modelo antes da renderização
-    api.scoreLoaded.on((score: any) => {
-      for (let i = 0; i < score.masterBars.length; i++) {
-        const mb = score.masterBars[i]
-        // Só marcar free time se NÃO tem fórmula de compasso
-        if (!showTimeSignature) {
-          mb.isFreeTime = true
-        }
-        // Limpar tempo automations para não mostrar BPM
-        mb.tempoAutomations = []
+    // Injetar CSS uma vez
+    useEffect(() => {
+      const id = 'at-viewer-clean-css'
+      if (!document.getElementById(id)) {
+        const style = document.createElement('style')
+        style.id = id
+        style.textContent = CLEAN_TAB_CSS
+        document.head.appendChild(style)
       }
-      // Limpar dinâmicas em todos os beats — apenas no modo tab
-      // No modo score, preservar dinâmicas para exibição
-      if (!isScoreMode) {
-        for (const track of score.tracks) {
-          for (const staff of track.staves) {
-            for (const bar of staff.bars) {
-              for (const voice of bar.voices) {
-                for (const beat of voice.beats) {
-                  beat.dynamics = alphaTabModule.model.DynamicValue.F
+    }, [])
+
+    // Chave de configuração — quando muda, precisa recriar a instância
+    const configKey = `${layout}|${scale}|${showTimeSignature}|${staveProfile}|${includeNoteBounds}`
+
+    // Criar/recriar instância quando config muda
+    useEffect(() => {
+      if (!containerRef.current) return
+
+      // Destruir instância anterior
+      if (apiRef.current) {
+        apiRef.current.destroy()
+        apiRef.current = null
+      }
+
+      const settings = new alphaTabModule.Settings()
+      settings.core.fontDirectory = window.location.origin + '/font/'
+      settings.core.tex = true
+      // Habilitar bounds de notas individuais para interação
+      settings.core.includeNoteBounds = includeNoteBounds
+
+      // Layout page → preenche a largura do container
+      settings.display.layoutMode = layout === 'horizontal'
+        ? alphaTabModule.LayoutMode.Horizontal
+        : alphaTabModule.LayoutMode.Page
+      settings.display.scale = scale
+      // Espaçamento entre sistemas (linhas) no layout page
+      settings.display.systemPaddingBottom = 20
+      // Perfil de pauta: tab (tablatura), score (notação), scoreTab (ambos)
+      settings.display.staveProfile =
+        staveProfile === 'score' ? alphaTabModule.StaveProfile.Score :
+        staveProfile === 'scoreTab' ? alphaTabModule.StaveProfile.ScoreTab :
+        alphaTabModule.StaveProfile.Tab
+
+      // Sem player (leve)
+      settings.player.enablePlayer = false
+      settings.player.enableCursor = false
+
+      // Mostrar hastes/stems quando tem fórmula de compasso, esconder quando livre
+      settings.notation.rhythmMode = showTimeSignature
+        ? alphaTabModule.TabRhythmMode.ShowWithBars
+        : alphaTabModule.TabRhythmMode.Hidden
+      // Modo SongBook: mais limpo
+      settings.notation.notationMode = alphaTabModule.NotationMode.SongBook
+
+      // ── Esconder elementos visuais desnecessários ──
+      const NE = alphaTabModule.NotationElement
+      const elements = settings.notation.elements
+      const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
+      // Metadados do score — sempre esconder (mostramos na UI)
+      elements.set(NE.ScoreTitle, false)
+      elements.set(NE.ScoreSubTitle, false)
+      elements.set(NE.ScoreArtist, false)
+      elements.set(NE.ScoreAlbum, false)
+      elements.set(NE.ScoreWords, false)
+      elements.set(NE.ScoreMusic, false)
+      elements.set(NE.ScoreWordsAndMusic, false)
+      elements.set(NE.ScoreCopyright, false)
+      // Track/tuning info
+      elements.set(NE.GuitarTuning, false)
+      elements.set(NE.TrackNames, isScoreMode) // mostrar nome do track em score
+      // Efeitos — no modo score, mostrar dinâmicas e crescendo
+      elements.set(NE.EffectTempo, false)
+      elements.set(NE.EffectDynamics, isScoreMode)
+      elements.set(NE.EffectPickStroke, true)
+      elements.set(NE.EffectCrescendo, isScoreMode)
+      elements.set(NE.EffectFreeTime, false)
+      // Número de compasso — mostrar no modo score com time signature
+      elements.set(NE.BarNumber, isScoreMode && showTimeSignature)
+
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+        || document.documentElement.classList.contains('dark')
+      const res = settings.display.resources
+      // Barras de compasso: visíveis quando tem fórmula, invisíveis quando livre
+      if (!showTimeSignature) {
+        res.barSeparatorColor = new alphaTabModule.model.Color(0, 0, 0, 0)
+      } else {
+        // Cor das barras de compasso — sutil
+        res.barSeparatorColor = isDark
+          ? new alphaTabModule.model.Color(120, 130, 150, 200)
+          : new alphaTabModule.model.Color(148, 163, 184, 220)
+      }
+      if (isDark) {
+        res.mainGlyphColor = new alphaTabModule.model.Color(220, 225, 235, 255)
+        res.secondaryGlyphColor = new alphaTabModule.model.Color(150, 160, 180, 255)
+        res.staffLineColor = new alphaTabModule.model.Color(80, 90, 110, 255)
+        res.scoreInfoColor = new alphaTabModule.model.Color(200, 210, 225, 255)
+      } else {
+        res.mainGlyphColor = new alphaTabModule.model.Color(30, 30, 40, 255)
+        res.secondaryGlyphColor = new alphaTabModule.model.Color(100, 100, 120, 255)
+        res.staffLineColor = new alphaTabModule.model.Color(180, 185, 195, 255)
+        res.scoreInfoColor = new alphaTabModule.model.Color(40, 40, 55, 255)
+      }
+
+      const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
+      apiRef.current = api
+
+      // Manipular o modelo antes da renderização
+      api.scoreLoaded.on((score: any) => {
+        for (let i = 0; i < score.masterBars.length; i++) {
+          const mb = score.masterBars[i]
+          // Só marcar free time se NÃO tem fórmula de compasso
+          if (!showTimeSignature) {
+            mb.isFreeTime = true
+          }
+          // Limpar tempo automations para não mostrar BPM
+          mb.tempoAutomations = []
+        }
+        // Limpar dinâmicas em todos os beats — apenas no modo tab
+        // No modo score, preservar dinâmicas para exibição
+        if (!isScoreMode) {
+          for (const track of score.tracks) {
+            for (const staff of track.staves) {
+              for (const bar of staff.bars) {
+                for (const voice of bar.voices) {
+                  for (const beat of voice.beats) {
+                    beat.dynamics = alphaTabModule.model.DynamicValue.F
+                  }
                 }
               }
             }
           }
         }
+      })
+
+      api.renderFinished.on(() => {
+        setLoading(false)
+        // Delay para garantir que SVGs estejam no DOM
+        setTimeout(() => cleanupAlphaTabDom(containerRef.current, showTimeSignature), 50)
+        // Callback externo
+        onRenderFinishedRef.current?.()
+      })
+
+      api.error.on((e: any) => {
+        console.error('[AlphaTabViewer] Erro:', e)
+        setError(e?.message || String(e) || 'Erro ao renderizar tablatura')
+        setLoading(false)
+      })
+
+      // Registrar eventos de interação (usam refs estáveis — não recriam a API)
+      api.beatMouseDown.on((beat) => {
+        onBeatMouseDownRef.current?.(beat)
+      })
+      api.beatMouseMove.on((beat) => {
+        onBeatMouseMoveRef.current?.(beat)
+      })
+      api.noteMouseDown.on((note) => {
+        onNoteMouseDownRef.current?.(note)
+      })
+
+      // Carregar tex inicial (se disponível)
+      if (tex) {
+        setLoading(true)
+        setError(null)
+        api.tex(tex)
       }
-    })
 
-    api.renderFinished.on(() => {
-      setLoading(false)
-      // Delay para garantir que SVGs estejam no DOM
-      setTimeout(() => cleanupAlphaTabDom(containerRef.current, showTimeSignature), 50)
-    })
+      configKeyRef.current = configKey
 
-    api.error.on((e: any) => {
-      console.error('[AlphaTabViewer] Erro:', e)
-      setError(e?.message || String(e) || 'Erro ao renderizar tablatura')
-      setLoading(false)
-    })
+      return () => {
+        api.destroy()
+        apiRef.current = null
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [configKey]) // Recriar instância SOMENTE quando a config muda
 
-    // Carregar o tex
-    api.tex(tex)
+    // Atualizar tex na instância existente (sem destruir/recriar)
+    useEffect(() => {
+      // Pular se a config acabou de mudar (o useEffect acima já carregou o tex)
+      if (configKeyRef.current !== configKey) return
+      const api = apiRef.current
+      if (!api || !tex) return
 
-    return () => {
-      api.destroy()
-      apiRef.current = null
-    }
-  }, [tex, layout, scale, showTimeSignature, staveProfile])
+      setLoading(true)
+      setError(null)
+      api.tex(tex)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tex]) // Só quando tex muda (config fica no outro effect)
 
-  if (!tex) return null
+    if (!tex) return null
 
-  return (
-    <div className={`relative at-viewer-clean ${className}`}>
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-card/80 z-10 rounded-xl">
-          <SpinnerGap size={24} className="animate-spin text-accent" />
-        </div>
-      )}
-      {error && (
-        <div className="text-[11px] text-destructive p-2">{error}</div>
-      )}
-      <div
-        ref={containerRef}
-        className="w-full"
-        style={{ minHeight }}
-      />
-    </div>
-  )
-}
+    return (
+      <div className={`relative at-viewer-clean ${className}`}>
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-card/80 z-10 rounded-xl">
+            <SpinnerGap size={24} className="animate-spin text-accent" />
+          </div>
+        )}
+        {error && (
+          <div className="text-[11px] text-destructive p-2">{error}</div>
+        )}
+        <div
+          ref={containerRef}
+          className="w-full"
+          style={{ minHeight }}
+        />
+      </div>
+    )
+  },
+)

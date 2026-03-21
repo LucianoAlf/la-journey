@@ -1,6 +1,10 @@
-// ─── beatsToAlphaTex.ts ──────────────────────────────────────────────
+// ─── beatsToAlphaTex.ts ───────────────────────────────────────────────────────
 // Converte Beat[] (modelo do NotationEditor) → string AlphaTex
 // para renderização via AlphaTab.
+//
+// IMPORTANTE: Grace notes geram beats extras no AlphaTab!
+// Use beatsToAlphaTexWithMap() para obter o mapa de índice
+// alphaTabBeatIdx → ourBeatIdx para interação correta.
 //
 // Referência de sintaxe AlphaTex:
 // - Notas pitched: c4 d4 e4 (lowercase + oitava)
@@ -141,10 +145,20 @@ function pitchToAlphaTex(pd: PitchData): string {
   return `${noteLetter}${acc}${octave}`
 }
 
+// ─── Tipo de retorno com mapa de índice ───
+
+export interface AlphaTexNotesResult {
+  tex: string
+  // Mapa: alphaTabBeatIndex → ourBeatIndex
+  // Grace notes apontam para o mesmo ourBeatIndex do beat principal
+  indexMap: number[]
+}
+
 // ─── Converter array de beats em notas AlphaTex ───
 
-function beatsToAlphaTexNotes(beats: Beat[]): string {
+function beatsToAlphaTexNotes(beats: Beat[]): AlphaTexNotesResult {
   const parts: string[] = []
+  const indexMap: number[] = []  // alphaTabBeatIdx → ourBeatIdx
   let lastDuration = ''
   let activeTupletGroupId: string | null = null
 
@@ -163,11 +177,14 @@ function beatsToAlphaTexNotes(beats: Beat[]): string {
     // AlphaTex: grace notes são aplicadas ao beat seguinte
     // Sintaxe: {gr} = before beat, {gr ob} = on beat
     // Precisamos emitir grace notes como beats separados ANTES deste beat
+    // IMPORTANTE: cada grace note conta como um beat AlphaTab separado!
     if (beat.graceNotes && beat.graceNotes.pitches.length > 0) {
       const graceDur = DURATION_MAP[beat.graceNotes.duration || '8'] || '8'
       const graceEffect = beat.graceNotes.type === 'appoggiatura' ? '{gr ob}' : '{gr}'
       for (const gp of beat.graceNotes.pitches) {
         parts.push(`:${graceDur} ${pitchToAlphaTex(gp)}${graceEffect}`)
+        // Grace note aponta para o mesmo ourBeatIdx do beat principal
+        indexMap.push(i)
       }
       // Resetar duração pois grace note mudou
       noteParts.push(`:${dur}`)
@@ -236,10 +253,8 @@ function beatsToAlphaTexNotes(beats: Beat[]): string {
       effects.push(`ch "${beat.cifra}"`)
     }
 
-    // Lyrics
-    if (beat.lyric) {
-      effects.push(`ly "${beat.lyric}"`)
-    }
+    // Lyrics — NÃO vai dentro de {} (AlphaTab usa \lyrics como metadado de track)
+    // Removido: {ly "..."} não é sintaxe válida
 
     // Montar string do beat
     let beatStr = noteParts.join(' ')
@@ -248,14 +263,16 @@ function beatsToAlphaTexNotes(beats: Beat[]): string {
     }
 
     parts.push(beatStr)
+    // Mapear este beat AlphaTab ao nosso índice
+    indexMap.push(i)
 
-    // Barline após o beat
+    // Barline após o beat (não conta como beat no AlphaTab)
     if (beat.barAfter) {
       parts.push('|')
     }
   }
 
-  return parts.join(' ')
+  return { tex: parts.join(' '), indexMap }
 }
 
 // ─── Função principal de conversão ───
@@ -286,7 +303,7 @@ export function beatsToAlphaTex(
     }
 
     const trebleBeats = beats.filter(b => (b.staff || 'treble') === 'treble')
-    lines.push(beatsToAlphaTexNotes(trebleBeats))
+    lines.push(beatsToAlphaTexNotes(trebleBeats).tex)
 
     // Staff 2: mão esquerda (bass)
     lines.push(`\\staff{score} \\tuning piano`)
@@ -301,7 +318,7 @@ export function beatsToAlphaTex(
 
     const bassBeats = beats.filter(b => b.staff === 'bass')
     if (bassBeats.length > 0) {
-      lines.push(beatsToAlphaTexNotes(bassBeats))
+      lines.push(beatsToAlphaTexNotes(bassBeats).tex)
     } else {
       // Staff vazia — pelo menos uma pausa
       lines.push(':1 r')
@@ -338,14 +355,97 @@ export function beatsToAlphaTex(
       lines.push(`\\ts ${n} ${d}`)
     }
 
+    // Lyrics — metadado de track (sintaxe: \lyrics "sílaba1 sílaba2 ...")
+    const hasLyrics = beats.some(b => b.lyric)
+    if (hasLyrics) {
+      // Sílabas separadas por espaço; beats sem lyric usam espaço em branco
+      // Espaços dentro de sílabas são substituídos por + (convenção AlphaTab)
+      const syllables = beats.map(b => b.lyric ? b.lyric.replace(/ /g, '+') : '-')
+      lines.push(`\\lyrics "${syllables.join(' ')}"`)
+    }
+
     // Separador de metadados
     lines.push('.')
 
     // Notas
-    lines.push(beatsToAlphaTexNotes(beats))
+    lines.push(beatsToAlphaTexNotes(beats).tex)
   }
 
   return lines.join('\n')
+}
+
+// ─── Resultado com mapa de índice ───
+
+export interface BeatsToAlphaTexResult {
+  tex: string
+  // Mapa: alphaTabBeatIndex → ourBeatIndex
+  // Grace notes geram beats extras que apontam para o mesmo ourBeatIndex
+  indexMap: number[]
+}
+
+/**
+ * Converte beats para AlphaTex e retorna também o mapa de índice.
+ * Use esta função quando precisar mapear eventos do AlphaTab de volta
+ * para o array de beats original (ex: seleção via beatMouseDown).
+ */
+export function beatsToAlphaTexWithMap(
+  beats: Beat[],
+  options: BeatsToAlphaTexOptions,
+): BeatsToAlphaTexResult {
+  const lines: string[] = []
+  let indexMap: number[] = []
+
+  // Header global
+  if (options.title) lines.push(`\\title "${options.title}"`)
+  if (options.bpm) lines.push(`\\tempo ${options.bpm}`)
+
+  if (options.grandStaff) {
+    // Grande pauta não suporta mapa de índice por enquanto
+    // (seria necessário mesclar mapas de treble e bass)
+    const tex = beatsToAlphaTex(beats, options)
+    return { tex, indexMap: beats.map((_, i) => i) }
+  }
+
+  // ── Instrumento único ──
+  lines.push(`\\track`)
+  lines.push(`\\staff{score}`)
+
+  if (options.clef !== 'percussion') {
+    lines.push(`\\tuning piano`)
+  }
+
+  if (options.instrument) {
+    lines.push(`\\instrument ${options.instrument}`)
+  }
+
+  const clef = CLEF_MAP[options.clef] || 'G2'
+  if (clef !== 'G2') {
+    lines.push(`\\clef ${clef}`)
+  }
+
+  if (options.keySignature && options.keySignature !== 'C') {
+    lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
+  }
+
+  if (options.timeSignature) {
+    const [n, d] = options.timeSignature.split('/')
+    lines.push(`\\ts ${n} ${d}`)
+  }
+
+  const hasLyrics = beats.some(b => b.lyric)
+  if (hasLyrics) {
+    const syllables = beats.map(b => b.lyric ? b.lyric.replace(/ /g, '+') : '-')
+    lines.push(`\\lyrics "${syllables.join(' ')}"`)
+  }
+
+  lines.push('.')
+
+  // Notas com mapa de índice
+  const notesResult = beatsToAlphaTexNotes(beats)
+  lines.push(notesResult.tex)
+  indexMap = notesResult.indexMap
+
+  return { tex: lines.join('\n'), indexMap }
 }
 
 // ─── Exportar helpers para testes ───

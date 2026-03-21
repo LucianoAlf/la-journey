@@ -3,6 +3,9 @@ import { FloppyDisk, Trash, X, ArrowCounterClockwise, ArrowClockwise, PencilSimp
 import * as Tone from 'tone'
 import MidiWriter from 'midi-writer-js'
 import { NotationRenderer } from '@/components/music/NotationRenderer'
+import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
+import type { AlphaTabViewerHandle } from '@/components/music/AlphaTabViewer'
+import { beatsToAlphaTexWithMap } from '@/lib/beatsToAlphaTex'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -577,6 +580,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const wrapRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const hiddenInputRef = useRef<HTMLInputElement>(null)
+  const alphaTabRef = useRef<AlphaTabViewerHandle>(null)
 
   // Estado do editor
   const [beats, setBeats] = useState<Beat[]>([])
@@ -730,6 +734,35 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     () => editorMode === 'metered' ? computeMeasureNumbers(beats, selectedTime) : new Map<number, number>(),
     [beats, editorMode, selectedTime],
   )
+
+  // ── AlphaTab: converter beats → AlphaTex com debounce ──
+  const [alphaTex, setAlphaTex] = useState('')
+  // Mapa de índice: alphaTabBeatIdx → ourBeatIdx (grace notes geram beats extras)
+  const [alphaTabIndexMap, setAlphaTabIndexMap] = useState<number[]>([])
+  useEffect(() => {
+    if (beats.length === 0) {
+      setAlphaTex('')
+      setAlphaTabIndexMap([])
+      return
+    }
+    const timer = setTimeout(() => {
+      // Preparar beats com barAfter a partir do autoBarlineSet
+      const preparedBeats = beats.map((b, i) => ({
+        ...b,
+        barAfter: autoBarlineSet.has(i),
+      }))
+      const result = beatsToAlphaTexWithMap(preparedBeats, {
+        clef: selectedClef,
+        keySignature: selectedKey,
+        timeSignature: editorMode === 'metered' ? selectedTime : null,
+        grandStaff: false,
+        bpm,
+      })
+      setAlphaTex(result.tex)
+      setAlphaTabIndexMap(result.indexMap)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [beats, selectedClef, selectedKey, editorMode, selectedTime, autoBarlineSet, bpm])
 
   // Inicializar ao abrir
   useEffect(() => {
@@ -2672,7 +2705,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 {selectedClef === 'percussion' && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: '#FB923C' }}>🥁 PERC</span>}
               </div>
 
-              {/* Camada 1: VexFlow multi-line preview + cifras/annotations/lyrics overlay */}
+              {/* Camada 1: AlphaTab renderização + overlays VexFlow (legados — migrar em passos futuros) */}
               <div
                 className="notation-editor-vexflow"
                 style={{
@@ -2686,6 +2719,39 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 onMouseUp={dragging ? handleDragEnd : undefined}
                 onMouseLeave={dragging ? handleDragEnd : undefined}
               >
+                {/* AlphaTab: renderização única (layout page — multi-line automático) */}
+                {alphaTex ? (
+                  <AlphaTabViewer
+                    ref={alphaTabRef}
+                    tex={alphaTex}
+                    staveProfile="score"
+                    layout="page"
+                    scale={0.9}
+                    showTimeSignature={editorMode === 'metered'}
+                    includeNoteBounds
+                    minHeight={140}
+                    onBeatMouseDown={(beat) => {
+                      // Mapear índice do beat AlphaTab para o índice do nosso beats[]
+                      // O beat.index é o índice dentro da voz/track do AlphaTab
+                      const alphaTabIdx = beat.index
+                      const ourIdx = alphaTabIndexMap[alphaTabIdx]
+                      if (ourIdx !== undefined && ourIdx >= 0 && ourIdx < beats.length) {
+                        setSelectedElement({ type: 'note', beatIdx: ourIdx })
+                        // Focar no input para permitir edição por teclado
+                        hiddenInputRef.current?.focus()
+                      }
+                    }}
+                  />
+                ) : (
+                  <div style={{ minHeight: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ color: '#94A3B8', fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
+                      Clique na pauta ou tecle N para inserir notas
+                    </span>
+                  </div>
+                )}
+
+                {/* Overlays VexFlow legados — seleção, playback, cifras, lyrics */}
+                {/* Estes overlays usam posições VexFlow e serão migrados para boundsLookup nos próximos passos */}
                 {linedNotationData.map((lineData, lineIdx) => {
                   const lineBts = beatLines[lineIdx] || []
                   const globalOffset = lineIdx * notesPerLine
@@ -2704,7 +2770,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                   // pctX local usando staveWidth real (não o VF_VIEWBOX_W fixo)
                   const pctXLocal = (px: number) => `${(px / staveWidth) * 100}%`
                   return (
-                    <div key={lineIdx} style={{ position: 'relative', marginBottom: hasLyrics ? 20 : 0, overflow: 'visible' }}>
+                    <div key={lineIdx} style={{ position: 'relative', marginBottom: hasLyrics ? 20 : 0, overflow: 'visible', display: 'none' /* Escondido — AlphaTab agora renderiza */ }}>
                       <NotationRenderer notation={lineData} />
 
                       {/* Highlight de playback — nota sendo tocada */}
