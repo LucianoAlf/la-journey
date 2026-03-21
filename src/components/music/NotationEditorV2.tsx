@@ -91,6 +91,16 @@ const CATEGORY_OPTIONS = [
   { value: 'Outro', label: 'Outro' },
 ]
 
+// ─── Quiálteras/Tuplets ─────────────────────────────────────────────
+
+const TUPLET_OPTIONS = [
+  { value: 'none', label: 'Sem quiáltera', numNotes: 0, notesOccupied: 0 },
+  { value: '3:2', label: 'Tercina (3:2)', numNotes: 3, notesOccupied: 2 },
+  { value: '5:4', label: 'Quintina (5:4)', numNotes: 5, notesOccupied: 4 },
+  { value: '6:4', label: 'Sextina (6:4)', numNotes: 6, notesOccupied: 4 },
+  { value: '7:4', label: 'Septina (7:4)', numNotes: 7, notesOccupied: 4 },
+]
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 const NOTE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
@@ -176,6 +186,9 @@ export function NotationEditorV2({
   const [doubleDotted, setDoubleDotted] = useState(false)
   const [grandStaffMode, setGrandStaffMode] = useState(false)
   const [activeStaff, setActiveStaff] = useState<'treble' | 'bass'>('treble')
+  const [currentTuplet, setCurrentTuplet] = useState<string>('none')
+  const tupletCounterRef = useRef(0)
+  const tupletGroupIdRef = useRef('')
 
   // Metadados
   const [label, setLabel] = useState('')
@@ -260,8 +273,11 @@ export function NotationEditorV2({
     }
 
     const timer = setTimeout(() => {
+      // Calcular barlines para sincronizar com AlphaTab
+      const computedBarlines = computeBarlines(beats, timeSignature)
+      
       // Converter SvgBeat[] → AlphaTexBeat[] para o conversor
-      const alphaTexBeats: AlphaTexBeat[] = beats.map(b => ({
+      const alphaTexBeats: AlphaTexBeat[] = beats.map((b, idx) => ({
         pitches: b.pitches.map(p => ({ pitch: p.pitch, accidental: p.accidental ?? null })),
         duration: b.duration,
         tie: b.tieToNext ?? false,
@@ -275,6 +291,7 @@ export function NotationEditorV2({
         lyric: b.lyric ?? null,
         dynamic: b.dynamics,
         staff: b.staff,
+        barAfter: computedBarlines.includes(idx), // Sincronizar barlines
       }))
       const result = beatsToAlphaTexWithMap(alphaTexBeats, {
         clef,
@@ -395,6 +412,62 @@ export function NotationEditorV2({
     setBeats(newBeats)
     pushHistory(newBeats)
   }, [beats, pushHistory])
+
+  // ─── Transposição ────────────────────────────────────────────────────
+  const CHROMATIC_SCALE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+  const CHROMATIC_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
+
+  const transposePitch = useCallback((pitch: string, semitones: number): string => {
+    const match = pitch.match(/^([A-G])([#b]?)\/(\d+)$/)
+    if (!match) return pitch
+    const [, note, acc, octStr] = match
+    let octave = parseInt(octStr)
+
+    // Converter para índice cromático
+    let noteWithAcc = note + (acc || '')
+    let idx = CHROMATIC_SCALE.indexOf(noteWithAcc)
+    if (idx === -1) idx = CHROMATIC_FLAT.indexOf(noteWithAcc)
+    if (idx === -1) idx = CHROMATIC_SCALE.indexOf(note) // fallback sem acidente
+
+    // Transpor
+    idx += semitones
+    while (idx < 0) { idx += 12; octave-- }
+    while (idx >= 12) { idx -= 12; octave++ }
+
+    // Usar escala com sustenidos por padrão
+    const newNote = CHROMATIC_SCALE[idx]
+    return `${newNote}/${octave}`
+  }, [])
+
+  const handleTransposeUp = useCallback(() => {
+    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) return
+    const beat = beats[selectedBeatIdx]
+    if (beat.isRest || beat.pitches.length === 0) return
+
+    const newPitches = beat.pitches.map(p => ({
+      ...p,
+      pitch: transposePitch(p.pitch, 1),
+      accidental: undefined, // Limpar acidente manual após transposição
+    }))
+
+    handleUpdateBeat(selectedBeatIdx, { pitches: newPitches })
+    lastPitchRef.current = newPitches[0].pitch
+  }, [beats, selectedBeatIdx, transposePitch, handleUpdateBeat])
+
+  const handleTransposeDown = useCallback(() => {
+    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) return
+    const beat = beats[selectedBeatIdx]
+    if (beat.isRest || beat.pitches.length === 0) return
+
+    const newPitches = beat.pitches.map(p => ({
+      ...p,
+      pitch: transposePitch(p.pitch, -1),
+      accidental: undefined,
+    }))
+
+    handleUpdateBeat(selectedBeatIdx, { pitches: newPitches })
+    lastPitchRef.current = newPitches[0].pitch
+  }, [beats, selectedBeatIdx, transposePitch, handleUpdateBeat])
 
   // ─── Teclado ───────────────────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -867,36 +940,6 @@ export function NotationEditorV2({
     return () => clearTimeout(timer)
   }, [open])
 
-  // ─── Toolbar Button Helper (estilo LA Journey) ──────────────────────
-  function TBtn({ active, color, onClick, children, title, disabled }: {
-    active: boolean; color?: string; onClick: () => void; children: React.ReactNode; title?: string; disabled?: boolean
-  }) {
-    const bg = active
-      ? (color === 'chord' ? '#6366F1' : color === 'tie' ? '#F97316' : '#FF2D78')
-      : 'transparent'
-    const border = active
-      ? (color === 'chord' ? '#6366F1' : color === 'tie' ? '#F97316' : '#FF2D78')
-      : '#334155'
-    return (
-      <button
-        onClick={onClick}
-        title={title}
-        disabled={disabled}
-        style={{
-          minWidth: 30, height: 30, padding: '0 6px',
-          border: `1px solid ${border}`, borderRadius: 6,
-          background: bg, color: active ? '#fff' : disabled ? '#475569' : '#94A3B8',
-          fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: '.15s', whiteSpace: 'nowrap',
-          opacity: disabled ? 0.5 : 1,
-        }}
-      >
-        {children}
-      </button>
-    )
-  }
-
   // ─── Render ────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -935,6 +978,21 @@ export function NotationEditorV2({
               </button>
             </div>
           </div>
+
+          {/* Fórmula de Compasso (só aparece em modo Compasso) */}
+          {timeSignature !== 'free' && (
+            <div className="space-y-1 min-w-[140px]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Compasso</span>
+              <Select value={timeSignature} onValueChange={setTimeSignature}>
+                <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TIME_SIGNATURE_OPTIONS.filter(o => o.value !== 'free').map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Clave */}
           <div className="space-y-1 min-w-[80px]">
@@ -981,100 +1039,217 @@ export function NotationEditorV2({
           </div>
         </div>
 
-        {/* ── Toolbar (estilo LA Journey com fundo #162032) ── */}
-        <div className="flex flex-wrap gap-[2px] items-center rounded-[9px] mb-2.5" style={{ padding: '5px 6px', backgroundColor: '#162032' }}>
+        {/* ── Toolbar: Tudo em uma linha ── */}
+        <div className="flex flex-wrap items-center gap-1 mb-3">
+          {/* Grande Pauta (Piano) */}
+          <button
+            onClick={() => setGrandStaffMode(prev => !prev)}
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
+              ${grandStaffMode
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+            title="Grande Pauta (Piano)"
+          >
+            <PianoKeys className="h-4 w-4" />
+          </button>
+
+          {grandStaffMode && (
+            <>
+              <button
+                onClick={() => setActiveStaff('treble')}
+                className={`h-7 px-2 rounded-md border text-[11px] font-medium transition-colors ${
+                  activeStaff === 'treble'
+                    ? 'border-accent bg-accent text-white'
+                    : 'border-border text-text3 hover:border-accent/50'
+                }`}
+              >
+                Sol (MD)
+              </button>
+              <button
+                onClick={() => setActiveStaff('bass')}
+                className={`h-7 px-2 rounded-md border text-[11px] font-medium transition-colors ${
+                  activeStaff === 'bass'
+                    ? 'border-indigo-500 bg-indigo-500 text-white'
+                    : 'border-border text-text3 hover:border-indigo-500/50'
+                }`}
+              >
+                Fá (ME)
+              </button>
+            </>
+          )}
+
+          <div className="w-px h-5 bg-border mx-0.5" />
+
           {/* Durações */}
           {DURATION_OPTIONS.map(d => (
-            <TBtn
+            <button
               key={d.value}
-              active={currentDuration === d.value}
               onClick={() => { setCurrentDuration(d.value); focusInput() }}
               title={`${d.label} (${d.key})`}
+              className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[15px] transition-colors
+                ${currentDuration === d.value
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+                }`}
             >
               {d.symbol}
-            </TBtn>
+            </button>
           ))}
-          <TBtn active={false} onClick={() => {
-            const newBeat: SvgBeat = { pitches: [], duration: currentDuration, isRest: true, dotted, doubleDotted }
-            const insertIdx = selectedBeatIdx >= 0 ? selectedBeatIdx + 1 : beats.length
-            const newBeats = [...beats]
-            newBeats.splice(insertIdx, 0, newBeat)
-            setBeats(newBeats)
-            pushHistory(newBeats)
-            setSelectedBeatIdx(insertIdx)
-            focusInput()
-          }} title="Pausa (0)">
-            <span style={{ fontSize: 10, padding: '0 2px' }}>🔇</span>
-          </TBtn>
-          <TBtn active={dotted || doubleDotted} onClick={() => {
-            if (doubleDotted) { setDotted(false); setDoubleDotted(false) }
-            else if (dotted) { setDotted(false); setDoubleDotted(true) }
-            else { setDotted(true) }
-            focusInput()
-          }} title="Ponto de aumento (.)">
-            <span style={{ fontSize: 13, fontWeight: 900, padding: '0 3px', lineHeight: 1 }}>•{doubleDotted && '•'}</span>
-          </TBtn>
 
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+          {/* Pausa */}
+          <button
+            onClick={() => {
+              const newBeat: SvgBeat = { pitches: [], duration: currentDuration, isRest: true, dotted, doubleDotted }
+              const insertIdx = selectedBeatIdx >= 0 ? selectedBeatIdx + 1 : beats.length
+              const newBeats = [...beats]
+              newBeats.splice(insertIdx, 0, newBeat)
+              setBeats(newBeats)
+              pushHistory(newBeats)
+              setSelectedBeatIdx(insertIdx)
+              focusInput()
+            }}
+            title="Pausa (0)"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
+          >
+            🔇
+          </button>
+
+          {/* Ponto */}
+          <button
+            onClick={() => {
+              if (doubleDotted) { setDotted(false); setDoubleDotted(false) }
+              else if (dotted) { setDotted(false); setDoubleDotted(true) }
+              else { setDotted(true) }
+              focusInput()
+            }}
+            title="Ponto de aumento (.)"
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[15px] font-bold transition-colors
+              ${dotted || doubleDotted
+                ? 'border-accent bg-accent text-white'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+          >
+            •{doubleDotted && '•'}
+          </button>
+
+          {/* Quiálteras/Tuplets */}
+          <Select value={currentTuplet} onValueChange={(v) => {
+            setCurrentTuplet(v)
+            if (v !== 'none') {
+              const opt = TUPLET_OPTIONS.find(o => o.value === v)
+              if (opt) {
+                tupletCounterRef.current = opt.numNotes
+                tupletGroupIdRef.current = `tup-${Date.now()}`
+              }
+            } else {
+              tupletCounterRef.current = 0
+              tupletGroupIdRef.current = ''
+            }
+            focusInput()
+          }}>
+            <SelectTrigger className={`h-7 w-auto min-w-[70px] text-[11px] px-2 gap-0.5 ${currentTuplet !== 'none' ? 'border-orange-500/50 text-orange-500' : 'border-border text-text3'}`}>
+              <SelectValue>
+                <span className="font-mono text-[10px]">┌ {currentTuplet !== 'none' ? currentTuplet : '3:2'} ┐</span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {TUPLET_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={o.value} className="text-[12px]">{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="w-px h-5 bg-border mx-0.5" />
 
           {/* Acidentes */}
-          <TBtn active={currentAccidental === null} onClick={() => { setCurrentAccidental(null); focusInput() }} title="Natural">♮</TBtn>
-          <TBtn active={currentAccidental === '#'} onClick={() => { setCurrentAccidental('#'); focusInput() }} title="Sustenido">♯</TBtn>
-          <TBtn active={currentAccidental === 'b'} onClick={() => { setCurrentAccidental('b'); focusInput() }} title="Bemol">♭</TBtn>
+          <button
+            onClick={() => { setCurrentAccidental('#'); focusInput() }}
+            title="Sustenido (#)"
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[14px] transition-colors
+              ${currentAccidental === '#'
+                ? 'border-accent bg-accent text-white'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+          >
+            ♯
+          </button>
+          <button
+            onClick={() => { setCurrentAccidental('b'); focusInput() }}
+            title="Bemol (B)"
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[14px] transition-colors
+              ${currentAccidental === 'b'
+                ? 'border-accent bg-accent text-white'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+          >
+            ♭
+          </button>
 
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+          <div className="w-px h-5 bg-border mx-0.5" />
 
           {/* Transposição */}
-          <TBtn active={false} onClick={() => { /* TODO */ }} title="Transpor ½ tom abaixo">
-            <ArrowDown className="h-3.5 w-3.5" />
-          </TBtn>
-          <TBtn active={false} onClick={() => { /* TODO */ }} title="Transpor ½ tom acima">
-            <ArrowUp className="h-3.5 w-3.5" />
-          </TBtn>
+          <button
+            onClick={handleTransposeDown}
+            title="Transpor ½ tom abaixo (↓)"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-text3 hover:border-accent/50 hover:text-accent transition-colors"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleTransposeUp}
+            title="Transpor ½ tom acima (↑)"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-text3 hover:border-accent/50 hover:text-accent transition-colors"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
 
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
-
-          {/* Modos especiais */}
-          <TBtn active={isInputMode} onClick={() => setIsInputMode(p => !p)} title="Modo Melódico (N)">
-            <span style={{ fontSize: 10, fontWeight: 600 }}>→ Mel</span>
-          </TBtn>
-          <TBtn active={false} color="chord" onClick={() => { /* TODO */ }} title="Modo Acorde (:Ac)">
-            <span style={{ fontSize: 10, fontWeight: 600 }}>:Ac</span>
-          </TBtn>
-          <TBtn active={false} color="tie" onClick={() => { /* TODO */ }} title="Ligadura (T)">
-            <span style={{ fontSize: 10, fontWeight: 600 }}>⌒Lig</span>
-          </TBtn>
-
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
-
-          {/* Articulações */}
-          <TBtn active={false} onClick={() => { /* TODO */ }} title="Articulação">A7</TBtn>
-
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
-
-          {/* Quiálteras */}
-          <TBtn active={false} onClick={() => { /* TODO */ }} title="Tercina">
-            <span style={{ fontSize: 9, fontWeight: 600 }}>⌐ N</span>
-          </TBtn>
-
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+          <div className="w-px h-5 bg-border mx-0.5" />
 
           {/* Undo/Redo */}
-          <TBtn active={false} onClick={undo} disabled={historyIdx <= 0} title="Desfazer (Ctrl+Z)">
-            <ArrowCounterClockwise className="h-3.5 w-3.5" />
-          </TBtn>
-          <TBtn active={false} onClick={redo} disabled={historyIdx >= history.length - 1} title="Refazer (Ctrl+Y)">
-            <ArrowClockwise className="h-3.5 w-3.5" />
-          </TBtn>
+          <button
+            onClick={undo}
+            disabled={historyIdx <= 0}
+            title="Desfazer (Ctrl+Z)"
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
+              ${historyIdx <= 0
+                ? 'border-border/50 text-text3/30 cursor-not-allowed'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+          >
+            <ArrowCounterClockwise className="h-4 w-4" />
+          </button>
+          <button
+            onClick={redo}
+            disabled={historyIdx >= history.length - 1}
+            title="Refazer (Ctrl+Y)"
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
+              ${historyIdx >= history.length - 1
+                ? 'border-border/50 text-text3/30 cursor-not-allowed'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+          >
+            <ArrowClockwise className="h-4 w-4" />
+          </button>
 
-          <div style={{ width: 1, height: 18, backgroundColor: '#334155', margin: '0 3px' }} />
+          <div className="w-px h-5 bg-border mx-0.5" />
 
           {/* Playback */}
-          <TBtn active={isPlaying} onClick={isPlaying ? stopPlayback : startPlayback} title={isPlaying ? 'Parar' : 'Tocar (Espaço)'}>
-            {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          </TBtn>
+          <button
+            onClick={isPlaying ? stopPlayback : startPlayback}
+            title={isPlaying ? 'Parar' : 'Tocar (Espaço)'}
+            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
+              ${isPlaying
+                ? 'border-accent bg-accent text-white'
+                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+              }`}
+          >
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </button>
+
+          {/* BPM */}
           <div className="flex items-center gap-1 ml-1">
-            <Timer className="h-3.5 w-3.5" style={{ color: '#94A3B8' }} />
+            <Timer className="h-3.5 w-3.5 text-text3" />
             <Slider
               value={[bpm]}
               onValueChange={([v]) => setBpm(v)}
@@ -1083,7 +1258,7 @@ export function NotationEditorV2({
               step={1}
               className="w-16"
             />
-            <span style={{ fontSize: 11, color: '#94A3B8', minWidth: 28 }}>{bpm}</span>
+            <span className="text-[10px] text-text3 min-w-[24px]">{bpm}</span>
           </div>
         </div>
 
