@@ -15,3 +15,6 @@ public/soundfont/fluidr3-gm.sf2
 scripts/guitar-chords-db-json/
 
 scripts/olga-import
+
+# MCP config (contém tokens)
+.mcp.json

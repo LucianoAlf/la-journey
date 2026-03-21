@@ -167,8 +167,18 @@ function computeAutoBarlines(beats: Beat[], timeSig: string | null): Set<number>
   const result = new Set<number>()
   let accumulated = 0
   for (let i = 0; i < beats.length; i++) {
-    accumulated += getBeatDuration(beats[i])
-    if (accumulated >= beatsPerBar - 0.001 && i < beats.length - 1) {
+    const duration = getBeatDuration(beats[i])
+
+    // Se o beat atual ultrapassa o compasso, fecha ANTES dele (no beat anterior)
+    if (i > 0 && accumulated > 0 && accumulated + duration > beatsPerBar + 0.001) {
+      result.add(i - 1)
+      accumulated = 0
+    }
+
+    accumulated += duration
+
+    // Fechamentos exatos (ou múltiplos) no fim do beat atual
+    while (accumulated >= beatsPerBar - 0.001 && i < beats.length - 1) {
       result.add(i)
       accumulated -= beatsPerBar
     }
@@ -187,8 +197,18 @@ function computeMeasureNumbers(beats: Beat[], timeSig: string | null): Map<numbe
   let barNum = 1
   map.set(0, barNum)
   for (let i = 0; i < beats.length; i++) {
-    accumulated += getBeatDuration(beats[i])
-    if (accumulated >= beatsPerBar - 0.001 && i < beats.length - 1) {
+    const duration = getBeatDuration(beats[i])
+
+    // Overflow: próximo beat já inicia novo compasso (quebra antes do beat atual)
+    if (i > 0 && accumulated > 0 && accumulated + duration > beatsPerBar + 0.001) {
+      barNum++
+      map.set(i, barNum)
+      accumulated = 0
+    }
+
+    accumulated += duration
+
+    while (accumulated >= beatsPerBar - 0.001 && i < beats.length - 1) {
       accumulated -= beatsPerBar
       barNum++
       map.set(i + 1, barNum)
@@ -393,6 +413,7 @@ function lineBeatsToStaveData(
   keySig: string | undefined,
   timeSig: string | undefined,
   width = 700,
+  localBarlineBeatIndices?: Set<number>,
 ) {
   const notes: string[] = []
   const accidentals: (string | null)[] = []
@@ -513,6 +534,17 @@ function lineBeatsToStaveData(
       slurs: slurs.length > 0 ? slurs : undefined,  // Fase 3
       voltas: voltas.length > 0 ? voltas : undefined,  // Fase 3
       pedals: pedals.length > 0 ? pedals : undefined,  // Fase 3
+      // Barlines: converter de beat index local para note index
+      barlineAfterIndices: localBarlineBeatIndices?.size
+        ? [...localBarlineBeatIndices]
+            // Não inserir BarNote no último beat da linha: a própria Stave já fecha com barra final
+            .filter(bi => bi < lineBeats.length - 1)
+            .map(bi => {
+            // Último pitch do beat (para posicionar a barline APÓS todo o acorde)
+            const lastPitchIdx = beatToNoteIdx[bi] + lineBeats[bi].pitches.length - 1
+            return lastPitchIdx
+          })
+        : undefined,
       label: '',
     }],
     width,
@@ -614,6 +646,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   const playTimeoutsRef = useRef<number[]>([])
   const [isPlaying, setIsPlaying] = useState(false)
   const [playingBeatIndex, setPlayingBeatIndex] = useState<number | null>(null)
+  // Distingue digitação contínua (inserir) de edição pontual (substituir)
+  const lastActionWasInsertRef = useRef(false)
 
   // ── Fase 2: Undo/Redo ──
   const MAX_HISTORY = 50
@@ -664,21 +698,33 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
   // Multi-line: dividir beats em linhas e gerar dados VexFlow por linha
   const beatLines = useMemo(() => splitBeatsIntoLines(beats, notesPerLine), [beats, notesPerLine])
 
-  const linedNotationData = useMemo(
-    () => beatLines.map((lineBeats, i) => lineBeatsToStaveData(
-      lineBeats,
-      selectedClef,
-      i === 0 && selectedKey !== 'C' ? selectedKey : undefined,
-      i === 0 && editorMode === 'metered' ? selectedTime : undefined,
-      staveWidth,
-    )),
-    [beatLines, selectedClef, selectedKey, editorMode, selectedTime, staveWidth],
-  )
-
-  // Barlines automáticas (modo metered)
+  // Barlines automáticas (modo metered) — precisa vir antes de linedNotationData
   const autoBarlineSet = useMemo(
     () => editorMode === 'metered' ? computeAutoBarlines(beats, selectedTime) : new Set<number>(),
     [beats, editorMode, selectedTime],
+  )
+
+  const linedNotationData = useMemo(
+    () => beatLines.map((lineBeats, i) => {
+      // Converter barlines globais para locais (dentro desta linha)
+      const globalOffset = i * notesPerLine
+      const localBarlines = new Set<number>()
+      autoBarlineSet.forEach(globalIdx => {
+        const localIdx = globalIdx - globalOffset
+        if (localIdx >= 0 && localIdx < lineBeats.length) {
+          localBarlines.add(localIdx)
+        }
+      })
+      return lineBeatsToStaveData(
+        lineBeats,
+        selectedClef,
+        i === 0 && selectedKey !== 'C' ? selectedKey : undefined,
+        i === 0 && editorMode === 'metered' ? selectedTime : undefined,
+        staveWidth,
+        localBarlines.size > 0 ? localBarlines : undefined,
+      )
+    }),
+    [beatLines, selectedClef, selectedKey, editorMode, selectedTime, staveWidth, autoBarlineSet, notesPerLine],
   )
   const measureNumbers = useMemo(
     () => editorMode === 'metered' ? computeMeasureNumbers(beats, selectedTime) : new Map<number, number>(),
@@ -813,7 +859,11 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     const svg = svgs[lineIndex]
     if (!svg) return null
     const svgRect = svg.getBoundingClientRect()
-    const clickX = clientX - svgRect.left
+    // Converter clickX de pixels do viewport para coordenadas do viewBox do SVG
+    const vb = svg.getAttribute('viewBox')
+    const vbWidth = vb ? parseFloat(vb.split(' ')[2]) : svgRect.width
+    const scaleX = svgRect.width / vbWidth
+    const clickX = (clientX - svgRect.left) / scaleX
     const lineBts = beatLines[lineIndex] || []
     if (lineBts.length === 0) return null
     const realPos = notePositions[lineIndex]
@@ -828,8 +878,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       const dist = Math.abs(clickX - nx)
       if (dist < bestDist) { bestDist = dist; bestBi = bi }
     }
-    // Só considera "perto" se o mouse está a menos de 25px da nota
-    if (bestDist > 25) return null
+    // Só considera "perto" se o mouse está a menos de 40px (em coordenadas viewBox) da nota
+    if (bestDist > 40) return null
     return lineIndex * notesPerLine + bestBi
   }, [beats, beatLines, notesPerLine, notePositions])
 
@@ -842,11 +892,9 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setHoverPos(pos)
     const r = wrap.getBoundingClientRect()
     setHoverMouse({ x: e.clientX - r.left, y: e.clientY - r.top })
-    // Detectar se está sobre uma nota existente (para cursor crosshair)
-    if (inputMode === 'melodic') {
-      setHoverBeatIdx(getNearestBeat(e.clientX, e.clientY))
-    }
-  }, [scale, inputMode, getNearestBeat])
+    // Detectar se está sobre uma nota existente (para cursor pointer)
+    setHoverBeatIdx(getNearestBeat(e.clientX, e.clientY))
+  }, [scale, getNearestBeat])
 
   const handleMouseLeave = useCallback(() => {
     setHoverPos(null)
@@ -890,14 +938,39 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       return
     }
 
-    // No modo melódico, clique perto de nota existente = selecionar
+    // No modo melódico/acorde/ligadura, clique perto de nota existente
     if (inputMode === 'melodic' || inputMode === 'chord' || inputMode === 'tie') {
       const nearBeat = getNearestBeat(e.clientX, e.clientY)
       if (nearBeat !== null && inputMode === 'melodic') {
+        lastActionWasInsertRef.current = false
         setSelectedElement({ type: 'note', beatIdx: nearBeat })
         return
       }
+      // Modo acorde: clique perto de nota = empilhar naquela nota
+      if (nearBeat !== null && inputMode === 'chord') {
+        const pos = vexflowYToPos(svgY, scale)
+        const pitch = scale[pos]
+        if (!pitch) return
+        setBeats(prev => {
+          const next = [...prev]
+          const target = { ...next[nearBeat], pitches: [...next[nearBeat].pitches] }
+          if (target.isRest) {
+            target.isRest = false
+            target.pitches = [{ pitch, accidental: currentAccidental }]
+          } else if (!target.pitches.find(p => p.pitch === pitch)) {
+            target.pitches.push({ pitch, accidental: currentAccidental })
+            target.pitches.sort((a, b) => scale.indexOf(a.pitch) - scale.indexOf(b.pitch))
+          }
+          next[nearBeat] = target
+          return next
+        })
+        setSelectedElement({ type: 'note', beatIdx: nearBeat })
+        setLastNote(displayNote(pitch, currentAccidental))
+        setLastNoteInfo('Empilhado')
+        return
+      }
       // Clique em área vazia = desselecionar
+      lastActionWasInsertRef.current = false
       setSelectedElement(null)
     }
 
@@ -908,12 +981,18 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setBeats(prev => {
       const next = [...prev]
       if (inputMode === 'chord' && next.length > 0) {
-        const last = { ...next[next.length - 1], pitches: [...next[next.length - 1].pitches] }
-        if (!last.pitches.find(p => p.pitch === pitch)) {
-          last.pitches.push({ pitch, accidental: currentAccidental })
-          last.pitches.sort((a, b) => scale.indexOf(a.pitch) - scale.indexOf(b.pitch))
+        // Empilha na nota selecionada, ou na última se nenhuma selecionada
+        const targetIdx = selectedBeatIdx >= 0 && selectedBeatIdx < next.length ? selectedBeatIdx : next.length - 1
+        const target = { ...next[targetIdx], pitches: [...next[targetIdx].pitches] }
+        if (target.isRest) {
+          // Se é pausa, converte para nota
+          target.isRest = false
+          target.pitches = [{ pitch, accidental: currentAccidental }]
+        } else if (!target.pitches.find(p => p.pitch === pitch)) {
+          target.pitches.push({ pitch, accidental: currentAccidental })
+          target.pitches.sort((a, b) => scale.indexOf(a.pitch) - scale.indexOf(b.pitch))
         }
-        next[next.length - 1] = last
+        next[targetIdx] = target
       } else {
         next.push({
           pitches: [{ pitch: restMode ? 'b/4' : pitch, accidental: restMode ? null : currentAccidental }],
@@ -945,7 +1024,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       setLastNote(displayNote(pitch, currentAccidental))
       setLastNoteInfo(inputMode === 'chord' ? 'Empilhado' : DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
     }
-  }, [inputMode, currentAccidental, currentDuration, scale, beats, beatLines, notesPerLine, restMode, dottedMode, selectedClef])
+  }, [inputMode, currentAccidental, currentDuration, scale, beats, beatLines, notesPerLine, restMode, dottedMode, selectedClef, selectedElement])
 
   // Double click = remove nota mais próxima do clique
   const handleOverlayDblClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -1167,6 +1246,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setCurrentAccidental(null)
     setLastNote(displayNote(pitch, accidental))
     setLastNoteInfo('Substituído')
+    lastActionWasInsertRef.current = false
   }, [selectedBeatIdx, beats.length, selectedClef])
 
   const insertNoteAtCursor = useCallback((pitch: string, accidental: string | null) => {
@@ -1206,6 +1286,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setCurrentAccidental(null)
     setLastNote(displayNote(pitch, accidental))
     setLastNoteInfo(DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : '') + (tupletInfo ? ` (${tupletInfo.numNotes}:${tupletInfo.notesOccupied})` : ''))
+    lastActionWasInsertRef.current = true
   }, [currentDuration, dottedMode, selectedClef, selectedBeatIdx, beats.length, activeTuplet])
 
   const insertRestAtCursor = useCallback(() => {
@@ -1232,10 +1313,17 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     }
     setLastNote('𝄽')
     setLastNoteInfo('Pausa · ' + DURATION_NAMES[currentDuration] + (dottedMode ? ' •' : ''))
+    lastActionWasInsertRef.current = true
   }, [currentDuration, dottedMode, selectedBeatIdx, beats.length])
 
   const addNoteToChord = useCallback((noteName: string) => {
-    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) return
+    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) {
+      // Se não há nota selecionada, selecionar a última nota primeiro
+      if (beats.length > 0) {
+        setSelectedElement({ type: 'note', beatIdx: beats.length - 1 })
+      }
+      return
+    }
     const beat = beats[selectedBeatIdx]
     if (beat.isRest) return
     const octave = getSmartOctave(noteName, beat.pitches[0]?.pitch || null, selectedClef)
@@ -1251,7 +1339,9 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       })
     setBeats(prev => prev.map((b, i) => i === selectedBeatIdx ? { ...b, pitches: newPitches } : b))
     setCurrentAccidental(null)
-  }, [selectedBeatIdx, beats, selectedClef, currentAccidental, getLastPitch])
+    setLastNote(`${displayNote(pitch, currentAccidental)} (acorde)`)
+    setLastNoteInfo('Empilhado')
+  }, [selectedBeatIdx, beats, selectedClef, currentAccidental])
 
   const movePitchSemitone = useCallback((beatIndex: number, direction: number) => {
     if (beatIndex < 0 || beatIndex >= beats.length) return
@@ -1535,6 +1625,37 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     setPlayingBeatIndex(null)
   }, [])
 
+  // Helper: aplica armadura da tonalidade à nota para playback
+  const applyKeySignatureToNote = useCallback((noteLetter: string, octave: string, noteAccidental: string | null): string => {
+    // Notas afetadas por cada armadura
+    const KEY_SHARPS_MAP: Record<string, string[]> = {
+      'G': ['f'], 'D': ['f', 'c'], 'A': ['f', 'c', 'g'], 'E': ['f', 'c', 'g', 'd'],
+      'B': ['f', 'c', 'g', 'd', 'a'], 'F#': ['f', 'c', 'g', 'd', 'a', 'e'], 'C#': ['f', 'c', 'g', 'd', 'a', 'e', 'b'],
+    }
+    const KEY_FLATS_MAP: Record<string, string[]> = {
+      'F': ['b'], 'Bb': ['b', 'e'], 'Eb': ['b', 'e', 'a'], 'Ab': ['b', 'e', 'a', 'd'],
+      'Db': ['b', 'e', 'a', 'd', 'g'], 'Gb': ['b', 'e', 'a', 'd', 'g', 'c'], 'Cb': ['b', 'e', 'a', 'd', 'g', 'c', 'f'],
+    }
+    
+    const letter = noteLetter.toLowerCase().replace(/[#b]/g, '')
+    
+    // Se a nota já tem acidente explícito, usa ele
+    if (noteAccidental) {
+      if (noteAccidental === '#') return `${letter.toUpperCase()}#${octave}`
+      if (noteAccidental === 'b') return `${letter.toUpperCase()}b${octave}`
+      return `${letter.toUpperCase()}${octave}`
+    }
+    
+    // Aplica armadura
+    const sharps = KEY_SHARPS_MAP[selectedKey] || []
+    const flats = KEY_FLATS_MAP[selectedKey] || []
+    
+    if (sharps.includes(letter)) return `${letter.toUpperCase()}#${octave}`
+    if (flats.includes(letter)) return `${letter.toUpperCase()}b${octave}`
+    
+    return `${letter.toUpperCase()}${octave}`
+  }, [selectedKey])
+
   const playAll = useCallback(async () => {
     if (isPlaying) { stopPlayback(); return }
     if (beats.length === 0) return
@@ -1564,10 +1685,8 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
         const notes = beat.pitches.map(p => {
           const parts = p.pitch.split('/')
           if (parts.length !== 2) return p.pitch
-          let note = parts[0].toUpperCase() + parts[1]
-          if (p.accidental === '#') note = note.replace(/(\d)/, '#$1')
-          if (p.accidental === 'b') note = note.replace(/(\d)/, 'b$1')
-          return note
+          // Aplica armadura da tonalidade ao playback
+          return applyKeySignatureToNote(parts[0], parts[1], p.accidental)
         })
         const playId = window.setTimeout(() => {
           try { synthRef.current?.triggerAttackRelease(notes, seconds) } catch { /* ignore */ }
@@ -1585,7 +1704,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
     }, delay * 1000)
     timeouts.push(endId)
     playTimeoutsRef.current = timeouts
-  }, [isPlaying, beats, bpm, stopPlayback, initSynth])
+  }, [isPlaying, beats, bpm, stopPlayback, initSynth, applyKeySignatureToNote])
 
   // Cleanup do synth ao desmontar
   useEffect(() => {
@@ -1735,15 +1854,29 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
       return
     }
 
+    // ── Tab — Recuar cursor (como Backspace na tablatura) ──
+    if (key === 'Tab' && !e.shiftKey) {
+      e.preventDefault()
+      lastActionWasInsertRef.current = false
+      if (selectedBeatIdx > 0) {
+        setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx - 1 })
+      } else if (beats.length > 0 && selectedBeatIdx === -1) {
+        setSelectedElement({ type: 'note', beatIdx: beats.length - 1 })
+      }
+      return
+    }
+
     // ── Navegação ←/→ (com auto-expand no final) ──
     if (key === 'ArrowLeft' && !e.shiftKey) {
       e.preventDefault()
+      lastActionWasInsertRef.current = false
       if (selectedBeatIdx > 0) setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx - 1 })
       else if (beats.length > 0 && selectedBeatIdx === -1) setSelectedElement({ type: 'note', beatIdx: beats.length - 1 })
       return
     }
     if (key === 'ArrowRight' && !e.shiftKey) {
       e.preventDefault()
+      lastActionWasInsertRef.current = false
       if (selectedBeatIdx >= 0 && selectedBeatIdx < beats.length - 1) {
         setSelectedElement({ type: 'note', beatIdx: selectedBeatIdx + 1 })
       } else if (selectedBeatIdx === beats.length - 1 && isKeyboardMode) {
@@ -1867,8 +2000,12 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
         const accSuffix = currentAccidental === '#' ? '#' : currentAccidental === 'b' ? 'b' : ''
         const pitch = `${upper.toLowerCase()}${accSuffix}/${octave}`
         // Substituição direta: se há nota selecionada, substituir; senão, inserir
-        if (selectedBeatIdx >= 0 && selectedBeatIdx < beats.length && !beats[selectedBeatIdx].isRest) {
-          replaceNoteAtCursor(pitch, currentAccidental)
+        if (selectedBeatIdx >= 0 && selectedBeatIdx < beats.length) {
+          if (lastActionWasInsertRef.current) {
+            insertNoteAtCursor(pitch, currentAccidental)
+          } else {
+            replaceNoteAtCursor(pitch, currentAccidental)
+          }
         } else {
           insertNoteAtCursor(pitch, currentAccidental)
         }
@@ -2180,7 +2317,18 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
             { key: '32', label: '𝅘𝅥𝅰', tip: 'Fusa (2)' },
             { key: '64', label: '𝅘𝅥𝅱', tip: 'Semifusa (1)' },
           ].map(d => (
-            <TBtn key={d.key} active={currentDuration === d.key} onClick={() => setCurrentDuration(d.key)} title={d.tip}>
+            <TBtn
+              key={d.key}
+              active={currentDuration === d.key}
+              onClick={() => {
+                // Se há nota/pausa selecionada, muda a duração dela
+                if (selectedBeatIdx >= 0 && selectedBeatIdx < beats.length) {
+                  setBeats(prev => prev.map((b, i) => i === selectedBeatIdx ? { ...b, duration: d.key } : b))
+                }
+                setCurrentDuration(d.key)
+              }}
+              title={d.tip}
+            >
               {d.label}
             </TBtn>
           ))}
@@ -2475,7 +2623,16 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
             <div
               ref={wrapRef}
               onClick={focusHiddenInput}
-              style={{ backgroundColor: '#fff', borderRadius: 10, padding: '10px 12px', position: 'relative', overflow: 'hidden', minHeight: 140, maxHeight: 420 }}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                padding: '10px 12px 18px',
+                position: 'relative',
+                overflowX: 'hidden',
+                overflowY: 'auto',
+                minHeight: 140,
+                maxHeight: 460,
+              }}
             >
               {/* Hidden input para captura de teclado */}
               <input
@@ -2577,7 +2734,7 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                       {lineBts.map((_, bi) => {
                         const globalIdx = globalOffset + bi
                         const isSelected = selectedElement?.type === 'note' && selectedElement.beatIdx === globalIdx
-                        const isHovered = hoverBeatIdx === globalIdx && inputMode === 'melodic' && !selectedElement
+                        const isHovered = hoverBeatIdx === globalIdx && (inputMode === 'melodic' || inputMode === 'chord') && !selectedElement
                         if (!isSelected && !isHovered) return null
                         return (
                           <div
@@ -2601,49 +2758,30 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                         )
                       })}
 
-                      {/* Barlines automáticas (modo metered) */}
-                      {editorMode === 'metered' && lineBts.map((_, bi) => {
-                        const globalIdx = globalOffset + bi
-                        if (!autoBarlineSet.has(globalIdx)) return null
-                        // Posicionar a barline entre esta nota e a próxima
-                        const x1 = noteXpx(bi)
-                        const x2 = bi + 1 < lineBts.length ? noteXpx(bi + 1) : x1 + 20
-                        const midX = (x1 + x2) / 2
-                        return (
-                          <div
-                            key={`bar-${bi}`}
-                            style={{
-                              position: 'absolute',
-                              left: pctXLocal(midX),
-                              top: pctY(VEXFLOW_STAFF_TOP),
-                              width: 1.5,
-                              height: pctY(VEXFLOW_STAFF_BOTTOM - VEXFLOW_STAFF_TOP),
-                              backgroundColor: '#1E293B',
-                              zIndex: 2,
-                              pointerEvents: 'none',
-                              transform: 'translateX(-50%)',
-                            }}
-                          />
-                        )
-                      })}
+                      {/* Barlines automáticas agora são renderizadas nativamente pelo VexFlow via BarNote */}
 
-                      {/* Números de compasso (modo metered) */}
+                      {/* Números de compasso (modo metered) — acima da barra de compasso */}
                       {editorMode === 'metered' && lineBts.map((_, bi) => {
                         const globalIdx = globalOffset + bi
                         const mNum = measureNumbers.get(globalIdx)
-                        if (mNum === undefined || mNum <= 1) return null
+                        if (mNum === undefined) return null
+                        // Posicionar acima da nota que inicia o compasso
                         return (
                           <span
                             key={`mnum-${bi}`}
                             style={{
                               position: 'absolute',
-                              left: pctXLocal(noteXpx(bi) - 4),
-                              top: pctY(VEXFLOW_STAFF_TOP - 14),
-                              fontSize: 8,
-                              fontWeight: 700,
+                              left: pctXLocal(noteXpx(bi)),
+                              top: pctY(VEXFLOW_STAFF_TOP - 18),
+                              transform: 'translateX(-50%)',
+                              fontSize: 11,
+                              fontWeight: 800,
                               fontFamily: "'DM Mono', monospace",
-                              color: '#64748B',
-                              zIndex: 2,
+                              color: '#475569',
+                              background: 'rgba(255,255,255,0.85)',
+                              padding: '0 4px',
+                              borderRadius: 3,
+                              zIndex: 3,
                               pointerEvents: 'none',
                             }}
                           >
@@ -2782,7 +2920,15 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 ref={overlayRef}
                 style={{
                   position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                  cursor: inputMode === 'lyric' ? 'default' : dragging ? 'grabbing' : hoverBeatIdx !== null ? 'pointer' : 'crosshair', zIndex: 10,
+                  cursor: inputMode === 'lyric'
+                    ? 'default'
+                    : dragging
+                      ? 'grabbing'
+                      : hoverBeatIdx !== null
+                        ? 'pointer'
+                        : hoverPos !== null
+                          ? 'none'
+                          : 'crosshair', zIndex: 10,
                   pointerEvents: (inputMode === 'lyric' || dragging) ? 'none' : 'auto',
                 }}
                 onMouseMove={handleMouseMove}
@@ -2791,34 +2937,51 @@ export function NotationEditor({ open, onOpenChange, notation, onSave, onDelete 
                 onDoubleClick={handleOverlayDblClick}
               />
 
-              {/* Ghost note tooltip */}
-              {hoverPos !== null && hoverMouse && inputMode !== 'cifra' && inputMode !== 'annotation' && inputMode !== 'lyric' && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: Math.min(hoverMouse.x + 14, 620),
-                    top: hoverMouse.y - 28,
-                    background: 'var(--bg, #0F172A)',
-                    border: `1px solid ${inputMode === 'chord' ? '#6366F1' : '#FF2D78'}`,
-                    borderRadius: 6,
-                    padding: '2px 8px',
-                    zIndex: 20,
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
-                    color: restMode ? '#F59E0B' : inputMode === 'chord' ? '#6366F1' : '#FF2D78',
-                  }}>
-                    {restMode
-                      ? `Pausa · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
-                      : selectedClef === 'percussion'
-                        ? `${DRUM_NAMES[scale[hoverPos]] || scale[hoverPos]} · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
-                        : `${displayNote(scale[hoverPos], currentAccidental)} · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
-                    }
-                  </span>
-                </div>
+              {/* Ghost note visual + tooltip — SÓ em áreas vazias (não sobre notas existentes) */}
+              {hoverPos !== null && hoverMouse && hoverBeatIdx === null && inputMode !== 'cifra' && inputMode !== 'annotation' && inputMode !== 'lyric' && (
+                <>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: hoverMouse.x - 8,
+                      top: hoverMouse.y - 8,
+                      width: 16,
+                      height: 12,
+                      borderRadius: 999,
+                      transform: 'rotate(-12deg)',
+                      background: restMode ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 45, 120, 0.25)',
+                      border: `1px solid ${restMode ? 'rgba(245, 158, 11, 0.45)' : 'rgba(255, 45, 120, 0.5)'}`,
+                      zIndex: 19,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: Math.min(hoverMouse.x + 14, 620),
+                      top: hoverMouse.y - 28,
+                      background: 'var(--bg, #0F172A)',
+                      border: `1px solid ${inputMode === 'chord' ? '#6366F1' : '#FF2D78'}`,
+                      borderRadius: 6,
+                      padding: '2px 8px',
+                      zIndex: 20,
+                      pointerEvents: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+                      color: restMode ? '#F59E0B' : inputMode === 'chord' ? '#6366F1' : '#FF2D78',
+                    }}>
+                      {restMode
+                        ? `Pausa · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
+                        : selectedClef === 'percussion'
+                          ? `${DRUM_NAMES[scale[hoverPos]] || scale[hoverPos]} · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
+                          : `${displayNote(scale[hoverPos], currentAccidental)} · ${DURATION_NAMES[currentDuration]}${dottedMode ? ' •' : ''}`
+                      }
+                    </span>
+                  </div>
+                </>
               )}
 
               {/* Cifra popup */}

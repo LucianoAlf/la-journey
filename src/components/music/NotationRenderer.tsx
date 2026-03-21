@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Dot, Articulation, Beam, Tuplet, StaveHairpin, GraceNote, GraceNoteGroup, Ornament, Curve, Volta, PedalMarking } from 'vexflow'
+import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Dot, Articulation, Beam, Tuplet, StaveHairpin, GraceNote, GraceNoteGroup, Ornament, Curve, Volta, PedalMarking, BarNote } from 'vexflow'
 
 // --- Tipos ---
 
@@ -24,6 +24,7 @@ interface StaveData {
   slurs?: { startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: slurs (ligaduras de expressão)
   voltas?: { number: number; startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: volta brackets
   pedals?: { startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: pedal markings
+  barlineAfterIndices?: number[]  // Índices de notas APÓS as quais inserir barline
   intervals?: string[]
   degree_names?: string[]
   label?: string
@@ -188,24 +189,54 @@ function renderStave(
     return sum + (isDblDot ? base * 1.75 : isDot ? base * 1.5 : base)
   }, 0)
 
+  // Inserir BarNotes entre as notas nos índices indicados
+  const barlineSet = new Set(staveData.barlineAfterIndices ?? [])
+  const tickables: (StaveNote | BarNote)[] = []
+  staveNotes.forEach((note, i) => {
+    tickables.push(note)
+    if (barlineSet.has(i)) {
+      const barNote = new BarNote()
+      // Evita abrir espaço exagerado entre compassos no formatter
+      barNote.setWidth(0)
+      barNote.setIgnoreTicks(true)
+      tickables.push(barNote)
+    }
+  })
+
   const voice = new Voice({ numBeats: totalBeats, beatValue: 4 })
   voice.setStrict(false)
-  voice.addTickables(staveNotes)
+  voice.addTickables(tickables)
 
   new Formatter().joinVoices([voice]).format([voice], staveWidth - 80)
   voice.draw(context, stave)
 
-  // Beams automáticos — agrupar notas com duração ≤ colcheia
+  // Beams automáticos — agrupar apenas notas CONSECUTIVAS com duração ≤ colcheia
   try {
-    const beamableNotes = staveNotes.filter(n => {
+    const beamableIndices: number[] = []
+    staveNotes.forEach((n, i) => {
       const dur = n.getDuration()
-      // Notas beamable: 8, 16, 32, 64 (excluir pausas)
-      return ['8', '16', '32', '64'].includes(dur.replace('r', '')) && !dur.includes('r')
+      if (['8', '16', '32', '64'].includes(dur.replace('r', '')) && !dur.includes('r')) {
+        beamableIndices.push(i)
+      }
     })
-    if (beamableNotes.length >= 2) {
-      const beams = Beam.generateBeams(beamableNotes)
+    // Agrupar apenas índices consecutivos
+    const groups: number[][] = []
+    let currentGroup: number[] = []
+    beamableIndices.forEach((idx, i) => {
+      if (i === 0 || idx === beamableIndices[i - 1] + 1) {
+        currentGroup.push(idx)
+      } else {
+        if (currentGroup.length >= 2) groups.push(currentGroup)
+        currentGroup = [idx]
+      }
+    })
+    if (currentGroup.length >= 2) groups.push(currentGroup)
+    // Criar beams para cada grupo consecutivo
+    groups.forEach(group => {
+      const notes = group.map(i => staveNotes[i])
+      const beams = Beam.generateBeams(notes)
       beams.forEach(beam => beam.setContext(context).draw())
-    }
+    })
   } catch {
     // Silenciar erros de beam (notas isoladas, etc.)
   }
@@ -409,6 +440,18 @@ export function NotationRenderer({ notation }: NotationRendererProps) {
         }
 
         yOffset += STAVE_HEIGHT + STAVE_GAP
+      })
+
+      // Pós-render: engrossar barlines de compasso (BarNote) para melhor visibilidade
+      // Barlines da Stave ficam em x=10 (início) e x≈staveWidth (fim)
+      // BarNotes ficam em posições intermediárias
+      const allBarlines = ref.current.querySelectorAll('.vf-stavebarline rect')
+      allBarlines.forEach(rect => {
+        const x = parseFloat(rect.getAttribute('x') || '0')
+        if (x > 15 && x < staveWidth - 5) {
+          rect.setAttribute('width', '2')
+          rect.setAttribute('x', String(x - 0.5))
+        }
       })
 
     } catch (e) {
