@@ -55,7 +55,16 @@ const LINE_SPACING = 10        // pixels entre linhas da pauta
 const HALF_SPACING = LINE_SPACING / 2
 const TOP_MARGIN = 40          // espaço acima da pauta (para linhas suplementares)
 const BOTTOM_MARGIN = 40       // espaço abaixo da pauta
-const LEFT_MARGIN = 60         // espaço para clave e armadura
+const LEFT_MARGIN = 30         // espaço à esquerda da pauta (brace + barra)
+const TIME_SIG_WIDTH = 25      // espaço adicional para fórmula de compasso
+const CLEF_WIDTH_INNER = 28    // largura da clave dentro da pauta
+const STAFF_LEFT_X = LEFT_MARGIN       // onde as linhas da pauta começam
+const BRACE_X = LEFT_MARGIN - 16       // chave de sistema à esquerda
+const CLEF_TREBLE_X = LEFT_MARGIN + 16 // clave de Sol sobre as linhas
+const CLEF_BASS_X = LEFT_MARGIN + 14   // clave de Fá sobre as linhas
+const TS_OFFSET = CLEF_WIDTH_INNER + 4 // offset do compasso após a clave
+const NOTES_START = LEFT_MARGIN + CLEF_WIDTH_INNER // início dos beats sem compasso
+const NOTES_START_TS = NOTES_START + TIME_SIG_WIDTH // início dos beats com compasso
 const RIGHT_MARGIN = 20
 const CLEF_WIDTH = 30
 const KEY_SIG_WIDTH = 20       // por acidente na armadura
@@ -74,6 +83,10 @@ const STAFF_HEIGHT = 4 * LINE_SPACING
 const SINGLE_STAFF_SVG_HEIGHT = TOP_MARGIN + STAFF_HEIGHT + BOTTOM_MARGIN
 /** Gap entre linhas (sistemas) */
 const LINE_GAP = 30
+/** Gap entre pautas na Grande Pauta (Sol e Fá) */
+const GRAND_STAFF_GAP = 30
+/** Altura total de uma Grande Pauta (duas pautas + gap entre elas) */
+const GRAND_STAFF_HEIGHT = STAFF_HEIGHT * 2 + GRAND_STAFF_GAP
 
 // ─── Cores ──────────────────────────────────────────────────────────
 
@@ -114,38 +127,55 @@ function getNoteIndex(noteName: string): number {
 
 /**
  * Converte pitch (ex: 'C/4', 'G#/5') para posição Y no SVG
- * Referência: clave de sol, E4 na 1ª linha (posição 8 do topo)
+ * 
+ * Pauta de 5 linhas (de cima para baixo, posições em half-spacings do topo):
+ * - Posição 0 = linha 5 (topo) = F5
+ * - Posição 1 = espaço = E5
+ * - Posição 2 = linha 4 = D5
+ * - Posição 3 = espaço = C5
+ * - Posição 4 = linha 3 (meio) = B4
+ * - Posição 5 = espaço = A4
+ * - Posição 6 = linha 2 = G4 (onde a clave de sol se enrola)
+ * - Posição 7 = espaço = F4
+ * - Posição 8 = linha 1 (base) = E4
+ * - Posição 9 = espaço abaixo = D4
+ * - Posição 10 = linha suplementar = C4
+ * 
+ * Clave de Fá: F3 na linha 4 (posição 2)
+ * - Posição 0 = linha 5 = A3
+ * - Posição 2 = linha 4 = F3 (onde a clave de fá marca)
+ * - Posição 4 = linha 3 = D3
+ * - Posição 6 = linha 2 = B2
+ * - Posição 8 = linha 1 = G2
  */
 export function pitchToY(pitch: string, clef: string, topY: number): number {
   const [notePart, octStr] = pitch.split('/')
   const octave = parseInt(octStr, 10)
   const noteIdx = getNoteIndex(notePart)
   
-  // Na clave de sol: E4 está na posição 8 (1ª linha, a mais baixa)
-  // Na clave de fá: G2 está na posição 8 (1ª linha)
-  
   let referenceOctave: number
   let referenceNoteIdx: number
   let referencePosition: number
   
   if (clef === 'bass' || clef === 'F4') {
-    // Clave de Fá: G2 na 1ª linha
+    // Clave de Fá: G2 na linha 1 (base) = posição 8
     referenceOctave = 2
     referenceNoteIdx = 4 // G
     referencePosition = 8
   } else {
-    // Clave de Sol (padrão): E4 na 1ª linha
+    // Clave de Sol: E4 na linha 1 (base) = posição 8
     referenceOctave = 4
     referenceNoteIdx = 2 // E
     referencePosition = 8
   }
   
   // Calcular steps a partir da referência
+  // Cada step = 1 nota diatônica (linha ou espaço)
   const octaveDiff = octave - referenceOctave
   const noteDiff = noteIdx - referenceNoteIdx
   const totalSteps = octaveDiff * 7 + noteDiff
   
-  // Posição no SVG (menor Y = mais agudo)
+  // Posição no SVG (menor Y = mais agudo, então subtraímos steps)
   const position = referencePosition - totalSteps
   
   return topY + position * HALF_SPACING
@@ -162,10 +192,12 @@ export function yToPitch(y: number, clef: string, topY: number): string {
   let referencePosition: number
   
   if (clef === 'bass' || clef === 'F4') {
+    // Clave de Fá: G2 na linha 1 (base) = posição 8
     referenceOctave = 2
     referenceNoteIdx = 4 // G
     referencePosition = 8
   } else {
+    // Clave de Sol: E4 na linha 1 (base) = posição 8
     referenceOctave = 4
     referenceNoteIdx = 2 // E
     referencePosition = 8
@@ -245,10 +277,13 @@ interface RowLayout {
   beatCenters: number[] // X de cada beat relativo ao inicio da linha
 }
 
-function buildRows(beats: Beat[]): RowLayout[] {
+function buildRows(beats: Beat[], hasTimeSignature: boolean): RowLayout[] {
   const rows: RowLayout[] = []
   let col = 0
   const columns = beats.length
+  // Início dos beats: após clave (e compasso se houver)
+  const leftOffset = hasTimeSignature ? NOTES_START_TS : NOTES_START
+  const usableWidth = VB_WIDTH - leftOffset - RIGHT_MARGIN
 
   while (col < columns) {
     let usedW = 0
@@ -258,8 +293,8 @@ function buildRows(beats: Beat[]): RowLayout[] {
     while (col < columns) {
       const dur = beats[col]?.duration ?? 'q'
       const bw = BEAT_WIDTHS[dur]
-      if (usedW + bw > USABLE_WIDTH && col > startCol) break
-      centers.push(LEFT_MARGIN + usedW + bw / 2)
+      if (usedW + bw > usableWidth && col > startCol) break
+      centers.push(leftOffset + usedW + bw / 2)
       usedW += bw
       col++
     }
@@ -304,17 +339,27 @@ export function NotationSvgEditor({
   const [hoverPos, setHoverPos] = React.useState<{ x: number; y: number } | null>(null)
 
   // ── Distribuir beats em linhas ──
-  const rows = useMemo(() => buildRows(beats), [beats])
+  const hasTimeSignature = !!timeSignature
+  const rows = useMemo(() => buildRows(beats, hasTimeSignature), [beats, hasTimeSignature])
 
   // ── Dimensões do SVG ──
-  const rowH = TOP_MARGIN + STAFF_HEIGHT + BOTTOM_MARGIN
+  // Grande Pauta: duas pautas (Sol + Fá) com gap entre elas
+  const rowH = grandStaffMode 
+    ? TOP_MARGIN + GRAND_STAFF_HEIGHT + BOTTOM_MARGIN
+    : TOP_MARGIN + STAFF_HEIGHT + BOTTOM_MARGIN
   const svgHeight = rows.length * rowH + (rows.length - 1) * LINE_GAP
 
   // ── Y base de cada linha ──
   const rowY = useCallback((rowIdx: number) => rowIdx * (rowH + LINE_GAP), [rowH])
 
-  // ── Y do topo da pauta em cada linha ──
+  // ── Y do topo da pauta treble em cada linha ──
   const staffTopY = useCallback((rowIdx: number) => rowY(rowIdx) + TOP_MARGIN, [rowY])
+  
+  // ── Y do topo da pauta bass em cada linha (só para Grande Pauta) ──
+  const bassStaffTopY = useCallback(
+    (rowIdx: number) => staffTopY(rowIdx) + STAFF_HEIGHT + GRAND_STAFF_GAP,
+    [staffTopY]
+  )
 
   // ── Hit test: converter coords do mouse → posição ──
   const getPositionFromEvent = useCallback(
@@ -438,14 +483,15 @@ export function NotationSvgEditor({
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r]
       const topY = staffTopY(r)
+      const topBarX = STAFF_LEFT_X
 
-      // ── 5 linhas da pauta ──
+      // ── Pauta Treble (ou única se não for Grande Pauta) ──
       for (let i = 0; i < 5; i++) {
         const y = topY + i * LINE_SPACING
         els.push(
           <line
-            key={`staff-${r}-${i}`}
-            x1={LEFT_MARGIN - 10}
+            key={`staff-treble-${r}-${i}`}
+            x1={topBarX}
             y1={y}
             x2={VB_WIDTH - RIGHT_MARGIN}
             y2={y}
@@ -455,22 +501,193 @@ export function NotationSvgEditor({
         )
       }
 
-      // ── Clave (símbolo simplificado) ──
-      const clefY = topY + 2 * LINE_SPACING
-      els.push(
-        <text
-          key={`clef-${r}`}
-          x={LEFT_MARGIN - 35}
-          y={clef === 'bass' ? clefY - LINE_SPACING : clefY}
-          fontSize={clef === 'bass' ? 28 : 36}
-          fontFamily={FONT_MUSIC}
-          fill={C.clef}
-          dominantBaseline="middle"
-          style={{ userSelect: 'none' }}
-        >
-          {clef === 'bass' ? '𝄢' : '𝄞'}
-        </text>,
-      )
+      // ── Pauta Bass (só para Grande Pauta) ──
+      if (grandStaffMode) {
+        const bassTopY = bassStaffTopY(r)
+        for (let i = 0; i < 5; i++) {
+          const y = bassTopY + i * LINE_SPACING
+          els.push(
+            <line
+              key={`staff-bass-${r}-${i}`}
+              x1={topBarX}
+              y1={y}
+              x2={VB_WIDTH - RIGHT_MARGIN}
+              y2={y}
+              stroke={C.line}
+              strokeWidth={1}
+            />,
+          )
+        }
+
+        // ── Brace (chave de sistema) conectando as duas pautas ──
+        const braceTop = topY
+        const braceBottom = bassTopY + STAFF_HEIGHT
+        els.push(
+          <text
+            key={`brace-${r}`}
+            x={BRACE_X}
+            y={(braceTop + braceBottom) / 2}
+            fontSize={braceBottom - braceTop - 8}
+            fontFamily={FONT_MUSIC}
+            fill={C.clef}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ userSelect: 'none' }}
+          >
+            {'{'}
+          </text>,
+        )
+
+        // ── Linha vertical conectando as pautas ──
+        els.push(
+          <line
+            key={`barline-start-${r}`}
+            x1={topBarX}
+            y1={topY}
+            x2={topBarX}
+            y2={bassTopY + STAFF_HEIGHT}
+            stroke={C.line}
+            strokeWidth={1.5}
+          />,
+        )
+      }
+
+      // ── Claves (dentro da pauta, sobre as linhas, como no AlphaTab) ──
+      if (grandStaffMode) {
+        // Grande Pauta: Clave de Sol na pauta superior, Clave de Fá na inferior
+        const trebleClefY = topY + 3 * LINE_SPACING
+        els.push(
+          <text
+            key={`clef-treble-${r}`}
+            x={CLEF_TREBLE_X}
+            y={trebleClefY}
+            fontSize={36}
+            fontFamily={FONT_MUSIC}
+            fill={C.clef}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ userSelect: 'none' }}
+          >
+            𝄞
+          </text>,
+        )
+        
+        const bassTopY = bassStaffTopY(r)
+        const bassClefY = bassTopY + LINE_SPACING
+        els.push(
+          <text
+            key={`clef-bass-${r}`}
+            x={CLEF_BASS_X}
+            y={bassClefY}
+            fontSize={28}
+            fontFamily={FONT_MUSIC}
+            fill={C.clef}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ userSelect: 'none' }}
+          >
+            𝄢
+          </text>,
+        )
+      } else {
+        // Pauta única: renderizar a clave selecionada
+        const isBass = clef === 'bass'
+        const clefY = isBass
+          ? topY + LINE_SPACING  // Linha 4 para clave de Fá
+          : topY + 3 * LINE_SPACING  // Linha 2 para clave de Sol
+        els.push(
+          <text
+            key={`clef-${r}`}
+            x={isBass ? CLEF_BASS_X : CLEF_TREBLE_X}
+            y={clefY}
+            fontSize={isBass ? 28 : 36}
+            fontFamily={FONT_MUSIC}
+            fill={C.clef}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ userSelect: 'none' }}
+          >
+            {isBass ? '𝄢' : '𝄞'}
+          </text>,
+        )
+      }
+
+      // ── Fórmula de compasso (se definida) ──
+      if (timeSignature && r === 0) {
+        const [num, den] = timeSignature.split('/')
+        const tsX = LEFT_MARGIN + TS_OFFSET
+        
+        // Fórmula na pauta treble
+        els.push(
+          <text
+            key={`ts-num-treble-${r}`}
+            x={tsX}
+            y={topY + 1.5 * LINE_SPACING}
+            fontSize={16}
+            fontFamily={FONT_UI}
+            fontWeight="bold"
+            fill={C.clef}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ userSelect: 'none' }}
+          >
+            {num}
+          </text>,
+        )
+        els.push(
+          <text
+            key={`ts-den-treble-${r}`}
+            x={tsX}
+            y={topY + 2.5 * LINE_SPACING}
+            fontSize={16}
+            fontFamily={FONT_UI}
+            fontWeight="bold"
+            fill={C.clef}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ userSelect: 'none' }}
+          >
+            {den}
+          </text>,
+        )
+        
+        // Fórmula na pauta bass (só para Grande Pauta)
+        if (grandStaffMode) {
+          const bassTopY = bassStaffTopY(r)
+          els.push(
+            <text
+              key={`ts-num-bass-${r}`}
+              x={tsX}
+              y={bassTopY + 1.5 * LINE_SPACING}
+              fontSize={16}
+              fontFamily={FONT_UI}
+              fontWeight="bold"
+              fill={C.clef}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ userSelect: 'none' }}
+            >
+              {num}
+            </text>,
+          )
+          els.push(
+            <text
+              key={`ts-den-bass-${r}`}
+              x={tsX}
+              y={bassTopY + 2.5 * LINE_SPACING}
+              fontSize={16}
+              fontFamily={FONT_UI}
+              fontWeight="bold"
+              fill={C.clef}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ userSelect: 'none' }}
+            >
+              {den}
+            </text>,
+          )
+        }
+      }
 
       // ── Notas ──
       for (let i = 0; i < row.beatCenters.length; i++) {
@@ -481,9 +698,14 @@ export function NotationSvgEditor({
         const cx = row.beatCenters[i]
         const isSelected = selectedBeatIdx === colIdx
 
+        // Determinar qual pauta usar para este beat
+        const isBassStaff = grandStaffMode && beat.staff === 'bass'
+        const noteStaffTopY = isBassStaff ? bassStaffTopY(r) : topY
+        const noteClef = isBassStaff ? 'bass' : (grandStaffMode ? 'treble' : clef)
+
         if (beat.isRest) {
           // ── Pausa (símbolo simplificado) ──
-          const restY = topY + 2 * LINE_SPACING
+          const restY = noteStaffTopY + 2 * LINE_SPACING
           const restSymbols: Record<BeatDuration, string> = {
             w: '𝄻', h: '𝄼', q: '𝄽', '8': '𝄾', '16': '𝄿', '32': '𝅀', '64': '𝅁',
           }
@@ -506,11 +728,11 @@ export function NotationSvgEditor({
           // ── Notas ──
           for (let n = 0; n < beat.pitches.length; n++) {
             const pd = beat.pitches[n]
-            const y = pitchToY(pd.pitch, clef, topY)
-            const isBassNote = beat.staff === 'bass'
+            const y = pitchToY(pd.pitch, noteClef, noteStaffTopY)
+            const isBassNote = isBassStaff
 
             // Linhas suplementares
-            const ledgerLines = getLedgerLines(y, topY)
+            const ledgerLines = getLedgerLines(y, noteStaffTopY)
             for (const ly of ledgerLines) {
               els.push(
                 <line
