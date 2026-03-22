@@ -198,6 +198,7 @@ export function NotationEditorV2({
   // AlphaTex gerado
   const [alphaTex, setAlphaTex] = useState('')
   const [alphaTabIndexMap, setAlphaTabIndexMap] = useState<number[]>([])
+  const [hoveredSvgPos, setHoveredSvgPos] = useState<{ beatIdx: number; pitch: string } | null>(null)
 
   // Undo/redo
   const [history, setHistory] = useState<SvgBeat[][]>([[]])
@@ -291,6 +292,7 @@ export function NotationEditorV2({
         lyric: b.lyric ?? null,
         dynamic: b.dynamics,
         staff: b.staff,
+        timeSlot: b.timeSlot,
         barAfter: computedBarlines.includes(idx), // Sincronizar barlines
       }))
       const result = beatsToAlphaTexWithMap(alphaTexBeats, {
@@ -346,12 +348,15 @@ export function NotationEditorV2({
     setSelectedBeatIdx(idx)
     if (idx >= 0 && idx < beats.length) {
       const beat = beats[idx]
+      if (grandStaffMode) {
+        setActiveStaff(beat.staff ?? 'treble')
+      }
       if (!beat.isRest && beat.pitches.length > 0) {
         lastPitchRef.current = beat.pitches[0].pitch
       }
     }
     focusInput()
-  }, [beats, focusInput])
+  }, [beats, focusInput, grandStaffMode])
 
   const handleInsertNote = useCallback((pitch: string, afterIdx: number, staff?: 'treble' | 'bass', explicitTimeSlot?: number) => {
     // Se staff foi passado (clique no SVG), usa ele. Senão usa activeStaff (teclado)
@@ -362,6 +367,9 @@ export function NotationEditorV2({
     if (grandStaffMode) {
       // Filtrar apenas as notas da pauta atual para escrita independente
       const staffBeats = beats.filter(b => (b.staff ?? 'treble') === effectiveStaff)
+      const selectedStaffBeat = afterIdx >= 0 && afterIdx < beats.length
+        ? beats[afterIdx]
+        : null
       
       // Encontrar o maior timeSlot desta pauta
       const maxStaffTimeSlot = staffBeats.length > 0 
@@ -382,6 +390,9 @@ export function NotationEditorV2({
           // Usar o timeSlot passado (alinhamento vertical com nota da outra pauta)
           nextTimeSlot = explicitTimeSlot
         }
+      } else if (selectedStaffBeat && (selectedStaffBeat.staff ?? 'treble') === effectiveStaff) {
+        const referenceSlot = selectedStaffBeat.timeSlot ?? 0
+        nextTimeSlot = referenceSlot + 1
       } else {
         // Escrita independente: próximo slot desta pauta
         nextTimeSlot = maxStaffTimeSlot + 1
@@ -401,6 +412,18 @@ export function NotationEditorV2({
     const newBeats = [...beats]
     
     if (grandStaffMode) {
+      if (explicitTimeSlot === undefined) {
+        for (let i = 0; i < newBeats.length; i++) {
+          const b = newBeats[i]
+          if ((b.staff ?? 'treble') === effectiveStaff && (b.timeSlot ?? 0) >= nextTimeSlot) {
+            newBeats[i] = {
+              ...b,
+              timeSlot: (b.timeSlot ?? 0) + 1,
+            }
+          }
+        }
+      }
+
       // Inserir na posição correta mantendo ordenação por timeSlot
       // Treble vem antes de bass no mesmo timeSlot
       let insertIdx = 0
@@ -630,26 +653,35 @@ export function NotationEditorV2({
       const octave = getSmartOctave(noteKey, lastPitchRef.current, clef)
       const pitch = `${noteKey}/${octave}`
 
+      const selectedBeat = selectedBeatIdx >= 0 && selectedBeatIdx < beats.length ? beats[selectedBeatIdx] : null
+      const selectedBeatStaff = selectedBeat?.staff ?? 'treble'
+      const activeSelectedBeatIdx = grandStaffMode && selectedBeat && selectedBeatStaff !== activeStaff
+        ? [...beats].reverse().findIndex(b => (b.staff ?? 'treble') === activeStaff) >= 0
+          ? beats.length - 1 - [...beats].reverse().findIndex(b => (b.staff ?? 'treble') === activeStaff)
+          : -1
+        : selectedBeatIdx
+
       if (e.shiftKey && selectedBeatIdx >= 0 && selectedBeatIdx < beats.length) {
         // Shift+A-G = Adicionar ao acorde
-        const beat = beats[selectedBeatIdx]
+        const beatIdxForChord = activeSelectedBeatIdx
+        const beat = beatIdxForChord >= 0 ? beats[beatIdxForChord] : beats[selectedBeatIdx]
         // Na Grande Pauta, só adicionar ao acorde se a nota selecionada for da pauta ativa
         const beatStaff = beat.staff ?? 'treble'
         const canAddToChord = !grandStaffMode || beatStaff === activeStaff
         
         if (!beat.isRest && canAddToChord) {
           const newPitches = [...beat.pitches, { pitch, accidental: currentAccidental || undefined }]
-          handleUpdateBeat(selectedBeatIdx, { pitches: newPitches })
+          handleUpdateBeat(beatIdxForChord >= 0 ? beatIdxForChord : selectedBeatIdx, { pitches: newPitches })
           lastPitchRef.current = pitch
         } else if (grandStaffMode && beatStaff !== activeStaff) {
           // Se a nota selecionada é de outra pauta, inserir nova nota na pauta ativa
-          const insertAfterIdx = selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1
+          const insertAfterIdx = activeSelectedBeatIdx >= 0 ? activeSelectedBeatIdx : beats.length - 1
           handleInsertNote(pitch, insertAfterIdx)
         }
       } else {
         // A-G = Inserir nova nota após a seleção atual
         // Sempre insere uma nova nota (não substitui)
-        const insertAfterIdx = selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1
+        const insertAfterIdx = activeSelectedBeatIdx >= 0 ? activeSelectedBeatIdx : beats.length - 1
         handleInsertNote(pitch, insertAfterIdx)
       }
       return
@@ -1362,6 +1394,7 @@ export function NotationEditorV2({
               barlines={barlines}
               inputRef={hiddenInputRef}
               onKeyDown={handleKeyDown}
+              onHoverPosition={setHoveredSvgPos}
             />
 
             {/* Preview AlphaTab */}
@@ -1373,6 +1406,7 @@ export function NotationEditorV2({
                 <AlphaTabViewer
                   tex={alphaTex}
                   staveProfile="score"
+                  grandStaffMode={grandStaffMode}
                   layout="page"
                   scale={0.8}
                   showTimeSignature={timeSignature !== 'free'}
@@ -1401,8 +1435,12 @@ export function NotationEditorV2({
 
             {/* Clique na pauta */}
             <div className="rounded-xl border border-border p-3 bg-accent/5 text-center">
-              <span className="text-[11px] text-text3">—</span>
-              <div className="text-[10px] text-text3 mt-1">Clique na pauta</div>
+              <span className="text-[11px] text-text3">
+                {hoveredSvgPos?.pitch ?? '—'}
+              </span>
+              <div className="text-[10px] text-text3 mt-1">
+                {hoveredSvgPos ? `Beat ${hoveredSvgPos.beatIdx >= 0 ? hoveredSvgPos.beatIdx + 1 : 'novo'}` : 'Clique na pauta'}
+              </div>
             </div>
           </div>
         </div>

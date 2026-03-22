@@ -55,7 +55,7 @@ export interface NotationSvgEditorProps {
 const LINE_SPACING = 10        // pixels entre linhas da pauta
 const HALF_SPACING = LINE_SPACING / 2
 const TOP_MARGIN = 40          // espaço acima da pauta (para linhas suplementares)
-const BOTTOM_MARGIN = 40       // espaço abaixo da pauta
+const BOTTOM_MARGIN = 56       // espaço abaixo da pauta (mais folga para notas graves)
 const LEFT_MARGIN = 30         // espaço à esquerda da pauta (brace + barra)
 const TIME_SIG_WIDTH = 25      // espaço adicional para fórmula de compasso
 const CLEF_WIDTH_INNER = 28    // largura da clave dentro da pauta

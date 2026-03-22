@@ -62,10 +62,10 @@ console.log('\n🎵 Testes beatsToAlphaTex\n')
 
 // 1. pitchToAlphaTex
 console.log('--- pitchToAlphaTex ---')
-assert(pitchToAlphaTex(makeNote('C/4')) === 'c4', 'C/4 → c4')
-assert(pitchToAlphaTex(makeNote('F/3', '#')) === 'f#3', 'F/3 com # → f#3')
-assert(pitchToAlphaTex(makeNote('B/5', 'b')) === 'bb5', 'B/5 com b → bb5')
-assert(pitchToAlphaTex(makeNote('E/4', 'n')) === 'en4', 'E/4 com n → en4')
+assert(pitchToAlphaTex(makeNote('C/4')) === 'c3', 'C/4 → c3')
+assert(pitchToAlphaTex(makeNote('F/3', '#')) === 'f#2', 'F/3 com # → f#2')
+assert(pitchToAlphaTex(makeNote('B/5', 'b')) === 'bb4', 'B/5 com b → bb4')
+assert(pitchToAlphaTex(makeNote('E/4', 'n')) === 'en3', 'E/4 com n → en3')
 
 // 2. Escala simples
 console.log('\n--- Escala C Maior ---')

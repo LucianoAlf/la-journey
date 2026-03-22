@@ -72,6 +72,8 @@ interface AlphaTabViewerProps {
   showTimeSignature?: boolean
   /** Perfil de pauta: 'tab' (tablatura), 'score' (notação), 'scoreTab' (ambos). Default: 'tab' */
   staveProfile?: 'tab' | 'score' | 'scoreTab'
+  /** Indica se o tex vem de uma grande pauta (piano) */
+  grandStaffMode?: boolean
   /** Habilitar bounds de notas individuais para interação (default: false) */
   includeNoteBounds?: boolean
   /** Callback quando um beat é clicado */
@@ -185,6 +187,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     scale = 0.8,
     showTimeSignature = false,
     staveProfile = 'tab',
+    grandStaffMode = false,
     includeNoteBounds = false,
     onBeatMouseDown,
     onBeatMouseMove,
@@ -225,7 +228,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     }, [])
 
     // Chave de configuração — quando muda, precisa recriar a instância
-    const configKey = `${layout}|${scale}|${showTimeSignature}|${staveProfile}|${includeNoteBounds}`
+    const configKey = `${layout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}`
 
     // Criar/recriar instância quando config muda
     useEffect(() => {
@@ -250,6 +253,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       settings.display.scale = scale
       // Espaçamento entre sistemas (linhas) no layout page
       settings.display.systemPaddingBottom = 20
+      const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
       // Perfil de pauta: tab (tablatura), score (notação), scoreTab (ambos)
       settings.display.staveProfile =
         staveProfile === 'score' ? alphaTabModule.StaveProfile.Score :
@@ -261,16 +265,17 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       settings.player.enableCursor = false
 
       // Mostrar hastes/stems quando tem fórmula de compasso, esconder quando livre
-      settings.notation.rhythmMode = showTimeSignature
+      settings.notation.rhythmMode = isScoreMode
         ? alphaTabModule.TabRhythmMode.ShowWithBars
-        : alphaTabModule.TabRhythmMode.Hidden
+        : showTimeSignature
+          ? alphaTabModule.TabRhythmMode.ShowWithBars
+          : alphaTabModule.TabRhythmMode.Hidden
       // Modo SongBook: mais limpo
       settings.notation.notationMode = alphaTabModule.NotationMode.SongBook
 
       // ── Esconder elementos visuais desnecessários ──
       const NE = alphaTabModule.NotationElement
       const elements = settings.notation.elements
-      const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
       // Metadados do score — sempre esconder (mostramos na UI)
       elements.set(NE.ScoreTitle, false)
       elements.set(NE.ScoreSubTitle, false)

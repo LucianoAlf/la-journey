@@ -80,6 +80,7 @@ export interface BeatsToAlphaTexOptions {
   keySignature: string            // 'C' | 'G' | 'D' | 'F' | 'Bb' | etc.
   timeSignature: string | null    // '4/4' | '3/4' | null (livre)
   grandStaff?: boolean            // true = piano (treble + bass)
+  octaveOffset?: number           // ajuste fino da oitava ao exportar para AlphaTex
   instrument?: string             // nome General MIDI
   bpm?: number
   title?: string
@@ -128,7 +129,7 @@ const CLEF_MAP: Record<string, string> = {
 
 // ─── Converter PitchData → string AlphaTex ───
 
-function pitchToAlphaTex(pd: PitchData): string {
+function pitchToAlphaTex(pd: PitchData, octaveOffset = -1): string {
   // pd.pitch = 'C/4', 'F#/3', 'Bb/5' etc.
   const parts = pd.pitch.split('/')
   const rawName = parts[0]  // 'C', 'F#', 'Bb'
@@ -143,7 +144,10 @@ function pitchToAlphaTex(pd: PitchData): string {
   else if (pd.accidental === 'b') acc = 'b'
   else if (pd.accidental === 'n') acc = 'n'  // bequadro (natural)
 
-  return `${noteLetter}${acc}${octave}`
+  const parsedOctave = Number.parseInt(octave, 10)
+  const alphaTexOctave = Number.isFinite(parsedOctave) ? parsedOctave + octaveOffset : octave
+
+  return `${noteLetter}${acc}${alphaTexOctave}`
 }
 
 // ─── Tipo de retorno com mapa de índice ───
@@ -157,7 +161,7 @@ export interface AlphaTexNotesResult {
 
 // ─── Converter array de beats em notas AlphaTex ───
 
-function beatsToAlphaTexNotes(beats: Beat[]): AlphaTexNotesResult {
+function beatsToAlphaTexNotes(beats: Beat[], octaveOffset = -1): AlphaTexNotesResult {
   const parts: string[] = []
   const indexMap: number[] = []  // alphaTabBeatIdx → ourBeatIdx
   let lastDuration = ''
@@ -196,10 +200,10 @@ function beatsToAlphaTexNotes(beats: Beat[]): AlphaTexNotesResult {
     if (beat.isRest) {
       noteParts.push('r')
     } else if (beat.pitches.length === 1) {
-      noteParts.push(pitchToAlphaTex(beat.pitches[0]))
+      noteParts.push(pitchToAlphaTex(beat.pitches[0], octaveOffset))
     } else if (beat.pitches.length > 1) {
       // Acorde
-      const chord = beat.pitches.map(p => pitchToAlphaTex(p)).join(' ')
+      const chord = beat.pitches.map(p => pitchToAlphaTex(p, octaveOffset)).join(' ')
       noteParts.push(`(${chord})`)
     }
 
@@ -376,7 +380,7 @@ export function beatsToAlphaTex(
     }
 
     if (syncedTrebleBeats.length > 0) {
-      lines.push(beatsToAlphaTexNotes(syncedTrebleBeats).tex)
+      lines.push(beatsToAlphaTexNotes(syncedTrebleBeats, options.octaveOffset ?? 0).tex)
     } else {
       lines.push(':1 r')
     }
@@ -393,7 +397,7 @@ export function beatsToAlphaTex(
     }
 
     if (syncedBassBeats.length > 0) {
-      lines.push(beatsToAlphaTexNotes(syncedBassBeats).tex)
+      lines.push(beatsToAlphaTexNotes(syncedBassBeats, options.octaveOffset ?? 0).tex)
     } else {
       lines.push(':1 r')
     }
@@ -442,7 +446,7 @@ export function beatsToAlphaTex(
     lines.push('.')
 
     // Notas
-    lines.push(beatsToAlphaTexNotes(beats).tex)
+    lines.push(beatsToAlphaTexNotes(beats, options.octaveOffset ?? -1).tex)
   }
 
   return lines.join('\n')
@@ -515,7 +519,7 @@ export function beatsToAlphaTexWithMap(
   lines.push('.')
 
   // Notas com mapa de índice
-  const notesResult = beatsToAlphaTexNotes(beats)
+  const notesResult = beatsToAlphaTexNotes(beats, options.octaveOffset ?? -1)
   lines.push(notesResult.tex)
   indexMap = notesResult.indexMap
 
