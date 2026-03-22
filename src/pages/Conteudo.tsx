@@ -29,7 +29,7 @@ export function Conteudo() {
   // Fetch topics from database
   const { data: topics, loading, refetch } = useTopics({
     instrument: instrument !== 'all' ? instrument : undefined,
-    pillar: dimension !== 'all' ? dimension as any : undefined,
+    dimension: dimension !== 'all' ? dimension as any : undefined,
     difficulty: level !== 'all' ? level as any : undefined,
   })
 

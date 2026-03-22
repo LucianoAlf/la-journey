@@ -14,7 +14,7 @@ export type ContentBlockWithCuration = ContentBlock
 
 export async function getTopics(filters?: {
   instrument?: string
-  pillar?: Database['public']['Enums']['pillar_type']
+  dimension?: Database['public']['Enums']['topic_dimension']
   difficulty?: Database['public']['Enums']['difficulty_level']
 }) {
   let query = supabase
@@ -23,7 +23,7 @@ export async function getTopics(filters?: {
     .order('title')
 
   if (filters?.instrument) query = query.eq('instrument', filters.instrument)
-  if (filters?.pillar) query = query.eq('pillar', filters.pillar)
+  if (filters?.dimension) query = query.eq('dimension', filters.dimension)
   if (filters?.difficulty) query = query.eq('difficulty_level', filters.difficulty)
 
   const { data, error } = await query
@@ -197,7 +197,7 @@ export async function createTopicWithCuration(data: {
     description: data.description,
     instrument: data.instrument,
     dimension: data.dimension as any,
-    pillar: data.dimension as any,  // Keep both for compatibility
+    // pillar uses different enum (pillar_type) - leave null, use dimension instead
     difficulty_level: data.difficulty_level as any,
     tags: data.tags,
     estimated_minutes: data.estimated_minutes,

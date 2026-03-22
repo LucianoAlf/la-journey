@@ -4,12 +4,12 @@ import type { Database } from '@/lib/database.types'
 
 export function useTopics(filters?: {
   instrument?: string
-  pillar?: Database['public']['Enums']['pillar_type']
+  dimension?: Database['public']['Enums']['topic_dimension']
   difficulty?: Database['public']['Enums']['difficulty_level']
 }) {
   return useAsync(
     () => getTopics(filters),
-    [filters?.instrument, filters?.pillar, filters?.difficulty]
+    [filters?.instrument, filters?.dimension, filters?.difficulty]
   )
 }
 
