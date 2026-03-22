@@ -132,65 +132,70 @@ export async function convertPdfToImages(
 
 // ─── Vision AI Analysis ──────────────────────────────────
 
-const VISION_PROMPT = `Você é um curador de conteúdo pedagógico musical.
-Analise esta página de material didático e extraia APENAS conteúdo PEDAGÓGICO.
+const VISION_PROMPT = `Você é um especialista em extrair diagramas de acordes de violão/guitarra de imagens.
 
-IGNORAR COMPLETAMENTE (não extrair):
-- Logos, logotipos, marcas d'água
-- Cabeçalhos e rodapés de página
-- Números de página
-- Decorações visuais sem valor educacional
-- Índices e sumários
-- Informações de copyright
+TAREFA PRINCIPAL: Extrair CADA diagrama de acorde visível na imagem.
 
-EXTRAIR APENAS conteúdo educacional:
-- Explicações teóricas (escalas, acordes, harmonia)
-- Exercícios práticos com instruções claras
-- Cifras e progressões de acordes de músicas
-- Diagramas de acordes (braço do violão com dedilhado)
-- Partituras e notação musical
-- Dicas e macetes pedagógicos
-- Letras de músicas com cifras
+COMO IDENTIFICAR UM DIAGRAMA DE ACORDE:
+- Desenho de braço de violão/guitarra (linhas horizontais = trastes, linhas verticais = cordas)
+- Pontos/círculos indicando onde colocar os dedos
+- Números dentro dos pontos = qual dedo usar (1=indicador, 2=médio, 3=anelar, 4=mindinho)
+- Letra acima do diagrama = nome do acorde (G, C, Am, etc.)
+- Número com "ª" (ex: 7ª, 10ª, 3ª) = casa/posição no braço
 
-IDENTIFICAR TÓPICOS/LIÇÕES:
-- Se a página tem um TÍTULO DE SEÇÃO claro (ex: "Escala Maior", "Acordes Básicos"), use como topic_title
-- Se a página continua uma lição anterior sem novo título, deixe topic_title vazio
-- Agrupe blocos relacionados (ex: explicação + diagrama + exercício = mesma lição)
+COMO EXTRAIR CADA DIAGRAMA:
+Para cada diagrama de acorde visível, crie um bloco com block_type="chord_diagram" e extraia:
 
-Retorne JSON:
+1. chord_name: A letra/nome do acorde (G, C, Am, D7, etc.)
+2. position: O número da casa inicial (se aparecer "7ª" = position 7, se não aparecer = position 1)
+3. fingers: Array de [corda, traste] para cada ponto no diagrama
+   - Cordas: conte da ESQUERDA para DIREITA = 6, 5, 4, 3, 2, 1 (6=Mi grave, 1=Mi agudo)
+   - Trastes: conte de CIMA para BAIXO = 1, 2, 3, 4, 5
+   - Se position > 1, os trastes são RELATIVOS (o primeiro traste visível = 1)
+
+4. barres: Se houver uma barra horizontal conectando vários pontos = pestana
+5. muted: Cordas com X acima = não tocadas
+
+EXEMPLO - Acorde G na 7ª casa:
+Se você vê um diagrama com "G" e "7ª", com pontos nas posições:
+- Ponto na 1ª corda (mais fina, direita), 3º traste do diagrama
+- Ponto na 2ª corda, 3º traste
+- Ponto na 6ª corda (mais grossa, esquerda), 3º traste
+
+Extraia como:
 {
-  "topic_title": "Nome da lição/seção se houver título claro, senão vazio",
-  "topic_description": "Breve descrição do que a página ensina",
+  "block_type": "chord_diagram",
+  "title": "G (7ª posição)",
+  "content": "Acorde de Sol maior na 7ª casa",
+  "chord_data": {
+    "chord_name": "G",
+    "position": 7,
+    "fingers": [[6, 3], [2, 3], [1, 3]],
+    "barres": [],
+    "muted": []
+  }
+}
+
+IGNORAR: logos, cabeçalhos, rodapés, marcas d'água, decorações.
+
+RETORNE JSON:
+{
+  "topic_title": "Título se houver (ex: Magic Chords, Acordes Básicos)",
+  "topic_description": "Descrição breve",
   "blocks": [
     {
-      "block_type": "text|exercise|tip|example|chord_diagram|chord_chart",
-      "title": "Título do bloco",
-      "content": "Texto completo",
-
-      "chord_data": {
-        "chord_name": "Am",
-        "position": 1,
-        "fingers": [[2, 1], [3, 2], [4, 2]],
-        "barres": [],
-        "muted": [6]
-      },
-
-      "chord_chart_data": {
-        "title": "Progressão da música",
-        "chords": [{"chord_name": "C", "position": 1, "fingers": [[2,1],[4,2],[5,3]], "barres": [], "muted": [6]}]
-      }
+      "block_type": "chord_diagram",
+      "title": "Nome do acorde e posição",
+      "content": "Descrição",
+      "chord_data": { "chord_name": "X", "position": N, "fingers": [[corda,traste],...], "barres": [], "muted": [] }
     }
   ]
 }
 
-REGRAS:
-1. NÃO extraia elementos de página (logo, cabeçalho, rodapé, número de página)
-2. AGRUPE conteúdo relacionado - uma música completa é UM bloco tipo "example" ou "chord_chart"
-3. Para cifras de músicas: extraia como chord_chart com TODOS os acordes da progressão
-4. Cordas: 1=Mi grave (mais grossa), 6=Mi agudo (mais fina)
-5. Se não houver conteúdo pedagógico na página, retorne {"topic_title": "", "blocks": []}
-
-Responda APENAS JSON válido, sem markdown, sem backticks.`
+IMPORTANTE:
+- Extraia TODOS os diagramas de acordes visíveis, um por bloco
+- Se houver texto explicativo, adicione como bloco separado tipo "text" ou "tip"
+- Responda APENAS JSON válido, sem markdown, sem backticks`
 
 async function analyzeWithGemini(imageBase64: string): Promise<AiPageResult> {
   const model = AI_CONFIG.generation.model // gemini-3-flash-preview
