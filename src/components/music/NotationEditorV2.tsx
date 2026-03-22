@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from '@/services/notationService'
+import { getEditorTimeSignature, normalizeTimeSignature } from '@/lib/timeSignature'
 
 // ─── Re-export tipos do NotationSvgEditor ───────────────────────────
 export type { BeatDuration, PitchData }
@@ -327,7 +328,7 @@ export function NotationEditorV2({
       }
       setClef(data?.clef || notation.clef || 'treble')
       setKeySignature(data?.keySignature || notation.key_signature || 'C')
-      setTimeSignature(data?.timeSignature || notation.time_signature || 'free')
+      setTimeSignature(getEditorTimeSignature(data?.timeSignature, notation.time_signature))
       setBpm(data?.bpm || 120)
       setGrandStaffMode(data?.grandStaff || false)
       setLabel(notation.name || '')
@@ -404,7 +405,10 @@ export function NotationEditorV2({
   }, [beats, clef, keySignature, timeSignature, grandStaffMode, bpm])
 
   // ─── Barlines calculadas ───────────────────────────────────────────
-  const barlines = useMemo(() => computeBarlines(beats, timeSignature), [beats, timeSignature])
+  const barlines = useMemo(
+    () => computeBarlines(beats, timeSignature, grandStaffMode),
+    [beats, timeSignature, grandStaffMode],
+  )
 
   // ─── Undo/Redo ─────────────────────────────────────────────────────
   const pushHistory = useCallback((newBeats: SvgBeat[]) => {
@@ -431,7 +435,12 @@ export function NotationEditorV2({
 
   // ─── Focar hidden input (só quando o usuário clica no editor) ──────
   const focusInput = useCallback(() => {
-    // Não forçar foco automaticamente para não bloquear inputs externos
+    requestAnimationFrame(() => {
+      const input = hiddenInputRef.current
+      if (!input) return
+      input.focus({ preventScroll: true })
+      input.select()
+    })
   }, [])
 
   // ─── Callbacks do NotationSvgEditor ────────────────────────────────
@@ -547,9 +556,9 @@ export function NotationEditorV2({
     
     lastPitchRef.current = pitch
     
-    // Atualizar activeStaff para a pauta onde a nota foi inserida
-    if (grandStaffMode && staff) {
-      setActiveStaff(staff)
+    // Manter a pauta ativa coerente com a inserção recém-feita
+    if (grandStaffMode) {
+      setActiveStaff(effectiveStaff)
     }
     
     focusInput()
@@ -593,6 +602,27 @@ export function NotationEditorV2({
     setBeats(newBeats)
     pushHistory(newBeats)
   }, [beats, pushHistory])
+
+  const focusStaff = useCallback((staff: 'treble' | 'bass') => {
+    setActiveStaff(staff)
+
+    const lastBeatIdxOnStaff = [...beats].reduce((foundIdx, beat, idx) => {
+      return (beat.staff ?? 'treble') === staff ? idx : foundIdx
+    }, -1)
+
+    setSelectedBeatIdx(lastBeatIdxOnStaff)
+
+    if (lastBeatIdxOnStaff >= 0) {
+      const beat = beats[lastBeatIdxOnStaff]
+      if (!beat.isRest && beat.pitches.length > 0) {
+        lastPitchRef.current = beat.pitches[0].pitch
+      }
+    } else {
+      lastPitchRef.current = null
+    }
+
+    focusInput()
+  }, [beats, focusInput])
 
   // ─── Transposição ────────────────────────────────────────────────────
   const CHROMATIC_SCALE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -742,15 +772,26 @@ export function NotationEditorV2({
     const noteKey = e.key.toUpperCase()
     if (NOTE_NAMES.includes(noteKey) && !e.ctrlKey && !e.altKey) {
       e.preventDefault()
-      const octave = getSmartOctave(noteKey, lastPitchRef.current, clef)
+      const inputClef = grandStaffMode && activeStaff === 'bass' ? 'bass' : clef
+      const octave = getSmartOctave(noteKey, lastPitchRef.current, inputClef)
       const pitch = `${noteKey}/${octave}`
 
       const selectedBeat = selectedBeatIdx >= 0 && selectedBeatIdx < beats.length ? beats[selectedBeatIdx] : null
       const selectedBeatStaff = selectedBeat?.staff ?? 'treble'
+      const selectedTimeSlot = selectedBeat?.timeSlot
+      const activeStaffBeats = grandStaffMode
+        ? beats
+            .map((beat, idx) => ({ beat, idx }))
+            .filter(({ beat }) => (beat.staff ?? 'treble') === activeStaff)
+        : []
       const activeSelectedBeatIdx = grandStaffMode && selectedBeat && selectedBeatStaff !== activeStaff
-        ? [...beats].reverse().findIndex(b => (b.staff ?? 'treble') === activeStaff) >= 0
-          ? beats.length - 1 - [...beats].reverse().findIndex(b => (b.staff ?? 'treble') === activeStaff)
-          : -1
+        ? (
+            activeStaffBeats
+              .filter(({ beat }) => (beat.timeSlot ?? Number.MAX_SAFE_INTEGER) <= (selectedTimeSlot ?? Number.MAX_SAFE_INTEGER))
+              .at(-1)?.idx
+              ?? activeStaffBeats.at(-1)?.idx
+              ?? -1
+          )
         : selectedBeatIdx
 
       if (e.shiftKey && selectedBeatIdx >= 0 && selectedBeatIdx < beats.length) {
@@ -860,10 +901,16 @@ export function NotationEditorV2({
       return
     }
 
-    // Tab = Alternar treble/bass (grande pauta)
-    if (e.key === 'Tab' && grandStaffMode) {
+    // Tab = Recuar seleção na pauta simples; alternar treble/bass na grande pauta
+    if (e.key === 'Tab') {
       e.preventDefault()
-      setActiveStaff(prev => prev === 'treble' ? 'bass' : 'treble')
+      if (grandStaffMode) {
+        focusStaff(activeStaff === 'treble' ? 'bass' : 'treble')
+      } else if (selectedBeatIdx > 0) {
+        setSelectedBeatIdx(selectedBeatIdx - 1)
+      } else if (beats.length > 0 && selectedBeatIdx === -1) {
+        setSelectedBeatIdx(beats.length - 1)
+      }
       return
     }
 
@@ -1048,11 +1095,12 @@ export function NotationEditorV2({
     setIsSaving(true)
 
     try {
+      const normalizedTimeSignature = normalizeTimeSignature(timeSignature)
       const notationData = {
         beats,
         clef,
         keySignature,
-        timeSignature,
+        timeSignature: normalizedTimeSignature,
         bpm,
         grandStaff: grandStaffMode,
       }
@@ -1063,7 +1111,7 @@ export function NotationEditorV2({
           category,
           clef,
           key_signature: keySignature,
-          time_signature: timeSignature !== 'free' ? timeSignature : null,
+          time_signature: normalizedTimeSignature,
           difficulty,
           notation_data: notationData,
         })
@@ -1075,7 +1123,7 @@ export function NotationEditorV2({
           category,
           clef,
           key_signature: keySignature,
-          time_signature: timeSignature !== 'free' ? timeSignature : null,
+          time_signature: normalizedTimeSignature,
           difficulty,
           notation_data: notationData,
         })
@@ -1250,7 +1298,7 @@ export function NotationEditorV2({
           {grandStaffMode && (
             <>
               <button
-                onClick={() => { setActiveStaff('treble'); focusInput() }}
+                onClick={() => { focusStaff('treble') }}
                 className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 transition-colors ${
                   activeStaff === 'treble'
                     ? 'border-accent bg-accent/20 text-accent'
@@ -1261,7 +1309,7 @@ export function NotationEditorV2({
                 𝄞 Sol (MD)
               </button>
               <button
-                onClick={() => { setActiveStaff('bass'); focusInput() }}
+                onClick={() => { focusStaff('bass') }}
                 className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 transition-colors ${
                   activeStaff === 'bass'
                     ? 'border-indigo-500 bg-indigo-500/20 text-indigo-500'

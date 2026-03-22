@@ -105,6 +105,8 @@ export function AlphaTexInlineRenderer({
     elements.set(NE.GuitarTuning, false)
     elements.set(NE.TrackNames, false)
     elements.set(NE.EffectTempo, false)
+    elements.set(NE.EffectDynamics, false)
+    elements.set(NE.EffectCrescendo, false)
     elements.set(NE.EffectFreeTime, false)
     elements.set(NE.BarNumber, false)
 
@@ -124,6 +126,13 @@ export function AlphaTexInlineRenderer({
 
     const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
     apiRef.current = api
+
+    api.scoreLoaded.on((score: any) => {
+      for (const masterBar of score.masterBars) {
+        masterBar.isFreeTime = false
+        masterBar.tempoAutomations = []
+      }
+    })
 
     api.renderFinished.on(() => {
       setLoading(false)

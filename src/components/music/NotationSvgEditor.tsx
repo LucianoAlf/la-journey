@@ -69,7 +69,7 @@ const NOTES_START_TS = NOTES_START + TIME_SIG_WIDTH // início dos beats com com
 const RIGHT_MARGIN = 20
 const CLEF_WIDTH = 30
 const KEY_SIG_WIDTH = 20       // por acidente na armadura
-const SVG_OCTAVE_SHIFT = 1
+const SVG_OCTAVE_SHIFT = 0
 
 const BEAT_WIDTHS: Record<BeatDuration, number> = {
   w: 60, h: 48, q: 36, '8': 28, '16': 22, '32': 18, '64': 14,
@@ -277,6 +277,7 @@ interface RowLayout {
   startCol: number
   endCol: number // exclusive
   beatCenters: number[] // X de cada beat relativo ao inicio da linha
+  timeSlots: number[]
   x: number // X inicial da linha
   beats: { idx: number; xOffset: number; duration: BeatDuration; pitches: PitchData[]; staff?: 'treble' | 'bass'; timeSlot?: number }[]
 }
@@ -379,6 +380,7 @@ function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: bo
       startCol: 0,
       endCol: beats.length,
       beatCenters: centers,
+      timeSlots: sortedSlots,
       x: leftOffset,
       beats: rowBeats,
     }, stretchFactor)
@@ -420,7 +422,14 @@ function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: bo
         const stretchFactor = !hasTimeSignature && usedW > 0
           ? usableWidth / usedW
           : 1
-        const rowLayout = stretchRowLayout({ startCol, endCol: col, beatCenters: centers, x: leftOffset, beats: rowBeats }, stretchFactor)
+        const rowLayout = stretchRowLayout({
+          startCol,
+          endCol: col,
+          beatCenters: centers,
+          timeSlots: Array.from({ length: col - startCol }, (_, idx) => startCol + idx),
+          x: leftOffset,
+          beats: rowBeats,
+        }, stretchFactor)
         rows.push(rowLayout)
       }
     }
@@ -428,7 +437,7 @@ function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: bo
 
   // Se não há beats, criar uma linha vazia para mostrar a pauta
   if (rows.length === 0) {
-    rows.push({ startCol: 0, endCol: 0, beatCenters: [], x: leftOffset, beats: [] })
+    rows.push({ startCol: 0, endCol: 0, beatCenters: [], timeSlots: [], x: leftOffset, beats: [] })
   }
 
   return rows
@@ -525,14 +534,18 @@ export function NotationSvgEditor({
       const snappedY = snapToStaffPosition(my, effectiveTopY)
       const pitch = yToPitch(snappedY, effectiveClef, effectiveTopY, SVG_OCTAVE_SHIFT)
 
-      // Encontrar coluna mais próxima pelo X (ou posição de inserção)
+      // Encontrar coluna/timeSlot mais próximo pelo X (ou posição de inserção)
       let bestCol = -1
+      let bestSlotIdx = -1
       let bestDist = Infinity
       for (let i = 0; i < row.beatCenters.length; i++) {
-        const colIdx = row.startCol + i
         const cx = row.beatCenters[i]
-        const dur = beats[colIdx]?.duration ?? 'q'
-        const halfW = BEAT_WIDTHS[dur] / 2
+        const slot = row.timeSlots[i] ?? (row.startCol + i)
+        const slotBeats = row.beats.filter(beat => (beat.timeSlot ?? beat.idx) === slot)
+        const widestBeat = slotBeats.reduce<BeatDuration>((current, beat) => {
+          return BEAT_WIDTHS[beat.duration] > BEAT_WIDTHS[current] ? beat.duration : current
+        }, 'q')
+        const halfW = BEAT_WIDTHS[widestBeat] / 2
         const dist = Math.abs(mx - cx)
         // Na Grande Pauta, a coluna visual precisa de uma tolerância maior,
         // especialmente na pauta de Fá, para não exigir clique deslocado à direita.
@@ -541,8 +554,15 @@ export function NotationSvgEditor({
           : halfW * 1.5
         if (dist < hitTolerance && dist < bestDist) {
           bestDist = dist
-          bestCol = colIdx
+          bestSlotIdx = i
         }
+      }
+
+      if (bestSlotIdx >= 0) {
+        const slot = row.timeSlots[bestSlotIdx] ?? (row.startCol + bestSlotIdx)
+        const slotBeats = row.beats.filter(beat => (beat.timeSlot ?? beat.idx) === slot)
+        const matchingBeat = slotBeats.find(beat => (beat.staff ?? 'treble') === clickedStaff)
+        bestCol = matchingBeat?.idx ?? slotBeats[0]?.idx ?? -1
       }
 
       // Se não encontrou beat próximo, calcular posição de inserção
@@ -560,7 +580,9 @@ export function NotationSvgEditor({
       }
 
       // Se encontrou um beat, pegar o timeSlot dele para referência
-      const referenceTimeSlot = bestCol >= 0 ? (beats[bestCol]?.timeSlot ?? bestCol) : undefined
+      const referenceTimeSlot = bestSlotIdx >= 0
+        ? (row.timeSlots[bestSlotIdx] ?? (beats[bestCol]?.timeSlot ?? bestCol))
+        : undefined
 
       return {
         beatIdx: bestCol,
@@ -607,9 +629,11 @@ export function NotationSvgEditor({
       const pos = getPositionFromEvent(e)
       if (pos && pos.beatIdx >= 0) {
         onDeleteBeat(pos.beatIdx)
+      } else if (selectedBeatIdx >= 0) {
+        onDeleteBeat(selectedBeatIdx)
       }
     },
-    [getPositionFromEvent, onDeleteBeat],
+    [getPositionFromEvent, onDeleteBeat, selectedBeatIdx],
   )
 
   const handleMouseMove = useCallback(
@@ -1024,10 +1048,9 @@ export function NotationSvgEditor({
 
         // ── Cursor de seleção (retângulo pulsante) ──
         if (isSelected) {
-          const beat = beats[colIdx]
-          let cursorY = topY + 2 * LINE_SPACING
-          if (beat && !beat.isRest && beat.pitches.length > 0) {
-            cursorY = pitchToY(beat.pitches[0].pitch, clef, topY, SVG_OCTAVE_SHIFT)
+          let cursorY = noteStaffTopY + 2 * LINE_SPACING
+          if (!beat.isRest && beat.pitches.length > 0) {
+            cursorY = pitchToY(beat.pitches[0].pitch, noteClef, noteStaffTopY, SVG_OCTAVE_SHIFT)
           }
           els.push(
             <rect
@@ -1048,20 +1071,23 @@ export function NotationSvgEditor({
       }
 
       // ── Barlines ──
-      const barlineSet = new Set(barlines)
+      const barlineSet = grandStaffMode
+        ? new Set(barlines.map(idx => beats[idx]?.timeSlot ?? idx))
+        : new Set(barlines)
+      const barlineBottomY = grandStaffMode ? bassStaffTopY(r) + STAFF_HEIGHT : topY + STAFF_HEIGHT
       for (let i = 0; i < row.beatCenters.length; i++) {
-        const colIdx = row.startCol + i
-        if (barlineSet.has(colIdx) && i < row.beatCenters.length - 1) {
+        const slot = row.timeSlots[i] ?? (row.startCol + i)
+        if (barlineSet.has(slot) && i < row.beatCenters.length - 1) {
           const cx = row.beatCenters[i]
           const nextCx = row.beatCenters[i + 1]
           const barX = (cx + nextCx) / 2
           els.push(
             <line
-              key={`bar-${r}-${colIdx}`}
+              key={`bar-${r}-${slot}`}
               x1={barX}
               y1={topY}
               x2={barX}
-              y2={topY + STAFF_HEIGHT}
+              y2={barlineBottomY}
               stroke={C.barline}
               strokeWidth={1}
               style={{ pointerEvents: 'none' }}
@@ -1077,7 +1103,7 @@ export function NotationSvgEditor({
           x1={VB_WIDTH - RIGHT_MARGIN}
           y1={topY}
           x2={VB_WIDTH - RIGHT_MARGIN}
-          y2={topY + STAFF_HEIGHT}
+          y2={barlineBottomY}
           stroke={C.barline}
           strokeWidth={1}
           style={{ pointerEvents: 'none' }}
@@ -1086,7 +1112,7 @@ export function NotationSvgEditor({
     }
 
     return els
-  }, [rows, staffTopY, clef, beats, selectedBeatIdx, barlines])
+  }, [rows, staffTopY, bassStaffTopY, clef, beats, selectedBeatIdx, barlines, grandStaffMode])
 
   // ── Ghost note ──
   const ghostNoteElement = useMemo(() => {
@@ -1104,7 +1130,10 @@ export function NotationSvgEditor({
     if (hitRow < 0) return null
 
     const topY = staffTopY(hitRow)
-    const snappedY = snapToStaffPosition(hoverPos.y, topY)
+    const effectiveTopY = grandStaffMode && hoverPos.y >= topY + STAFF_HEIGHT + GRAND_STAFF_GAP / 2
+      ? bassStaffTopY(hitRow)
+      : topY
+    const snappedY = snapToStaffPosition(hoverPos.y, effectiveTopY)
 
     return (
       <ellipse
@@ -1117,7 +1146,7 @@ export function NotationSvgEditor({
         style={{ pointerEvents: 'none' }}
       />
     )
-  }, [hoverPos, isInputMode, rows, rowY, rowH, staffTopY])
+  }, [hoverPos, isInputMode, rows, rowY, rowH, staffTopY, bassStaffTopY, grandStaffMode])
 
   // ── Cursor de inserção (linha vertical) ──
   const insertionCursor = useMemo(() => {
@@ -1126,27 +1155,30 @@ export function NotationSvgEditor({
     // Encontrar posição do cursor
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r]
-      for (let i = 0; i < row.beatCenters.length; i++) {
-        if (row.startCol + i === selectedBeatIdx) {
-          const cx = row.beatCenters[i]
-          const topY = staffTopY(r)
-          return (
-            <line
-              x1={cx + 15}
-              y1={topY - 5}
-              x2={cx + 15}
-              y2={topY + STAFF_HEIGHT + 5}
-              stroke={C.cursor}
-              strokeWidth={2}
-              className="animate-pulse"
-              style={{ pointerEvents: 'none' }}
-            />
-          )
-        }
+      const selectedBeat = row.beats.find(beat => beat.idx === selectedBeatIdx)
+      if (selectedBeat) {
+        const selectedTopY = grandStaffMode && selectedBeat.staff === 'bass'
+          ? bassStaffTopY(r)
+          : staffTopY(r)
+        const selectedBottomY = selectedTopY + STAFF_HEIGHT
+        const cx = row.x + selectedBeat.xOffset
+
+        return (
+          <line
+            x1={cx + 15}
+            y1={selectedTopY - 5}
+            x2={cx + 15}
+            y2={selectedBottomY + 5}
+            stroke={C.cursor}
+            strokeWidth={2}
+            className="animate-pulse"
+            style={{ pointerEvents: 'none' }}
+          />
+        )
       }
     }
     return null
-  }, [isInputMode, selectedBeatIdx, rows, staffTopY])
+  }, [isInputMode, selectedBeatIdx, rows, staffTopY, bassStaffTopY, grandStaffMode])
 
   return (
     <div className="relative rounded-xl border border-border bg-card overflow-hidden">

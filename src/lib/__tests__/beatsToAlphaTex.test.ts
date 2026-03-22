@@ -252,6 +252,24 @@ const hairTex = beatsToAlphaTexNotes(hairBeats).tex
 assertContains(hairTex, 'cre', 'Crescendo cre')
 assertContains(hairTex, 'dec', 'Decrescendo dec')
 
+// 19. Compasso livre
+console.log('\n--- Compasso livre ---')
+const freeTex = beatsToAlphaTex(
+  [makeBeat({ pitches: [makeNote('C/4')] })],
+  { ...defaultOptions, timeSignature: 'free' as any },
+)
+assertNotContains(freeTex, '\\ts', 'Nao emite formula de compasso para "free"')
+assertNotContains(freeTex, 'undefined', 'Nao emite fragmento invalido com "free"')
+
+// 20. Compasso invalido
+console.log('\n--- Compasso invalido ---')
+const invalidTex = beatsToAlphaTex(
+  [makeBeat({ pitches: [makeNote('C/4')] })],
+  { ...defaultOptions, timeSignature: 'abc' as any },
+)
+assertNotContains(invalidTex, '\\ts', 'Ignora formula de compasso invalida')
+assertNotContains(invalidTex, 'undefined', 'Nao emite fragmento invalido com compasso invalido')
+
 // ─── Resultado ───
 
 console.log(`\n${'─'.repeat(40)}`)

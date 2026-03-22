@@ -140,14 +140,6 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
       }
     })
 
-    if (!showTimeSignature) {
-      // Esconder paths (brackets de free time) — são curvas na região esquerda
-      const paths = svg.querySelectorAll(':scope > path')
-      paths.forEach(p => {
-        ;(p as SVGElement).style.display = 'none'
-      })
-    }
-
     // Estender staff lines até a borda direita do SVG (linhas completas)
     // Filtrar apenas linhas que começam perto da margem esquerda (staff lines reais),
     // e esconder retângulos extras do diagrama de acorde (que começam mais à direita)
@@ -274,8 +266,10 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
         : showTimeSignature
           ? alphaTabModule.TabRhythmMode.ShowWithBars
           : alphaTabModule.TabRhythmMode.Hidden
-      // Modo SongBook: mais limpo
-      settings.notation.notationMode = alphaTabModule.NotationMode.SongBook
+      // A grande pauta precisa do modo mais completo para preservar as duas claves.
+      settings.notation.notationMode = grandStaffMode
+        ? alphaTabModule.NotationMode.GuitarPro
+        : alphaTabModule.NotationMode.SongBook
 
       // ── Esconder elementos visuais desnecessários ──
       const NE = alphaTabModule.NotationElement
@@ -291,12 +285,12 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       elements.set(NE.ScoreCopyright, false)
       // Track/tuning info
       elements.set(NE.GuitarTuning, false)
-      elements.set(NE.TrackNames, isScoreMode) // mostrar nome do track em score
-      // Efeitos — no modo score, mostrar dinâmicas e crescendo
+      elements.set(NE.TrackNames, false)
+      // Efeitos — o preview do editor deve seguir o SVG, sem marcas expressivas extras
       elements.set(NE.EffectTempo, false)
-      elements.set(NE.EffectDynamics, isScoreMode)
+      elements.set(NE.EffectDynamics, false)
       elements.set(NE.EffectPickStroke, true)
-      elements.set(NE.EffectCrescendo, isScoreMode)
+      elements.set(NE.EffectCrescendo, false)
       elements.set(NE.EffectFreeTime, false)
       // Número de compasso — mostrar no modo score com time signature
       elements.set(NE.BarNumber, isScoreMode && showTimeSignature)
@@ -332,23 +326,21 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       api.scoreLoaded.on((score: any) => {
         for (let i = 0; i < score.masterBars.length; i++) {
           const mb = score.masterBars[i]
-          // Só marcar free time se NÃO tem fórmula de compasso
+          // Não forçar o marcador visual de free time; a UI já controla se
+          // a fórmula de compasso deve ou não aparecer.
           if (!showTimeSignature) {
-            mb.isFreeTime = true
+            mb.isFreeTime = false
           }
           // Limpar tempo automations para não mostrar BPM
           mb.tempoAutomations = []
         }
-        // Limpar dinâmicas em todos os beats — apenas no modo tab
-        // No modo score, preservar dinâmicas para exibição
-        if (!isScoreMode) {
-          for (const track of score.tracks) {
-            for (const staff of track.staves) {
-              for (const bar of staff.bars) {
-                for (const voice of bar.voices) {
-                  for (const beat of voice.beats) {
-                    beat.dynamics = alphaTabModule.model.DynamicValue.F
-                  }
+        // Neutralizar dinâmicas implícitas do alphaTab para o preview bater com o SVG.
+        for (const track of score.tracks) {
+          for (const staff of track.staves) {
+            for (const bar of staff.bars) {
+              for (const voice of bar.voices) {
+                for (const beat of voice.beats) {
+                  beat.dynamics = alphaTabModule.model.DynamicValue.N
                 }
               }
             }

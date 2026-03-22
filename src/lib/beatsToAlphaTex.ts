@@ -1,3 +1,5 @@
+import { normalizeTimeSignature } from './timeSignature'
+
 // ─── beatsToAlphaTex.ts ───────────────────────────────────────────────────────
 // Converte Beat[] (modelo do NotationEditor) → string AlphaTex
 // para renderização via AlphaTab.
@@ -288,6 +290,7 @@ export function beatsToAlphaTex(
   options: BeatsToAlphaTexOptions,
 ): string {
   const lines: string[] = []
+  const normalizedTimeSignature = normalizeTimeSignature(options.timeSignature)
 
   // Header global
   if (options.title) lines.push(`\\title "${options.title}"`)
@@ -375,8 +378,8 @@ export function beatsToAlphaTex(
     if (options.keySignature && options.keySignature !== 'C') {
       lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
     }
-    if (options.timeSignature) {
-      const [n, d] = options.timeSignature.split('/')
+    if (normalizedTimeSignature) {
+      const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
     }
 
@@ -392,8 +395,8 @@ export function beatsToAlphaTex(
     if (options.keySignature && options.keySignature !== 'C') {
       lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
     }
-    if (options.timeSignature) {
-      const [n, d] = options.timeSignature.split('/')
+    if (normalizedTimeSignature) {
+      const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
     }
 
@@ -429,8 +432,8 @@ export function beatsToAlphaTex(
     }
 
     // Fórmula de compasso
-    if (options.timeSignature) {
-      const [n, d] = options.timeSignature.split('/')
+    if (normalizedTimeSignature) {
+      const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
     }
 
@@ -476,6 +479,7 @@ export function beatsToAlphaTexWithMap(
 ): BeatsToAlphaTexResult {
   const lines: string[] = []
   let indexMap: number[] = []
+  const normalizedTimeSignature = normalizeTimeSignature(options.timeSignature)
 
   // Header global
   if (options.title) lines.push(`\\title "${options.title}"`)
@@ -509,8 +513,8 @@ export function beatsToAlphaTexWithMap(
     lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
   }
 
-  if (options.timeSignature) {
-    const [n, d] = options.timeSignature.split('/')
+  if (normalizedTimeSignature) {
+    const [n, d] = normalizedTimeSignature.split('/')
     lines.push(`\\ts ${n} ${d}`)
   }
 

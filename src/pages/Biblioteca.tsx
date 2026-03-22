@@ -20,13 +20,14 @@ import { GuitarFretboardDiagram, type GuitarFretboardPositions } from "@/compone
 import { GuitarFretboardEditor } from "@/components/music/GuitarFretboardEditor";
 import { createChord, updateChord, deleteChord, insertChordsBatch } from "@/services/libraryService";
 import { generateAllChordsForPopulation } from "@/services/chordAutoFillService";
-import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
+import { type NotationLibraryRow } from "@/services/notationService";
 import { createTablature, updateTablature, deleteTablature, type TablatureLibraryRow } from "@/services/notationService";
 import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
 import { beatsToAlphaTex } from "@/lib/beatsToAlphaTex";
+import { normalizeTimeSignature } from "@/lib/timeSignature";
 
 function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
   return rawBeats
@@ -436,20 +437,11 @@ export function Biblioteca() {
   }
 
   // CRUD Notação
-  const handleSaveNotation = async (data: NotationLibraryRow) => {
-    if (editingNotation) {
-      await updateNotation(editingNotation.id, data);
-      toast.success('Notação atualizada!');
-    } else {
-      await createNotation(data as any);
-      toast.success('Notação criada!');
-    }
+  const handleSaveNotation = async (_data: NotationLibraryRow) => {
     refetchNotations();
   };
 
-  const handleDeleteNotation = async (id: string) => {
-    await deleteNotation(id);
-    toast.success('Notação excluída');
+  const handleDeleteNotation = async (_id: string) => {
     refetchNotations();
   };
 
@@ -1232,7 +1224,10 @@ export function Biblioteca() {
               <div className="grid grid-cols-2 gap-4">
                 {filteredNotations.map(nota => {
                   const catBadge = NOTATION_CATEGORY_BADGES[nota.category] ?? { label: nota.category, variant: 'secondary' as const }
-                  const noteCount = (nota.notation_data?.beats ?? []).reduce((s: number, b: any) => s + (b.notes?.length ?? 0), 0)
+                  const noteCount = (nota.notation_data?.beats ?? []).reduce((s: number, b: any) => {
+                    const pitches = Array.isArray(b?.pitches) ? b.pitches.length : Array.isArray(b?.notes) ? b.notes.length : 0
+                    return s + pitches
+                  }, 0)
                   return (
                     <div
                       key={nota.id}
@@ -1262,9 +1257,10 @@ export function Biblioteca() {
                             const tex = beatsToAlphaTex(normalizedBeats as any, {
                               clef: nota.notation_data?.clef || nota.clef || 'treble',
                               keySignature: nota.notation_data?.keySignature || nota.key_signature || 'C',
-                              timeSignature: nota.notation_data?.timeSignature || nota.time_signature || null,
+                              timeSignature: normalizeTimeSignature(nota.notation_data?.timeSignature ?? nota.time_signature),
                               grandStaff: Boolean(nota.notation_data?.grandStaff),
                               bpm: nota.notation_data?.bpm || undefined,
+                              includeLyrics: false,
                             })
 
                             return tex ? (

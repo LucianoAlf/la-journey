@@ -1,12 +1,12 @@
 # 🎵 LA Journey — Product Requirements Document (PRD)
 
-**Versão:** 5.0  
-**Data:** 17 de março de 2026  
+**Versão:** 5.1  
+**Data:** 22 de março de 2026  
 **Autor:** Luciano Alf · LA Music  
 **Classificação:** Confidencial  
 **Changelog v2:** Inclusão do Editor de Material (block-based), módulos Gestão de Turmas, Visão do Professor e Integrações, novas tabelas (material_blocks, class_students, whatsapp_templates), arquitetura multi-tenant (RLS), Gemini API para imagens, tipografia atualizada.
 **Changelog v3:** AlphaTab integrado como player de tablatura interativo com MIDI. Pipeline Songsterr→GP completo (Edge Function + conversor frontend). Mixer de volumes por track. Upload de arquivos GP com auto-preenchimento de metadados via ScoreLoader. SoundFont GeneralUser GS (30MB). Modal dedicado "Importar GP" (GpImportModal). Nova coluna `gp_file_url` no repertoire. Bucket `gp-files` no Storage.
-**Changelog v4:** Editor de Notação Musical completo (NotationEditor + NotationRenderer): 4 claves (Sol/Fá/Dó/Percussão), 5 durações, alterações (#/b/♮), armaduras, pausas, ponto de aumento, noteheads de percussão (x), barras de compasso manuais (modo livre), serialização para Supabase. Editor de Tablatura completo (TablatureEditor + TabSvgEditor): editor SVG multi-linha interativo, 5 instrumentos (violão/guitarra/baixo/ukulele/7 cordas), auto-expand de colunas, AlphaTab preview integrado, fórmulas de compasso (16 opções com subdivisão automática), barras de compasso com números, durações proporcionais (semibreve a semicolcheia), Tab como backspace contínuo, substituição direta de trastes. Biblioteca Musical expandida para 5 tabs (Acordes/Escalas/Notação/Tablatura/Imagens IA). AlphaTab Viewer condicional: stems/barras/fórmula visíveis quando há compasso definido, limpo quando livre. Tabela `notation_library` + `tablature_library` no Supabase. 8961 acordes na chord_library.
+**Changelog v4:** Editor de Notação Musical completo (NotationEditor + NotationRenderer): 4 claves (Sol/Fá/Dó/Percussão), 5 durações, alterações (#/b/♮), armaduras, pausas, ponto de aumento, noteheads de percussão (x), barras de compasso manuais (modo livre), serialização para Supabase. Editor de Tablatura completo (TablatureEditor + TabSvgEditor): editor SVG multi-linha interativo, 5 instrumentos (violão/guitarra/baixo/ukulele/7 cordas), auto-expand de colunas, AlphaTab preview integrado, fórmulas de compasso (16 opções com subdivisão automática), barras de compasso com números, durações proporcionais (semibreve a semicolcheia), Tab como backspace contínuo, substituição direta de trastes. Biblioteca Musical expandida para 5 tabs (Acordes/Escalas/Notação/Tablatura/Imagens IA). AlphaTab Viewer condicional: stems/barras/fórmula visíveis quando há compasso definido, limpo quando livre. Tabela `notation_library` no Supabase; a tablatura é serializada no schema atual dentro de blocos/render_data, sem tabela dedicada `tablature_library`. 8961 acordes na chord_library.
 **Changelog v5:** Editor de Tablatura expandido: ponto de aumento, ligadura, palhetada (↓/↑), quiáltera (3/5/6/7), toolbar reorganizada com grupos lógicos. Popover de acorde integrado com Supabase (`chord_library`): busca assíncrona com debounce, navegação entre posições, normalização automática de input (g→G). Diagramador de acorde (ChordEditor) integrado: clicar no diagrama abre modal de edição visual, criar nova posição do zero, salvar/atualizar acorde no banco em tempo real. Editor de Notação com cifras e annotations como overlay HTML. Capas de material com geração de imagem IA (Gemini), prompt personalizável, edição inline de título, drag-and-drop de elementos. Blocos de mídia no Editor de Material: imagem (upload), áudio (player HTML5), vídeo (embed YouTube/Vimeo). 8965 acordes na chord_library. 20 services no frontend. 17 componentes musicais. 16 páginas + Login.
 
 ---
@@ -311,7 +311,7 @@ Cada elemento renderizado tem um ID único no banco de dados e é armazenado com
 - **Diagramador de acorde (ChordEditor):** clicar no diagrama do popover abre modal com editor visual de braço do instrumento (canvas 2D), editar dedos/pestanas/cordas abertas-mutadas, criar nova posição do zero, salvar/atualizar acorde no banco `chord_library` em tempo real, recarrega posições no popover após salvar
 - AlphaTab preview integrado com fórmula de compasso, barras e stems visíveis
 - Atalhos de teclado: L (ligadura), . (ponto), D (palhetada ↓), U (palhetada ↑), T (quiáltera), C (acorde)
-- Serialização completa para Supabase (tablature_library)
+- Serialização completa para Supabase via blocos/render_data do editor (sem tabela dedicada `tablature_library` no schema atual)
 
 **AlphaTab Viewer** (`AlphaTabViewer.tsx`):
 - Viewer leve de tablatura usando AlphaTab — sem player
@@ -525,7 +525,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 
 ## 8. Schema do Banco de Dados (Supabase / PostgreSQL)
 
-**Total: 23 tabelas | 24 enums | ~60 RLS policies | 4 storage buckets**
+**Total auditado em 22/03/2026: 26 tabelas `public` | 23 enums `public` | 83 RLS policies `public` | 5 storage buckets**
 
 **Projeto Supabase:**
 - Nome: LA Journey
@@ -534,28 +534,61 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 - Região: `sa-east-1` (São Paulo)
 - PostgreSQL: v17.6.1
 
-**Migrations aplicadas:**
-1. `001_foundation_enums_and_core_tables` — 6 tabelas + 23 enums + RLS + storage
-2. `002_journey_and_methodology` — 4 tabelas + FK classes→journeys
-3. `003_content_and_music_library` — 5 tabelas + FK station_topics→content_topics
-4. `004_operations_editor_communication` — 7 tabelas (inclui material_blocks e whatsapp_templates)
-5. `005_fix_rls_performance_and_missing_indexes` — Otimização de performance RLS
-6. `006_create_auth_user_alf` — Usuário Auth do Alf para RLS funcionar desde o dia 1
-7. `007_fix_rls_infinite_recursion` — Correção de recursão infinita em policies RLS
-8. `008_fix_all_remaining_rls_policies` — Correção de todas as policies RLS restantes
-9. `009_enable_pgvector_and_rag_infrastructure` — pgvector + embeddings para RAG
-10. `010_add_chord_library_update_delete_policies` — Policies CRUD para chord_library
-11. `011_create_teoria_complementar_journey` — Jornada Teoria Musical Complementar
-12. `012_add_get_station_blocks_function` — RPC para buscar blocos por estação
-13. `013_add_vexflow_render_data_to_blocks` — Dados VexFlow nos blocos de conteúdo
-14. `014_add_save_material_and_editor_functions` — RPCs para salvar material e editor
-15. `015_add_piano_cavaquinho_to_enum` — Novos instrumentos no enum
-16. `016_seed_piano_chords_and_scale_positions` — Acordes de piano e posições de escala
-17. `017_create_notation_library` — Biblioteca de notação musical
-18. `018_add_new_material_block_types` — Novos tipos de bloco (chord_grid, keyboard, keyboard_grid, page_break, rhythm, cover)
-19. `019_add_lyrics_and_cifra_content_to_repertoire` — Colunas lyrics, cifra_content, source_url
-20. `020_add_repertoire_extended_columns` — Colunas bpm, capo, time_signature, songsterr_id (unique), sections
-21. `021_create_backing_tracks_table` — Tabela backing_tracks + RLS + bucket audio-tracks
+**Migrations aplicadas (estado auditado em 22/03/2026):**
+1. `001_foundation_enums_and_core_tables` — Base inicial: escolas, usuários, alunos, turmas, enums, RLS e storage
+2. `002_journey_and_methodology` — Jornada, stages, stations e vínculos com turmas
+3. `003_content_and_music_library` — Conteúdo curado, repertório, chord_library e scale_library
+4. `004_operations_editor_communication` — Operação, editor, gamificação e WhatsApp
+5. `005_fix_rls_performance_and_missing_indexes` — Otimizações iniciais de RLS e índices
+6. `006_create_auth_user_alf` — Seed inicial de usuário no Auth
+7. `007_fix_rls_infinite_recursion` — Correção de recursão em policies
+8. `008_fix_all_remaining_rls_policies` — Ajustes complementares de RLS
+9. `009_enable_pgvector_and_rag_infrastructure` — pgvector + embeddings para busca semântica
+10. `010_add_chord_library_update_delete_policies` — CRUD de curadoria na chord_library
+11. `011_create_teoria_complementar_journey` — Jornada transversal de teoria musical
+12. `012_add_get_station_blocks_function` — RPC para blocos de estação
+13. `013_add_vexflow_render_data_to_blocks` — Dados de renderização VexFlow
+14. `014_add_save_material_and_editor_functions` — RPCs do editor/material
+15. `015_add_piano_cavaquinho_to_enum` — Novos instrumentos no enum de acordes
+16. `016_seed_piano_chords_and_scale_positions` — Seed musical complementar
+17. `017_create_notation_library` — Biblioteca de notação
+18. `018_add_new_material_block_types` — Cover, chord_grid, keyboard, keyboard_grid, page_break, rhythm
+19. `019_add_lyrics_and_cifra_content_to_repertoire` — Letra, cifra e source_url
+20. `020_add_repertoire_extended_columns` — bpm, capo, fórmula, songsterr_id e sections
+21. `021_create_backing_tracks_table` — backing_tracks + bucket `audio-tracks`
+22. `022_add_unique_constraint_chord_library_name_instrument` — ajuste inicial de unicidade em acordes
+23. `023_remove_wrong_unique_constraint_chord_library` — remoção de constraint incorreta
+24. `024_add_unique_constraint_chord_library` — nova regra de unicidade
+25. `025_create_rpc_suggest_repertoire` — recomendação de repertório por acordes conhecidos
+26. `026_create_rpc_suggest_repertoire_partial` — recomendação parcial com acordes faltantes
+27. `027_add_gp_file_url_to_repertoire` — suporte a arquivos Guitar Pro
+28. `028_add_repertoire_delete_policy` — policy de delete para repertório
+29. `029_add_country_to_repertoire` — país/origem no repertório
+30. `030_add_chord_classification_columns` — classificação harmônica ampliada
+31. `031_add_has_barre_column` — detecção de pestana
+32. `032_add_canonical_name_column` — nome canônico de acorde
+33. `033_add_slash_type_column` — tipagem de slash chord
+34. `034_add_caged_shape_column` — shape CAGED
+35. `035_alter_chord_library_unique_constraint_for_caged` — unicidade ajustada para CAGED
+36. `036_auto_classify_chord_on_insert_update` — classificação automática de acordes
+37. `037_add_voicing_position_column` — posição de voicing
+38. `038_add_voicing_position_to_unique_constraint` — unicidade com voicing
+39. `039_add_composite_index_instrument_sort_name` — índice composto para busca de acordes
+40. `040_add_electric_guitar_to_chord_instrument` — novo instrumento no enum
+41. `041_create_image_library` — biblioteca de imagens IA
+42. `042_add_character_category_to_image_library` — categoria `character`
+43. `043_add_page_config_to_generated_materials` — layout visual de página
+44. `044_create_material_versions` — versionamento de materiais
+45. `045_fix_get_material_with_blocks_add_page_config` — ajuste da RPC do editor
+46. `046_add_curation_fields_to_content_topics` — curadoria e escopo por escola em topics
+47. `047_add_image_type_to_content_block_type` — bloco `image` em content_blocks
+
+**Buckets atuais:**
+- `audio-tracks` — stems/backing tracks
+- `content-images` — imagens de conteúdo e assets visuais
+- `generated-materials` — PDFs/HTML gerados
+- `gp-files` — arquivos Guitar Pro
+- `school-logos` — logos das escolas
 
 ### 8.1 Gestão da Escola
 
@@ -575,6 +608,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | city | text | Cidade |
 | state | text | Estado |
 | created_at | timestamptz | Data de criação |
+| updated_at | timestamptz | Data de atualização |
 
 **users** — Usuários do sistema
 | Campo | Tipo | Descrição |
@@ -690,6 +724,12 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | tags | text[] | Tags de busca |
 | estimated_minutes | int | Tempo estimado |
 | created_at | timestamptz | Data de criação |
+| updated_at | timestamptz | Data de atualização |
+| embedding | vector | Embedding semântico do tópico |
+| source_document | text | Documento/fonte de curadoria |
+| curation_status | enum | draft, review, approved, published |
+| curated_by | uuid (FK → users) | Curador responsável |
+| school_id | uuid (FK → schools), nullable | NULL = global da plataforma, preenchido = privado da escola |
 
 **content_blocks** — Blocos de conteúdo curado (unidades atômicas)
 | Campo | Tipo | Descrição |
@@ -697,28 +737,40 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | id | uuid (PK) | Identificador |
 | topic_id | uuid (FK → content_topics) | Tópico pai |
 | school_id | uuid (FK → schools), nullable | NULL = conteúdo global da plataforma, preenchido = conteúdo privado da escola |
-| block_type | enum | text, notation, chord_diagram, tablature, exercise, keyboard_diagram, scale_diagram, rhythm_pattern, tip, example |
+| block_type | enum | text, notation, chord_diagram, tablature, exercise, keyboard_diagram, scale_diagram, rhythm_pattern, tip, example, image, chord_chart |
 | title | text | Título do bloco |
 | content | jsonb | Conteúdo estruturado (varia por tipo) |
 | render_data | jsonb | Dados de renderização (SVG inline, URL da imagem, código VexFlow) |
 | sort_order | int | Ordem no documento |
-| is_edited | boolean | Se foi editado manualmente pelo coordenador |
-| original_content | jsonb | Conteúdo original antes da edição (para "reverter") |
+| curation_status | enum | draft, review, approved, published |
+| curated_by | uuid (FK → users) | Curador responsável |
+| version | int | Versão do bloco curado |
 | created_at | timestamptz | Data de criação |
 | updated_at | timestamptz | Última edição |
+| embedding | vector | Embedding semântico do bloco |
+| ai_metadata | jsonb | Metadados de geração/curadoria por IA |
 
 **chord_library** — Biblioteca de acordes com diagramas
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
 | id | uuid (PK) | Identificador |
 | name | text | Nome do acorde (ex: "C", "Am7", "F#m") |
-| instrument | enum | guitar, ukulele, bass |
+| instrument | enum | guitar, ukulele, bass, piano, cavaquinho, electric_guitar |
 | positions | jsonb | Array de posições (pode ter múltiplas shapes) |
 | svg_config | jsonb | Configuração SVGuitar para renderização |
 | fingers | jsonb | Dedilhado |
 | barre | jsonb | Informação de pestana |
 | difficulty | int | 1-5 |
 | tags | text[] | Tags (open, barre, jazz, etc.) |
+| root_note | text | Nota raiz |
+| quality | text | Qualidade harmônica |
+| family | text | Família harmônica |
+| sort_order | int | Peso de ordenação pedagógica |
+| has_barre | boolean | Flag derivada de pestana |
+| canonical_name | text | Nome canônico do acorde |
+| slash_type | text | inversion, upper_structure ou null |
+| caged_shape | text | Shape CAGED quando aplicável |
+| voicing_position | text | Posição do voicing |
 
 **scale_library** — Biblioteca de escalas
 | Campo | Tipo | Descrição |
@@ -758,6 +810,7 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | sections | jsonb | Seções da música (intro, verso, refrão, etc.) |
 | gp_file_url | text | URL do arquivo Guitar Pro no Storage (bucket gp-files) |
 | embedding | vector | Embedding semântico para busca por similaridade (pgvector) |
+| country | text | País/origem de catalogação |
 
 **backing_tracks** — Stems de áudio separados por instrumento
 | Campo | Tipo | Descrição |
@@ -795,13 +848,16 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | edited_by | uuid (FK → users) | Quem editou por último |
 | generated_at | timestamptz | Data de geração |
 | downloaded_count | int | Vezes baixado |
+| created_at | timestamptz | Data de criação do registro |
+| updated_at | timestamptz | Última atualização |
+| page_config | jsonb | Configuração visual de página (header/footer/margens/background) |
 
 **material_blocks** — Blocos editáveis do material gerado (Editor block-based)
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
 | id | uuid (PK) | Identificador |
 | material_id | uuid (FK → generated_materials) | Material pai |
-| block_type | enum | title, text, image, chord_diagram, notation, tablature, exercise, tip, qr_code, separator, badge |
+| block_type | enum | title, text, image, chord_diagram, notation, tablature, exercise, tip, qr_code, separator, badge, cover, chord_grid, keyboard, keyboard_grid, page_break, rhythm |
 | title | text | Título do bloco (opcional) |
 | content | jsonb | Conteúdo editável (texto, config do diagrama, prompt de imagem, etc.) |
 | render_data | jsonb | Dados de renderização (SVG inline, URL da imagem, código VexFlow) |
@@ -810,6 +866,69 @@ A plataforma opera com modelo **single database, RLS por school_id**.
 | original_content | jsonb | Conteúdo original antes da edição (para "reverter") |
 | created_at | timestamptz | Data de criação |
 | updated_at | timestamptz | Última edição |
+
+**material_versions** — Histórico de versões dos materiais
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| id | uuid (PK) | Identificador |
+| material_id | uuid (FK → generated_materials) | Material versionado |
+| school_id | uuid (FK → schools) | Escola |
+| version_number | int | Número da versão |
+| label | text | Rótulo opcional da versão |
+| snapshot | jsonb | Snapshot do material/blocos/page_config |
+| created_by | uuid (FK → users) | Autor da versão |
+| created_at | timestamptz | Data de criação |
+
+### 8.4.1 Bibliotecas complementares do editor
+
+**notation_library** — Biblioteca de notação musical reutilizável
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| id | uuid (PK) | Identificador |
+| name | text | Nome do item |
+| category | text | Categoria principal |
+| subcategory | text | Subcategoria |
+| clef | text | Clave |
+| key_signature | text | Armadura/tonalidade |
+| time_signature | text | Fórmula de compasso |
+| notation_data | jsonb | Dados serializados da notação |
+| render_data | jsonb | Dados de renderização |
+| description | text | Descrição |
+| instrument | text | Instrumento-alvo ou universal |
+| difficulty | int | Dificuldade 1-5 |
+| tags | text[] | Tags de busca |
+| sort_order | int | Ordenação |
+| created_at | timestamptz | Data de criação |
+| updated_at | timestamptz | Última atualização |
+
+**image_library** — Biblioteca de imagens e assets visuais
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| id | uuid (PK) | Identificador |
+| school_id | uuid (FK → schools) | Escola |
+| created_by | uuid (FK → users) | Autor da imagem |
+| label | text | Nome amigável |
+| description | text | Descrição |
+| prompt | text | Prompt de geração |
+| system_prompt | text | Prompt de sistema/template |
+| image_url | text | URL no Storage para raster |
+| svg_code | text | SVG inline para assets vetoriais |
+| image_format | text | png, svg, webp, jpeg |
+| width | int | Largura |
+| height | int | Altura |
+| file_size_bytes | int | Tamanho do arquivo |
+| category | text | instrument, anatomy, technique, diagram, mascot, notation, scene, cover, character, other |
+| subcategory | text | Subcategoria |
+| model_used | text | Modelo de geração |
+| style | text | Estilo visual |
+| generation_config | jsonb | Configurações da geração |
+| tags | text[] | Tags |
+| is_favorite | boolean | Favorito |
+| is_public | boolean | Exposição pública |
+| created_at | timestamptz | Data de criação |
+| updated_at | timestamptz | Última atualização |
+
+**Observação sobre tablatura:** o estado atual do banco não possui uma tabela dedicada `tablature_library`. As estruturas de tablatura são serializadas diretamente nos blocos/conteúdos/render_data do editor e do material gerado.
 
 ### 8.5 Monitoramento e Gamificação
 
@@ -1045,7 +1164,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 
 ### Fase 1 — Fundação (Semanas 1-3) ✅ CONCLUÍDA
 - [x] Setup do projeto (Supabase, repo, CI/CD)
-- [x] Schema do banco de dados (23 tabelas, 24 enums, RLS multi-tenant, 21 migrations)
+- [x] Schema do banco de dados auditado: 26 tabelas `public`, 23 enums `public`, 83 policies RLS `public`, 47 migrations
 - [x] Seed de dados (LA Music School, 6 usuários, 8 alunos, jornada completa)
 - [x] Prototipagem da UI (HTML 1.077 linhas, 15 páginas funcionais)
 - [x] Conversão para React + TypeScript (Windsurf Cascade)
@@ -1058,7 +1177,7 @@ O material didático gerado pela plataforma tem imunidade tributária (Art. 150,
 - [x] Biblioteca de acordes (chord_library) com SVGuitar — 8965 acordes (violão, guitarra, piano, ukulele, baixo, cavaquinho)
 - [x] Biblioteca de escalas com VexFlow — renderização real + posições
 - [x] Biblioteca de notação musical (notation_library) com editor completo
-- [x] Biblioteca de tablatura (tablature_library) com editor SVG + AlphaTab preview
+- [x] Biblioteca/serialização de tablatura integrada ao editor SVG + AlphaTab preview (sem tabela dedicada `tablature_library` no schema atual)
 - [x] Componentes de renderização musical (SVGuitar, VexFlow, VexTab, AlphaTab, componente teclado SVG)
 - [x] Seed de conteúdo: Violão Foundation (Fundamentos 1 e 2) com content_blocks
 - [x] Editor de Material block-based funcional (18+ tipos de bloco, drag-and-drop, contenteditable)
