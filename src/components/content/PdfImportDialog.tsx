@@ -10,17 +10,20 @@ import { Progress } from '@/components/ui/progress'
 import {
   FilePdf, Trash, Robot, CloudArrowUp, CheckCircle,
   CaretDown, CaretRight, FileText, Lightbulb, Barbell, Notebook,
-  Spinner, ArrowLeft,
+  Spinner, ArrowLeft, MusicNotes, Guitar, Image, ListNumbers,
 } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 
 import {
-  extractTextFromPdf,
-  normalizeWithAI,
+  importPdfWithVision,
   saveImportedTopics,
   type ImportedTopic,
+  type ImportedBlock,
   type ImportResult,
+  type ProgressCallback,
 } from '@/services/pdfImportService'
+import { ChordDiagram } from '@/components/music/ChordDiagram'
+import { AlphaTexInlineRenderer } from '@/components/music/AlphaTexInlineRenderer'
 
 type ImportStep = 'upload' | 'review' | 'done'
 
@@ -40,6 +43,7 @@ export function PdfImportDialog({ open, onClose, onImportComplete }: PdfImportDi
   const [processing, setProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState('')
   const [processingProgress, setProcessingProgress] = useState(0)
+  const [pageInfo, setPageInfo] = useState<{ current: number; total: number } | null>(null)
 
   // Step 2 - Review
   const [topics, setTopics] = useState<ImportedTopic[]>([])
@@ -60,6 +64,7 @@ export function PdfImportDialog({ open, onClose, onImportComplete }: PdfImportDi
     setResult(null)
     setProcessing(false)
     setSaving(false)
+    setPageInfo(null)
     onClose()
   }
 
@@ -86,39 +91,37 @@ export function PdfImportDialog({ open, onClose, onImportComplete }: PdfImportDi
 
     setProcessing(true)
     setProcessingProgress(0)
+    setPageInfo(null)
+
+    const progressCallback: ProgressCallback = (status, progress, info) => {
+      setProcessingStatus(status)
+      setProcessingProgress(progress)
+      if (info) setPageInfo(info)
+    }
 
     try {
-      // Step 1: Extract text
-      setProcessingStatus('Extraindo texto do PDF...')
-      setProcessingProgress(20)
-      const { text, pageCount } = await extractTextFromPdf(file)
+      // Use vision-based import
+      const importedTopics = await importPdfWithVision(
+        file,
+        instrument,
+        level,
+        progressCallback,
+      )
 
-      if (!text.trim() || text.length < 100) {
-        toast.error('Nao foi possivel extrair texto do PDF. O arquivo pode ser uma imagem escaneada.')
+      if (importedTopics.length === 0 || importedTopics[0].blocks.length === 0) {
+        toast.error('A IA nao conseguiu extrair conteudo desse material.')
         setProcessing(false)
         return
       }
 
-      // Step 2: Normalize with AI
-      setProcessingStatus(`Analisando ${pageCount} paginas com IA...`)
-      setProcessingProgress(50)
-
-      const sourceDocument = file.name.replace('.pdf', '')
-      const importedTopics = await normalizeWithAI(text, instrument, level, sourceDocument)
-
-      setProcessingProgress(90)
-
-      if (importedTopics.length === 0) {
-        toast.error('A IA nao conseguiu extrair topicos desse material.')
-        setProcessing(false)
-        return
-      }
+      // Count blocks
+      const totalBlocks = importedTopics.reduce((acc, t) => acc + t.blocks.length, 0)
 
       // Go to review
       setTopics(importedTopics)
       setStep('review')
       setProcessingProgress(100)
-      toast.success(`${importedTopics.length} topicos detectados!`)
+      toast.success(`${totalBlocks} blocos detectados!`)
     } catch (err: any) {
       console.error('Erro na importacao:', err)
       toast.error(err.message || 'Erro ao processar o PDF')
@@ -285,9 +288,16 @@ export function PdfImportDialog({ open, onClose, onImportComplete }: PdfImportDi
               {/* Processing status */}
               {processing && (
                 <div className="space-y-2 p-3 bg-card/50 rounded-lg border border-border">
-                  <div className="flex items-center gap-2">
-                    <Spinner size={14} className="animate-spin text-accent" />
-                    <span className="text-[11px] text-text2">{processingStatus}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Spinner size={14} className="animate-spin text-accent" />
+                      <span className="text-[11px] text-text2">{processingStatus}</span>
+                    </div>
+                    {pageInfo && (
+                      <span className="text-[10px] text-text3">
+                        Pagina {pageInfo.current}/{pageInfo.total}
+                      </span>
+                    )}
                   </div>
                   <Progress value={processingProgress} className="h-1" />
                 </div>
@@ -412,6 +422,21 @@ const blockTypeIcons: Record<string, any> = {
   tip: Lightbulb,
   exercise: Barbell,
   example: Notebook,
+  notation: MusicNotes,
+  chord_diagram: Guitar,
+  chord_chart: ListNumbers,
+  image: Image,
+}
+
+const blockTypeLabels: Record<string, string> = {
+  text: 'Texto',
+  tip: 'Dica',
+  exercise: 'Exercicio',
+  example: 'Exemplo',
+  notation: 'Notacao',
+  chord_diagram: 'Acorde',
+  chord_chart: 'Progressao',
+  image: 'Imagem',
 }
 
 function TopicReviewItem({
@@ -453,35 +478,121 @@ function TopicReviewItem({
       {/* Blocks */}
       {expanded && (
         <div className="px-3 pb-2.5 space-y-1 ml-8 border-t border-border/50 pt-2">
-          {topic.blocks.map((block, blockIdx) => {
-            const Icon = blockTypeIcons[block.block_type] || FileText
-            return (
-              <div
-                key={blockIdx}
-                className={`flex items-start gap-2 py-1.5 px-2 rounded transition-opacity ${
-                  block.selected ? '' : 'opacity-40'
-                }`}
-              >
-                <Checkbox
-                  checked={block.selected}
-                  onCheckedChange={() => onToggleBlockSelect(blockIdx)}
-                  disabled={!topic.selected}
-                  className="mt-0.5"
-                />
-                <Icon size={12} className="mt-0.5 text-text3 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <span className="text-[11px] text-text2 font-medium">
-                    {block.title || `Bloco ${blockIdx + 1}`}
-                  </span>
-                  <p className="text-[10px] text-text3 line-clamp-2 mt-0.5">
-                    {block.content?.substring(0, 150)}...
-                  </p>
-                </div>
-              </div>
-            )
-          })}
+          {topic.blocks.map((block, blockIdx) => (
+            <BlockReviewItem
+              key={blockIdx}
+              block={block}
+              blockIdx={blockIdx}
+              selected={block.selected}
+              disabled={!topic.selected}
+              onToggle={() => onToggleBlockSelect(blockIdx)}
+            />
+          ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Block Review Item ───────────────────────────────────
+
+interface BlockReviewItemProps {
+  block: ImportedBlock
+  blockIdx: number
+  selected: boolean
+  disabled: boolean
+  onToggle: () => void
+}
+
+function BlockReviewItem({ block, blockIdx, selected, disabled, onToggle }: BlockReviewItemProps) {
+  const Icon = blockTypeIcons[block.block_type] || FileText
+  const label = blockTypeLabels[block.block_type] || block.block_type
+  const isVisualBlock = ['chord_diagram', 'notation', 'chord_chart', 'image'].includes(block.block_type)
+
+  return (
+    <div
+      className={`flex items-start gap-2 py-1.5 px-2 rounded transition-opacity ${
+        selected ? '' : 'opacity-40'
+      }`}
+    >
+      <Checkbox
+        checked={selected}
+        onCheckedChange={onToggle}
+        disabled={disabled}
+        className="mt-0.5"
+      />
+      <Icon size={12} className="mt-0.5 text-text3 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-text2 font-medium">
+            {block.title || `Bloco ${blockIdx + 1}`}
+          </span>
+          <Badge variant="outline" className="text-[8px] px-1 py-0">
+            {label}
+          </Badge>
+          {block.page_number && (
+            <span className="text-[9px] text-text3">p.{block.page_number}</span>
+          )}
+        </div>
+
+        {/* Text preview for non-visual blocks */}
+        {!isVisualBlock && block.content && (
+          <p className="text-[10px] text-text3 line-clamp-2 mt-0.5">
+            {block.content.substring(0, 150)}...
+          </p>
+        )}
+
+        {/* Visual previews */}
+        {block.block_type === 'chord_diagram' && block.svguitar_data && (
+          <div className="mt-1.5 inline-block">
+            <ChordDiagram
+              name={block.svguitar_data.name}
+              positions={block.svguitar_data.positions}
+              position={block.svguitar_data.position}
+              size="compact"
+            />
+          </div>
+        )}
+
+        {block.block_type === 'notation' && block.alphatex && (
+          <div className="mt-1.5 bg-card/50 rounded p-1 max-w-[300px]">
+            <AlphaTexInlineRenderer
+              tex={block.alphatex}
+              scale={0.5}
+              minHeight={50}
+            />
+          </div>
+        )}
+
+        {block.block_type === 'chord_chart' && block.chord_chart_data && (
+          <div className="mt-1.5 flex gap-1 flex-wrap">
+            {block.chord_chart_data.slice(0, 4).map((chord, i) => (
+              <ChordDiagram
+                key={i}
+                name={chord.name}
+                positions={chord.positions}
+                position={chord.position}
+                size="compact"
+              />
+            ))}
+            {block.chord_chart_data.length > 4 && (
+              <span className="text-[9px] text-text3 self-center">
+                +{block.chord_chart_data.length - 4} mais
+              </span>
+            )}
+          </div>
+        )}
+
+        {block.block_type === 'image' && block.image_url && (
+          <div className="mt-1.5">
+            <img
+              src={block.image_url}
+              alt={block.title || 'Imagem'}
+              className="max-h-[80px] rounded border border-border/50"
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

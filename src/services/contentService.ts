@@ -6,6 +6,12 @@ export type ContentTopic = Tables<'content_topics'>
 export type ContentBlock = Tables<'content_blocks'>
 export type CurationStatus = Database['public']['Enums']['curation_status']
 
+// Extended types with curation workflow fields
+export type ContentTopicWithCuration = ContentTopic
+export type ContentBlockWithCuration = ContentBlock
+
+// ─── Topics CRUD ─────────────────────────────────────────
+
 export async function getTopics(filters?: {
   instrument?: string
   pillar?: Database['public']['Enums']['pillar_type']
@@ -21,6 +27,17 @@ export async function getTopics(filters?: {
   if (filters?.difficulty) query = query.eq('difficulty_level', filters.difficulty)
 
   const { data, error } = await query
+  if (error) handleError(error)
+  return data
+}
+
+export async function getTopicById(id: string) {
+  const { data, error } = await supabase
+    .from('content_topics')
+    .select('*')
+    .eq('id', id)
+    .single()
+
   if (error) handleError(error)
   return data
 }
@@ -48,16 +65,37 @@ export async function updateTopic(id: string, updates: TablesUpdate<'content_top
   return data
 }
 
-export async function getTopicById(id: string) {
-  const { data, error } = await supabase
+export async function deleteTopic(id: string) {
+  // First delete all blocks
+  const { error: blocksError } = await supabase
+    .from('content_blocks')
+    .delete()
+    .eq('topic_id', id)
+
+  if (blocksError) handleError(blocksError)
+
+  // Then delete the topic
+  const { error } = await supabase
     .from('content_topics')
-    .select('*')
+    .delete()
     .eq('id', id)
-    .single()
+
+  if (error) handleError(error)
+}
+
+export async function updateTopicStatus(id: string, status: CurationStatus) {
+  // Note: topics don't have curation_status in schema, this updates associated blocks
+  const { data, error } = await supabase
+    .from('content_blocks')
+    .update({ curation_status: status })
+    .eq('topic_id', id)
+    .select()
 
   if (error) handleError(error)
   return data
 }
+
+// ─── Blocks CRUD ─────────────────────────────────────────
 
 export async function getBlocks(topicId: string) {
   const { data, error } = await supabase
@@ -93,6 +131,15 @@ export async function updateBlock(id: string, updates: TablesUpdate<'content_blo
   return data
 }
 
+export async function deleteBlock(id: string) {
+  const { error } = await supabase
+    .from('content_blocks')
+    .delete()
+    .eq('id', id)
+
+  if (error) handleError(error)
+}
+
 export async function updateCurationStatus(id: string, status: CurationStatus) {
   const { data, error } = await supabase
     .from('content_blocks')
@@ -103,4 +150,66 @@ export async function updateCurationStatus(id: string, status: CurationStatus) {
 
   if (error) handleError(error)
   return data
+}
+
+export async function reorderBlocks(topicId: string, blockIds: string[]) {
+  // Update sort_order for each block
+  const updates = blockIds.map((id, index) =>
+    supabase
+      .from('content_blocks')
+      .update({ sort_order: index + 1 })
+      .eq('id', id)
+      .eq('topic_id', topicId)
+  )
+
+  await Promise.all(updates)
+
+  // Return updated blocks
+  return getBlocks(topicId)
+}
+
+// ─── Topic with Curation (for imports) ───────────────────
+
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 80) + '-' + Date.now().toString(36)
+}
+
+export async function createTopicWithCuration(data: {
+  title: string
+  description?: string | null
+  instrument?: string
+  dimension?: string
+  difficulty_level?: string
+  tags?: string[]
+  estimated_minutes?: number
+  school_id?: string  // For blocks, not topic
+  source_document?: string | null
+}): Promise<ContentTopicWithCuration> {
+  const insertData: TablesInsert<'content_topics'> = {
+    title: data.title,
+    slug: generateSlug(data.title),
+    description: data.description,
+    instrument: data.instrument,
+    dimension: data.dimension as any,
+    pillar: data.dimension as any,  // Keep both for compatibility
+    difficulty_level: data.difficulty_level as any,
+    tags: data.tags,
+    estimated_minutes: data.estimated_minutes,
+    source_document: data.source_document,
+  }
+
+  const { data: topic, error } = await supabase
+    .from('content_topics')
+    .insert(insertData)
+    .select()
+    .single()
+
+  if (error) handleError(error)
+  return topic as ContentTopicWithCuration
 }

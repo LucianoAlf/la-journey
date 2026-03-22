@@ -25,7 +25,9 @@ interface TopicCardProps {
 }
 
 export function TopicCard({ topic, onClick }: TopicCardProps) {
-  const blockCount = topic.block_count || 0
+  // block_count and curation_status may not exist in schema - use optional chaining
+  const blockCount = (topic as any).block_count || 0
+  const curationStatus = (topic as any).curation_status || 'draft'
 
   return (
     <div
@@ -56,7 +58,7 @@ export function TopicCard({ topic, onClick }: TopicCardProps) {
             )}
           </div>
         </div>
-        <StatusBadge status={topic.curation_status} />
+        <StatusBadge status={curationStatus} />
       </div>
 
       <div className="flex items-center gap-3 mt-2.5 text-[11px] text-text3">

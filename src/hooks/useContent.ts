@@ -26,3 +26,14 @@ export function useBlocks(topicId: string | undefined) {
     return getBlocks(topicId)
   }, [topicId])
 }
+
+export function useTopicWithBlocks(topicId: string | undefined) {
+  return useAsync(async () => {
+    if (!topicId) return null
+    const [topic, blocks] = await Promise.all([
+      getTopicById(topicId),
+      getBlocks(topicId),
+    ])
+    return { topic, blocks }
+  }, [topicId])
+}

@@ -1,240 +1,270 @@
-import { UploadSimple, Plus, PencilSimple } from "@phosphor-icons/react";
-import { useAppContext } from "../AppContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useState, useMemo } from 'react'
+import { Plus, UploadSimple, MagnifyingGlass, SpinnerGap } from '@phosphor-icons/react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { toast } from 'sonner'
+
+import { TopicCard } from '@/components/content/TopicCard'
+import { TopicEditor } from '@/components/content/TopicEditor'
+import { NewTopicDialog } from '@/components/content/NewTopicDialog'
+import { PdfImportDialog } from '@/components/content/PdfImportDialog'
+import { useTopics } from '@/hooks/useContent'
+import type { ContentTopicWithCuration } from '@/services/contentService'
 
 export function Conteudo() {
-  const { openModal } = useAppContext();
+  // Filter states
+  const [search, setSearch] = useState('')
+  const [instrument, setInstrument] = useState<string>('all')
+  const [dimension, setDimension] = useState<string>('all')
+  const [level, setLevel] = useState<string>('all')
+  const [status, setStatus] = useState<string>('all')
+
+  // Dialog states
+  const [newTopicOpen, setNewTopicOpen] = useState(false)
+  const [pdfImportOpen, setPdfImportOpen] = useState(false)
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null)
+
+  // Fetch topics from database
+  const { data: topics, loading, refetch } = useTopics({
+    instrument: instrument !== 'all' ? instrument : undefined,
+    pillar: dimension !== 'all' ? dimension as any : undefined,
+    difficulty: level !== 'all' ? level as any : undefined,
+  })
+
+  // Filter topics by search and status (client-side)
+  const filteredTopics = useMemo(() => {
+    if (!topics) return []
+
+    return topics.filter((topic) => {
+      // Search filter
+      if (search) {
+        const searchLower = search.toLowerCase()
+        const matchesTitle = topic.title?.toLowerCase().includes(searchLower)
+        const matchesDesc = topic.description?.toLowerCase().includes(searchLower)
+        const matchesTags = topic.tags?.some(t => t.toLowerCase().includes(searchLower))
+        if (!matchesTitle && !matchesDesc && !matchesTags) return false
+      }
+
+      // Status filter (check blocks' curation_status - for now show all)
+      // Status is on blocks, not topics - would need a join query
+      // For now, we skip this filter or implement later
+
+      return true
+    })
+  }, [topics, search, status])
+
+  // Count stats
+  const topicCount = filteredTopics.length
+  const topicsWithContent = filteredTopics.filter(t =>
+    (t as any).block_count > 0 || t.description
+  ).length
+
+  // Handlers
+  function handleTopicClick(topic: ContentTopicWithCuration) {
+    setEditingTopicId(topic.id)
+  }
+
+  function handleTopicCreated() {
+    refetch()
+    toast.success('Topico criado com sucesso!')
+  }
+
+  function handleImportComplete() {
+    refetch()
+    toast.success('Importacao concluida!')
+  }
+
+  function handleTopicUpdated() {
+    refetch()
+  }
+
+  function handleTopicDeleted() {
+    setEditingTopicId(null)
+    refetch()
+    toast.success('Topico excluido')
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-serif text-[26px] leading-[1.2] text-text">
-            Base de Conteúdo <em className="not-italic text-accent">Curado</em>
+            Base de Conteudo <em className="not-italic text-accent">Curado</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            Repositório pedagógico musical · Curadoria N4 · Versionamento
+            Repositorio pedagogico musical - Curadoria N4 - Versionamento
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm">
-            <UploadSimple size={16} /> Importar
+          <Button variant="ghost" size="sm" onClick={() => setPdfImportOpen(true)}>
+            <UploadSimple size={16} className="mr-1" /> Importar
           </Button>
-          <Button onClick={() => openModal('modal-conteudo')}>
-            <Plus size={16} /> Novo Bloco
+          <Button onClick={() => setNewTopicOpen(true)}>
+            <Plus size={16} className="mr-1" /> Novo Topico
           </Button>
         </div>
       </div>
 
+      {/* Filters */}
       <div className="card mb-4">
-        <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_1fr] gap-4">
+        <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] gap-4">
+          {/* Search */}
           <div className="space-y-1.5">
-            <Label>Buscar conteúdo</Label>
-            <Input placeholder="Título ou tag..." />
+            <Label className="text-[11px]">Buscar conteudo</Label>
+            <div className="relative">
+              <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text3" />
+              <Input
+                placeholder="Titulo ou tag..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-8 text-[12px]"
+              />
+            </div>
           </div>
+
+          {/* Instrument */}
           <div className="space-y-1.5">
-            <Label>Instrumento</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
+            <Label className="text-[11px]">Instrumento</Label>
+            <Select value={instrument} onValueChange={setInstrument}>
+              <SelectTrigger className="h-8 text-[11px]">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="universal">Universal (Teoria)</SelectItem>
-                <SelectItem value="violao">Violão</SelectItem><SelectItem value="guitarra">Guitarra</SelectItem>
-                <SelectItem value="teclado">Teclado</SelectItem><SelectItem value="canto">Canto</SelectItem>
-                <SelectItem value="bateria">Bateria</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="universal">Universal</SelectItem>
+                <SelectItem value="Violao">Violao</SelectItem>
+                <SelectItem value="Guitarra">Guitarra</SelectItem>
+                <SelectItem value="Piano">Piano</SelectItem>
+                <SelectItem value="Teclado">Teclado</SelectItem>
+                <SelectItem value="Canto">Canto</SelectItem>
+                <SelectItem value="Bateria">Bateria</SelectItem>
+                <SelectItem value="Baixo">Baixo</SelectItem>
+                <SelectItem value="Ukulele">Ukulele</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {/* Dimension/Pillar */}
           <div className="space-y-1.5">
-            <Label>Pilar</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
+            <Label className="text-[11px]">Dimensao</Label>
+            <Select value={dimension} onValueChange={setDimension}>
+              <SelectTrigger className="h-8 text-[11px]">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="fund-teoricos">Fund. Teóricos</SelectItem>
-                <SelectItem value="pratica">Prática Instrumento</SelectItem>
-                <SelectItem value="repertorio">Repertório</SelectItem>
-                <SelectItem value="improv">Improv. e Composição</SelectItem>
-                <SelectItem value="auditivo">Desenv. Auditivo</SelectItem>
-                <SelectItem value="avaliacoes">Avaliações</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="theory">Teoria</SelectItem>
+                <SelectItem value="technique">Tecnica</SelectItem>
+                <SelectItem value="rhythm">Ritmo</SelectItem>
+                <SelectItem value="repertoire">Repertorio</SelectItem>
+                <SelectItem value="auditory">Auditivo</SelectItem>
+                <SelectItem value="evaluation">Avaliacao</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {/* Level */}
           <div className="space-y-1.5">
-            <Label>Nível</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
+            <Label className="text-[11px]">Nivel</Label>
+            <Select value={level} onValueChange={setLevel}>
+              <SelectTrigger className="h-8 text-[11px]">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="foundation">Foundation</SelectItem><SelectItem value="grow">Grow</SelectItem>
-                <SelectItem value="advance">Advance</SelectItem><SelectItem value="master">Master</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="foundation">Foundation</SelectItem>
+                <SelectItem value="grow">Grow</SelectItem>
+                <SelectItem value="advance">Advance</SelectItem>
+                <SelectItem value="master">Master</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {/* Status */}
           <div className="space-y-1.5">
-            <Label>Tipo</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
+            <Label className="text-[11px]">Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="h-8 text-[11px]">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="texto">Texto explicativo</SelectItem><SelectItem value="exercicio">Exercício</SelectItem>
-                <SelectItem value="diagrama">Diagrama</SelectItem><SelectItem value="partitura">Partitura</SelectItem>
-                <SelectItem value="imagem">Imagem</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select defaultValue="todos"><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="rascunho">Rascunho</SelectItem><SelectItem value="revisao">Em revisão</SelectItem>
-                <SelectItem value="aprovado">Aprovado</SelectItem><SelectItem value="publicado">Publicado</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="draft">Rascunho</SelectItem>
+                <SelectItem value="review">Em revisao</SelectItem>
+                <SelectItem value="approved">Aprovado</SelectItem>
+                <SelectItem value="published">Publicado</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="lista" className="mb-6">
-        <TabsList>
-          <TabsTrigger value="lista">Lista</TabsTrigger>
-          <TabsTrigger value="topicos">Por Tópico</TabsTrigger>
-          <TabsTrigger value="curadoria">Fila de Curadoria</TabsTrigger>
-        </TabsList>
+      {/* Stats */}
+      <div className="flex items-center gap-4 mb-4 text-[12px] text-text3">
+        <span>Mostrando <strong className="text-text1">{topicCount}</strong> topicos</span>
+        <span className="text-border">|</span>
+        <span><strong className="text-text1">{topicsWithContent}</strong> com conteudo</span>
+        {loading && (
+          <>
+            <span className="text-border">|</span>
+            <span className="flex items-center gap-1 text-accent">
+              <SpinnerGap size={12} className="animate-spin" /> Carregando...
+            </span>
+          </>
+        )}
+      </div>
 
-        <TabsContent value="lista">
-          <div className="card">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bloco de Conteúdo</TableHead>
-                  <TableHead>Instrumento</TableHead>
-                  <TableHead>Pilar</TableHead>
-                  <TableHead>Nível</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Curador</TableHead>
-                  <TableHead>Versão</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-bold">Anatomia do Violão</div>
-                    <div className="text-[11px] text-text3">Partes do instrumento, cordas, trastes, braço</div>
-                  </TableCell>
-                  <TableCell>Violão</TableCell>
-                  <TableCell>Fund. Teóricos</TableCell>
-                  <TableCell><Badge variant="foundation">Foundation</Badge></TableCell>
-                  <TableCell><Badge variant="secondary">Texto + Imagem</Badge></TableCell>
-                  <TableCell>Renan</TableCell>
-                  <TableCell className="font-mono text-xs">v3</TableCell>
-                  <TableCell><Badge variant="advance">Publicado</Badge></TableCell>
-                  <TableCell><Button variant="ghost" size="sm"><PencilSimple size={16} /></Button></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-bold">Escala Maior — Construção e Aplicação</div>
-                    <div className="text-[11px] text-text3">T T ST T T T ST · Todas as tonalidades</div>
-                  </TableCell>
-                  <TableCell>Universal</TableCell>
-                  <TableCell>Fund. Teóricos</TableCell>
-                  <TableCell><Badge variant="grow">Grow</Badge></TableCell>
-                  <TableCell><Badge variant="secondary">Texto + Diagrama</Badge></TableCell>
-                  <TableCell>Kinho</TableCell>
-                  <TableCell className="font-mono text-xs">v2</TableCell>
-                  <TableCell><Badge variant="advance">Publicado</Badge></TableCell>
-                  <TableCell><Button variant="ghost" size="sm"><PencilSimple size={16} /></Button></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <div className="font-bold">Formação de Acordes Tríades</div>
-                    <div className="text-[11px] text-text3">Maior, menor, diminuto, aumentado</div>
-                  </TableCell>
-                  <TableCell>Universal</TableCell>
-                  <TableCell>Fund. Teóricos</TableCell>
-                  <TableCell><Badge variant="grow">Grow</Badge></TableCell>
-                  <TableCell><Badge variant="secondary">Texto + Notação</Badge></TableCell>
-                  <TableCell>Peterson</TableCell>
-                  <TableCell className="font-mono text-xs">v1</TableCell>
-                  <TableCell><Badge variant="gold">Em revisão</Badge></TableCell>
-                  <TableCell><Button variant="ghost" size="sm"><PencilSimple size={16} /></Button></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
+      {/* Topics Grid */}
+      {loading && !topics ? (
+        <div className="flex items-center justify-center py-20">
+          <SpinnerGap size={24} className="animate-spin text-accent" />
+        </div>
+      ) : filteredTopics.length === 0 ? (
+        <div className="card text-center py-12">
+          <p className="text-text2 text-[14px]">Nenhum topico encontrado</p>
+          <p className="text-text3 text-[12px] mt-1">
+            {search || instrument !== 'all' || dimension !== 'all' || level !== 'all'
+              ? 'Tente ajustar os filtros'
+              : 'Clique em "Novo Topico" ou "Importar" para comecar'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filteredTopics.map((topic) => (
+            <TopicCard
+              key={topic.id}
+              topic={topic as ContentTopicWithCuration}
+              onClick={() => handleTopicClick(topic as ContentTopicWithCuration)}
+            />
+          ))}
+        </div>
+      )}
 
-        <TabsContent value="topicos">
-          <div className="grid grid-cols-2 gap-5">
-            <div className="card">
-              <div className="font-serif mb-3 text-[17px]">Foundation — Violão</div>
-              <div className="flex flex-col gap-1.5">
-                <div className="p-2.5 border border-border rounded-[var(--radius-sm)]">
-                  <div className="font-bold text-sm">Anatomia do instrumento</div>
-                  <div className="text-[11px] text-text3 mt-1">3 blocos · Texto + Imagem · <span className="text-verde">Publicado</span></div>
-                </div>
-                <div className="p-2.5 border border-border rounded-[var(--radius-sm)]">
-                  <div className="font-bold text-sm">Postura e posição das mãos</div>
-                  <div className="text-[11px] text-text3 mt-1">2 blocos · Texto + Imagem IA · <span className="text-verde">Publicado</span></div>
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="font-serif mb-3 text-[17px]">Grow — Universal (Teoria)</div>
-              <div className="flex flex-col gap-1.5">
-                <div className="p-2.5 border border-border rounded-[var(--radius-sm)]">
-                  <div className="font-bold text-sm">Escala Maior</div>
-                  <div className="text-[11px] text-text3 mt-1">4 blocos · VexFlow + Diagrama · <span className="text-verde">Publicado</span></div>
-                </div>
-                <div className="p-2.5 border border-border rounded-[var(--radius-sm)]">
-                  <div className="font-bold text-sm">Escala Menor Natural / Harmônica / Melódica</div>
-                  <div className="text-[11px] text-text3 mt-1">6 blocos · VexFlow + Diagrama · <span className="text-dourado">Em revisão</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
+      {/* Dialogs */}
+      <NewTopicDialog
+        open={newTopicOpen}
+        onOpenChange={setNewTopicOpen}
+        onCreated={handleTopicCreated}
+      />
 
-        <TabsContent value="curadoria">
-          <div>
-            <div className="flex items-center gap-2.5 py-3.5 px-5 bg-dourado-soft border border-[rgba(245,158,11,0.2)] rounded-[var(--radius)] mb-4">
-              <span className="text-lg">📋</span>
-              <div className="flex-1">
-                <div className="font-bold text-dourado">5 blocos aguardando curadoria</div>
-                <div className="text-sm text-text2">Professores N4 precisam revisar e aprovar antes da publicação</div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center gap-3 p-3.5 border border-border rounded-[var(--radius-sm)] border-l-[3px] border-l-dourado">
-                  <div className="flex-1">
-                    <div className="font-bold text-sm">Formação de Acordes Tríades <Badge variant="gold" className="ml-1.5">Em revisão</Badge></div>
-                    <div className="text-[11px] text-text3 mt-1">Peterson · v1 · Enviado há 2 dias</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" className="text-verde">✓ Aprovar</Button>
-                    <Button variant="ghost" size="sm" className="text-vermelho">✕ Devolver</Button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3.5 border border-border rounded-[var(--radius-sm)] border-l-[3px] border-l-accent">
-                  <div className="flex-1">
-                    <div className="font-bold text-sm">Modos Gregos — Visão Geral <Badge variant="accent" className="ml-1.5">Rascunho</Badge></div>
-                    <div className="text-[11px] text-text3 mt-1">Kinho · v1 · Criado há 5 dias</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm">👁️ Revisar</Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+      <PdfImportDialog
+        open={pdfImportOpen}
+        onClose={() => setPdfImportOpen(false)}
+        onImportComplete={handleImportComplete}
+      />
+
+      {editingTopicId && (
+        <TopicEditor
+          topicId={editingTopicId}
+          open={!!editingTopicId}
+          onClose={() => setEditingTopicId(null)}
+          onDeleted={handleTopicDeleted}
+          onUpdated={handleTopicUpdated}
+        />
+      )}
     </div>
-  );
+  )
 }

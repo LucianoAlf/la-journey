@@ -67,7 +67,7 @@ export function TopicEditor({ topicId, open, onClose, onDeleted, onUpdated }: To
       setLevel(data.topic.difficulty_level || 'foundation')
       setTags(data.topic.tags?.join(', ') || '')
       setMinutes(data.topic.estimated_minutes || 15)
-      setStatus((data.topic.curation_status as CurationStatus) || 'draft')
+      setStatus(((data.topic as any).curation_status as CurationStatus) || 'draft')
     }
     if (data?.blocks) {
       setBlocks(data.blocks)
