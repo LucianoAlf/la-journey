@@ -13,7 +13,7 @@ import { ChordDiagram } from "@/components/music/ChordDiagram";
 import { PianoKeyboard } from "@/components/music/PianoKeyboard";
 import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
-import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
+import { NotationEditorV2 } from "@/components/music/NotationEditorV2";
 import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
 import { AlphaTabViewer } from "@/components/music/AlphaTabViewer";
 import { GuitarFretboardDiagram, type GuitarFretboardPositions } from "@/components/music/GuitarFretboardDiagram";
@@ -393,7 +393,7 @@ export function Biblioteca() {
   }
 
   // CRUD Notação
-  const handleSaveNotation = async (data: NotationSaveData) => {
+  const handleSaveNotation = async (data: NotationLibraryRow) => {
     if (editingNotation) {
       await updateNotation(editingNotation.id, data);
       toast.success('Notação atualizada!');
@@ -1414,8 +1414,8 @@ export function Biblioteca() {
         instrument="bass"
       />
 
-      {/* NotationEditor — modal de notação */}
-      <NotationEditor
+      {/* NotationEditorV2 — modal de notação */}
+      <NotationEditorV2
         open={notationEditorOpen}
         onOpenChange={(v) => { setNotationEditorOpen(v); if (!v) setEditingNotation(null); }}
         notation={editingNotation}
