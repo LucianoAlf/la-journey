@@ -79,6 +79,8 @@ export interface AiBlockResult {
 
 export interface AiPageResult {
   page_title?: string
+  topic_title?: string
+  topic_description?: string
   blocks: AiBlockResult[]
 }
 
@@ -131,27 +133,40 @@ export async function convertPdfToImages(
 // ─── Vision AI Analysis ──────────────────────────────────
 
 const VISION_PROMPT = `Você é um curador de conteúdo pedagógico musical.
-Analise esta página de material didático e extraia TODO o conteúdo estruturado.
+Analise esta página de material didático e extraia APENAS conteúdo PEDAGÓGICO.
 
-IMPORTANTE: Identifique TODOS os elementos visuais da página:
-- Diagramas de acordes (desenhos de braço de violão/guitarra com pontos)
-- Notação musical (pautas com notas)
-- Imagens/ilustrações
-- Textos explicativos
-- Exercícios
-- Dicas
+IGNORAR COMPLETAMENTE (não extrair):
+- Logos, logotipos, marcas d'água
+- Cabeçalhos e rodapés de página
+- Números de página
+- Decorações visuais sem valor educacional
+- Índices e sumários
+- Informações de copyright
 
-Para cada elemento, retorne no formato JSON:
+EXTRAIR APENAS conteúdo educacional:
+- Explicações teóricas (escalas, acordes, harmonia)
+- Exercícios práticos com instruções claras
+- Cifras e progressões de acordes de músicas
+- Diagramas de acordes (braço do violão com dedilhado)
+- Partituras e notação musical
+- Dicas e macetes pedagógicos
+- Letras de músicas com cifras
 
+IDENTIFICAR TÓPICOS/LIÇÕES:
+- Se a página tem um TÍTULO DE SEÇÃO claro (ex: "Escala Maior", "Acordes Básicos"), use como topic_title
+- Se a página continua uma lição anterior sem novo título, deixe topic_title vazio
+- Agrupe blocos relacionados (ex: explicação + diagrama + exercício = mesma lição)
+
+Retorne JSON:
 {
-  "page_title": "Título da página se houver",
+  "topic_title": "Nome da lição/seção se houver título claro, senão vazio",
+  "topic_description": "Breve descrição do que a página ensina",
   "blocks": [
     {
-      "block_type": "text|exercise|tip|example|chord_diagram|notation|chord_chart|image",
+      "block_type": "text|exercise|tip|example|chord_diagram|chord_chart",
       "title": "Título do bloco",
-      "content": "Texto completo do conteúdo",
+      "content": "Texto completo",
 
-      // APENAS para chord_diagram:
       "chord_data": {
         "chord_name": "Am",
         "position": 1,
@@ -160,33 +175,22 @@ Para cada elemento, retorne no formato JSON:
         "muted": [6]
       },
 
-      // APENAS para chord_chart (progressão/sequência):
       "chord_chart_data": {
-        "title": "Progressão I-IV-V",
-        "chords": [
-          { "chord_name": "C", "position": 1, "fingers": [...], ... },
-          { "chord_name": "F", "position": 1, "fingers": [...], ... }
-        ]
-      },
-
-      // APENAS para notation (pauta musical):
-      "alphatex": "\\\\title \\"Escala Maior\\" . :4 c d e f | g a b c'",
-
-      // APENAS para image (ilustração que precisa ser recortada):
-      "bounding_box": { "x": 100, "y": 200, "width": 300, "height": 150 }
+        "title": "Progressão da música",
+        "chords": [{"chord_name": "C", "position": 1, "fingers": [[2,1],[4,2],[5,3]], "barres": [], "muted": [6]}]
+      }
     }
   ]
 }
 
 REGRAS:
-1. Preserve TODO o conteúdo textual — não resuma
-2. Para diagramas de acorde, extraia a posição exata dos dedos
-3. Para notação musical, converta para AlphaTex se possível
-4. Para imagens, forneça bounding_box aproximado em pixels
-5. Cordas no chord_data: 1=E grave (mais grossa), 6=E agudo (mais fina)
-6. Casas no chord_data: 0=aberta, 1-12=casas do braço
+1. NÃO extraia elementos de página (logo, cabeçalho, rodapé, número de página)
+2. AGRUPE conteúdo relacionado - uma música completa é UM bloco tipo "example" ou "chord_chart"
+3. Para cifras de músicas: extraia como chord_chart com TODOS os acordes da progressão
+4. Cordas: 1=Mi grave (mais grossa), 6=Mi agudo (mais fina)
+5. Se não houver conteúdo pedagógico na página, retorne {"topic_title": "", "blocks": []}
 
-Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.`
+Responda APENAS JSON válido, sem markdown, sem backticks.`
 
 async function analyzeWithGemini(imageBase64: string): Promise<AiPageResult> {
   const model = AI_CONFIG.generation.model // gemini-3-flash-preview
@@ -270,6 +274,8 @@ function parseAiResponse(text: string): AiPageResult {
 
     return {
       page_title: parsed.page_title || '',
+      topic_title: parsed.topic_title || '',
+      topic_description: parsed.topic_description || '',
       blocks: (parsed.blocks || []).map((block: any) => ({
         block_type: block.block_type || 'text',
         title: block.title || '',
@@ -283,7 +289,7 @@ function parseAiResponse(text: string): AiPageResult {
   } catch (err) {
     console.error('Erro ao parsear resposta da IA:', err)
     console.error('Resposta raw:', text?.substring(0, 500))
-    return { page_title: '', blocks: [] }
+    return { page_title: '', topic_title: '', topic_description: '', blocks: [] }
   }
 }
 
@@ -442,8 +448,9 @@ export async function importPdfWithVision(
     throw new Error('Não foi possível extrair páginas do PDF')
   }
 
-  // Step 2: Analyze each page with Vision AI
-  const allBlocks: ImportedBlock[] = []
+  // Step 2: Analyze each page with Vision AI and group by topic
+  const topicsMap = new Map<string, { description: string; blocks: ImportedBlock[] }>()
+  let currentTopicKey = file.name.replace('.pdf', '') // Default topic
   let globalSortOrder = 1
 
   for (let i = 0; i < pageImages.length; i++) {
@@ -458,35 +465,68 @@ export async function importPdfWithVision(
 
     const pageResult = await analyzePageWithVision(pageImage.base64)
 
-    // Process each block from the page
+    // If page has a new topic title, create/switch to that topic
+    if (pageResult.topic_title && pageResult.topic_title.trim()) {
+      currentTopicKey = pageResult.topic_title.trim()
+    }
+
+    // Initialize topic if doesn't exist
+    if (!topicsMap.has(currentTopicKey)) {
+      topicsMap.set(currentTopicKey, {
+        description: pageResult.topic_description || '',
+        blocks: [],
+      })
+    }
+
+    // Process and add blocks to current topic
+    const topicData = topicsMap.get(currentTopicKey)!
     for (const aiBlock of pageResult.blocks) {
       const processedBlock = await processAiBlock(aiBlock, pageImage, globalSortOrder++)
-      allBlocks.push(processedBlock)
+      topicData.blocks.push(processedBlock)
+    }
+
+    // Update description if we got a better one
+    if (pageResult.topic_description && !topicData.description) {
+      topicData.description = pageResult.topic_description
     }
   }
 
-  if (allBlocks.length === 0) {
-    throw new Error('A IA não conseguiu extrair conteúdo do PDF')
-  }
-
-  // Step 3: Group blocks into topics
+  // Step 3: Convert map to ImportedTopic array
   onProgress?.('Organizando conteúdo...', 95)
 
-  // Simple grouping: one topic per document
-  const topic: ImportedTopic = {
-    title: file.name.replace('.pdf', ''),
-    description: `Importado de ${file.name} com ${pageImages.length} páginas`,
-    dimension: 'theory',
-    difficulty_level: defaultLevel as any,
-    tags: [instrument],
-    estimated_minutes: pageImages.length * 5,
-    selected: true,
-    blocks: allBlocks,
+  const topics: ImportedTopic[] = []
+  let sortOrder = 1
+
+  for (const [title, data] of topicsMap) {
+    // Skip empty topics
+    if (data.blocks.length === 0) continue
+
+    // Re-number blocks within topic
+    data.blocks.forEach((block, idx) => {
+      block.sort_order = idx + 1
+    })
+
+    topics.push({
+      title,
+      description: data.description || `Importado de ${file.name}`,
+      dimension: 'theory',
+      difficulty_level: defaultLevel as any,
+      tags: [instrument],
+      estimated_minutes: Math.max(5, data.blocks.length * 2),
+      selected: true,
+      blocks: data.blocks,
+    })
+    sortOrder++
+  }
+
+  // If no topics were created, create a fallback
+  if (topics.length === 0) {
+    throw new Error('A IA não conseguiu extrair conteúdo pedagógico do PDF')
   }
 
   onProgress?.('Concluído!', 100)
 
-  return [topic]
+  return topics
 }
 
 // ─── Legacy Text Extraction (for fallback) ───────────────
