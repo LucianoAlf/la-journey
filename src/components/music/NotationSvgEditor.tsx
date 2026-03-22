@@ -69,6 +69,7 @@ const NOTES_START_TS = NOTES_START + TIME_SIG_WIDTH // início dos beats com com
 const RIGHT_MARGIN = 20
 const CLEF_WIDTH = 30
 const KEY_SIG_WIDTH = 20       // por acidente na armadura
+const SVG_OCTAVE_SHIFT = 1
 
 const BEAT_WIDTHS: Record<BeatDuration, number> = {
   w: 60, h: 48, q: 36, '8': 28, '16': 22, '32': 18, '64': 14,
@@ -149,7 +150,7 @@ function getNoteIndex(noteName: string): number {
  * - Posição 6 = linha 2 = B2
  * - Posição 8 = linha 1 = G2
  */
-export function pitchToY(pitch: string, clef: string, topY: number): number {
+export function pitchToY(pitch: string, clef: string, topY: number, octaveShift = 0): number {
   const [notePart, octStr] = pitch.split('/')
   const octave = parseInt(octStr, 10)
   const noteIdx = getNoteIndex(notePart)
@@ -172,7 +173,7 @@ export function pitchToY(pitch: string, clef: string, topY: number): number {
   
   // Calcular steps a partir da referência
   // Cada step = 1 nota diatônica (linha ou espaço)
-  const octaveDiff = octave - referenceOctave
+  const octaveDiff = octave - referenceOctave + octaveShift
   const noteDiff = noteIdx - referenceNoteIdx
   const totalSteps = octaveDiff * 7 + noteDiff
   
@@ -185,7 +186,7 @@ export function pitchToY(pitch: string, clef: string, topY: number): number {
 /**
  * Converte posição Y no SVG para pitch
  */
-export function yToPitch(y: number, clef: string, topY: number): string {
+export function yToPitch(y: number, clef: string, topY: number, octaveShift = 0): string {
   const position = Math.round((y - topY) / HALF_SPACING)
   
   let referenceOctave: number
@@ -208,7 +209,7 @@ export function yToPitch(y: number, clef: string, topY: number): string {
   const octaveDiff = Math.floor(totalSteps / 7)
   let noteDiff = totalSteps % 7
   
-  let octave = referenceOctave + octaveDiff
+  let octave = referenceOctave + octaveDiff + octaveShift
   let noteIdx = referenceNoteIdx + noteDiff
   
   // Normalizar
@@ -278,6 +279,19 @@ interface RowLayout {
   beatCenters: number[] // X de cada beat relativo ao inicio da linha
   x: number // X inicial da linha
   beats: { idx: number; xOffset: number; duration: BeatDuration; pitches: PitchData[]; staff?: 'treble' | 'bass'; timeSlot?: number }[]
+}
+
+function stretchRowLayout(row: RowLayout, stretchFactor: number): RowLayout {
+  if (stretchFactor <= 1 || row.beatCenters.length === 0) return row
+
+  return {
+    ...row,
+    beatCenters: row.beatCenters.map(cx => row.x + (cx - row.x) * stretchFactor),
+    beats: row.beats.map(beat => ({
+      ...beat,
+      xOffset: beat.xOffset * stretchFactor,
+    })),
+  }
 }
 
 function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: boolean): RowLayout[] {
@@ -357,13 +371,20 @@ function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: bo
       centers.push(leftOffset + xOffset)
       usedW += bw
     }
-    
-    rows.push({
+
+    const stretchFactor = !hasTimeSignature && usedW > 0
+      ? usableWidth / usedW
+      : 1
+    const rowLayout = stretchRowLayout({
       startCol: 0,
       endCol: beats.length,
       beatCenters: centers,
       x: leftOffset,
       beats: rowBeats,
+    }, stretchFactor)
+    
+    rows.push({
+      ...rowLayout,
     })
   } else {
     // Modo normal: sequencial
@@ -396,7 +417,11 @@ function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: bo
       }
 
       if (centers.length > 0) {
-        rows.push({ startCol, endCol: col, beatCenters: centers, x: leftOffset, beats: rowBeats })
+        const stretchFactor = !hasTimeSignature && usedW > 0
+          ? usableWidth / usedW
+          : 1
+        const rowLayout = stretchRowLayout({ startCol, endCol: col, beatCenters: centers, x: leftOffset, beats: rowBeats }, stretchFactor)
+        rows.push(rowLayout)
       }
     }
   }
@@ -498,7 +523,7 @@ export function NotationSvgEditor({
 
       // Snap Y para posição de linha/espaço
       const snappedY = snapToStaffPosition(my, effectiveTopY)
-      const pitch = yToPitch(snappedY, effectiveClef, effectiveTopY)
+      const pitch = yToPitch(snappedY, effectiveClef, effectiveTopY, SVG_OCTAVE_SHIFT)
 
       // Encontrar coluna mais próxima pelo X (ou posição de inserção)
       let bestCol = -1
@@ -509,7 +534,12 @@ export function NotationSvgEditor({
         const dur = beats[colIdx]?.duration ?? 'q'
         const halfW = BEAT_WIDTHS[dur] / 2
         const dist = Math.abs(mx - cx)
-        if (dist < halfW * 1.5 && dist < bestDist) {
+        // Na Grande Pauta, a coluna visual precisa de uma tolerância maior,
+        // especialmente na pauta de Fá, para não exigir clique deslocado à direita.
+        const hitTolerance = grandStaffMode
+          ? Math.max(28, halfW * 2)
+          : halfW * 1.5
+        if (dist < hitTolerance && dist < bestDist) {
           bestDist = dist
           bestCol = colIdx
         }
@@ -858,7 +888,7 @@ export function NotationSvgEditor({
           // ── Notas ──
           for (let n = 0; n < beat.pitches.length; n++) {
             const pd = beat.pitches[n]
-            const y = pitchToY(pd.pitch, noteClef, noteStaffTopY)
+            const y = pitchToY(pd.pitch, noteClef, noteStaffTopY, SVG_OCTAVE_SHIFT)
             const isBassNote = isBassStaff
 
             // Linhas suplementares
@@ -997,7 +1027,7 @@ export function NotationSvgEditor({
           const beat = beats[colIdx]
           let cursorY = topY + 2 * LINE_SPACING
           if (beat && !beat.isRest && beat.pitches.length > 0) {
-            cursorY = pitchToY(beat.pitches[0].pitch, clef, topY)
+            cursorY = pitchToY(beat.pitches[0].pitch, clef, topY, SVG_OCTAVE_SHIFT)
           }
           els.push(
             <rect
@@ -1120,18 +1150,12 @@ export function NotationSvgEditor({
 
   return (
     <div className="relative rounded-xl border border-border bg-card overflow-hidden">
-      {/* Hidden input para captura de teclado */}
+      {/* Hidden input para captura de teclado — sem auto-refocus para não bloquear inputs externos */}
       {inputRef && onKeyDown && (
         <input
           ref={inputRef}
           type="text"
           onKeyDown={onKeyDown}
-          onBlur={(e) => {
-            // Re-focar automaticamente se o blur não foi para outro elemento do editor
-            if (!e.relatedTarget || !e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) {
-              setTimeout(() => inputRef?.current?.focus(), 10)
-            }
-          }}
           aria-label="Editor de notação - captura de teclado"
           autoComplete="off"
           tabIndex={0}
