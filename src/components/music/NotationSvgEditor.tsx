@@ -21,13 +21,14 @@ export interface Beat {
   lyric?: string
   staff?: 'treble' | 'bass'
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
+  timeSlot?: number // Posição temporal para sincronização entre pautas na Grande Pauta
 }
 
 export interface NotationSvgEditorProps {
   beats: Beat[]
   selectedBeatIdx: number
   onSelectBeat: (idx: number) => void
-  onInsertNote: (pitch: string, afterIdx: number) => void
+  onInsertNote: (pitch: string, afterIdx: number, staff?: 'treble' | 'bass', timeSlot?: number) => void
   onReplaceNote: (pitch: string, atIdx: number) => void
   onDeleteBeat: (idx: number) => void
   onUpdateBeat: (idx: number, updates: Partial<Beat>) => void
@@ -275,38 +276,134 @@ interface RowLayout {
   startCol: number
   endCol: number // exclusive
   beatCenters: number[] // X de cada beat relativo ao inicio da linha
+  x: number // X inicial da linha
+  beats: { idx: number; xOffset: number; duration: BeatDuration; pitches: PitchData[]; staff?: 'treble' | 'bass'; timeSlot?: number }[]
 }
 
-function buildRows(beats: Beat[], hasTimeSignature: boolean): RowLayout[] {
+function buildRows(beats: Beat[], hasTimeSignature: boolean, grandStaffMode?: boolean): RowLayout[] {
   const rows: RowLayout[] = []
-  let col = 0
-  const columns = beats.length
-  // Início dos beats: após clave (e compasso se houver)
   const leftOffset = hasTimeSignature ? NOTES_START_TS : NOTES_START
   const usableWidth = VB_WIDTH - leftOffset - RIGHT_MARGIN
 
-  while (col < columns) {
+  if (grandStaffMode && beats.length > 0) {
+    // Na Grande Pauta, agrupar por timeSlot para alinhamento vertical
+    // Primeiro, identificar todos os timeSlots únicos
+    const timeSlots = new Map<number, { treble?: number; bass?: number }>()
+    
+    beats.forEach((beat, idx) => {
+      const slot = beat.timeSlot ?? idx
+      if (!timeSlots.has(slot)) {
+        timeSlots.set(slot, {})
+      }
+      const entry = timeSlots.get(slot)!
+      if (beat.staff === 'bass') {
+        entry.bass = idx
+      } else {
+        entry.treble = idx
+      }
+    })
+    
+    // Ordenar timeSlots
+    const sortedSlots = Array.from(timeSlots.keys()).sort((a, b) => a - b)
+    
+    // Construir layout baseado em timeSlots
     let usedW = 0
-    const startCol = col
+    const rowBeats: RowLayout['beats'] = []
     const centers: number[] = []
+    
+    for (const slot of sortedSlots) {
+      const entry = timeSlots.get(slot)!
+      // Usar a maior duração entre treble e bass para o slot
+      let maxDur: BeatDuration = 'q'
+      if (entry.treble !== undefined) {
+        maxDur = beats[entry.treble].duration
+      }
+      if (entry.bass !== undefined) {
+        const bassDur = beats[entry.bass].duration
+        if (BEAT_WIDTHS[bassDur] > BEAT_WIDTHS[maxDur]) {
+          maxDur = bassDur
+        }
+      }
+      
+      const bw = BEAT_WIDTHS[maxDur]
+      const xOffset = usedW + bw / 2
+      
+      // Adicionar beat treble se existir
+      if (entry.treble !== undefined) {
+        const b = beats[entry.treble]
+        rowBeats.push({
+          idx: entry.treble,
+          xOffset,
+          duration: b.duration,
+          pitches: b.pitches,
+          staff: 'treble',
+          timeSlot: slot,
+        })
+      }
+      
+      // Adicionar beat bass se existir
+      if (entry.bass !== undefined) {
+        const b = beats[entry.bass]
+        rowBeats.push({
+          idx: entry.bass,
+          xOffset,
+          duration: b.duration,
+          pitches: b.pitches,
+          staff: 'bass',
+          timeSlot: slot,
+        })
+      }
+      
+      centers.push(leftOffset + xOffset)
+      usedW += bw
+    }
+    
+    rows.push({
+      startCol: 0,
+      endCol: beats.length,
+      beatCenters: centers,
+      x: leftOffset,
+      beats: rowBeats,
+    })
+  } else {
+    // Modo normal: sequencial
+    let col = 0
+    const columns = beats.length
 
     while (col < columns) {
-      const dur = beats[col]?.duration ?? 'q'
-      const bw = BEAT_WIDTHS[dur]
-      if (usedW + bw > usableWidth && col > startCol) break
-      centers.push(leftOffset + usedW + bw / 2)
-      usedW += bw
-      col++
-    }
+      let usedW = 0
+      const startCol = col
+      const centers: number[] = []
+      const rowBeats: RowLayout['beats'] = []
 
-    if (centers.length > 0) {
-      rows.push({ startCol, endCol: col, beatCenters: centers })
+      while (col < columns) {
+        const beat = beats[col]
+        const dur = beat?.duration ?? 'q'
+        const bw = BEAT_WIDTHS[dur]
+        if (usedW + bw > usableWidth && col > startCol) break
+        const xOffset = usedW + bw / 2
+        centers.push(leftOffset + xOffset)
+        rowBeats.push({
+          idx: col,
+          xOffset,
+          duration: dur,
+          pitches: beat.pitches,
+          staff: beat.staff,
+          timeSlot: beat.timeSlot,
+        })
+        usedW += bw
+        col++
+      }
+
+      if (centers.length > 0) {
+        rows.push({ startCol, endCol: col, beatCenters: centers, x: leftOffset, beats: rowBeats })
+      }
     }
   }
 
   // Se não há beats, criar uma linha vazia para mostrar a pauta
   if (rows.length === 0) {
-    rows.push({ startCol: 0, endCol: 0, beatCenters: [] })
+    rows.push({ startCol: 0, endCol: 0, beatCenters: [], x: leftOffset, beats: [] })
   }
 
   return rows
@@ -340,7 +437,7 @@ export function NotationSvgEditor({
 
   // ── Distribuir beats em linhas ──
   const hasTimeSignature = !!timeSignature
-  const rows = useMemo(() => buildRows(beats, hasTimeSignature), [beats, hasTimeSignature])
+  const rows = useMemo(() => buildRows(beats, hasTimeSignature, grandStaffMode), [beats, hasTimeSignature, grandStaffMode])
 
   // ── Dimensões do SVG ──
   // Grande Pauta: duas pautas (Sol + Fá) com gap entre elas
@@ -383,9 +480,25 @@ export function NotationSvgEditor({
       const row = rows[hitRow]
       const topY = staffTopY(hitRow)
 
+      // Detectar qual pauta foi clicada (treble ou bass) na Grande Pauta
+      let clickedStaff: 'treble' | 'bass' = 'treble'
+      let effectiveTopY = topY
+      let effectiveClef = clef
+      
+      if (grandStaffMode) {
+        const bassTop = bassStaffTopY(hitRow)
+        // Ponto médio entre o fim da pauta treble e o início da pauta bass
+        const midPoint = topY + STAFF_HEIGHT + GRAND_STAFF_GAP / 2
+        if (my >= midPoint) {
+          clickedStaff = 'bass'
+          effectiveTopY = bassTop
+          effectiveClef = 'bass'
+        }
+      }
+
       // Snap Y para posição de linha/espaço
-      const snappedY = snapToStaffPosition(my, topY)
-      const pitch = yToPitch(snappedY, clef, topY)
+      const snappedY = snapToStaffPosition(my, effectiveTopY)
+      const pitch = yToPitch(snappedY, effectiveClef, effectiveTopY)
 
       // Encontrar coluna mais próxima pelo X (ou posição de inserção)
       let bestCol = -1
@@ -416,6 +529,9 @@ export function NotationSvgEditor({
         }
       }
 
+      // Se encontrou um beat, pegar o timeSlot dele para referência
+      const referenceTimeSlot = bestCol >= 0 ? (beats[bestCol]?.timeSlot ?? bestCol) : undefined
+
       return {
         beatIdx: bestCol,
         insertAfterIdx,
@@ -423,9 +539,11 @@ export function NotationSvgEditor({
         snappedY,
         rowIdx: hitRow,
         x: mx,
+        staff: clickedStaff,
+        timeSlot: referenceTimeSlot,
       }
     },
-    [svgHeight, rows, rowY, rowH, staffTopY, clef, beats],
+    [svgHeight, rows, rowY, rowH, staffTopY, bassStaffTopY, clef, beats, grandStaffMode],
   )
 
   const handleClick = useCallback(
@@ -434,14 +552,24 @@ export function NotationSvgEditor({
       if (!pos) return
 
       if (pos.beatIdx >= 0) {
-        // Clicou em um beat existente
-        onSelectBeat(pos.beatIdx)
+        const clickedBeat = beats[pos.beatIdx]
+        const clickedBeatStaff = clickedBeat?.staff ?? 'treble'
+        
+        // Na Grande Pauta: se clicou em uma pauta diferente da nota existente, inserir nova nota
+        if (grandStaffMode && clickedBeatStaff !== pos.staff && isInputMode) {
+          // Inserir nota na outra pauta, usando o timeSlot da nota de referência
+          onInsertNote(pos.pitch, pos.beatIdx, pos.staff, pos.timeSlot)
+        } else {
+          // Clicou na mesma pauta da nota existente → selecionar
+          onSelectBeat(pos.beatIdx)
+        }
       } else if (isInputMode) {
         // Clicou em área vazia no modo input → inserir nota
-        onInsertNote(pos.pitch, pos.insertAfterIdx)
+        // Passa a pauta detectada automaticamente (treble ou bass)
+        onInsertNote(pos.pitch, pos.insertAfterIdx, pos.staff, pos.timeSlot)
       }
     },
-    [getPositionFromEvent, onSelectBeat, onInsertNote, isInputMode],
+    [getPositionFromEvent, onSelectBeat, onInsertNote, isInputMode, beats, grandStaffMode],
   )
 
   const handleDoubleClick = useCallback(
@@ -519,35 +647,37 @@ export function NotationSvgEditor({
           )
         }
 
-        // ── Brace (chave de sistema) conectando as duas pautas ──
-        const braceTop = topY
-        const braceBottom = bassTopY + STAFF_HEIGHT
+        // ── Brace (chave de sistema) — estilo AlphaTab (curva elegante) ──
+        const braceTop = topY                      // topo da pauta treble
+        const braceBottom = bassTopY + STAFF_HEIGHT // fundo da pauta bass
+        const braceMidY = (braceTop + braceBottom) / 2
+        const bx = BRACE_X + 4
+        // Brace estilo AlphaTab: curva S com ponta no centro
         els.push(
-          <text
+          <path
             key={`brace-${r}`}
-            x={BRACE_X}
-            y={(braceTop + braceBottom) / 2}
-            fontSize={braceBottom - braceTop - 8}
-            fontFamily={FONT_MUSIC}
-            fill={C.clef}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            style={{ userSelect: 'none' }}
-          >
-            {'{'}
-          </text>,
-        )
-
-        // ── Linha vertical conectando as pautas ──
-        els.push(
-          <line
-            key={`barline-start-${r}`}
-            x1={topBarX}
-            y1={topY}
-            x2={topBarX}
-            y2={bassTopY + STAFF_HEIGHT}
-            stroke={C.line}
-            strokeWidth={1.5}
+            d={`
+              M ${bx + 3} ${braceTop - 1}
+              C ${bx + 1} ${braceTop + 3},
+                ${bx - 1} ${braceTop + 10},
+                ${bx - 1} ${braceTop + 25}
+              L ${bx - 1} ${braceMidY - 8}
+              C ${bx - 1} ${braceMidY - 3},
+                ${bx - 4} ${braceMidY},
+                ${bx - 6} ${braceMidY}
+              C ${bx - 4} ${braceMidY},
+                ${bx - 1} ${braceMidY + 3},
+                ${bx - 1} ${braceMidY + 8}
+              L ${bx - 1} ${braceBottom - 25}
+              C ${bx - 1} ${braceBottom - 10},
+                ${bx + 1} ${braceBottom - 3},
+                ${bx + 3} ${braceBottom + 1}
+            `}
+            fill="none"
+            stroke={C.clef}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />,
         )
       }
@@ -690,12 +820,12 @@ export function NotationSvgEditor({
       }
 
       // ── Notas ──
-      for (let i = 0; i < row.beatCenters.length; i++) {
-        const colIdx = row.startCol + i
+      for (const rowBeat of row.beats) {
+        const colIdx = rowBeat.idx
         const beat = beats[colIdx]
         if (!beat) continue
 
-        const cx = row.beatCenters[i]
+        const cx = row.x + rowBeat.xOffset
         const isSelected = selectedBeatIdx === colIdx
 
         // Determinar qual pauta usar para este beat

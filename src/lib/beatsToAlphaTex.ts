@@ -68,8 +68,9 @@ export interface Beat {
   volta?: { number: number; isStart: boolean; isEnd: boolean }
   pedalStart?: boolean
   pedalEnd?: boolean
-  // Campo opcional para grande pauta (piano)
+  // Campos para grande pauta (piano)
   staff?: 'treble' | 'bass'
+  timeSlot?: number  // Posição temporal para sincronização entre pautas
 }
 
 // ─── Opções de conversão ───
@@ -289,7 +290,79 @@ export function beatsToAlphaTex(
 
   if (options.grandStaff) {
     // ── Grande pauta (piano) ──
+    // Agrupar staves com brace (chave de sistema)
+    lines.push(`\\bracketextendmode GroupStaves`)
+    lines.push(`.`)
     lines.push(`\\track "Piano" "pno."`)
+
+    // Separar beats por pauta
+    const trebleBeats = beats.filter(b => (b.staff || 'treble') === 'treble')
+    const bassBeats = beats.filter(b => b.staff === 'bass')
+
+    // Coletar todos os timeSlots únicos e ordenar
+    const allTimeSlots = new Set<number>()
+    trebleBeats.forEach((b, i) => allTimeSlots.add(b.timeSlot ?? i))
+    bassBeats.forEach((b, i) => allTimeSlots.add(b.timeSlot ?? i))
+    const sortedTimeSlots = Array.from(allTimeSlots).sort((a, b) => a - b)
+
+    // Criar mapas de timeSlot → beat para cada pauta
+    const trebleBySlot = new Map<number, Beat>()
+    trebleBeats.forEach((b, i) => trebleBySlot.set(b.timeSlot ?? i, b))
+    const bassBySlot = new Map<number, Beat>()
+    bassBeats.forEach((b, i) => bassBySlot.set(b.timeSlot ?? i, b))
+
+    // Gerar beats sincronizados para treble (com pausas onde não há nota)
+    const syncedTrebleBeats: Beat[] = []
+    const syncedBassBeats: Beat[] = []
+
+    for (const slot of sortedTimeSlots) {
+      const trebleBeat = trebleBySlot.get(slot)
+      const bassBeat = bassBySlot.get(slot)
+
+      // Determinar a duração do slot (usar a maior duração entre as duas pautas)
+      let slotDuration = 'q'
+      if (trebleBeat) slotDuration = trebleBeat.duration
+      if (bassBeat) {
+        const bassDur = bassBeat.duration
+        // Comparar durações (w > h > q > 8 > 16 > 32 > 64)
+        const durOrder: Record<string, number> = { 'w': 7, 'h': 6, 'q': 5, '8': 4, '16': 3, '32': 2, '64': 1 }
+        if ((durOrder[bassDur] || 5) > (durOrder[slotDuration] || 5)) {
+          slotDuration = bassDur
+        }
+      }
+
+      // Treble: usar beat existente ou criar pausa
+      if (trebleBeat) {
+        syncedTrebleBeats.push(trebleBeat)
+      } else {
+        syncedTrebleBeats.push({
+          pitches: [],
+          duration: slotDuration,
+          tie: false,
+          isRest: true,
+          dotted: false,
+          cifra: null,
+          annotation: null,
+          lyric: null,
+        })
+      }
+
+      // Bass: usar beat existente ou criar pausa
+      if (bassBeat) {
+        syncedBassBeats.push(bassBeat)
+      } else {
+        syncedBassBeats.push({
+          pitches: [],
+          duration: slotDuration,
+          tie: false,
+          isRest: true,
+          dotted: false,
+          cifra: null,
+          annotation: null,
+          lyric: null,
+        })
+      }
+    }
 
     // Staff 1: mão direita (treble)
     lines.push(`\\staff{score} \\tuning piano \\instrument acousticgrandpiano`)
@@ -302,8 +375,11 @@ export function beatsToAlphaTex(
       lines.push(`\\ts ${n} ${d}`)
     }
 
-    const trebleBeats = beats.filter(b => (b.staff || 'treble') === 'treble')
-    lines.push(beatsToAlphaTexNotes(trebleBeats).tex)
+    if (syncedTrebleBeats.length > 0) {
+      lines.push(beatsToAlphaTexNotes(syncedTrebleBeats).tex)
+    } else {
+      lines.push(':1 r')
+    }
 
     // Staff 2: mão esquerda (bass)
     lines.push(`\\staff{score} \\tuning piano`)
@@ -316,11 +392,9 @@ export function beatsToAlphaTex(
       lines.push(`\\ts ${n} ${d}`)
     }
 
-    const bassBeats = beats.filter(b => b.staff === 'bass')
-    if (bassBeats.length > 0) {
-      lines.push(beatsToAlphaTexNotes(bassBeats).tex)
+    if (syncedBassBeats.length > 0) {
+      lines.push(beatsToAlphaTexNotes(syncedBassBeats).tex)
     } else {
-      // Staff vazia — pelo menos uma pausa
       lines.push(':1 r')
     }
   } else {

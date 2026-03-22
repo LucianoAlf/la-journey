@@ -353,24 +353,90 @@ export function NotationEditorV2({
     focusInput()
   }, [beats, focusInput])
 
-  const handleInsertNote = useCallback((pitch: string, afterIdx: number) => {
+  const handleInsertNote = useCallback((pitch: string, afterIdx: number, staff?: 'treble' | 'bass', explicitTimeSlot?: number) => {
+    // Se staff foi passado (clique no SVG), usa ele. Senão usa activeStaff (teclado)
+    const effectiveStaff = staff ?? activeStaff
+    
+    // Calcular o timeSlot para a nova nota
+    let nextTimeSlot = 0
+    if (grandStaffMode) {
+      // Filtrar apenas as notas da pauta atual para escrita independente
+      const staffBeats = beats.filter(b => (b.staff ?? 'treble') === effectiveStaff)
+      
+      // Encontrar o maior timeSlot desta pauta
+      const maxStaffTimeSlot = staffBeats.length > 0 
+        ? staffBeats.reduce((max, b) => Math.max(max, b.timeSlot ?? 0), -1)
+        : -1
+      
+      // Se foi passado um timeSlot explícito (clique na posição de outra nota), usar ele
+      if (explicitTimeSlot !== undefined) {
+        // Verificar se já existe nota desta pauta neste timeSlot
+        const hasThisStaffAtSlot = beats.some(b => 
+          (b.staff ?? 'treble') === effectiveStaff && b.timeSlot === explicitTimeSlot
+        )
+        
+        if (hasThisStaffAtSlot) {
+          // Já existe nota desta pauta neste slot → criar novo slot após o maior desta pauta
+          nextTimeSlot = maxStaffTimeSlot + 1
+        } else {
+          // Usar o timeSlot passado (alinhamento vertical com nota da outra pauta)
+          nextTimeSlot = explicitTimeSlot
+        }
+      } else {
+        // Escrita independente: próximo slot desta pauta
+        nextTimeSlot = maxStaffTimeSlot + 1
+      }
+    }
+    
     const newBeat: Beat = {
       pitches: [{ pitch, accidental: currentAccidental || undefined }],
       duration: currentDuration,
       isRest: false,
       dotted,
       doubleDotted,
-      staff: grandStaffMode ? activeStaff : undefined,
+      staff: grandStaffMode ? effectiveStaff : undefined,
+      timeSlot: grandStaffMode ? nextTimeSlot : undefined,
     }
 
     const newBeats = [...beats]
-    const insertIdx = afterIdx + 1
-    newBeats.splice(insertIdx, 0, newBeat)
-
-    setBeats(newBeats)
-    pushHistory(newBeats)
-    setSelectedBeatIdx(insertIdx)
+    
+    if (grandStaffMode) {
+      // Inserir na posição correta mantendo ordenação por timeSlot
+      // Treble vem antes de bass no mesmo timeSlot
+      let insertIdx = 0
+      for (let i = 0; i < newBeats.length; i++) {
+        const b = newBeats[i]
+        const bSlot = b.timeSlot ?? i
+        const bStaff = b.staff ?? 'treble'
+        
+        if (bSlot < nextTimeSlot) {
+          insertIdx = i + 1
+        } else if (bSlot === nextTimeSlot) {
+          // Mesmo slot: treble antes de bass
+          if (bStaff === 'treble' && effectiveStaff === 'bass') {
+            insertIdx = i + 1
+          }
+        }
+      }
+      newBeats.splice(insertIdx, 0, newBeat)
+      setBeats(newBeats)
+      pushHistory(newBeats)
+      setSelectedBeatIdx(insertIdx)
+    } else {
+      const insertIdx = afterIdx + 1
+      newBeats.splice(insertIdx, 0, newBeat)
+      setBeats(newBeats)
+      pushHistory(newBeats)
+      setSelectedBeatIdx(insertIdx)
+    }
+    
     lastPitchRef.current = pitch
+    
+    // Atualizar activeStaff para a pauta onde a nota foi inserida
+    if (grandStaffMode && staff) {
+      setActiveStaff(staff)
+    }
+    
     focusInput()
   }, [beats, currentDuration, currentAccidental, dotted, doubleDotted, grandStaffMode, activeStaff, pushHistory, focusInput])
 
@@ -567,10 +633,18 @@ export function NotationEditorV2({
       if (e.shiftKey && selectedBeatIdx >= 0 && selectedBeatIdx < beats.length) {
         // Shift+A-G = Adicionar ao acorde
         const beat = beats[selectedBeatIdx]
-        if (!beat.isRest) {
+        // Na Grande Pauta, só adicionar ao acorde se a nota selecionada for da pauta ativa
+        const beatStaff = beat.staff ?? 'treble'
+        const canAddToChord = !grandStaffMode || beatStaff === activeStaff
+        
+        if (!beat.isRest && canAddToChord) {
           const newPitches = [...beat.pitches, { pitch, accidental: currentAccidental || undefined }]
           handleUpdateBeat(selectedBeatIdx, { pitches: newPitches })
           lastPitchRef.current = pitch
+        } else if (grandStaffMode && beatStaff !== activeStaff) {
+          // Se a nota selecionada é de outra pauta, inserir nova nota na pauta ativa
+          const insertAfterIdx = selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1
+          handleInsertNote(pitch, insertAfterIdx)
         }
       } else {
         // A-G = Inserir nova nota após a seleção atual
@@ -1054,27 +1128,30 @@ export function NotationEditorV2({
             <PianoKeys className="h-4 w-4" />
           </button>
 
+          {/* Botões de seleção de pauta (mão direita/esquerda) */}
           {grandStaffMode && (
             <>
               <button
-                onClick={() => setActiveStaff('treble')}
-                className={`h-7 px-2 rounded-md border text-[11px] font-medium transition-colors ${
+                onClick={() => { setActiveStaff('treble'); focusInput() }}
+                className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 transition-colors ${
                   activeStaff === 'treble'
-                    ? 'border-accent bg-accent text-white'
-                    : 'border-border text-text3 hover:border-accent/50'
+                    ? 'border-accent bg-accent/20 text-accent'
+                    : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
                 }`}
+                title="Pauta Sol - Mão Direita (Tab para alternar)"
               >
-                Sol (MD)
+                𝄞 Sol (MD)
               </button>
               <button
-                onClick={() => setActiveStaff('bass')}
-                className={`h-7 px-2 rounded-md border text-[11px] font-medium transition-colors ${
+                onClick={() => { setActiveStaff('bass'); focusInput() }}
+                className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 transition-colors ${
                   activeStaff === 'bass'
-                    ? 'border-indigo-500 bg-indigo-500 text-white'
-                    : 'border-border text-text3 hover:border-indigo-500/50'
+                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-500'
+                    : 'border-border text-text3 hover:border-indigo-500/50 hover:text-indigo-500'
                 }`}
+                title="Pauta Fá - Mão Esquerda (Tab para alternar)"
               >
-                Fá (ME)
+                𝄢 Fá (ME)
               </button>
             </>
           )}
