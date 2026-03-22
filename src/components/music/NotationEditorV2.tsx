@@ -131,11 +131,42 @@ function getBeatDuration(beat: Beat): number {
   return dur
 }
 
-function computeBarlines(beats: Beat[], timeSignature: string): number[] {
+function computeBarlines(beats: Beat[], timeSignature: string, grandStaffMode = false): number[] {
   if (timeSignature === 'free' || !timeSignature) return []
   const [num, den] = timeSignature.split('/').map(Number)
   if (!num || !den) return []
   const beatsPerBar = num * (4 / den)
+
+  if (grandStaffMode) {
+    const slotMap = new Map<number, { duration: number; indices: number[] }>()
+
+    for (let i = 0; i < beats.length; i++) {
+      const beat = beats[i]
+      const slot = beat.timeSlot ?? i
+      const entry = slotMap.get(slot) ?? { duration: 0, indices: [] }
+      entry.duration = Math.max(entry.duration, getBeatDuration(beat))
+      entry.indices.push(i)
+      slotMap.set(slot, entry)
+    }
+
+    const sortedSlots = Array.from(slotMap.keys()).sort((a, b) => a - b)
+    const barlines: number[] = []
+    let accumulated = 0
+
+    for (const slot of sortedSlots) {
+      const entry = slotMap.get(slot)
+      if (!entry) continue
+      accumulated += entry.duration
+      if (accumulated >= beatsPerBar - 0.001) {
+        if (slot !== sortedSlots[sortedSlots.length - 1]) {
+          barlines.push(Math.max(...entry.indices))
+        }
+        accumulated -= beatsPerBar
+      }
+    }
+
+    return barlines
+  }
 
   const barlines: number[] = []
   let accumulated = 0
@@ -275,7 +306,10 @@ export function NotationEditorV2({
 
     const timer = setTimeout(() => {
       // Calcular barlines para sincronizar com AlphaTab
-      const computedBarlines = computeBarlines(beats, timeSignature)
+      const computedBarlines = computeBarlines(beats, timeSignature, grandStaffMode)
+      const barlineSlotSet = new Set<number>(
+        computedBarlines.map(idx => beats[idx]?.timeSlot ?? idx),
+      )
       
       // Converter SvgBeat[] → AlphaTexBeat[] para o conversor
       const alphaTexBeats: AlphaTexBeat[] = beats.map((b, idx) => ({
@@ -293,7 +327,9 @@ export function NotationEditorV2({
         dynamic: b.dynamics,
         staff: b.staff,
         timeSlot: b.timeSlot,
-        barAfter: computedBarlines.includes(idx), // Sincronizar barlines
+        barAfter: grandStaffMode
+          ? barlineSlotSet.has(b.timeSlot ?? idx)
+          : computedBarlines.includes(idx), // Sincronizar barlines
       }))
       const result = beatsToAlphaTexWithMap(alphaTexBeats, {
         clef,

@@ -509,7 +509,12 @@ export function NotationSvgEditor({
         const dur = beats[colIdx]?.duration ?? 'q'
         const halfW = BEAT_WIDTHS[dur] / 2
         const dist = Math.abs(mx - cx)
-        if (dist < halfW * 1.5 && dist < bestDist) {
+        // Na Grande Pauta, a coluna visual precisa de uma tolerância maior,
+        // especialmente na pauta de Fá, para não exigir clique deslocado à direita.
+        const hitTolerance = grandStaffMode
+          ? Math.max(28, halfW * 2)
+          : halfW * 1.5
+        if (dist < hitTolerance && dist < bestDist) {
           bestDist = dist
           bestCol = colIdx
         }
