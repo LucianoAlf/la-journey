@@ -131,6 +131,67 @@ function getBeatDuration(beat: Beat): number {
   return dur
 }
 
+function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
+  return rawBeats
+    .map((rawBeat): SvgBeat | null => {
+      if (!rawBeat || typeof rawBeat !== 'object') return null
+
+      const legacyNotes = Array.isArray(rawBeat.notes) ? rawBeat.notes : []
+      const legacyAccidentals = Array.isArray(rawBeat.accidentals) ? rawBeat.accidentals : []
+
+      let pitches: PitchData[] = []
+      if (Array.isArray(rawBeat.pitches)) {
+        pitches = rawBeat.pitches
+          .map((p: any) => ({ pitch: String(p?.pitch ?? ''), accidental: p?.accidental ?? undefined }))
+          .filter((p: PitchData) => p.pitch.includes('/'))
+      } else {
+        pitches = legacyNotes
+          .map((entry: any, i: number) => {
+            const noteText = typeof entry === 'string'
+              ? entry
+              : typeof entry?.key === 'string'
+                ? entry.key
+                : ''
+            const pitch = noteText.split(':')[0]
+            if (!pitch.includes('/')) return null
+            const accidental = legacyAccidentals[i] ?? null
+            return { pitch, accidental: accidental ?? undefined }
+          })
+          .filter((p: PitchData | null): p is PitchData => p !== null)
+      }
+
+      const rawDurationFromNotes = typeof legacyNotes[0] === 'string'
+        ? String(legacyNotes[0]).split(':')[1] ?? 'q'
+        : 'q'
+
+      const rawDuration = String(rawBeat.duration ?? rawDurationFromNotes ?? 'q')
+      const doubleDotted = Boolean(rawBeat.doubleDotted) || rawDuration.includes('dd')
+      const dotted = doubleDotted ? false : (Boolean(rawBeat.dotted) || rawDuration.includes('d'))
+      const duration = rawDuration.replace(/dd|d|r/g, '') as BeatDuration
+      const safeDuration: BeatDuration = (['w', 'h', 'q', '8', '16', '32', '64'] as string[]).includes(duration)
+        ? duration
+        : 'q'
+
+      const isRest = Boolean(rawBeat.isRest) || rawDuration.includes('r') || pitches.length === 0
+
+      return {
+        pitches,
+        duration: safeDuration,
+        isRest,
+        dotted,
+        doubleDotted,
+        tieToNext: Boolean(rawBeat.tieToNext ?? rawBeat.tie),
+        articulations: Array.isArray(rawBeat.articulations) ? rawBeat.articulations : undefined,
+        dynamics: rawBeat.dynamics ?? rawBeat.dynamic,
+        lyric: typeof rawBeat.lyric === 'string' ? rawBeat.lyric : undefined,
+        staff: rawBeat.staff === 'bass' ? 'bass' : rawBeat.staff === 'treble' ? 'treble' : undefined,
+        tuplet: rawBeat.tuplet,
+        timeSlot: Number.isFinite(rawBeat.timeSlot) ? rawBeat.timeSlot : undefined,
+      }
+    })
+    .filter((beat): beat is SvgBeat => beat !== null)
+}
+
 function computeBarlines(beats: Beat[], timeSignature: string, grandStaffMode = false): number[] {
   if (timeSignature === 'free' || !timeSignature) return []
   const [num, den] = timeSignature.split('/').map(Number)
@@ -255,17 +316,18 @@ export function NotationEditorV2({
       // Carregar dados existentes
       const data = notation.notation_data as any
       if (data?.beats && Array.isArray(data.beats)) {
-        setBeats(data.beats)
-        setHistory([data.beats])
+        const normalizedBeats = normalizeLegacyBeats(data.beats)
+        setBeats(normalizedBeats)
+        setHistory([normalizedBeats])
         setHistoryIdx(0)
       } else {
         setBeats([])
         setHistory([[]])
         setHistoryIdx(0)
       }
-      setClef(data?.clef || 'treble')
-      setKeySignature(data?.keySignature || 'C')
-      setTimeSignature(data?.timeSignature || 'free')
+      setClef(data?.clef || notation.clef || 'treble')
+      setKeySignature(data?.keySignature || notation.key_signature || 'C')
+      setTimeSignature(data?.timeSignature || notation.time_signature || 'free')
       setBpm(data?.bpm || 120)
       setGrandStaffMode(data?.grandStaff || false)
       setLabel(notation.name || '')
@@ -296,7 +358,7 @@ export function NotationEditorV2({
     lastPitchRef.current = null
   }, [open, notation])
 
-  // ─── Converter beats → AlphaTex (com debounce) ─────────────────────
+  // ─── Converter beats → AlphaTex ────────────────────────────────────
   useEffect(() => {
     if (beats.length === 0) {
       setAlphaTex('')
@@ -304,45 +366,41 @@ export function NotationEditorV2({
       return
     }
 
-    const timer = setTimeout(() => {
-      // Calcular barlines para sincronizar com AlphaTab
-      const computedBarlines = computeBarlines(beats, timeSignature, grandStaffMode)
-      const barlineSlotSet = new Set<number>(
-        computedBarlines.map(idx => beats[idx]?.timeSlot ?? idx),
-      )
-      
-      // Converter SvgBeat[] → AlphaTexBeat[] para o conversor
-      const alphaTexBeats: AlphaTexBeat[] = beats.map((b, idx) => ({
-        pitches: b.pitches.map(p => ({ pitch: p.pitch, accidental: p.accidental ?? null })),
-        duration: b.duration,
-        tie: b.tieToNext ?? false,
-        isRest: b.isRest,
-        dotted: b.dotted ?? false,
-        doubleDotted: b.doubleDotted,
-        articulations: b.articulations,
-        tuplet: b.tuplet,
-        cifra: null,
-        annotation: null,
-        lyric: b.lyric ?? null,
-        dynamic: b.dynamics,
-        staff: b.staff,
-        timeSlot: b.timeSlot,
-        barAfter: grandStaffMode
-          ? barlineSlotSet.has(b.timeSlot ?? idx)
-          : computedBarlines.includes(idx), // Sincronizar barlines
-      }))
-      const result = beatsToAlphaTexWithMap(alphaTexBeats, {
-        clef,
-        keySignature,
-        timeSignature: timeSignature !== 'free' ? timeSignature : null,
-        grandStaff: grandStaffMode,
-        bpm,
-      })
-      setAlphaTex(result.tex)
-      setAlphaTabIndexMap(result.indexMap)
-    }, 300)
-
-    return () => clearTimeout(timer)
+    // Calcular barlines para sincronizar com AlphaTab
+    const computedBarlines = computeBarlines(beats, timeSignature, grandStaffMode)
+    const barlineSlotSet = new Set<number>(
+      computedBarlines.map(idx => beats[idx]?.timeSlot ?? idx),
+    )
+    
+    // Converter SvgBeat[] → AlphaTexBeat[] para o conversor
+    const alphaTexBeats: AlphaTexBeat[] = beats.map((b, idx) => ({
+      pitches: b.pitches.map(p => ({ pitch: p.pitch, accidental: p.accidental ?? null })),
+      duration: b.duration,
+      tie: b.tieToNext ?? false,
+      isRest: b.isRest,
+      dotted: b.dotted ?? false,
+      doubleDotted: b.doubleDotted,
+      articulations: b.articulations,
+      tuplet: b.tuplet,
+      cifra: null,
+      annotation: null,
+      lyric: null,
+      staff: b.staff,
+      timeSlot: b.timeSlot,
+      barAfter: grandStaffMode
+        ? barlineSlotSet.has(b.timeSlot ?? idx)
+        : computedBarlines.includes(idx), // Sincronizar barlines
+    }))
+    const result = beatsToAlphaTexWithMap(alphaTexBeats, {
+      clef,
+      keySignature,
+      timeSignature: timeSignature !== 'free' ? timeSignature : null,
+      grandStaff: grandStaffMode,
+      bpm,
+      includeLyrics: false, // Não mostrar nomes de notas/sílabas no preview
+    })
+    setAlphaTex(result.tex)
+    setAlphaTabIndexMap(result.indexMap)
   }, [beats, clef, keySignature, timeSignature, grandStaffMode, bpm])
 
   // ─── Barlines calculadas ───────────────────────────────────────────
@@ -371,11 +429,9 @@ export function NotationEditorV2({
     }
   }, [historyIdx, history])
 
-  // ─── Focar hidden input ────────────────────────────────────────────
+  // ─── Focar hidden input (só quando o usuário clica no editor) ──────
   const focusInput = useCallback(() => {
-    requestAnimationFrame(() => {
-      hiddenInputRef.current?.focus()
-    })
+    // Não forçar foco automaticamente para não bloquear inputs externos
   }, [])
 
   // ─── Callbacks do NotationSvgEditor ────────────────────────────────
@@ -1073,14 +1129,8 @@ export function NotationEditorV2({
     return { notes, rests, chords, ties, total: beats.length }
   }, [beats])
 
-  // ─── Focar input ao abrir ──────────────────────────────────────────
-  useEffect(() => {
-    if (!open) return
-    const timer = setTimeout(() => {
-      hiddenInputRef.current?.focus()
-    }, 150)
-    return () => clearTimeout(timer)
-  }, [open])
+  // ─── Focar input ao abrir (apenas quando o usuário interage com o editor) ──
+  // Removido auto-focus agressivo que bloqueava input externo (chat, etc.)
 
   // ─── Render ────────────────────────────────────────────────────────
   return (
@@ -1444,9 +1494,9 @@ export function NotationEditorV2({
                   staveProfile="score"
                   grandStaffMode={grandStaffMode}
                   layout="page"
-                  scale={0.8}
+                  scale={1.0}
                   showTimeSignature={timeSignature !== 'free'}
-                  minHeight={100}
+                  minHeight={120}
                 />
               </div>
             )}

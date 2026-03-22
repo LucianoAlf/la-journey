@@ -11,21 +11,64 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useChords } from "@/hooks/useLibrary";
 import { ChordDiagram } from "@/components/music/ChordDiagram";
 import { PianoKeyboard } from "@/components/music/PianoKeyboard";
-import { NotationRenderer } from "@/components/music/NotationRenderer";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
-import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
+import { NotationEditorV2 } from "@/components/music/NotationEditorV2";
+import { AlphaTexInlineRenderer } from "@/components/music/AlphaTexInlineRenderer";
 import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
 import { AlphaTabViewer } from "@/components/music/AlphaTabViewer";
 import { GuitarFretboardDiagram, type GuitarFretboardPositions } from "@/components/music/GuitarFretboardDiagram";
 import { GuitarFretboardEditor } from "@/components/music/GuitarFretboardEditor";
 import { createChord, updateChord, deleteChord, insertChordsBatch } from "@/services/libraryService";
 import { generateAllChordsForPopulation } from "@/services/chordAutoFillService";
-import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from "@/services/notationService";
+import { deleteNotation, type NotationLibraryRow } from "@/services/notationService";
 import { createTablature, updateTablature, deleteTablature, type TablatureLibraryRow } from "@/services/notationService";
 import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
+import { beatsToAlphaTex } from "@/lib/beatsToAlphaTex";
+
+function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
+  return rawBeats
+    .map((rawBeat) => {
+      if (!rawBeat || typeof rawBeat !== 'object') return null
+
+      if (Array.isArray(rawBeat.pitches)) {
+        return rawBeat
+      }
+
+      const notes = Array.isArray(rawBeat.notes) ? rawBeat.notes : []
+      const accidentals = Array.isArray(rawBeat.accidentals) ? rawBeat.accidentals : []
+      const rawDuration = typeof notes[0] === 'string' ? String(notes[0]).split(':')[1] ?? 'q' : 'q'
+      const duration = String(rawBeat.duration ?? rawDuration ?? 'q').replace(/dd|d|r/g, '')
+
+      const pitches = notes
+        .map((entry: any, i: number) => {
+          const noteText = typeof entry === 'string'
+            ? entry
+            : typeof entry?.key === 'string'
+              ? entry.key
+              : ''
+          const pitch = noteText.split(':')[0]
+          if (!pitch.includes('/')) return null
+          const accidental = accidentals[i] ?? null
+          return { pitch, accidental: accidental ?? null }
+        })
+        .filter((p: any) => p !== null)
+
+      return {
+        pitches,
+        duration: ['w', 'h', 'q', '8', '16', '32', '64'].includes(duration) ? duration : 'q',
+        isRest: Boolean(rawBeat.isRest) || String(rawBeat.duration ?? rawDuration ?? '').includes('r') || pitches.length === 0,
+        dotted: Boolean(rawBeat.dotted) || String(rawBeat.duration ?? rawDuration ?? '').includes('d'),
+        doubleDotted: Boolean(rawBeat.doubleDotted) || String(rawBeat.duration ?? rawDuration ?? '').includes('dd'),
+        tie: Boolean(rawBeat.tieToNext ?? rawBeat.tie),
+        staff: rawBeat.staff,
+        timeSlot: rawBeat.timeSlot,
+      }
+    })
+    .filter((b) => b !== null)
+}
 
 /** Traduz family do banco para texto em pt-BR */
 const FAMILY_LABELS: Record<string, string> = {
@@ -393,14 +436,7 @@ export function Biblioteca() {
   }
 
   // CRUD Notação
-  const handleSaveNotation = async (data: NotationSaveData) => {
-    if (editingNotation) {
-      await updateNotation(editingNotation.id, data);
-      toast.success('Notação atualizada!');
-    } else {
-      await createNotation(data as any);
-      toast.success('Notação criada!');
-    }
+  const handleSaveNotation = async () => {
     refetchNotations();
   };
 
@@ -1204,13 +1240,47 @@ export function Biblioteca() {
                         <span className="text-[10px] text-text3 font-mono">Nível {nota.difficulty}</span>
                       </div>
                       <div className="w-full rounded-lg mb-2 overflow-hidden">
-                        {nota.render_data?.notation ? (
-                          <NotationRenderer notation={nota.render_data.notation} />
-                        ) : (
-                          <div className="h-[80px] flex items-center justify-center text-text3 text-[11px]">
-                            <MusicNotes size={16} className="mr-1" /> Sem preview
-                          </div>
-                        )}
+                        {(() => {
+                          const beats = Array.isArray(nota.notation_data?.beats) ? nota.notation_data.beats : []
+                          if (beats.length === 0) {
+                            return (
+                              <div className="h-[80px] flex items-center justify-center text-text3 text-[11px]">
+                                <MusicNotes size={16} className="mr-1" /> Sem preview
+                              </div>
+                            )
+                          }
+
+                          try {
+                            const normalizedBeats = normalizeNotationBeatsForPreview(beats)
+                            const tex = beatsToAlphaTex(normalizedBeats as any, {
+                              clef: nota.notation_data?.clef || nota.clef || 'treble',
+                              keySignature: nota.notation_data?.keySignature || nota.key_signature || 'C',
+                              timeSignature: nota.notation_data?.timeSignature || nota.time_signature || null,
+                              grandStaff: Boolean(nota.notation_data?.grandStaff),
+                              bpm: nota.notation_data?.bpm || undefined,
+                            })
+
+                            return tex ? (
+                              <AlphaTexInlineRenderer
+                                tex={tex}
+                                minHeight={100}
+                                scale={0.85}
+                                staveProfile="score"
+                              />
+                            ) : (
+                              <div className="h-[80px] flex items-center justify-center text-text3 text-[11px]">
+                                <MusicNotes size={16} className="mr-1" /> Sem preview
+                              </div>
+                            )
+                          } catch (error) {
+                            console.error('[Biblioteca] Falha ao renderizar preview de notação:', error)
+                            return (
+                              <div className="h-[80px] flex items-center justify-center text-text3 text-[11px]">
+                                <MusicNotes size={16} className="mr-1" /> Preview indisponível
+                              </div>
+                            )
+                          }
+                        })()}
                       </div>
                       <div className="font-bold text-[13px] text-text truncate">{nota.name}</div>
                       <div className="text-[11px] text-text3 truncate mt-0.5">
@@ -1414,8 +1484,8 @@ export function Biblioteca() {
         instrument="bass"
       />
 
-      {/* NotationEditor — modal de notação */}
-      <NotationEditor
+      {/* NotationEditorV2 — modal de notação */}
+      <NotationEditorV2
         open={notationEditorOpen}
         onOpenChange={(v) => { setNotationEditorOpen(v); if (!v) setEditingNotation(null); }}
         notation={editingNotation}

@@ -253,6 +253,10 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       settings.display.scale = scale
       // Espaçamento entre sistemas (linhas) no layout page
       settings.display.systemPaddingBottom = 20
+      // Força de esticamento — distribui notas por toda a largura disponível
+      // Valor maior = notas mais espaçadas (default: 1)
+      // No modo livre, aumentamos bem mais para preencher a pauta até o fim.
+      settings.display.stretchForce = showTimeSignature ? 1.8 : 3.5
       const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
       // Perfil de pauta: tab (tablatura), score (notação), scoreTab (ambos)
       settings.display.staveProfile =

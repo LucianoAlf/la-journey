@@ -84,6 +84,7 @@ export interface BeatsToAlphaTexOptions {
   instrument?: string             // nome General MIDI
   bpm?: number
   title?: string
+  includeLyrics?: boolean         // incluir sílabas/lyrics no AlphaTex (default: true)
 }
 
 // ─── Mapa de durações: nosso formato → AlphaTex ───
@@ -434,12 +435,15 @@ export function beatsToAlphaTex(
     }
 
     // Lyrics — metadado de track (sintaxe: \lyrics "sílaba1 sílaba2 ...")
-    const hasLyrics = beats.some(b => b.lyric)
-    if (hasLyrics) {
-      // Sílabas separadas por espaço; beats sem lyric usam espaço em branco
-      // Espaços dentro de sílabas são substituídos por + (convenção AlphaTab)
-      const syllables = beats.map(b => b.lyric ? b.lyric.replace(/ /g, '+') : '-')
-      lines.push(`\\lyrics "${syllables.join(' ')}"`)
+    // Só incluir se includeLyrics !== false (default: true para compatibilidade)
+    if (options.includeLyrics !== false) {
+      const hasLyrics = beats.some(b => b.lyric)
+      if (hasLyrics) {
+        // Sílabas separadas por espaço; beats sem lyric usam espaço em branco
+        // Espaços dentro de sílabas são substituídos por + (convenção AlphaTab)
+        const syllables = beats.map(b => b.lyric ? b.lyric.replace(/ /g, '+') : '-')
+        lines.push(`\\lyrics "${syllables.join(' ')}"`)
+      }
     }
 
     // Separador de metadados
@@ -510,10 +514,13 @@ export function beatsToAlphaTexWithMap(
     lines.push(`\\ts ${n} ${d}`)
   }
 
-  const hasLyrics = beats.some(b => b.lyric)
-  if (hasLyrics) {
-    const syllables = beats.map(b => b.lyric ? b.lyric.replace(/ /g, '+') : '-')
-    lines.push(`\\lyrics "${syllables.join(' ')}"`)
+  // Lyrics — só incluir se includeLyrics !== false
+  if (options.includeLyrics !== false) {
+    const hasLyrics = beats.some(b => b.lyric)
+    if (hasLyrics) {
+      const syllables = beats.map(b => b.lyric ? b.lyric.replace(/ /g, '+') : '-')
+      lines.push(`\\lyrics "${syllables.join(' ')}"`)
+    }
   }
 
   lines.push('.')
