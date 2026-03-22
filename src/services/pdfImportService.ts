@@ -196,70 +196,127 @@ async function analyzeWithGemini(imageBase64: string): Promise<AiPageResult> {
   const model = AI_CONFIG.generation.model // gemini-3-flash-preview
   const apiKey = AI_CONFIG.generation.apiKey
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inlineData: { mimeType: 'image/png', data: imageBase64 } },
-          { text: VISION_PROMPT },
-        ],
-      }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 8192,
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Gemini Vision ${response.status}: ${err}`)
+  if (!apiKey) {
+    throw new Error('VITE_GOOGLE_AI_KEY não configurada')
   }
 
-  const data = await response.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
-  return parseAiResponse(text)
+  console.log(`[Vision] Chamando Gemini ${model} com imagem de ${Math.round(imageBase64.length / 1024)}KB`)
+
+  // Add timeout of 60 seconds
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: 'image/png', data: imageBase64 } },
+            { text: VISION_PROMPT },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 8192,
+        },
+      }),
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const err = await response.text()
+      console.error('[Vision] Gemini erro:', response.status, err.substring(0, 200))
+      throw new Error(`Gemini Vision ${response.status}: ${err.substring(0, 100)}`)
+    }
+
+    const data = await response.json()
+    console.log('[Vision] Gemini resposta recebida')
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+    if (!text) {
+      console.warn('[Vision] Gemini retornou resposta vazia')
+      throw new Error('Gemini retornou resposta vazia')
+    }
+
+    return parseAiResponse(text)
+  } catch (err: any) {
+    clearTimeout(timeoutId)
+    if (err.name === 'AbortError') {
+      throw new Error('Gemini timeout após 60s')
+    }
+    throw err
+  }
 }
 
 async function analyzeWithAnthropic(imageBase64: string): Promise<AiPageResult> {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   const model = 'claude-sonnet-4-20250514'
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 8192,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
-          { type: 'text', text: VISION_PROMPT },
-        ],
-      }],
-    }),
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Anthropic Vision ${response.status}: ${err}`)
+  if (!apiKey) {
+    throw new Error('VITE_ANTHROPIC_API_KEY não configurada')
   }
 
-  const data = await response.json()
-  const text = data.content?.[0]?.text || ''
+  console.log(`[Vision] Chamando Anthropic ${model} com imagem de ${Math.round(imageBase64.length / 1024)}KB`)
 
-  return parseAiResponse(text)
+  // Add timeout of 90 seconds (Anthropic is slower)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 90000)
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        max_tokens: 8192,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+            { type: 'text', text: VISION_PROMPT },
+          ],
+        }],
+      }),
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const err = await response.text()
+      console.error('[Vision] Anthropic erro:', response.status, err.substring(0, 200))
+      throw new Error(`Anthropic Vision ${response.status}: ${err.substring(0, 100)}`)
+    }
+
+    const data = await response.json()
+    console.log('[Vision] Anthropic resposta recebida')
+
+    const text = data.content?.[0]?.text || ''
+
+    if (!text) {
+      throw new Error('Anthropic retornou resposta vazia')
+    }
+
+    return parseAiResponse(text)
+  } catch (err: any) {
+    clearTimeout(timeoutId)
+    if (err.name === 'AbortError') {
+      throw new Error('Anthropic timeout após 90s')
+    }
+    throw err
+  }
 }
 
 function parseAiResponse(text: string): AiPageResult {
