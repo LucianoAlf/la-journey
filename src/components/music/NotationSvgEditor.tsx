@@ -479,6 +479,7 @@ export function NotationSvgEditor({
     ? TOP_MARGIN + GRAND_STAFF_HEIGHT + BOTTOM_MARGIN
     : TOP_MARGIN + STAFF_HEIGHT + BOTTOM_MARGIN
   const svgHeight = rows.length * rowH + (rows.length - 1) * LINE_GAP
+  const svgRenderWidth = VB_WIDTH * zoom
 
   // ── Y base de cada linha ──
   const rowY = useCallback((rowIdx: number) => rowIdx * (rowH + LINE_GAP), [rowH])
@@ -1181,7 +1182,7 @@ export function NotationSvgEditor({
   }, [isInputMode, selectedBeatIdx, rows, staffTopY, bassStaffTopY, grandStaffMode])
 
   return (
-    <div className="relative rounded-xl border border-border bg-card overflow-hidden">
+    <div className="relative rounded-xl border border-border bg-card overflow-x-auto overflow-y-hidden">
       {/* Hidden input para captura de teclado — sem auto-refocus para não bloquear inputs externos */}
       {inputRef && onKeyDown && (
         <input
@@ -1208,8 +1209,13 @@ export function NotationSvgEditor({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VB_WIDTH} ${svgHeight}`}
-        width="100%"
-        style={{ display: 'block', cursor: isInputMode ? 'crosshair' : 'default' }}
+        style={{
+          display: 'block',
+          width: `${svgRenderWidth}px`,
+          minWidth: `${svgRenderWidth}px`,
+          height: 'auto',
+          cursor: isInputMode ? 'crosshair' : 'default',
+        }}
         role="img"
         aria-label="Editor de notação musical"
         onClick={handleClick}

@@ -1541,7 +1541,7 @@ export function NotationEditorV2({
                   tex={alphaTex}
                   staveProfile="score"
                   grandStaffMode={grandStaffMode}
-                  layout="page"
+                  layout={grandStaffMode ? 'horizontal' : 'page'}
                   scale={1.0}
                   showTimeSignature={timeSignature !== 'free'}
                   minHeight={120}

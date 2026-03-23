@@ -326,6 +326,7 @@ export function beatsToAlphaTex(
     for (const slot of sortedTimeSlots) {
       const trebleBeat = trebleBySlot.get(slot)
       const bassBeat = bassBySlot.get(slot)
+      const slotBarAfter = Boolean(trebleBeat?.barAfter || bassBeat?.barAfter)
 
       // Determinar a duração do slot (usar a maior duração entre as duas pautas)
       let slotDuration = 'q'
@@ -341,7 +342,10 @@ export function beatsToAlphaTex(
 
       // Treble: usar beat existente ou criar pausa
       if (trebleBeat) {
-        syncedTrebleBeats.push(trebleBeat)
+        syncedTrebleBeats.push({
+          ...trebleBeat,
+          barAfter: slotBarAfter,
+        })
       } else {
         syncedTrebleBeats.push({
           pitches: [],
@@ -352,12 +356,16 @@ export function beatsToAlphaTex(
           cifra: null,
           annotation: null,
           lyric: null,
+          barAfter: slotBarAfter,
         })
       }
 
       // Bass: usar beat existente ou criar pausa
       if (bassBeat) {
-        syncedBassBeats.push(bassBeat)
+        syncedBassBeats.push({
+          ...bassBeat,
+          barAfter: slotBarAfter,
+        })
       } else {
         syncedBassBeats.push({
           pitches: [],
@@ -368,6 +376,7 @@ export function beatsToAlphaTex(
           cifra: null,
           annotation: null,
           lyric: null,
+          barAfter: slotBarAfter,
         })
       }
     }

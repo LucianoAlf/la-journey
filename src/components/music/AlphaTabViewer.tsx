@@ -89,7 +89,6 @@ interface AlphaTabViewerProps {
 /** CSS para limpar visualmente o alphaTab — esconde branding */
 const CLEAN_TAB_CSS = `
   .at-viewer-clean .at-surface > div:last-child { display: none !important; }
-  .at-viewer-clean { overflow: hidden; }
 `
 
 /** Limpeza DOM pós-render: esconde clef TAB, time signature, bar number, "Free time", branding */
@@ -238,17 +237,22 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       // Habilitar bounds de notas individuais para interação
       settings.core.includeNoteBounds = includeNoteBounds
 
+      const isHorizontalLayout = layout === 'horizontal'
+
       // Layout page → preenche a largura do container
-      settings.display.layoutMode = layout === 'horizontal'
+      settings.display.layoutMode = isHorizontalLayout
         ? alphaTabModule.LayoutMode.Horizontal
         : alphaTabModule.LayoutMode.Page
       settings.display.scale = scale
       // Espaçamento entre sistemas (linhas) no layout page
-      settings.display.systemPaddingBottom = 20
+      settings.display.systemPaddingBottom = isHorizontalLayout ? 0 : 20
       // Força de esticamento — distribui notas por toda a largura disponível
-      // Valor maior = notas mais espaçadas (default: 1)
-      // No modo livre, aumentamos bem mais para preencher a pauta até o fim.
-      settings.display.stretchForce = showTimeSignature ? 1.8 : 3.5
+      // Valor maior = notas mais espaçadas (default: 1).
+      // No preview horizontal do editor queremos o oposto: compactar para ficar
+      // mais próximo do SVG e evitar que a pauta "dispare" para a direita.
+      settings.display.stretchForce = isHorizontalLayout
+        ? (showTimeSignature ? 0.75 : 1.05)
+        : (showTimeSignature ? 1.8 : 3.5)
       const isScoreMode = staveProfile === 'score' || staveProfile === 'scoreTab'
       // Perfil de pauta: tab (tablatura), score (notação), scoreTab (ambos)
       settings.display.staveProfile =
@@ -405,7 +409,9 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     if (!tex) return null
 
     return (
-      <div className={`relative at-viewer-clean ${className}`}>
+      <div
+        className={`relative at-viewer-clean ${layout === 'horizontal' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-hidden'} ${className}`}
+      >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-card/80 z-10 rounded-xl">
             <SpinnerGap size={24} className="animate-spin text-accent" />
