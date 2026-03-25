@@ -1,7 +1,23 @@
 import { useEffect, useRef } from 'react'
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Dot, Articulation, Beam, Tuplet, StaveHairpin, GraceNote, GraceNoteGroup, Ornament, Curve, Volta, PedalMarking, BarNote } from 'vexflow'
-
-// --- Tipos ---
+import {
+  Renderer,
+  Stave,
+  StaveNote,
+  Voice,
+  Formatter,
+  Accidental,
+  Dot,
+  Articulation,
+  Beam,
+  Tuplet,
+  StaveHairpin,
+  GraceNote,
+  GraceNoteGroup,
+  Ornament,
+  Curve,
+  PedalMarking,
+  BarNote,
+} from 'vexflow'
 
 interface GraceNoteData {
   pitches: { pitch: string; accidental: string | null }[]
@@ -17,22 +33,29 @@ interface StaveData {
   accidentals?: (string | null)[]
   noteArticulations?: (string[] | null)[]
   noteTuplets?: ({ groupId: string; numNotes: number; notesOccupied: number } | null)[]
-  noteDynamics?: (string | null)[]  // Fase 3: dinâmicas por nota
-  hairpins?: { type: 'crescendo' | 'decrescendo'; startNoteIdx: number; endNoteIdx: number }[]  // Fase 3
-  graceNotes?: (GraceNoteData | null)[]  // Fase 3: grace notes por nota
-  ornaments?: (string | null)[]  // Fase 3: ornamentos por nota
-  slurs?: { startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: slurs (ligaduras de expressão)
-  voltas?: { number: number; startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: volta brackets
-  pedals?: { startNoteIdx: number; endNoteIdx: number }[]  // Fase 3: pedal markings
-  barlineAfterIndices?: number[]  // Índices de notas APÓS as quais inserir barline
+  noteDynamics?: (string | null)[]
+  hairpins?: { type: 'crescendo' | 'decrescendo'; startNoteIdx: number; endNoteIdx: number }[]
+  graceNotes?: (GraceNoteData | null)[]
+  ornaments?: (string | null)[]
+  slurs?: { startNoteIdx: number; endNoteIdx: number }[]
+  voltas?: { number: number; startNoteIdx: number; endNoteIdx: number }[]
+  pedals?: { startNoteIdx: number; endNoteIdx: number }[]
+  barlineAfterIndices?: number[]
   intervals?: string[]
   degree_names?: string[]
   label?: string
 }
 
 interface NotationData {
-  type: 'staff' | 'multi_staff' | 'scale_with_intervals' | 'exercise_staff' |
-        'rhythm_figures' | 'accidentals' | 'time_signatures' | 'rhythm_exercise'
+  type:
+    | 'staff'
+    | 'multi_staff'
+    | 'scale_with_intervals'
+    | 'exercise_staff'
+    | 'rhythm_figures'
+    | 'accidentals'
+    | 'time_signatures'
+    | 'rhythm_exercise'
   staves: StaveData[]
   width?: number
   height?: number
@@ -42,18 +65,20 @@ export interface NotationRendererProps {
   notation: NotationData
 }
 
-// --- Constantes ---
-
 const DURATION_BEATS: Record<string, number> = {
-  w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625,
+  w: 4,
+  h: 2,
+  q: 1,
+  '8': 0.5,
+  '16': 0.25,
+  '32': 0.125,
+  '64': 0.0625,
 }
 
 const STAVE_HEIGHT = 120
 const STAVE_GAP = 24
 const LABEL_HEIGHT = 28
 const INTERVAL_HEIGHT = 28
-
-// --- Helpers ---
 
 function parseNote(noteStr: string | { key: string; duration: string; label?: string }) {
   let key: string
@@ -68,15 +93,11 @@ function parseNote(noteStr: string | { key: string; duration: string; label?: st
     rawDuration = noteStr.duration || 'q'
   }
 
-  // Extrair sufixos: 'dd' = doubleDotted, 'd' = dotted, 'r' = rest
   const isDoubleDotted = rawDuration.includes('dd')
   const isDotted = !isDoubleDotted && rawDuration.includes('d')
   const isRest = rawDuration.includes('r')
   const duration = rawDuration.replace(/[dr]/g, '') + (isRest ? 'r' : '')
 
-  // Extrair acidental: "f#/4" → base="f/4", acc="#"
-  // "eb/4" → base="e/4", acc="b"
-  // "b/4" → base="b/4", acc=null (B natural)
   const match = key.match(/^([a-g])(#|b)?\/([\d])$/i)
   const basePitch = match ? `${match[1]}/${match[3]}` : key
   const accidental = match ? match[2] : null
@@ -84,19 +105,12 @@ function parseNote(noteStr: string | { key: string; duration: string; label?: st
   return { basePitch, duration, accidental, isDotted, isDoubleDotted, isRest }
 }
 
-// Cores fixas — VexFlow sempre renderiza no modo "light" (preto sobre branco)
-// O dark mode é tratado via CSS no container (invert + hue-rotate)
 const COLORS = {
   label: '#64748b',
   interval: '#b45309',
 }
 
-function renderStave(
-  context: any,
-  staveData: StaveData,
-  yOffset: number,
-  staveWidth: number,
-) {
+function renderStave(context: any, staveData: StaveData, yOffset: number, staveWidth: number) {
   const stave = new Stave(10, yOffset, staveWidth)
   if (staveData.clef) stave.addClef(staveData.clef)
   if (staveData.key_signature) stave.addKeySignature(staveData.key_signature)
@@ -114,7 +128,6 @@ function renderStave(
       clef: staveData.clef || 'treble',
     })
 
-    // Ponto de aumento (simples ou duplo)
     if (isDoubleDotted) {
       Dot.buildAndAttach([note], { all: true })
       Dot.buildAndAttach([note], { all: true })
@@ -122,7 +135,6 @@ function renderStave(
       Dot.buildAndAttach([note], { all: true })
     }
 
-    // Acidental (não aplicar em pausas)
     if (!isRest) {
       if (accidental) {
         note.addModifier(new Accidental(accidental))
@@ -131,57 +143,41 @@ function renderStave(
       }
     }
 
-    // Articulações (staccato, acento, tenuto, marcato, fermata)
     const arts = staveData.noteArticulations?.[i]
-    if (arts && arts.length > 0) {
-      arts.forEach(artCode => {
-        note.addModifier(new Articulation(artCode))
-      })
+    if (arts?.length) {
+      arts.forEach((artCode) => note.addModifier(new Articulation(artCode)))
     }
 
-    // Grace notes (Fase 3)
     const graceData = staveData.graceNotes?.[i]
-    if (graceData && graceData.pitches.length > 0) {
+    if (graceData?.pitches.length) {
       try {
-        const graceNotes = graceData.pitches.map(gp => {
+        const graceNotes = graceData.pitches.map((gp) => {
           const gn = new GraceNote({
             keys: [gp.pitch],
             duration: graceData.duration || '8',
             slash: graceData.type === 'acciaccatura',
           })
-          if (gp.accidental) {
-            gn.addModifier(new Accidental(gp.accidental))
-          }
+          if (gp.accidental) gn.addModifier(new Accidental(gp.accidental))
           return gn
         })
-        const graceGroup = new GraceNoteGroup(graceNotes)
-        note.addModifier(graceGroup)
+        note.addModifier(new GraceNoteGroup(graceNotes))
       } catch {
-        // Silenciar erros de grace note
       }
     }
 
-    // Ornamentos (Fase 3)
     const ornCode = staveData.ornaments?.[i]
     if (ornCode) {
       try {
         note.addModifier(new Ornament(ornCode))
       } catch {
-        // Silenciar erros de ornamento
       }
     }
 
     return note
   })
 
-  // Calcular beats totais
   const totalBeats = notes.reduce((sum, n) => {
-    let rawDur: string
-    if (typeof n === 'string') {
-      rawDur = n.split(':')[1] || 'q'
-    } else {
-      rawDur = n.duration || 'q'
-    }
+    const rawDur = typeof n === 'string' ? (n.split(':')[1] || 'q') : (n.duration || 'q')
     const isDblDot = rawDur.includes('dd')
     const isDot = !isDblDot && rawDur.includes('d')
     const baseDur = rawDur.replace(/[dr]/g, '')
@@ -189,14 +185,12 @@ function renderStave(
     return sum + (isDblDot ? base * 1.75 : isDot ? base * 1.5 : base)
   }, 0)
 
-  // Inserir BarNotes entre as notas nos índices indicados
   const barlineSet = new Set(staveData.barlineAfterIndices ?? [])
   const tickables: (StaveNote | BarNote)[] = []
   staveNotes.forEach((note, i) => {
     tickables.push(note)
     if (barlineSet.has(i)) {
       const barNote = new BarNote()
-      // Evita abrir espaço exagerado entre compassos no formatter
       barNote.setWidth(0)
       barNote.setIgnoreTicks(true)
       tickables.push(barNote)
@@ -210,7 +204,6 @@ function renderStave(
   new Formatter().joinVoices([voice]).format([voice], staveWidth - 80)
   voice.draw(context, stave)
 
-  // Beams automáticos — agrupar apenas notas CONSECUTIVAS com duração ≤ colcheia
   try {
     const beamableIndices: number[] = []
     staveNotes.forEach((n, i) => {
@@ -219,29 +212,23 @@ function renderStave(
         beamableIndices.push(i)
       }
     })
-    // Agrupar apenas índices consecutivos
     const groups: number[][] = []
     let currentGroup: number[] = []
     beamableIndices.forEach((idx, i) => {
-      if (i === 0 || idx === beamableIndices[i - 1] + 1) {
-        currentGroup.push(idx)
-      } else {
+      if (i === 0 || idx === beamableIndices[i - 1] + 1) currentGroup.push(idx)
+      else {
         if (currentGroup.length >= 2) groups.push(currentGroup)
         currentGroup = [idx]
       }
     })
     if (currentGroup.length >= 2) groups.push(currentGroup)
-    // Criar beams para cada grupo consecutivo
-    groups.forEach(group => {
-      const notes = group.map(i => staveNotes[i])
-      const beams = Beam.generateBeams(notes)
-      beams.forEach(beam => beam.setContext(context).draw())
+    groups.forEach((group) => {
+      const notesToBeam = group.map((i) => staveNotes[i])
+      Beam.generateBeams(notesToBeam).forEach((beam) => beam.setContext(context).draw())
     })
   } catch {
-    // Silenciar erros de beam (notas isoladas, etc.)
   }
 
-  // Tuplets — agrupar notas com mesmo groupId
   if (staveData.noteTuplets?.length) {
     try {
       const groups = new Map<string, { noteIndices: number[]; numNotes: number; notesOccupied: number }>()
@@ -254,110 +241,125 @@ function renderStave(
       })
       groups.forEach(({ noteIndices, numNotes, notesOccupied }) => {
         if (noteIndices.length < 2) return
-        const tupletNotes = noteIndices.map(i => staveNotes[i]).filter(Boolean)
+        const tupletNotes = noteIndices.map((i) => staveNotes[i]).filter(Boolean)
         if (tupletNotes.length < 2) return
-        const tuplet = new Tuplet(tupletNotes, { numNotes, notesOccupied })
-        tuplet.setContext(context).draw()
+        new Tuplet(tupletNotes, { numNotes, notesOccupied }).setContext(context).draw()
       })
     } catch {
-      // Silenciar erros de tuplet
     }
   }
 
-  // Dinâmicas — renderizar texto abaixo da pauta (Fase 3)
-  if (staveData.noteDynamics?.length) {
-    try {
-      staveNotes.forEach((staveNote, i) => {
-        const dyn = staveData.noteDynamics?.[i]
-        if (!dyn) return
-        const x = staveNote.getAbsoluteX()
-        const y = stave.getYForLine(6) + 10 // abaixo da pauta
-        context.save()
-        context.setFont('Times New Roman', 14, 'italic')
-        context.fillText(dyn, x - 8, y)
-        context.restore()
-      })
-    } catch {
-      // Silenciar erros de dinâmica
-    }
-  }
-
-  // Hairpins — crescendo/decrescendo (Fase 3)
   if (staveData.hairpins?.length) {
-    try {
-      staveData.hairpins.forEach(hp => {
-        const firstNote = staveNotes[hp.startNoteIdx]
-        const lastNote = staveNotes[hp.endNoteIdx]
-        if (firstNote && lastNote) {
-          const hairpin = new StaveHairpin(
-            { first_note: firstNote, last_note: lastNote },
-            hp.type === 'crescendo' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC
-          )
-          hairpin.setContext(context).setPosition(4).draw() // position 4 = abaixo
-        }
-      })
-    } catch {
-      // Silenciar erros de hairpin
-    }
+    staveData.hairpins.forEach((hairpin) => {
+      try {
+        const first = staveNotes[hairpin.startNoteIdx]
+        const last = staveNotes[hairpin.endNoteIdx]
+        if (!first || !last) return
+        new StaveHairpin(
+          { firstNote: first, lastNote: last },
+          hairpin.type === 'crescendo' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC,
+        ).setContext(context).draw()
+      } catch {
+      }
+    })
   }
 
-  // Slurs — ligaduras de expressão (Fase 3)
   if (staveData.slurs?.length) {
-    try {
-      staveData.slurs.forEach(sl => {
-        const firstNote = staveNotes[sl.startNoteIdx]
-        const lastNote = staveNotes[sl.endNoteIdx]
-        if (firstNote && lastNote) {
-          const curve = new Curve(firstNote, lastNote, {
-            cps: [{ x: 0, y: 20 }, { x: 0, y: 20 }],
-          })
-          curve.setContext(context).draw()
-        }
-      })
-    } catch {
-      // Silenciar erros de slur
-    }
+    staveData.slurs.forEach((slur) => {
+      try {
+        const first = staveNotes[slur.startNoteIdx]
+        const last = staveNotes[slur.endNoteIdx]
+        if (!first || !last) return
+        new Curve(first, last, {}).setContext(context).draw()
+      } catch {
+      }
+    })
   }
 
-  // Volta brackets — 1ª vez, 2ª vez (Fase 3)
   if (staveData.voltas?.length) {
-    try {
-      staveData.voltas.forEach(vt => {
-        const firstNote = staveNotes[vt.startNoteIdx]
-        const lastNote = staveNotes[vt.endNoteIdx]
-        if (firstNote && lastNote) {
-          const volta = new Volta(
-            Volta.type.BEGIN_END,
-            `${vt.number}.`,
-            firstNote.getAbsoluteX(),
-            lastNote.getAbsoluteX() - firstNote.getAbsoluteX() + 40
-          )
-          volta.setContext(context).setStave(stave).draw()
-        }
-      })
-    } catch {
-      // Silenciar erros de volta
-    }
+    staveData.voltas.forEach((volta) => {
+      try {
+        const startX = staveNotes[volta.startNoteIdx]?.getAbsoluteX()
+        const endX = staveNotes[volta.endNoteIdx]?.getAbsoluteX()
+        if (!startX || !endX) return
+
+        // VexFlow 5 removeu Volta.drawVolta. Mantemos o mesmo efeito visual
+        // desenhando o bracket manualmente no contexto atual.
+        const y = stave.getY() - 18
+        const height = 10
+        context.save()
+        context.beginPath()
+        context.moveTo(startX, y + height)
+        context.lineTo(startX, y)
+        context.lineTo(endX, y)
+        context.lineTo(endX, y + height)
+        context.stroke()
+        context.setFont('Arial', 12, 'bold')
+        context.fillText(`${volta.number}.`, startX + 2, y - 2)
+        context.restore()
+      } catch {
+      }
+    })
   }
 
-  // Pedal markings — Ped. ... * (Fase 3)
   if (staveData.pedals?.length) {
+    staveData.pedals.forEach((pedal) => {
+      try {
+        const start = staveNotes[pedal.startNoteIdx]
+        const end = staveNotes[pedal.endNoteIdx]
+        if (!start || !end) return
+        new PedalMarking([start, end]).setContext(context).draw()
+      } catch {
+      }
+    })
+  }
+
+  staveData.noteDynamics?.forEach((dyn, i) => {
+    if (!dyn) return
     try {
-      staveData.pedals.forEach(pd => {
-        const firstNote = staveNotes[pd.startNoteIdx]
-        const lastNote = staveNotes[pd.endNoteIdx]
-        if (firstNote && lastNote) {
-          const pedal = new PedalMarking([firstNote, lastNote])
-          pedal.setContext(context).draw()
-        }
-      })
+      context.save()
+      context.setFont('Times New Roman', 16, 'italic')
+      context.fillStyle = COLORS.interval
+      const note = staveNotes[i]
+      if (!note) return
+      context.fillText(dyn, note.getAbsoluteX() - 6, yOffset + 70)
+      context.restore()
     } catch {
-      // Silenciar erros de pedal
     }
+  })
+
+  if (staveData.intervals?.length) {
+    context.save()
+    context.setFont('Arial', 12, '')
+    context.fillStyle = COLORS.interval
+    staveData.intervals.forEach((interval, i) => {
+      const note = staveNotes[i]
+      if (!note) return
+      context.fillText(interval, note.getAbsoluteX() - 8, yOffset - 8)
+    })
+    context.restore()
+  }
+
+  if (staveData.degree_names?.length) {
+    context.save()
+    context.setFont('Arial', 11, '')
+    context.fillStyle = COLORS.label
+    staveData.degree_names.forEach((degree, i) => {
+      const note = staveNotes[i]
+      if (!note) return
+      context.fillText(degree, note.getAbsoluteX() - 10, yOffset + STAVE_HEIGHT - 12)
+    })
+    context.restore()
+  }
+
+  if (staveData.label) {
+    context.save()
+    context.setFont('Georgia', 12, 'italic')
+    context.fillStyle = COLORS.label
+    context.fillText(staveData.label, 12, yOffset + STAVE_HEIGHT + 14)
+    context.restore()
   }
 }
-
-// --- Componente Principal ---
 
 export function NotationRenderer({ notation }: NotationRendererProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -367,110 +369,35 @@ export function NotationRenderer({ notation }: NotationRendererProps) {
     ref.current.innerHTML = ''
 
     try {
-      const staveWidth = (notation.width ?? 550) - 20
-
-      // Calcular altura total dinâmica — sempre respeitar conteúdo real
-      const hasIntervals = notation.type === 'scale_with_intervals'
-      const perStaveExtra = hasIntervals ? INTERVAL_HEIGHT : 0
-      const calculatedHeight = notation.staves.reduce((h, s) => {
-        const base = STAVE_HEIGHT + perStaveExtra
-        const labelH = s.label ? LABEL_HEIGHT : 0
-        return h + base + labelH + STAVE_GAP
-      }, 0) - STAVE_GAP + 30
-
-      const finalWidth = notation.width ?? 550
-      // Usar o MAIOR entre banco e cálculo — nunca cortar conteúdo
-      const finalHeight = Math.max(calculatedHeight, notation.height ?? 0, 140)
+      const width = notation.width ?? 560
+      const extraLabelHeight = notation.staves.reduce((sum, stave) => sum + (stave.label ? LABEL_HEIGHT : 0), 0)
+      const extraIntervalHeight = notation.staves.reduce(
+        (sum, stave) => sum + ((stave.intervals?.length || stave.degree_names?.length) ? INTERVAL_HEIGHT : 0),
+        0,
+      )
+      const height = notation.height
+        ?? (notation.staves.length * STAVE_HEIGHT
+          + (notation.staves.length - 1) * STAVE_GAP
+          + extraLabelHeight
+          + extraIntervalHeight
+          + 20)
 
       const renderer = new Renderer(ref.current, Renderer.Backends.SVG)
-      renderer.resize(finalWidth, finalHeight)
+      renderer.resize(width, height)
       const context = renderer.getContext()
 
-      let yOffset = 10
-
-      notation.staves.forEach((staveData) => {
-        renderStave(context, staveData, yOffset, staveWidth)
-
-        // Intervalos abaixo das notas (para escalas)
-        if (hasIntervals && staveData.intervals?.length) {
-          const noteCount = staveData.notes?.length ?? 0
-          const spacing = (staveWidth - 80) / Math.max(noteCount - 1, 1)
-          const startX = 70
-
-          staveData.intervals.forEach((interval, i) => {
-            const x = startX + i * spacing + spacing * 0.5
-            const y = yOffset + STAVE_HEIGHT + 8
-
-            context.save()
-            context.setFont('DM Mono', 10, 'bold')
-            context.setFillStyle(COLORS.interval)
-            context.fillText(interval, x - 6, y)
-            context.restore()
-          })
-
-          yOffset += INTERVAL_HEIGHT
-        }
-
-        // Graus abaixo das notas
-        if (staveData.degree_names?.length) {
-          const noteCount = staveData.notes?.length ?? 0
-          const spacing = (staveWidth - 80) / Math.max(noteCount - 1, 1)
-          const startX = 70
-
-          staveData.degree_names.forEach((deg, i) => {
-            const x = startX + i * spacing
-            const y = yOffset + STAVE_HEIGHT + (hasIntervals ? 6 : 8)
-
-            context.save()
-            context.setFont('DM Sans', 9)
-            context.setFillStyle(COLORS.label)
-            context.fillText(deg, x - 4, y)
-            context.restore()
-          })
-        }
-
-        // Label abaixo da pauta
-        if (staveData.label) {
-          context.save()
-          context.setFont('DM Sans', 11, 'italic')
-          context.setFillStyle(COLORS.label)
-          context.fillText(staveData.label, 15, yOffset + STAVE_HEIGHT + 14)
-          context.restore()
-          yOffset += LABEL_HEIGHT
-        }
-
-        yOffset += STAVE_HEIGHT + STAVE_GAP
+      let currentY = 10
+      notation.staves.forEach((stave) => {
+        renderStave(context, stave, currentY, width - 20)
+        currentY += STAVE_HEIGHT
+        if (stave.label) currentY += LABEL_HEIGHT
+        if (stave.intervals?.length || stave.degree_names?.length) currentY += INTERVAL_HEIGHT
+        currentY += STAVE_GAP
       })
-
-      // Pós-render: engrossar barlines de compasso (BarNote) para melhor visibilidade
-      // Barlines da Stave ficam em x=10 (início) e x≈staveWidth (fim)
-      // BarNotes ficam em posições intermediárias
-      const allBarlines = ref.current.querySelectorAll('.vf-stavebarline rect')
-      allBarlines.forEach(rect => {
-        const x = parseFloat(rect.getAttribute('x') || '0')
-        if (x > 15 && x < staveWidth - 5) {
-          rect.setAttribute('width', '2')
-          rect.setAttribute('x', String(x - 0.5))
-        }
-      })
-
     } catch (e) {
-      console.error('NotationRenderer error:', e)
+      console.error('NotationRenderer render error:', e)
     }
   }, [notation])
 
-  // Estilo condicional baseado no type
-  const isExercise = notation.type === 'exercise_staff' || notation.type === 'rhythm_exercise'
-
-  return (
-    <div
-      className={`overflow-x-auto bg-white rounded-lg p-4 my-3 border notation-container ${
-        isExercise
-          ? 'border-l-[3px] border-l-verde border-border'
-          : 'border-border'
-      }`}
-    >
-      <div ref={ref} />
-    </div>
-  )
+  return <div ref={ref} className="overflow-x-auto notation-container bg-white rounded-lg" />
 }

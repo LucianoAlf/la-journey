@@ -28,6 +28,10 @@ interface AlphaTexInlineRendererProps {
   scale?: number
   /** Classe CSS adicional */
   className?: string
+  /** Quando true, desativa interação do DOM renderizado para o clique cair no container pai */
+  pointerEvents?: 'auto' | 'none'
+  /** Espaçamento inferior entre sistemas */
+  systemPaddingBottom?: number
 }
 
 /** CSS para esconder branding */
@@ -43,11 +47,14 @@ export function AlphaTexInlineRenderer({
   staveProfile = 'score',
   scale = 0.7,
   className = '',
+  pointerEvents = 'auto',
+  systemPaddingBottom = 10,
 }: AlphaTexInlineRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasExplicitTimeSignature = /\\ts\s+\d+\s+\d+/.test(tex)
 
   // Injetar CSS uma vez
   useEffect(() => {
@@ -79,7 +86,7 @@ export function AlphaTexInlineRenderer({
     // Layout page — preenche largura do container
     settings.display.layoutMode = alphaTabModule.LayoutMode.Page
     settings.display.scale = scale
-    settings.display.systemPaddingBottom = 10
+    settings.display.systemPaddingBottom = systemPaddingBottom
 
     // Perfil de pauta
     settings.display.staveProfile =
@@ -129,7 +136,7 @@ export function AlphaTexInlineRenderer({
 
     api.scoreLoaded.on((score: any) => {
       for (const masterBar of score.masterBars) {
-        masterBar.isFreeTime = false
+        masterBar.isFreeTime = !hasExplicitTimeSignature
         masterBar.tempoAutomations = []
       }
     })
@@ -163,13 +170,13 @@ export function AlphaTexInlineRenderer({
       api.destroy()
       apiRef.current = null
     }
-  }, [tex, staveProfile, scale])
+  }, [tex, staveProfile, scale, systemPaddingBottom])
 
   if (!tex) return null
 
   return (
     <div
-      className={`relative at-inline-clean ${className}`}
+      className={`relative at-inline-clean notation-container ${className}`}
       style={{ maxWidth: width }}
     >
       {loading && (
@@ -183,7 +190,7 @@ export function AlphaTexInlineRenderer({
       <div
         ref={containerRef}
         className="w-full"
-        style={{ minHeight }}
+        style={{ minHeight, pointerEvents }}
       />
     </div>
   )

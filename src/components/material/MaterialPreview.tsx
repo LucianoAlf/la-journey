@@ -3,10 +3,9 @@ import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
 import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
-import { StaffNotation } from '@/components/music/StaffNotation'
-import { RhythmNotation } from '@/components/music/RhythmNotation'
 import { Tablature } from '@/components/music/Tablature'
-import { NotationRenderer } from '@/components/music/NotationRenderer'
+import { AlphaTexInlineRenderer } from '@/components/music/AlphaTexInlineRenderer'
+import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
 
 export interface MaterialBlock {
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
@@ -90,6 +89,7 @@ export const DEFAULT_TEXT_BG: CoverTextBackground = { enabled: false, color: '#0
 
 interface MaterialPreviewProps {
   blocks: MaterialBlock[]
+  onLegacyNotationStavePointerDown?: (staveIndex: number) => void
   coverEditable?: boolean
   onCoverPositionChange?: (field: string, pos: { x: number; y: number }) => void
   coverTitleEditing?: boolean
@@ -123,6 +123,16 @@ const DIMENSION_EMOJIS: Record<string, string> = {
   ritmo: '🥁', rhythm: '🥁',
   repertório: '🎵', repertoire: '🎵',
 }
+
+const RHYTHM_FIGURES = [
+  { duration: 'w', namePt: 'Semibreve', beats: '4 tempos' },
+  { duration: 'h', namePt: 'Mínima', beats: '2 tempos' },
+  { duration: 'q', namePt: 'Semínima', beats: '1 tempo' },
+  { duration: '8', namePt: 'Colcheia', beats: '½ tempo' },
+  { duration: '16', namePt: 'Semicolcheia', beats: '¼ tempo' },
+]
+
+const RHYTHM_FIGURES_TEX = '\\track\n\\staff{score}\n\\tuning piano\n.\n:1 b3 :2 b3 :4 b3 :8 b3 :16 b3'
 
 function renderMarkdownText(text: string) {
   const lines = text.split('\n')
@@ -193,13 +203,18 @@ function BlockTitle({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockText({ block }: { block: MaterialBlock }) {
+function BlockText({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
   return (
     <div className="mb-4">
       {renderTitle(block)}
       {renderContent(block.content)}
-      {block.render_data?.notation && (
-        <NotationRenderer notation={block.render_data.notation} />
+      {(block.render_data?.notation || block.render_data?.notation_data) && (
+        <NotationPreviewCompat
+          notation={block.render_data?.notation as any}
+          notationData={block.render_data?.notation_data}
+          onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
+          className="mt-3"
+        />
       )}
     </div>
   )
@@ -251,17 +266,19 @@ function BlockChordGrid({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockNotation({ block }: { block: MaterialBlock }) {
+function BlockNotation({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
   const rd = block.render_data ?? {}
-  const notes = rd.notes ?? []
-
-  if (notes.length === 0) return null
+  const hasPreview = rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0)
+  if (!hasPreview) return null
 
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      <StaffNotation
-        notes={notes}
+      <NotationPreviewCompat
+        notation={rd.notation as any}
+        notationData={rd.notation_data}
+        notes={rd.notes as any[]}
+        onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
         clef={rd.clef ?? 'treble'}
         timeSignature={rd.time_signature}
         keySignature={rd.key_signature}
@@ -275,15 +292,22 @@ function BlockRhythm({ block }: { block: MaterialBlock }) {
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      <RhythmNotation />
+      <AlphaTexInlineRenderer tex={RHYTHM_FIGURES_TEX} minHeight={110} scale={0.72} />
+      <div className="flex justify-around mt-2 px-4">
+        {RHYTHM_FIGURES.map(f => (
+          <div key={f.duration} className="text-center">
+            <div className="text-[12px] font-bold text-text">{f.namePt}</div>
+            <div className="text-[10px] text-text3">{f.beats}</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-function BlockExercise({ block }: { block: MaterialBlock }) {
+function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
   const rd = block.render_data ?? {}
-  const hasOldNotation = rd.notes && rd.notes.length > 0
-  const hasNewNotation = !!rd.notation
+  const hasPreview = !!(rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0))
   const hasTab = rd.tab
   const hasContent = block.content?.html || block.content?.text
 
@@ -296,13 +320,17 @@ function BlockExercise({ block }: { block: MaterialBlock }) {
         )}
       </div>
       {hasContent && <div className="text-[13px] text-text2 mb-3">{renderContent(block.content)}</div>}
-      {hasNewNotation && <NotationRenderer notation={rd.notation} />}
-      {hasOldNotation && !hasNewNotation && (
-        <StaffNotation
-          notes={rd.notes}
+      {hasPreview && (
+        <NotationPreviewCompat
+          notation={rd.notation as any}
+          notationData={rd.notation_data}
+          notes={rd.notes as any[]}
+          onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
           clef={rd.clef ?? 'treble'}
           timeSignature={rd.time_signature}
+          keySignature={rd.key_signature}
           width={rd.width ?? 450}
+          className="mb-3"
         />
       )}
       {hasTab && <Tablature tab={rd.tab} />}
@@ -310,7 +338,7 @@ function BlockExercise({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockTip({ block }: { block: MaterialBlock }) {
+function BlockTip({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
   return (
     <div className="mb-4 p-4 bg-dourado-soft border border-dourado/20 rounded-[var(--radius-sm)]">
       <div className="flex items-start gap-2">
@@ -320,8 +348,13 @@ function BlockTip({ block }: { block: MaterialBlock }) {
           <div className="text-[12px] text-text2">{renderContent(block.content)}</div>
         </div>
       </div>
-      {block.render_data?.notation && (
-        <NotationRenderer notation={block.render_data.notation} />
+      {(block.render_data?.notation || block.render_data?.notation_data) && (
+        <NotationPreviewCompat
+          notation={block.render_data?.notation as any}
+          notationData={block.render_data?.notation_data}
+          onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
+          className="mt-3"
+        />
       )}
     </div>
   )
@@ -1047,7 +1080,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -1070,7 +1103,24 @@ export function MaterialPreview({ blocks, coverEditable, onCoverPositionChange, 
             </div>
           )
         }
-        return <Renderer key={i} block={block} />
+        if (block.block_type === 'text') {
+          return <BlockText key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+        }
+        if (block.block_type === 'notation') {
+          return <BlockNotation key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+        }
+        if (block.block_type === 'exercise') {
+          return <BlockExercise key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+        }
+        if (block.block_type === 'tip') {
+          return <BlockTip key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+        }
+        return (
+          <Renderer
+            key={i}
+            block={block}
+          />
+        )
       })}
     </div>
   )

@@ -1,5 +1,6 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass, Star } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect, memo } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from 'sonner';
 import { useAppContext } from "../AppContext";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,8 @@ import { ImageGallery } from "@/components/music/ImageGallery";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
 import { beatsToAlphaTex } from "@/lib/beatsToAlphaTex";
 import { normalizeTimeSignature } from "@/lib/timeSignature";
+import { ExerciseTab } from "@/components/content/ExerciseTab";
+import { useExerciseCounts } from "@/hooks/useExerciseLibrary";
 
 function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
   return rawBeats
@@ -232,6 +235,7 @@ type InstrumentFilter = 'guitar' | 'electric_guitar' | 'piano' | 'bass' | 'ukule
 
 
 export function Biblioteca() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string>('guitar');
   // Derivar instrumento da aba ativa (abas de instrumento = accordion de acordes)
   const INSTRUMENT_TABS = ['guitar', 'electric_guitar', 'bass', 'ukulele', 'piano'] as const;
@@ -560,11 +564,13 @@ export function Biblioteca() {
           } else if (activeTab === 'bass') {
             setEditingBassChord(null);
             setBassEditorOpen(true);
+          } else if (activeTab === 'exercises') {
+            navigate('/editor');
           } else {
             openModal('modal-acorde');
           }
         }}>
-          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (activeTab === 'electric_guitar' || activeTab === 'bass') ? 'Nova Escala/Acorde' : 'Novo Acorde'}
+          <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (activeTab === 'electric_guitar' || activeTab === 'bass') ? 'Nova Escala/Acorde' : activeTab === 'exercises' ? 'Novo Conteúdo' : 'Novo Acorde'}
         </Button>
       </div>
 
@@ -579,6 +585,7 @@ export function Biblioteca() {
             <TabsTrigger value="notacao"><MusicNotesSimple size={15} /> Notação ({(notations ?? []).length})</TabsTrigger>
             <TabsTrigger value="tablatura"><ListBullets size={15} /> Tablatura ({(tablatures ?? []).length})</TabsTrigger>
             <TabsTrigger value="imagens"><ImageSquare size={15} /> Imagens IA</TabsTrigger>
+            <TabsTrigger value="exercises"><Star size={15} /> Exercícios</TabsTrigger>
           </TabsList>
           {isInstrumentTab && (
             <Button
@@ -1458,6 +1465,10 @@ export function Biblioteca() {
             onOpenGenerator={() => setImageGenOpen(true)}
             newImage={lastGeneratedImage}
           />
+        </TabsContent>
+
+        <TabsContent value="exercises">
+          <ExerciseTab />
         </TabsContent>
       </Tabs>
 

@@ -4,7 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  Copy, Trash, ArrowUp, ArrowDown, ArrowsOutSimple, PaintBucket, MagicWand,
+  BookmarkSimple, Copy, Trash, ArrowUp, ArrowDown, ArrowsOutSimple, PaintBucket, MagicWand,
 } from '@phosphor-icons/react'
 import type { BlockStyle } from '@/lib/blockStyles'
 
@@ -19,6 +19,7 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   cover: 'Capa',
   columns: 'Colunas',
   notation: 'Partitura',
+  rhythm: 'Ritmo',
   chord_diagram: 'Acorde',
   chord_grid: 'Grade Acordes',
   keyboard: 'Teclado',
@@ -55,11 +56,14 @@ interface ContextualToolbarProps {
   isLast: boolean
   onAIRewrite?: () => void
   isAIProcessing?: boolean
+  onSaveReusable?: () => void
+  saveReusableDisabled?: boolean
 }
 
 export function ContextualToolbar({
   blockType, position, onDuplicate, onDelete, onMoveUp, onMoveDown,
   onStyleChange, isFirst, isLast, onAIRewrite, isAIProcessing,
+  onSaveReusable, saveReusableDisabled = false,
 }: ContextualToolbarProps) {
   const [showBgPicker, setShowBgPicker] = useState(false)
 
@@ -219,6 +223,28 @@ export function ContextualToolbar({
       )}
 
       <Separator orientation="vertical" className="h-5" />
+
+      {onSaveReusable && (
+        <>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-accent"
+                  onClick={onSaveReusable}
+                  disabled={saveReusableDisabled}
+                >
+                  <BookmarkSimple size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p>Salvar como reutilizável</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Separator orientation="vertical" className="h-5" />
+        </>
+      )}
 
       {/* Duplicar */}
       <TooltipProvider delayDuration={300}>

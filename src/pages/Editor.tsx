@@ -11,7 +11,7 @@ import {
   TextAlignLeft, TextAlignCenter, TextAlignRight,
   BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera, DownloadSimple,
   PlusCircle, SlidersHorizontal, Drop, ArrowsClockwise, ArrowFatUp, TextT, ArrowFatDown,
-  Copy, ArrowUUpRight, ArrowUDownRight,
+  BookmarkSimple, Copy, ArrowUUpRight, ArrowUDownRight,
   CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
   MagicWand, Translate, Brain, Lightning,
   Ruler, Layout, ClockCounterClockwise, MapTrifold,
@@ -48,7 +48,9 @@ import {
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, COVER_FONTS, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
-import { NotationEditor, type NotationSaveData } from "@/components/music/NotationEditor";
+import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
+import { SaveAsReusableDialog, type SaveAsReusablePayload } from "@/components/content/SaveAsReusableDialog";
+import { ExerciseLibraryBrowser } from "@/components/content/ExerciseLibraryBrowser";
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
 import type { ChordPositions } from "@/components/music/ChordDiagram";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
@@ -77,6 +79,7 @@ import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDi
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
 import { type MaterialTemplate } from "@/lib/materialTemplates";
 import { saveVersion } from "@/services/materialVersionService";
+import { createExercise, getExerciseById, type ExerciseLibraryItem } from "@/services/exerciseLibraryService";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HeaderFooterBar } from "@/components/editor/HeaderFooterBar";
 import { HeaderFooterEditor } from "@/components/editor/HeaderFooterEditor";
@@ -95,6 +98,7 @@ import {
   DEFAULT_FLOATING_TEXT, DEFAULT_FLOATING_IMAGE, DEFAULT_SHAPE,
   snapValue as floatingSnapValue,
 } from "@/lib/floatingElements";
+import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 
 // --- Tipos internos ---
 
@@ -149,6 +153,7 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType
   tip:            { label: 'Dica',      icon: Lightbulb,    bg: 'var(--dourado-soft)',     color: 'var(--dourado)' },
   exercise:       { label: 'Exercício', icon: PencilCircle, bg: 'var(--advance-soft)',     color: 'var(--advance)' },
   notation:       { label: 'Notação',   icon: MusicNotes,   bg: 'var(--master-soft)',      color: 'var(--master)' },
+  rhythm:         { label: 'Ritmo',     icon: MusicNotes,   bg: 'var(--advance-soft)',     color: 'var(--advance)' },
   chord_diagram:  { label: 'Acorde',    icon: Guitar,       bg: 'var(--grow-soft)',        color: 'var(--grow)' },
   tablature:      { label: 'Tablatura', icon: ListNumbers,  bg: 'var(--foundation-soft)',  color: 'var(--foundation)' },
   title:          { label: 'Título',    icon: TextHOne,     bg: 'var(--foundation-soft)',  color: 'var(--foundation)' },
@@ -193,6 +198,24 @@ function editorBlockToPreview(b: EditorBlock): MaterialBlock {
     title: b.title ?? undefined,
     content: b.content as MaterialBlock['content'],
     render_data: b.render_data,
+  }
+}
+
+function cloneJsonValue<T>(value: T): T {
+  if (value == null) return value
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value)
+  }
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function editorBlockToExerciseBlock(block: EditorBlock) {
+  return {
+    block_type: block.block_type,
+    title: block.title ?? '',
+    content: block.content ? cloneJsonValue(block.content) : null,
+    render_data: block.render_data ? cloneJsonValue(block.render_data) : {},
+    sort_order: 1,
   }
 }
 
@@ -434,6 +457,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   // Estados dos editores visuais integrados
   const [notationEditorOpen, setNotationEditorOpen] = useState(false)
   const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
+  const [notationEditorStaveIndex, setNotationEditorStaveIndex] = useState<number | null>(null)
+  const notationPreviewStaveRef = useRef<{ blockId: string; staveIndex: number } | null>(null)
+  const [saveReusableOpen, setSaveReusableOpen] = useState(false)
+  const [saveReusableLoading, setSaveReusableLoading] = useState(false)
+  const [exerciseBrowserOpen, setExerciseBrowserOpen] = useState(false)
+  const [insertingExerciseId, setInsertingExerciseId] = useState<string | null>(null)
   const [chordEditorOpen, setChordEditorOpen] = useState(false)
   const [chordEditorBlockId, setChordEditorBlockId] = useState<string | null>(null)
   const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState())
@@ -472,6 +501,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const selectedBlock = useMemo(
     () => blocks.find(b => b.id === selectedBlockId) ?? null,
     [blocks, selectedBlockId],
+  )
+  const selectedBlockCanBeReusable = useMemo(
+    () => Boolean(selectedBlock && isReusableBlockType(selectedBlock.block_type)),
+    [selectedBlock],
   )
 
   /** Auto-paginação A4: mede blocos e distribui entre páginas */
@@ -663,6 +696,112 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       toast.info('Bloco adicionado localmente (salvar no banco pendente)')
     }
   }, [blocks, materialId, materialTitle, refetch])
+
+  const handleOpenSaveReusable = useCallback(() => {
+    if (!selectedBlock) {
+      toast.error('Selecione um bloco primeiro')
+      return
+    }
+    if (!isReusableBlockType(selectedBlock.block_type)) {
+      toast.error('Esse tipo de bloco ainda nao pode ser salvo como reutilizavel')
+      return
+    }
+    setSaveReusableOpen(true)
+  }, [selectedBlock])
+
+  const handleSaveReusable = useCallback(async (payload: SaveAsReusablePayload) => {
+    if (!selectedBlock) {
+      toast.error('Selecione um bloco primeiro')
+      return
+    }
+    if (!isReusableBlockType(selectedBlock.block_type)) {
+      toast.error('Esse tipo de bloco nao pode ser salvo como reutilizavel')
+      return
+    }
+    if (!school?.id) {
+      toast.error('Escola nao identificada para salvar na biblioteca')
+      return
+    }
+
+    setSaveReusableLoading(true)
+    try {
+      await createExercise({
+        school_id: school.id,
+        title: payload.title,
+        description: payload.description,
+        content_type: payload.content_type,
+        category: payload.category,
+        instrument: payload.instrument,
+        difficulty_level: payload.difficulty_level,
+        tags: payload.tags,
+        blocks: [editorBlockToExerciseBlock(selectedBlock)],
+        block_count: 1,
+        preview_data: {},
+        thumbnail_url: null,
+        estimated_minutes: 5,
+        source: 'manual',
+        source_reference: null,
+        curation_status: 'draft',
+        is_template: false,
+        curated_by: null,
+      })
+      toast.success('Bloco salvo na biblioteca!')
+      setSaveReusableOpen(false)
+    } catch (e: any) {
+      toast.error('Erro ao salvar bloco reutilizavel: ' + (e?.message ?? ''))
+    } finally {
+      setSaveReusableLoading(false)
+    }
+  }, [school?.id, selectedBlock])
+
+  const handleInsertExerciseFromLibrary = useCallback(async (exercise: ExerciseLibraryItem) => {
+    setInsertingExerciseId(exercise.id)
+    try {
+      const fullExercise = await getExerciseById(exercise.id) ?? exercise
+      const exerciseBlocks = Array.isArray(fullExercise.blocks) ? fullExercise.blocks : []
+
+      if (exerciseBlocks.length === 0) {
+        toast.error('Esse item da biblioteca nao possui blocos para inserir')
+        return
+      }
+
+      pushSnapshot(blocksRef.current)
+
+      const selectedBlockCurrent = selectedBlockId
+        ? blocksRef.current.find((block) => block.id === selectedBlockId) ?? null
+        : null
+      const lastOrder = blocksRef.current.length > 0
+        ? Math.max(...blocksRef.current.map((block) => block.sort_order))
+        : 0
+      const anchorOrder = selectedBlockCurrent?.sort_order ?? lastOrder
+
+      let firstInsertedId: string | null = null
+      for (const libraryBlock of [...exerciseBlocks].reverse()) {
+        const insertedId = await addMaterialBlock({
+          materialId,
+          blockType: String(libraryBlock?.block_type ?? 'text'),
+          title: typeof libraryBlock?.title === 'string' && libraryBlock.title.trim()
+            ? libraryBlock.title
+            : null,
+          content: libraryBlock?.content ? cloneJsonValue(libraryBlock.content) : null,
+          renderData: libraryBlock?.render_data ? cloneJsonValue(libraryBlock.render_data) : null,
+          afterOrder: anchorOrder,
+        })
+        firstInsertedId = insertedId
+      }
+
+      await refetch()
+      if (firstInsertedId) {
+        setSelectedBlockId(firstInsertedId)
+      }
+      setExerciseBrowserOpen(false)
+      toast.success(`${exerciseBlocks.length} bloco(s) inserido(s)!`)
+    } catch (e: any) {
+      toast.error('Erro ao inserir da biblioteca: ' + (e?.message ?? ''))
+    } finally {
+      setInsertingExerciseId(null)
+    }
+  }, [materialId, refetch, selectedBlockId, pushSnapshot])
 
   // Deletar bloco
   const handleDeleteBlock = useCallback(async (blockId: string) => {
@@ -2076,37 +2215,72 @@ Regras:
     return { beats, _stave_boundaries: staveBoundaries }
   }, [])
 
+  const v2BeatToLegacyNote = useCallback((beat: any) => {
+    const durationToken = `${beat.duration ?? 'q'}${beat.doubleDotted ? 'dd' : beat.dotted ? 'd' : ''}${beat.isRest ? 'r' : ''}`
+
+    if (beat.isRest || !Array.isArray(beat.pitches) || beat.pitches.length === 0) {
+      return { note: `b/4:${durationToken}`, accidental: null }
+    }
+
+    const firstPitch = beat.pitches[0]
+    const pitchText = String(firstPitch?.pitch ?? '')
+    const [notePart = 'B', octave = '4'] = pitchText.split('/')
+    const normalizedBase = notePart.replace(/[#bn]/gi, '').toLowerCase()
+    const accidental = firstPitch?.accidental ?? null
+    const inlineAccidental = accidental && accidental !== 'n' ? accidental : ''
+
+    return {
+      note: `${normalizedBase}${inlineAccidental}/${octave}:${durationToken}`,
+      accidental,
+    }
+  }, [])
+
   // Helper: converter render_data de um bloco para um NotationLibraryRow fake para o NotationEditor
   const blockToNotationRow = useCallback((block: EditorBlock) => {
     const rd = (block.render_data ?? {}) as any
+    const legacyStaves = Array.isArray(rd.notation?.staves) ? rd.notation.staves : []
+    const targetedLegacyStave = notationEditorStaveIndex !== null ? legacyStaves[notationEditorStaveIndex] : legacyStaves[0]
     // Primeiro tenta notation_data salvo (com beats completos do editor)
     // Se não existir, converte notas VexFlow → beats
-    const nd = (block.content as any)?.notation_data
-      ?? rd.notation_data
-      ?? vexNotesToBeats(rd.notation?.staves)
-      ?? null
+    const nd = legacyStaves.length > 1
+      ? vexNotesToBeats(targetedLegacyStave ? [targetedLegacyStave] : [])
+      : (block.content as any)?.notation_data
+        ?? rd.notation_data
+        ?? vexNotesToBeats(rd.notation?.staves)
+        ?? null
     return {
       id: block.id,
       name: block.title ?? '',
       category: 'exercicio',
-      clef: (rd.notation?.staves?.[0]?.clef ?? rd.clef ?? 'treble') as string,
-      key_signature: (rd.notation?.staves?.[0]?.key_signature ?? rd.key_signature ?? 'C') as string,
-      time_signature: (rd.notation?.staves?.[0]?.time_signature ?? rd.time_signature ?? null) as string | null,
+      clef: (targetedLegacyStave?.clef ?? rd.notation?.staves?.[0]?.clef ?? rd.clef ?? 'treble') as string,
+      key_signature: (targetedLegacyStave?.key_signature ?? rd.notation?.staves?.[0]?.key_signature ?? rd.key_signature ?? 'C') as string,
+      time_signature: (targetedLegacyStave?.time_signature ?? rd.notation?.staves?.[0]?.time_signature ?? rd.time_signature ?? null) as string | null,
       notation_data: nd,
       difficulty: 1,
       tags: [],
       description: null,
     }
-  }, [vexNotesToBeats])
+  }, [notationEditorStaveIndex, vexNotesToBeats])
 
   // Abrir editor de notação para um bloco
   const openNotationEditorForBlock = useCallback((blockId: string) => {
     setNotationEditorBlockId(blockId)
+    const block = blocks.find((b) => b.id === blockId)
+    const staves = ((block?.render_data ?? {}) as any)?.notation?.staves
+    const pointedStave = notationPreviewStaveRef.current?.blockId === blockId
+      ? notationPreviewStaveRef.current.staveIndex
+      : null
+    setNotationEditorStaveIndex(
+      Array.isArray(staves) && staves.length > 1
+        ? (pointedStave ?? 0)
+        : null,
+    )
+    notationPreviewStaveRef.current = null
     setNotationEditorOpen(true)
-  }, [])
+  }, [blocks])
 
   // Salvar notação de volta no bloco
-  const handleNotationEditorSave = useCallback(async (data: NotationSaveData) => {
+  const handleNotationEditorSave = useCallback(async (data: NotationEditorMaterialSaveData) => {
     if (!notationEditorBlockId) return
     const block = blocks.find(b => b.id === notationEditorBlockId)
     if (!block) return
@@ -2137,8 +2311,9 @@ Regras:
       const notes: string[] = []
       const accidentals: (string | null)[] = []
       for (const b of group) {
-        for (const n of (b.notes ?? [])) notes.push(n)
-        for (const a of (b.accidentals ?? [])) accidentals.push(a)
+        const legacyNote = v2BeatToLegacyNote(b)
+        notes.push(legacyNote.note)
+        accidentals.push(legacyNote.accidental)
       }
       return {
         clef: clefVal,
@@ -2150,17 +2325,27 @@ Regras:
       }
     })
 
+    const updatedStaves = notationEditorStaveIndex !== null && originalStaves.length > 1
+      ? originalStaves.map((stave: any, idx: number) => idx === notationEditorStaveIndex
+        ? {
+          ...stave,
+          ...newStaves[0],
+          label: stave?.label ?? '',
+        }
+        : stave)
+      : newStaves
+
     const staveNotation = {
       type: 'staff' as const,
-      staves: newStaves,
+      staves: updatedStaves,
       width: rd.notation?.width ?? 500,
-      height: newStaves.length > 1 ? 140 * newStaves.length : 150,
+      height: updatedStaves.length > 1 ? 140 * updatedStaves.length : 150,
     }
 
     const newRenderData = {
       ...(block.render_data ?? {}),
       notation: staveNotation,
-      notation_data: data.notation_data,
+      notation_data: notationEditorStaveIndex !== null && originalStaves.length > 1 ? undefined : data.notation_data,
       clef: data.clef,
       key_signature: data.key_signature,
       time_signature: data.time_signature,
@@ -2182,7 +2367,7 @@ Regras:
     } catch (e: any) {
       toast.error('Erro ao salvar notação: ' + (e?.message ?? ''))
     }
-  }, [notationEditorBlockId, blocks])
+  }, [notationEditorBlockId, notationEditorStaveIndex, blocks, v2BeatToLegacyNote])
 
   // Abrir editor de acorde para um bloco
   const openChordEditorForBlock = useCallback((blockId: string) => {
@@ -2255,38 +2440,14 @@ Regras:
     }, 150)
   }, [])
 
-  // Cache de fontes VexFlow (Bravura/Academico) para embarcar no SVG exportado
-  const vexflowFontCacheRef = useRef<{ bravura?: string; academico?: string }>({})
-
-  const loadVexFlowFonts = useCallback(async () => {
-    if (vexflowFontCacheRef.current.bravura) return vexflowFontCacheRef.current
-    try {
-      // VexFlow embarca as fontes SMuFL como data URLs Base64 nos módulos JS
-      // Precisamos extraí-las para embarcar dentro dos SVGs serializados
-      // IMPORTANTE: usar URL absoluta (/node_modules/...) — bare specifiers não resolvem no browser
-      const [bravuraMod, academicoMod] = await Promise.all([
-        // @ts-ignore — URL absoluta funciona no browser, sem declaração de tipo
-        import(/* @vite-ignore */ '/node_modules/vexflow/build/esm/src/fonts/bravura.js').catch(() => null),
-        // @ts-ignore — URL absoluta funciona no browser, sem declaração de tipo
-        import(/* @vite-ignore */ '/node_modules/vexflow/build/esm/src/fonts/academico.js').catch(() => null),
-      ])
-      vexflowFontCacheRef.current = {
-        bravura: (bravuraMod as any)?.Bravura ?? undefined,
-        academico: (academicoMod as any)?.Academico ?? undefined,
-      }
-    } catch { /* fallback sem fontes */ }
-    return vexflowFontCacheRef.current
-  }, [])
-
   const handleExportHTML = useCallback(async () => {
     const pagesEl = document.querySelectorAll('.a4-page')
     if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
 
-    // Aguardar fontes do browser + carregar dados Base64 do VexFlow
+    // Aguardar fontes do browser antes de serializar SVGs inline
     await document.fonts.ready
-    const vfFonts = await loadVexFlowFonts()
 
-    // Converter SVG VexFlow para PNG — com fontes SMuFL embarcadas no SVG
+    // Converter SVG inline para PNG para garantir portabilidade no HTML exportado
     const svgToDataUrl = async (svgEl: SVGSVGElement): Promise<string> => {
       return new Promise((resolve) => {
         try {
@@ -2296,26 +2457,6 @@ Regras:
           if (!clone.getAttribute('stroke')) clone.setAttribute('stroke', 'black')
           clone.querySelectorAll('text').forEach(t => { if (!t.getAttribute('fill')) t.setAttribute('fill', '#333') })
           if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-
-          // CRÍTICO: Embarcar fontes Bravura/Academico dentro do SVG via @font-face
-          // Sem isso, o SVG serializado perde acesso às fontes SMuFL do VexFlow
-          let fontFaceCSS = ''
-          if (vfFonts.bravura) {
-            fontFaceCSS += `@font-face{font-family:'Bravura';src:url('${vfFonts.bravura}') format('woff2');font-weight:normal;font-style:normal;}`
-          }
-          if (vfFonts.academico) {
-            fontFaceCSS += `@font-face{font-family:'Academico';src:url('${vfFonts.academico}') format('woff2');font-weight:normal;font-style:normal;}`
-          }
-          if (fontFaceCSS) {
-            let defs = clone.querySelector('defs')
-            if (!defs) {
-              defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
-              clone.insertBefore(defs, clone.firstChild)
-            }
-            const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
-            styleEl.textContent = fontFaceCSS
-            defs.appendChild(styleEl)
-          }
 
           const w = parseInt(clone.getAttribute('width') || '500')
           const h = parseInt(clone.getAttribute('height') || '200')
@@ -2509,14 +2650,13 @@ ${pagesHtml}
     document.documentElement.setAttribute('data-theme', 'light')
     await new Promise(r => setTimeout(r, 150))
 
-    // Aguardar fontes + carregar dados Base64 do VexFlow
+    // Aguardar fontes do browser antes de serializar SVGs inline
     await document.fonts.ready
-    const vfFonts = await loadVexFlowFonts()
 
     const pagesEl = document.querySelectorAll('.a4-page')
     if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
 
-    // Converter SVG VexFlow para PNG — com fontes SMuFL embarcadas
+    // Converter SVG inline para PNG antes de enviar ao export de PDF
     const svgToImg = async (svgEl: SVGSVGElement): Promise<string> => {
       return new Promise((resolve) => {
         try {
@@ -2526,18 +2666,6 @@ ${pagesHtml}
           if (!cl.getAttribute('stroke')) cl.setAttribute('stroke', 'black')
           cl.querySelectorAll('text').forEach(t => { if (!t.getAttribute('fill')) t.setAttribute('fill', '#333') })
           if (!cl.getAttribute('xmlns')) cl.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-
-          // Embarcar fontes Bravura/Academico Base64 dentro do SVG
-          let fontFaceCSS = ''
-          if (vfFonts.bravura) fontFaceCSS += `@font-face{font-family:'Bravura';src:url('${vfFonts.bravura}') format('woff2');}`
-          if (vfFonts.academico) fontFaceCSS += `@font-face{font-family:'Academico';src:url('${vfFonts.academico}') format('woff2');}`
-          if (fontFaceCSS) {
-            let defs = cl.querySelector('defs')
-            if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); cl.insertBefore(defs, cl.firstChild) }
-            const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
-            styleEl.textContent = fontFaceCSS
-            defs.appendChild(styleEl)
-          }
 
           const w = parseInt(cl.getAttribute('width') || '500')
           const h = parseInt(cl.getAttribute('height') || '200')
@@ -2712,7 +2840,7 @@ ${pagesHtml}
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
     toast.success('PDF aberto em nova aba — use "Salvar como PDF" no diálogo de impressão')
-  }, [materialTitle, loadVexFlowFonts])
+  }, [materialTitle])
 
   // --- Atalhos de teclado globais ---
   useEffect(() => {
@@ -3102,6 +3230,11 @@ ${pagesHtml}
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuItem onClick={() => setExerciseBrowserOpen(true)} className="gap-2 text-accent font-medium">
+                <BookmarkSimple size={16} weight="fill" className="text-accent" />
+                Da Biblioteca
+              </DropdownMenuItem>
+              <div className="h-px bg-border my-1" />
               {['text', 'tip', 'exercise', 'title', 'image', 'audio', 'video', 'cover', 'columns', 'notation', 'chord_diagram', 'chord_grid', 'keyboard', 'keyboard_grid', 'tablature', 'separator', 'page_break'].map(type => {
                 const cfg = getBlockConfig(type)
                 const Icon = cfg.icon
@@ -3573,6 +3706,9 @@ ${pagesHtml}
                             />
                             <MaterialPreview
                               blocks={[editorBlockToPreview(block)]}
+                              onLegacyNotationStavePointerDown={(staveIndex) => {
+                                notationPreviewStaveRef.current = { blockId: block.id, staveIndex }
+                              }}
                             />
                             <div className="text-[10px] text-text3 mt-1 text-right opacity-60">
                               Enter ou Esc para sair
@@ -3581,6 +3717,9 @@ ${pagesHtml}
                         ) : (
                           <MaterialPreview
                             blocks={[editorBlockToPreview(block)]}
+                            onLegacyNotationStavePointerDown={(staveIndex) => {
+                              notationPreviewStaveRef.current = { blockId: block.id, staveIndex }
+                            }}
                             coverEditable={block.block_type === 'cover' && block.id === selectedBlockId}
                             onCoverPositionChange={block.block_type === 'cover' ? (field, pos) => {
                               setBlocks(prev => prev.map(b =>
@@ -5354,6 +5493,8 @@ ${pagesHtml}
           isLast={blocks.findIndex(b => b.id === selectedBlock.id) === blocks.length - 1}
           onAIRewrite={() => handleAIRewrite('rewrite')}
           isAIProcessing={isAIProcessing}
+          onSaveReusable={handleOpenSaveReusable}
+          saveReusableDisabled={!selectedBlockCanBeReusable || !school?.id}
         />
       )}
 
@@ -5383,12 +5524,36 @@ ${pagesHtml}
         onRestore={handleRestoreVersion}
       />
 
+      <SaveAsReusableDialog
+        open={saveReusableOpen}
+        onOpenChange={setSaveReusableOpen}
+        loading={saveReusableLoading}
+        selectedBlock={selectedBlock ? {
+          block_type: selectedBlock.block_type,
+          title: selectedBlock.title,
+        } : null}
+        onSave={handleSaveReusable}
+      />
+
+      <ExerciseLibraryBrowser
+        open={exerciseBrowserOpen}
+        onClose={() => setExerciseBrowserOpen(false)}
+        onSelect={handleInsertExerciseFromLibrary}
+        insertingId={insertingExerciseId}
+      />
+
       {/* ── Modais dos editores visuais integrados ── */}
 
-      {/* NotationEditor — edição de partitura */}
-      <NotationEditor
+      {/* NotationEditorMaterialAdapter — edição de partitura */}
+      <NotationEditorMaterialAdapter
         open={notationEditorOpen}
-        onOpenChange={(v) => { setNotationEditorOpen(v); if (!v) setNotationEditorBlockId(null) }}
+        onOpenChange={(v) => {
+          setNotationEditorOpen(v)
+          if (!v) {
+            setNotationEditorBlockId(null)
+            setNotationEditorStaveIndex(null)
+          }
+        }}
         notation={notationEditorBlockId ? blockToNotationRow(blocks.find(b => b.id === notationEditorBlockId)!) as any : null}
         onSave={handleNotationEditorSave}
       />

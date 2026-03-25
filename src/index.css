@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Bravura';
+  src: url('/font/Bravura.woff2') format('woff2'),
+       url('/font/Bravura.woff') format('woff'),
+       url('/font/Bravura.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
 @theme {
   /* LA Journey custom colors */
   --color-azul-escuro: var(--azul-escuro);
@@ -228,38 +238,12 @@
   filter: invert(0.88) hue-rotate(180deg);
 }
 
-/* NotationRenderer dentro de cards: sem borda/padding/margin extras */
+/* Notação inline dentro de cards: sem borda/padding/margin extras */
 .card .notation-container {
   border: none !important;
   margin: 0 !important;
   padding: 8px !important;
   border-radius: 8px !important;
-}
-
-/* NotationRenderer dentro do editor: sem borda/padding/margin extras */
-.notation-editor-vexflow .notation-container {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  max-width: 100% !important;
-  overflow: hidden !important;
-}
-/* Pauta VexFlow preenche 100% da largura disponível no editor */
-.notation-editor-vexflow .notation-container svg {
-  width: 100% !important;
-  max-width: 100% !important;
-  height: auto !important;
-  display: block;
-}
-/* Editor sempre fundo branco — NÃO inverter SVG no dark mode */
-[data-theme="dark"] .notation-editor-vexflow .notation-container {
-  background: transparent !important;
-}
-[data-theme="dark"] .notation-editor-vexflow .notation-container svg,
-.dark .notation-editor-vexflow .notation-container svg {
-  filter: none !important;
 }
 
 /* ALPHATAB — Cursor de playback (estilo Songsterr verde) */

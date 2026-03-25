@@ -106,14 +106,18 @@ const TUPLET_OPTIONS = [
 
 const NOTE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 
+function getPitchLetterIndex(noteName: string): number {
+  return NOTE_NAMES.indexOf(noteName.charAt(0).toUpperCase())
+}
+
 function getSmartOctave(noteName: string, lastPitch: string | null, clef: string): number {
   const defaultOctave = clef === 'bass' ? 3 : 4
   if (!lastPitch) return defaultOctave
 
   const [lastNotePart, lastOctStr] = lastPitch.split('/')
   const lastOctave = parseInt(lastOctStr, 10)
-  const lastNoteIdx = NOTE_NAMES.indexOf(lastNotePart.replace(/[#bn]/g, '').toUpperCase())
-  const newNoteIdx = NOTE_NAMES.indexOf(noteName.toUpperCase())
+  const lastNoteIdx = getPitchLetterIndex(lastNotePart)
+  const newNoteIdx = getPitchLetterIndex(noteName)
 
   if (lastNoteIdx < 0 || newNoteIdx < 0) return defaultOctave
 
@@ -252,6 +256,21 @@ export interface NotationEditorV2Props {
   notation?: NotationLibraryRow | null
   onSave?: (notation: NotationLibraryRow) => void
   onDelete?: (id: string) => void
+  onSaveDraft?: (notation: NotationEditorDraft) => Promise<void> | void
+  onDeleteDraft?: (id: string) => Promise<void> | void
+}
+
+export interface NotationEditorDraft {
+  id?: string
+  name: string
+  category: string
+  clef: string
+  key_signature: string
+  time_signature: string | null
+  notation_data: any
+  description?: string | null
+  difficulty: number
+  tags: string[]
 }
 
 // ─── Componente Principal ───────────────────────────────────────────
@@ -262,6 +281,8 @@ export function NotationEditorV2({
   notation,
   onSave,
   onDelete,
+  onSaveDraft,
+  onDeleteDraft,
 }: NotationEditorV2Props) {
   const isEditing = !!notation
 
@@ -848,7 +869,7 @@ export function NotationEditorV2({
       const newPitches = beat.pitches.map(pd => {
         const [notePart, octStr] = pd.pitch.split('/')
         let octave = parseInt(octStr, 10)
-        let noteIdx = NOTE_NAMES.indexOf(notePart.replace(/[#bn]/g, '').toUpperCase())
+        let noteIdx = getPitchLetterIndex(notePart)
 
         if (e.ctrlKey) {
           // Mover oitava
@@ -1105,6 +1126,25 @@ export function NotationEditorV2({
         grandStaff: grandStaffMode,
       }
 
+      const draft: NotationEditorDraft = {
+        id: notation?.id,
+        name: label,
+        category,
+        clef,
+        key_signature: keySignature,
+        time_signature: normalizedTimeSignature,
+        notation_data: notationData,
+        difficulty,
+        tags: notation?.tags ?? [],
+        description: notation?.description ?? null,
+      }
+
+      if (onSaveDraft) {
+        await onSaveDraft(draft)
+        onOpenChange(false)
+        return
+      }
+
       if (isEditing && notation) {
         const updated = await updateNotation(notation.id, {
           name: label,
@@ -1140,7 +1180,7 @@ export function NotationEditorV2({
   }, [
     beats, clef, keySignature, timeSignature, bpm, grandStaffMode,
     label, category, difficulty, alphaTex,
-    isEditing, notation, onSave, onOpenChange,
+    isEditing, notation, onSave, onOpenChange, onSaveDraft,
   ])
 
   // ─── Excluir ───────────────────────────────────────────────────────
@@ -1148,6 +1188,12 @@ export function NotationEditorV2({
     if (!notation) return
 
     try {
+      if (onDeleteDraft) {
+        await onDeleteDraft(notation.id)
+        onOpenChange(false)
+        return
+      }
+
       await deleteNotation(notation.id)
       toast.success('Notação excluída!')
       onDelete?.(notation.id)
@@ -1155,7 +1201,7 @@ export function NotationEditorV2({
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao excluir')
     }
-  }, [notation, onDelete, onOpenChange])
+  }, [notation, onDelete, onDeleteDraft, onOpenChange])
 
   // ─── Estatísticas ──────────────────────────────────────────────────
   const stats = useMemo(() => {

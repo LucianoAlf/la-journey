@@ -63,7 +63,7 @@ const STAFF_LEFT_X = LEFT_MARGIN       // onde as linhas da pauta começam
 const BRACE_X = LEFT_MARGIN - 16       // chave de sistema à esquerda
 const CLEF_TREBLE_X = LEFT_MARGIN + 16 // clave de Sol sobre as linhas
 const CLEF_BASS_X = LEFT_MARGIN + 14   // clave de Fá sobre as linhas
-const TS_OFFSET = CLEF_WIDTH_INNER + 4 // offset do compasso após a clave
+const TS_OFFSET = CLEF_WIDTH_INNER + 10 // offset do compasso após a clave
 const NOTES_START = LEFT_MARGIN + CLEF_WIDTH_INNER // início dos beats sem compasso
 const NOTES_START_TS = NOTES_START + TIME_SIG_WIDTH // início dos beats com compasso
 const RIGHT_MARGIN = 20
@@ -123,7 +123,7 @@ const NOTE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 // Posição 8 = E4 (1ª linha)
 
 function getNoteIndex(noteName: string): number {
-  const base = noteName.replace(/[#bn]/g, '').toUpperCase()
+  const base = noteName.charAt(0).toUpperCase()
   return NOTE_NAMES.indexOf(base)
 }
 
@@ -740,7 +740,7 @@ export function NotationSvgEditor({
       // ── Claves (dentro da pauta, sobre as linhas, como no AlphaTab) ──
       if (grandStaffMode) {
         // Grande Pauta: Clave de Sol na pauta superior, Clave de Fá na inferior
-        const trebleClefY = topY + 3 * LINE_SPACING
+        const trebleClefY = topY + 3 * LINE_SPACING - 3
         els.push(
           <text
             key={`clef-treble-${r}`}
@@ -758,7 +758,7 @@ export function NotationSvgEditor({
         )
         
         const bassTopY = bassStaffTopY(r)
-        const bassClefY = bassTopY + LINE_SPACING
+        const bassClefY = bassTopY + LINE_SPACING - 4
         els.push(
           <text
             key={`clef-bass-${r}`}
@@ -778,8 +778,8 @@ export function NotationSvgEditor({
         // Pauta única: renderizar a clave selecionada
         const isBass = clef === 'bass'
         const clefY = isBass
-          ? topY + LINE_SPACING  // Linha 4 para clave de Fá
-          : topY + 3 * LINE_SPACING  // Linha 2 para clave de Sol
+          ? topY + LINE_SPACING - 4  // Centralizar os dois pontos na 4ª linha
+          : topY + 3 * LINE_SPACING - 3  // Ajuste fino da clave de Sol
         els.push(
           <text
             key={`clef-${r}`}
@@ -808,9 +808,8 @@ export function NotationSvgEditor({
             key={`ts-num-treble-${r}`}
             x={tsX}
             y={topY + 1.5 * LINE_SPACING}
-            fontSize={16}
-            fontFamily={FONT_UI}
-            fontWeight="bold"
+            fontSize={20}
+            fontFamily={FONT_MUSIC}
             fill={C.clef}
             textAnchor="middle"
             dominantBaseline="middle"
@@ -824,9 +823,8 @@ export function NotationSvgEditor({
             key={`ts-den-treble-${r}`}
             x={tsX}
             y={topY + 2.5 * LINE_SPACING}
-            fontSize={16}
-            fontFamily={FONT_UI}
-            fontWeight="bold"
+            fontSize={20}
+            fontFamily={FONT_MUSIC}
             fill={C.clef}
             textAnchor="middle"
             dominantBaseline="middle"
@@ -844,9 +842,8 @@ export function NotationSvgEditor({
               key={`ts-num-bass-${r}`}
               x={tsX}
               y={bassTopY + 1.5 * LINE_SPACING}
-              fontSize={16}
-              fontFamily={FONT_UI}
-              fontWeight="bold"
+              fontSize={20}
+              fontFamily={FONT_MUSIC}
               fill={C.clef}
               textAnchor="middle"
               dominantBaseline="middle"
@@ -860,9 +857,8 @@ export function NotationSvgEditor({
               key={`ts-den-bass-${r}`}
               x={tsX}
               y={bassTopY + 2.5 * LINE_SPACING}
-              fontSize={16}
-              fontFamily={FONT_UI}
-              fontWeight="bold"
+              fontSize={20}
+              fontFamily={FONT_MUSIC}
               fill={C.clef}
               textAnchor="middle"
               dominantBaseline="middle"
@@ -950,7 +946,7 @@ export function NotationSvgEditor({
                 rx={6}
                 ry={4.5}
                 transform={`rotate(-15, ${cx}, ${y})`}
-                fill={isHollow ? C.bg : fillColor}
+                fill={isHollow ? 'none' : fillColor}
                 stroke={fillColor}
                 strokeWidth={isHollow ? 1.5 : 0}
                 style={{ cursor: 'pointer' }}
