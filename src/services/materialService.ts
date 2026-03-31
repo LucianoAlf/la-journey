@@ -1,9 +1,25 @@
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
-import type { Tables, TablesUpdate } from '@/lib/database.types'
+import type { Json, Tables } from '@/lib/database.types'
 
 export type GeneratedMaterial = Tables<'generated_materials'>
 export type MaterialBlockRow = Tables<'material_blocks'>
+
+type GeneratedMaterialInsertInput = Partial<GeneratedMaterial> & {
+  school_id: string
+  title: string
+}
+
+type MaterialBlockInsertInput = {
+  material_id: string
+  block_type: MaterialBlockRow['block_type']
+  title?: string | null
+  content?: Json | null
+  render_data?: Json | null
+  sort_order?: number | null
+  is_edited?: boolean | null
+  original_content?: Json | null
+}
 
 // --- Tipos para as RPCs ---
 
@@ -53,6 +69,33 @@ export interface MaterialListItem {
   station_name: string | null
   created_at: string | null
   updated_at: string | null
+}
+
+export interface MaterialTemplateListItem {
+  id: string
+  title: string
+  type: GeneratedMaterial['type']
+  format: GeneratedMaterial['format']
+  school_id: string
+  status: GeneratedMaterial['status']
+  template_instrument: string | null
+  template_level: string | null
+  template_description: string | null
+  template_cover_url: string | null
+  block_count: number
+}
+
+export interface MaterialTemplateDetail {
+  material: GeneratedMaterial
+  blocks: MaterialBlockRow[]
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
 }
 
 // --- RPC 1: Salvar material gerado ---
@@ -172,11 +215,156 @@ export async function listMaterials(schoolId?: string): Promise<MaterialListItem
   return (data ?? []) as MaterialListItem[]
 }
 
+export async function listMaterialTemplates(schoolId?: string): Promise<MaterialTemplateListItem[]> {
+  let query = supabase
+    .from('generated_materials')
+    .select(`
+      id,
+      title,
+      type,
+      format,
+      school_id,
+      status,
+      template_instrument,
+      template_level,
+      template_description,
+      template_cover_url,
+      is_template
+    `)
+    .eq('is_template', true)
+    .order('title')
+
+  if (schoolId) {
+    query = query.or(`school_id.is.null,school_id.eq.${schoolId}`)
+  }
+
+  const { data, error } = await query
+  if (error) handleError(error)
+
+  const templates = (data ?? []) as GeneratedMaterial[]
+  const templateIds = templates.map((template) => template.id)
+
+  if (templateIds.length === 0) return []
+
+  const countMap = new Map<string, number>()
+  for (const ids of chunkArray(templateIds, 200)) {
+    const { data: blocks, error: blocksError } = await supabase
+      .from('material_blocks')
+      .select('material_id')
+      .in('material_id', ids)
+
+    if (blocksError) handleError(blocksError)
+
+    for (const block of ((blocks ?? []) as Array<{ material_id: string }>)) {
+      const materialId = block.material_id
+      countMap.set(materialId, (countMap.get(materialId) ?? 0) + 1)
+    }
+  }
+
+  return templates.map((template) => ({
+    id: template.id,
+    title: template.title,
+    type: template.type,
+    format: template.format,
+    school_id: template.school_id,
+    status: template.status,
+    template_instrument: template.template_instrument,
+    template_level: template.template_level,
+    template_description: template.template_description,
+    template_cover_url: template.template_cover_url,
+    block_count: countMap.get(template.id) ?? 0,
+  }))
+}
+
+export async function getMaterialTemplateDetail(templateId: string): Promise<MaterialTemplateDetail> {
+  const { data: material, error: materialError } = await supabase
+    .from('generated_materials')
+    .select('*')
+    .eq('id', templateId)
+    .eq('is_template', true)
+    .single()
+
+  if (materialError) handleError(materialError)
+
+  const { data: blocks, error: blocksError } = await supabase
+    .from('material_blocks')
+    .select('*')
+    .eq('material_id', templateId)
+    .order('sort_order')
+
+  if (blocksError) handleError(blocksError)
+
+  return {
+    material: material as GeneratedMaterial,
+    blocks: (blocks ?? []) as MaterialBlockRow[],
+  }
+}
+
+export async function cloneMaterialFromTemplate(params: {
+  templateId: string
+  schoolId: string
+  title: string
+}): Promise<string> {
+  const { material: template, blocks } = await getMaterialTemplateDetail(params.templateId)
+
+  const materialInsert: GeneratedMaterialInsertInput = {
+    school_id: params.schoolId,
+    title: params.title,
+    type: template.type,
+    format: template.format,
+    page_config: template.page_config,
+    page_count: blocks.length,
+    status: 'ready',
+    is_draft: true,
+    is_template: false,
+    version: 1,
+    generation_config: null,
+    template_cover_url: null,
+    template_description: null,
+    template_instrument: null,
+    template_level: null,
+    journey_id: null,
+    stage_id: null,
+    station_id: null,
+  }
+
+  const { data: newMaterial, error: newMaterialError } = await (supabase
+    .from('generated_materials') as any)
+    .insert(materialInsert)
+    .select('id')
+    .single()
+
+  if (newMaterialError) handleError(newMaterialError)
+  const createdMaterial = newMaterial as { id: string } | null
+  if (!createdMaterial?.id) throw new Error('Não foi possível criar o material a partir do template')
+
+  if (blocks.length > 0) {
+    const clonedBlocks: MaterialBlockInsertInput[] = blocks.map((block) => ({
+      material_id: createdMaterial.id,
+      block_type: block.block_type,
+      title: block.title,
+      content: block.content,
+      render_data: block.render_data,
+      sort_order: block.sort_order,
+      is_edited: false,
+      original_content: null,
+    }))
+
+    const { error: blocksInsertError } = await (supabase
+      .from('material_blocks') as any)
+      .insert(clonedBlocks)
+
+    if (blocksInsertError) handleError(blocksInsertError)
+  }
+
+  return createdMaterial.id
+}
+
 // --- Funções diretas (complementares) ---
 
-export async function updateMaterial(id: string, updates: TablesUpdate<'generated_materials'>) {
-  const { data, error } = await supabase
-    .from('generated_materials')
+export async function updateMaterial(id: string, updates: Partial<GeneratedMaterial>) {
+  const { data, error } = await (supabase
+    .from('generated_materials') as any)
     .update(updates)
     .eq('id', id)
     .select()

@@ -17,6 +17,7 @@ import type { ExerciseLibraryItem } from '@/services/exerciseLibraryService'
 
 interface ExerciseCardProps {
   exercise: ExerciseLibraryItem
+  onPreview: (exercise: ExerciseLibraryItem) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
 }
@@ -94,7 +95,7 @@ function getBlocksArray(blocks: unknown): any[] {
   return []
 }
 
-export function ExerciseCard({ exercise, onDuplicate, onDelete }: ExerciseCardProps) {
+export function ExerciseCard({ exercise, onPreview, onDuplicate, onDelete }: ExerciseCardProps) {
   const navigate = useNavigate()
   const blocks = useMemo(() => getBlocksArray(exercise.blocks), [exercise.blocks])
 
@@ -209,7 +210,11 @@ export function ExerciseCard({ exercise, onDuplicate, onDelete }: ExerciseCardPr
   }
 
   return (
-    <div data-testid="exercise-card" className="rounded-[14px] bg-card border border-border p-4 hover:border-accent/30 transition-colors group">
+    <div
+      data-testid="exercise-card"
+      className="rounded-[14px] bg-card border border-border p-4 hover:border-accent/30 transition-colors group cursor-pointer"
+      onClick={() => onPreview(exercise)}
+    >
       {/* Header: badges */}
       <div className="flex flex-wrap items-center gap-1.5 mb-3">
         {/* Tipo: Exercício ou Exemplo */}
@@ -280,7 +285,10 @@ export function ExerciseCard({ exercise, onDuplicate, onDelete }: ExerciseCardPr
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-[11px] gap-1"
-          onClick={handleUseInMaterial}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleUseInMaterial()
+          }}
           title="Usar no Material"
         >
           <ArrowSquareOut size={14} />
@@ -290,7 +298,10 @@ export function ExerciseCard({ exercise, onDuplicate, onDelete }: ExerciseCardPr
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-[11px] gap-1"
-          onClick={handleEdit}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleEdit()
+          }}
           title="Editar"
         >
           <PencilSimple size={14} />
@@ -299,7 +310,10 @@ export function ExerciseCard({ exercise, onDuplicate, onDelete }: ExerciseCardPr
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-[11px] gap-1"
-          onClick={handleDuplicate}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleDuplicate()
+          }}
           title="Duplicar"
         >
           <Copy size={14} />
@@ -308,7 +322,10 @@ export function ExerciseCard({ exercise, onDuplicate, onDelete }: ExerciseCardPr
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-[11px] gap-1 hover:text-red-400 hover:bg-red-500/10"
-          onClick={handleDelete}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleDelete()
+          }}
           title="Excluir"
         >
           <Trash size={14} />

@@ -243,47 +243,67 @@ function BlockChordDiagram({ block }: { block: MaterialBlock }) {
 }
 
 function BlockChordGrid({ block }: { block: MaterialBlock }) {
-  const chords = block.render_data?.chords ?? []
+  const renderChords = block.render_data?.chords
+  const contentChords = Array.isArray(block.content?.chords) ? block.content.chords : []
+  const chords = renderChords?.length ? renderChords : contentChords
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
-      <div className="flex flex-wrap gap-4 justify-center">
-        {chords.map((chord: any, i: number) => (
-          <ChordDiagram
-            key={i}
-            name={chord.chord_name ?? chord.name ?? '?'}
-            positions={{
-              fingers: chord.fingers ?? [],
-              barres: chord.barres ?? [],
-              muted: chord.muted ?? [],
-            }}
-            position={chord.position ?? 1}
-            size="full"
-          />
-        ))}
-      </div>
+      {typeof chords[0] === 'string' ? (
+        <div className="flex flex-wrap gap-2 justify-center">
+          {chords.map((chord: string, i: number) => (
+            <div
+              key={`${chord}-${i}`}
+              className="rounded-full border border-border bg-bg2 px-3 py-1 text-[13px] font-medium text-text"
+            >
+              {chord}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-4 justify-center">
+          {chords.map((chord: any, i: number) => (
+            <ChordDiagram
+              key={i}
+              name={chord.chord_name ?? chord.name ?? '?'}
+              positions={{
+                fingers: chord.fingers ?? [],
+                barres: chord.barres ?? [],
+                muted: chord.muted ?? [],
+              }}
+              position={chord.position ?? 1}
+              size="full"
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 function BlockNotation({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
   const rd = block.render_data ?? {}
-  const hasPreview = rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0)
+  const alphaTex = typeof rd.alphaTex === 'string' ? rd.alphaTex.trim() : ''
+  const hasPreview = rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0) || alphaTex
   if (!hasPreview) return null
 
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      <NotationPreviewCompat
-        notation={rd.notation as any}
-        notationData={rd.notation_data}
-        notes={rd.notes as any[]}
-        onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
-        clef={rd.clef ?? 'treble'}
-        timeSignature={rd.time_signature}
-        keySignature={rd.key_signature}
-        width={rd.width ?? 500}
-      />
+      {alphaTex ? (
+        <AlphaTexInlineRenderer tex={alphaTex} width={rd.width ?? 500} minHeight={110} scale={0.85} />
+      ) : (
+        <NotationPreviewCompat
+          notation={rd.notation as any}
+          notationData={rd.notation_data}
+          notes={rd.notes as any[]}
+          onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
+          clef={rd.clef ?? 'treble'}
+          timeSignature={rd.time_signature}
+          keySignature={rd.key_signature}
+          width={rd.width ?? 500}
+        />
+      )}
     </div>
   )
 }
@@ -361,11 +381,16 @@ function BlockTip({ block, onLegacyNotationStavePointerDown }: { block: Material
 }
 
 function BlockTablature({ block }: { block: MaterialBlock }) {
+  const alphaTex = typeof block.render_data?.alphaTex === 'string' ? block.render_data.alphaTex.trim() : ''
   const tab = block.render_data?.tab ?? block.content?.text ?? ''
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      <Tablature tab={tab} title="" />
+      {alphaTex ? (
+        <AlphaTexInlineRenderer tex={alphaTex} minHeight={120} scale={0.8} />
+      ) : (
+        <Tablature tab={tab} title="" />
+      )}
     </div>
   )
 }

@@ -18,6 +18,7 @@ import { supabase } from "@/lib/supabase";
 import { generateEmbedding, generateText } from "@/services/aiService";
 import { AI_CONFIG } from "@/lib/ai-config";
 import { MaterialPreview, type MaterialBlock } from "@/components/material/MaterialPreview";
+import { TemplateGallery } from "@/components/generator/TemplateGallery";
 import type { StationBlock, StageStation } from "@/services/journeyService";
 import { getStationBlocks } from "@/services/journeyService";
 import { saveGeneratedMaterial } from "@/services/materialService";
@@ -97,6 +98,7 @@ export function Gerador() {
   const navigate = useNavigate();
   const { data: journeys } = useJourneys();
   const { data: school } = useSchool();
+  const schoolData = (school ?? null) as { id: string; name?: string | null } | null;
 
   // Seletores em cascata
   const [selectedJourneyId, setSelectedJourneyId] = useState('');
@@ -130,6 +132,7 @@ export function Gerador() {
 
   // Tab ativa
   const [activeTab, setActiveTab] = useState('station');
+  const [generatorMode, setGeneratorMode] = useState<'ia' | 'template'>('ia');
 
   // Contadores
   const selectedCount = stationBlocks.filter(b => b.selected).length;
@@ -338,7 +341,7 @@ Retorne APENAS o array JSON com ${selected.length} blocos, na mesma ordem.`;
     }
 
     if (generatedBlocks.length === 0) return;
-    if (!school || !selectedJourney || !selectedStage || !selectedStation) {
+    if (!schoolData || !selectedJourney || !selectedStage || !selectedStation) {
       toast.error('Dados incompletos para salvar');
       return;
     }
@@ -354,7 +357,7 @@ Retorne APENAS o array JSON com ${selected.length} blocos, na mesma ordem.`;
       }));
 
       const materialId = await saveGeneratedMaterial({
-        schoolId: school.id,
+        schoolId: schoolData.id,
         journeyId: selectedJourney.id,
         stageId: selectedStage.id,
         stationId: selectedStation.station_id,
@@ -389,36 +392,62 @@ Retorne APENAS o array JSON com ${selected.length} blocos, na mesma ordem.`;
             Gerador de <em className="not-italic text-accent">Material</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            Carregue blocos curados por estação e expanda com IA generativa
+            {generatorMode === 'ia'
+              ? 'Carregue blocos curados por estação e expanda com IA generativa'
+              : 'Use um template completo do banco como ponto de partida para o Editor'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            onClick={handleLoadStationBlocks}
-            disabled={blocksLoading || !selectedStationId}
-          >
-            {blocksLoading ? <SpinnerGap size={16} className="animate-spin" /> : <ListChecks size={16} />}
-            {blocksLoading ? 'Carregando...' : 'Carregar Blocos'}
-          </Button>
-          <Button
-            className="bg-accent hover:bg-accent/90"
-            onClick={handleGeneratePreview}
-            disabled={genLoading || selectedCount === 0}
-          >
-            {genLoading ? <SpinnerGap size={16} className="animate-spin" /> : <Sparkle size={16} />}
-            {genLoading ? 'Gerando...' : `Gerar com IA (${selectedCount})`}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={handleSaveMaterial}
-            disabled={saveLoading || generatedBlocks.length === 0}
-          >
-            {saveLoading ? <SpinnerGap size={16} className="animate-spin" /> : <FloppyDisk size={16} />}
-            {savedMaterialId ? '✓ Salvo — Abrir Editor' : saveLoading ? 'Salvando...' : 'Salvar Material'}
-          </Button>
-        </div>
+        {generatorMode === 'ia' && (
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              onClick={handleLoadStationBlocks}
+              disabled={blocksLoading || !selectedStationId}
+            >
+              {blocksLoading ? <SpinnerGap size={16} className="animate-spin" /> : <ListChecks size={16} />}
+              {blocksLoading ? 'Carregando...' : 'Carregar Blocos'}
+            </Button>
+            <Button
+              className="bg-accent hover:bg-accent/90"
+              onClick={handleGeneratePreview}
+              disabled={genLoading || selectedCount === 0}
+            >
+              {genLoading ? <SpinnerGap size={16} className="animate-spin" /> : <Sparkle size={16} />}
+              {genLoading ? 'Gerando...' : `Gerar com IA (${selectedCount})`}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={handleSaveMaterial}
+              disabled={saveLoading || generatedBlocks.length === 0}
+            >
+              {saveLoading ? <SpinnerGap size={16} className="animate-spin" /> : <FloppyDisk size={16} />}
+              {savedMaterialId ? '✓ Salvo — Abrir Editor' : saveLoading ? 'Salvando...' : 'Salvar Material'}
+            </Button>
+          </div>
+        )}
       </div>
+
+      <div className="mb-4 flex gap-2">
+        <Button
+          variant={generatorMode === 'ia' ? 'default' : 'outline'}
+          onClick={() => setGeneratorMode('ia')}
+        >
+          <Sparkle size={16} />
+          Gerar com IA
+        </Button>
+        <Button
+          variant={generatorMode === 'template' ? 'default' : 'outline'}
+          onClick={() => setGeneratorMode('template')}
+        >
+          <BookOpen size={16} />
+          Usar Template
+        </Button>
+      </div>
+
+      {generatorMode === 'template' ? (
+        <TemplateGallery />
+      ) : (
+        <>
 
       {/* Seletores — 4 dropdowns */}
       <div className="card mb-4">
@@ -462,7 +491,7 @@ Retorne APENAS o array JSON com ${selected.length} blocos, na mesma ordem.`;
             <Label>Escola</Label>
             <div className="flex items-center gap-3 h-9 px-3 bg-bg2 rounded-[var(--radius-sm)] border border-border">
               <div className="w-6 h-6 rounded-md bg-gradient-to-br from-azul-escuro to-azul flex items-center justify-center text-white text-[9px] font-extrabold">LA</div>
-              <span className="text-sm text-text2">{school?.name ?? 'Carregando...'}</span>
+              <span className="text-sm text-text2">{schoolData?.name ?? 'Carregando...'}</span>
             </div>
           </div>
         </div>
@@ -699,7 +728,7 @@ Retorne APENAS o array JSON com ${selected.length} blocos, na mesma ordem.`;
                 {/* Mini capa */}
                 <div className="bg-white rounded-lg p-4 mb-4 text-center shadow-sm">
                   <div className="w-8 h-8 rounded-md bg-[#1E3A5F] mx-auto mb-1 flex items-center justify-center text-white text-[9px] font-extrabold">LA</div>
-                  <div className="text-[9px] text-[#666]">{school?.name ?? 'LA Music School'}</div>
+                  <div className="text-[9px] text-[#666]">{schoolData?.name ?? 'LA Music School'}</div>
                   <div className="text-sm font-bold text-[#1E293B] mt-1">{selectedStation?.station_name ?? 'Estação'}</div>
                   <div className="text-[8px] text-[#94A3B8]">{selectedJourney?.instrument} · {selectedStage?.name} · {selectedStation?.topic_count ?? '?'} tópicos</div>
                 </div>
@@ -720,6 +749,8 @@ Retorne APENAS o array JSON com ${selected.length} blocos, na mesma ordem.`;
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
