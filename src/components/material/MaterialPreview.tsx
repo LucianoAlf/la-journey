@@ -6,6 +6,7 @@ import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer } from '@/components/music/AlphaTexInlineRenderer'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
+import { lookupGuitarChord } from '@/services/chordAutoFillService'
 
 export interface MaterialBlock {
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
@@ -90,6 +91,8 @@ export const DEFAULT_TEXT_BG: CoverTextBackground = { enabled: false, color: '#0
 interface MaterialPreviewProps {
   blocks: MaterialBlock[]
   onLegacyNotationStavePointerDown?: (staveIndex: number) => void
+  onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void
+  onKeyboardGridItemClick?: (block: MaterialBlock, keyboard: any, index: number) => void
   coverEditable?: boolean
   onCoverPositionChange?: (field: string, pos: { x: number; y: number }) => void
   coverTitleEditing?: boolean
@@ -134,6 +137,27 @@ const RHYTHM_FIGURES = [
 
 const RHYTHM_FIGURES_TEX = '\\track\n\\staff{score}\n\\tuning piano\n.\n:1 b3 :2 b3 :4 b3 :8 b3 :16 b3'
 
+function parseJsonLike<T>(value: unknown, fallback: T): T {
+  if (value == null) return fallback
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T
+    } catch {
+      return fallback
+    }
+  }
+  if (typeof value === 'object') return value as T
+  return fallback
+}
+
+function getBlockContent(block: MaterialBlock) {
+  return parseJsonLike<Record<string, any>>(block.content, {})
+}
+
+function getBlockRenderData(block: MaterialBlock) {
+  return parseJsonLike<Record<string, any>>(block.render_data, {})
+}
+
 function renderMarkdownText(text: string) {
   const lines = text.split('\n')
   return lines.map((line, i) => {
@@ -177,7 +201,7 @@ function renderContent(content?: { text?: string; html?: string; [key: string]: 
   if (html) {
     return (
       <div
-        className="rich-content text-[13px] leading-relaxed text-text2 [&_strong]:text-text [&_strong]:font-semibold [&_em]:text-text2 [&_p]:mb-2 [&_h1]:font-serif [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:text-text [&_h1]:mb-3 [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:text-text [&_h2]:mb-2 [&_h3]:font-serif [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-text [&_h3]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-2 [&_blockquote]:border-l-[3px] [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-text3 [&_a]:text-accent [&_a]:underline [&_mark]:bg-yellow-200/80 [&_mark]:rounded-sm [&_mark]:px-0.5 [&_hr]:border-border [&_hr]:my-4"
+        className="rich-content overflow-x-auto text-[13px] leading-relaxed text-text2 [&_strong]:text-text [&_strong]:font-semibold [&_em]:text-text2 [&_p]:mb-2 [&_h1]:font-serif [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:text-text [&_h1]:mb-3 [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:text-text [&_h2]:mb-2 [&_h3]:font-serif [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-text [&_h3]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-2 [&_blockquote]:border-l-[3px] [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-text3 [&_a]:text-accent [&_a]:underline [&_mark]:bg-yellow-200/80 [&_mark]:rounded-sm [&_mark]:px-0.5 [&_hr]:border-border [&_hr]:my-4 [&_table]:mb-3 [&_table]:w-full [&_table]:border-collapse [&_table]:overflow-hidden [&_table]:rounded-[12px] [&_table]:border [&_table]:border-border/70 [&_thead]:bg-bg2/80 [&_th]:border [&_th]:border-border/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-[12px] [&_th]:font-semibold [&_th]:text-text [&_td]:border [&_td]:border-border/50 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_tbody_tr:nth-child(even)]:bg-bg2/30"
         dangerouslySetInnerHTML={{ __html: html }}
       />
     )
@@ -187,7 +211,8 @@ function renderContent(content?: { text?: string; html?: string; [key: string]: 
 }
 
 function BlockTitle({ block }: { block: MaterialBlock }) {
-  const dimension = block.content?.dimension?.toLowerCase() ?? ''
+  const content = getBlockContent(block)
+  const dimension = content.dimension?.toLowerCase() ?? ''
   const colorClass = DIMENSION_COLORS[dimension] ?? 'text-accent border-accent/30'
   const emoji = DIMENSION_EMOJIS[dimension] ?? '📌'
 
@@ -204,14 +229,16 @@ function BlockTitle({ block }: { block: MaterialBlock }) {
 }
 
 function BlockText({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
+  const content = getBlockContent(block)
+  const renderData = getBlockRenderData(block)
   return (
     <div className="mb-4">
       {renderTitle(block)}
-      {renderContent(block.content)}
-      {(block.render_data?.notation || block.render_data?.notation_data) && (
+      {renderContent(content)}
+      {(renderData.notation || renderData.notation_data) && (
         <NotationPreviewCompat
-          notation={block.render_data?.notation as any}
-          notationData={block.render_data?.notation_data}
+          notation={renderData.notation as any}
+          notationData={renderData.notation_data}
           onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
           className="mt-3"
         />
@@ -242,38 +269,71 @@ function BlockChordDiagram({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockChordGrid({ block }: { block: MaterialBlock }) {
-  const renderChords = block.render_data?.chords
-  const contentChords = Array.isArray(block.content?.chords) ? block.content.chords : []
+function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock; onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void }) {
+  const renderData = getBlockRenderData(block)
+  const content = getBlockContent(block)
+  const renderChords = renderData.chords
+  const contentChords = Array.isArray(content.chords) ? content.chords : []
   const chords = renderChords?.length ? renderChords : contentChords
+  const normalizedChords = chords.map((chord: any) => {
+    if (typeof chord !== 'string') return chord
+
+    const found = lookupGuitarChord(chord)
+    if (!found) {
+      return { chord_name: chord, name: chord, fingers: [], barres: [], muted: [], _fallbackTextOnly: true }
+    }
+
+    return {
+      chord_name: chord,
+      name: chord,
+      ...found.positions,
+      position: found.baseFret,
+    }
+  })
+  const canRenderAsDiagrams = normalizedChords.length > 0 && normalizedChords.some((chord: any) => Array.isArray(chord?.fingers) && chord.fingers.length > 0)
+  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), 4)
+
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
-      {typeof chords[0] === 'string' ? (
+      {!canRenderAsDiagrams ? (
         <div className="flex flex-wrap gap-2 justify-center">
-          {chords.map((chord: string, i: number) => (
+          {normalizedChords.map((chord: any, i: number) => (
             <div
-              key={`${chord}-${i}`}
+              key={`${chord.chord_name ?? chord.name ?? chord}-${i}`}
               className="rounded-full border border-border bg-bg2 px-3 py-1 text-[13px] font-medium text-text"
             >
-              {chord}
+              {chord.chord_name ?? chord.name ?? chord}
             </div>
           ))}
         </div>
       ) : (
-        <div className="flex flex-wrap gap-4 justify-center">
-          {chords.map((chord: any, i: number) => (
-            <ChordDiagram
+        <div
+          className="mx-auto grid gap-4 justify-center"
+          style={{
+            gridTemplateColumns: `repeat(${chordColumns}, minmax(0, 140px))`,
+            width: 'fit-content',
+            maxWidth: '100%',
+          }}
+        >
+          {normalizedChords.map((chord: any, i: number) => (
+            <button
               key={i}
-              name={chord.chord_name ?? chord.name ?? '?'}
-              positions={{
-                fingers: chord.fingers ?? [],
-                barres: chord.barres ?? [],
-                muted: chord.muted ?? [],
-              }}
-              position={chord.position ?? 1}
-              size="full"
-            />
+              type="button"
+              className="rounded-[12px] p-1 transition-colors hover:bg-bg2/40"
+              onClick={() => onChordGridItemClick?.(block, chord, i)}
+            >
+              <ChordDiagram
+                name={chord.chord_name ?? chord.name ?? '?'}
+                positions={{
+                  fingers: chord.fingers ?? [],
+                  barres: chord.barres ?? [],
+                  muted: chord.muted ?? [],
+                }}
+                position={chord.position ?? 1}
+                size="full"
+              />
+            </button>
           ))}
         </div>
       )}
@@ -282,7 +342,7 @@ function BlockChordGrid({ block }: { block: MaterialBlock }) {
 }
 
 function BlockNotation({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
-  const rd = block.render_data ?? {}
+  const rd = getBlockRenderData(block)
   const alphaTex = typeof rd.alphaTex === 'string' ? rd.alphaTex.trim() : ''
   const hasPreview = rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0) || alphaTex
   if (!hasPreview) return null
@@ -326,10 +386,11 @@ function BlockRhythm({ block }: { block: MaterialBlock }) {
 }
 
 function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
-  const rd = block.render_data ?? {}
+  const rd = getBlockRenderData(block)
+  const content = getBlockContent(block)
   const hasPreview = !!(rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0))
   const hasTab = rd.tab
-  const hasContent = block.content?.html || block.content?.text
+  const hasContent = content.html || content.text
 
   return (
     <div className="mb-4 p-4 bg-advance/10 border border-advance/20 rounded-[var(--radius-sm)]">
@@ -339,7 +400,7 @@ function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: Mat
           <h3 className="font-bold text-[14px] text-advance">Exercício</h3>
         )}
       </div>
-      {hasContent && <div className="text-[13px] text-text2 mb-3">{renderContent(block.content)}</div>}
+      {hasContent && <div className="text-[13px] text-text2 mb-3">{renderContent(content)}</div>}
       {hasPreview && (
         <NotationPreviewCompat
           notation={rd.notation as any}
@@ -359,19 +420,21 @@ function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: Mat
 }
 
 function BlockTip({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
+  const content = getBlockContent(block)
+  const renderData = getBlockRenderData(block)
   return (
     <div className="mb-4 p-4 bg-dourado-soft border border-dourado/20 rounded-[var(--radius-sm)]">
       <div className="flex items-start gap-2">
         <Lightbulb size={18} className="text-dourado shrink-0 mt-0.5" weight="fill" />
         <div>
           {renderTitle(block, 'font-bold text-[13px] text-dourado mb-1 [&_p]:mb-0')}
-          <div className="text-[12px] text-text2">{renderContent(block.content)}</div>
+          <div className="text-[12px] text-text2">{renderContent(content)}</div>
         </div>
       </div>
-      {(block.render_data?.notation || block.render_data?.notation_data) && (
+      {(renderData.notation || renderData.notation_data) && (
         <NotationPreviewCompat
-          notation={block.render_data?.notation as any}
-          notationData={block.render_data?.notation_data}
+          notation={renderData.notation as any}
+          notationData={renderData.notation_data}
           onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
           className="mt-3"
         />
@@ -381,8 +444,10 @@ function BlockTip({ block, onLegacyNotationStavePointerDown }: { block: Material
 }
 
 function BlockTablature({ block }: { block: MaterialBlock }) {
-  const alphaTex = typeof block.render_data?.alphaTex === 'string' ? block.render_data.alphaTex.trim() : ''
-  const tab = block.render_data?.tab ?? block.content?.text ?? ''
+  const renderData = getBlockRenderData(block)
+  const content = getBlockContent(block)
+  const alphaTex = typeof renderData.alphaTex === 'string' ? renderData.alphaTex.trim() : ''
+  const tab = renderData.tab ?? content.text ?? ''
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
@@ -645,16 +710,16 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const hasFooter = professor || escola || data
 
   return (
-    <div ref={coverRef} className={classes} style={bgStyle} onClick={() => { onTextSelect?.(null); onOverlaySelect?.(null); onTextEditStart?.(null) }}>
+    <div ref={coverRef} className={classes} style={bgStyle} onClick={() => { setActiveGuides({ x: null, y: null }); onTextSelect?.(null); onOverlaySelect?.(null); onTextEditStart?.(null) }}>
       {/* Overlay escuro quando tem imagem de fundo */}
       {hasImage && <div className="cover-overlay" />}
 
       {/* Guias de snap (estilo Canva) */}
       {editable && activeGuides.x !== null && (
-        <div className="cover-snap-guide cover-snap-guide--v" style={{ left: `${activeGuides.x}%` }} />
+        <div className="cover-snap-guide cover-snap-guide--v pointer-events-none" style={{ left: `${activeGuides.x}%` }} />
       )}
       {editable && activeGuides.y !== null && (
-        <div className="cover-snap-guide cover-snap-guide--h" style={{ top: `${activeGuides.y}%` }} />
+        <div className="cover-snap-guide cover-snap-guide--h pointer-events-none" style={{ top: `${activeGuides.y}%` }} />
       )}
 
       {/* Decorações específicas do template */}
@@ -912,12 +977,43 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
 // ─── Bloco Piano/Teclado ────────────────────────────────────────────
 
 function BlockKeyboard({ block }: { block: MaterialBlock }) {
-  const rd = block.render_data ?? {}
+  const rd = getBlockRenderData(block)
   const keys = (rd.keys as string[]) ?? []
+  const chords = Array.isArray(rd.chords) ? rd.chords as Array<{ name?: string; keys?: string[]; fingering_rh?: number[]; fingering_lh?: number[]; hand?: 'rh' | 'lh' }> : []
   const fingeringRH = (rd.fingering_rh as number[]) ?? []
   const fingeringLH = (rd.fingering_lh as number[]) ?? []
   const hand = (rd.hand as 'rh' | 'lh') ?? 'rh'
   const chordName = (rd.chord_name as string) ?? block.title ?? ''
+
+  if (chords.length > 0) {
+    return (
+      <div className="mb-4">
+        {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
+        <div className="flex flex-wrap gap-4 justify-center">
+          {chords.map((chord, index) => {
+            const chordKeys = Array.isArray(chord.keys) ? chord.keys : []
+            if (chordKeys.length === 0) return null
+
+            return (
+              <div key={`${chord.name ?? 'chord'}-${index}`} className="text-center rounded-[var(--radius-sm)] border border-border bg-card/40 p-3">
+                {chord.name && <div className="text-[11px] font-semibold text-text mb-2">{chord.name}</div>}
+                <div className="w-[220px] max-w-full">
+                  <PianoKeyboard
+                    keys={chordKeys}
+                    fingeringRH={Array.isArray(chord.fingering_rh) ? chord.fingering_rh : []}
+                    fingeringLH={Array.isArray(chord.fingering_lh) ? chord.fingering_lh : []}
+                    hand={chord.hand ?? 'rh'}
+                    showLabels={true}
+                    scale={0.85}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   if (keys.length === 0) {
     return (
@@ -946,10 +1042,11 @@ function BlockKeyboard({ block }: { block: MaterialBlock }) {
 
 // ─── Bloco Grade de Teclados ─────────────────────────────────────────
 
-function BlockKeyboardGrid({ block }: { block: MaterialBlock }) {
-  const rd = block.render_data ?? {}
+function BlockKeyboardGrid({ block, onKeyboardGridItemClick }: { block: MaterialBlock; onKeyboardGridItemClick?: (block: MaterialBlock, keyboard: any, index: number) => void }) {
+  const rd = getBlockRenderData(block)
   const keyboards = (rd.keyboards as any[]) ?? []
-  const columns = (rd.columns as number) ?? 3
+  const configuredColumns = (rd.columns as number) ?? 3
+  const keyboardColumns = Math.min(Math.max(keyboards.length, 1), Math.max(configuredColumns, 1), 4)
 
   if (keyboards.length === 0) {
     return (
@@ -963,9 +1060,21 @@ function BlockKeyboardGrid({ block }: { block: MaterialBlock }) {
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
-      <div className="flex flex-wrap gap-4 justify-center" style={{ columns }}>
+      <div
+        className="mx-auto grid gap-4 justify-center"
+        style={{
+          gridTemplateColumns: `repeat(${keyboardColumns}, minmax(0, 190px))`,
+          width: 'fit-content',
+          maxWidth: '100%',
+        }}
+      >
         {keyboards.map((kb: any, i: number) => (
-          <div key={i} className="text-center">
+          <button
+            key={i}
+            type="button"
+            className="rounded-[12px] p-1 text-center transition-colors hover:bg-bg2/40"
+            onClick={() => onKeyboardGridItemClick?.(block, kb, i)}
+          >
             {kb.chord_name && <div className="text-[11px] font-semibold text-text mb-1">{kb.chord_name}</div>}
             <PianoKeyboard
               keys={kb.keys ?? []}
@@ -975,7 +1084,7 @@ function BlockKeyboardGrid({ block }: { block: MaterialBlock }) {
               showLabels={true}
               scale={0.7}
             />
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -985,7 +1094,7 @@ function BlockKeyboardGrid({ block }: { block: MaterialBlock }) {
 // ─── Bloco Colunas ──────────────────────────────────────────────────
 
 function BlockColumns({ block }: { block: MaterialBlock }) {
-  const rd = block.render_data ?? {}
+  const rd = getBlockRenderData(block)
   const cols = (rd.columns as Array<{ blocks: MaterialBlock[] }>) ?? []
   const numCols = cols.length || 2
 
@@ -1024,7 +1133,7 @@ function BlockColumns({ block }: { block: MaterialBlock }) {
 // ─── Bloco Separador Customizável ─────────────────────────────────
 
 function BlockSeparator({ block }: { block: MaterialBlock }) {
-  const rd = block.render_data ?? {}
+  const rd = getBlockRenderData(block)
   const s: SeparatorStyle = {
     ...DEFAULT_SEPARATOR_STYLE,
     ...(rd.separatorStyle as Partial<SeparatorStyle> | undefined),
@@ -1105,7 +1214,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -1144,6 +1253,8 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, cove
           <Renderer
             key={i}
             block={block}
+            {...(block.block_type === 'chord_grid' ? { onChordGridItemClick } : {})}
+            {...(block.block_type === 'keyboard_grid' ? { onKeyboardGridItemClick } : {})}
           />
         )
       })}

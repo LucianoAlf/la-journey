@@ -1,7 +1,7 @@
 import { AlphaTexInlineRenderer } from './AlphaTexInlineRenderer'
-import { NotationRenderer } from './NotationRenderer'
 import { StaffNotation } from './StaffNotation'
 import {
+  legacyNotationToCombinedPreviewItem,
   notationDataToPreviewItem,
   type LegacyNotationData,
 } from '@/lib/notationCompat'
@@ -41,23 +41,27 @@ export function NotationPreviewCompat({
   const hasLegacyNotes = Boolean(notes?.length)
 
   if (hasLegacyNotation && notation) {
+    const previewItem = legacyNotationToCombinedPreviewItem(notation, {
+      clef,
+      keySignature,
+      timeSignature,
+      width,
+    })
+
+    if (!previewItem) return null
+
     return (
       <div className={`space-y-1.5 ${className}`}>
-        {(notation.staves ?? []).map((stave, index) => (
-          <div
-            key={`${stave.label || 'stave'}-${index}`}
-            onMouseDown={() => onLegacyStavePointerDown?.(index)}
-          >
-            <NotationRenderer
-              notation={{
-                ...notation,
-                staves: [stave],
-                width: stave.width ?? notation.width ?? width,
-                height: undefined,
-              } as any}
-            />
-          </div>
-        ))}
+        <div onMouseDown={() => onLegacyStavePointerDown?.(0)}>
+          <AlphaTexInlineRenderer
+            tex={previewItem.tex}
+            width={previewItem.width}
+            minHeight={minHeight}
+            scale={scale}
+            pointerEvents="none"
+            systemPaddingBottom={0}
+          />
+        </div>
       </div>
     )
   }

@@ -2,6 +2,46 @@ import { useRef, useEffect, useState } from 'react'
 import * as alphaTabModule from '@coderline/alphatab'
 import { SpinnerGap } from '@phosphor-icons/react'
 
+function normalizeAlphaTex(input: string) {
+  let tex = input.trim()
+
+  tex = tex
+    .replace(/:w\b/g, ':1')
+    .replace(/:h\b/g, ':2')
+    .replace(/:q\b/g, ':4')
+
+  tex = tex
+    .replace(/\\ts\s+(\d+)\s*[\/xX]\s*(\d+)/g, '\\ts $1 $2')
+    .replace(/\\time\s+(\d+)\s*[\/xX]\s*(\d+)/g, '\\ts $1 $2')
+
+  tex = tex
+    .replace(/:(1|2|4|8|16|32|64)dd\s+(\([^)]+\)|r|[a-gA-G][#bn]?\d)/g, ':$1 $2{dd}')
+    .replace(/:(1|2|4|8|16|32|64)d\s+(\([^)]+\)|r|[a-gA-G][#bn]?\d)/g, ':$1 $2{d}')
+
+  tex = tex
+    .replace(/\{t\}/g, '{-}')
+    .replace(/\{tie\}/g, '{-}')
+    .replace(/\{dot\}/g, '{d}')
+    .replace(/\{ddot\}/g, '{dd}')
+
+  if (!/\\title\s+"[^"]+"/.test(tex)) {
+    tex = `\\title "Preview" ${tex}`
+  }
+
+  if (!/\\tempo\s+\d+/.test(tex)) {
+    tex = tex.replace(/^(\\title\s+"[^"]+")\s*/, '$1 \\tempo 80 ')
+  }
+
+  if (!/^\s*\.\s*$/m.test(tex)) {
+    tex = tex.replace(
+      /^(\s*(?:\\title\s+"[^"]+"\s*)?(?:\\subtitle\s+"[^"]+"\s*)?(?:\\tempo\s+\d+\s*)?(?:\\ts\s+\d+\s+\d+\s*)?(?:\\ks\s+[A-G][b#]?\s*)?(?:\\clef\s+\w+\s*)?(?:\\track\b[^\n]*\s*)?(?:\\staff\{[^}]+\}\s*)?(?:\\tuning\s+[^\n]+\s*)?)/,
+      '$1.\n',
+    )
+  }
+
+  return tex
+}
+
 /**
  * Renderer inline leve de AlphaTex — sem player, sem soundfont, sem cursor.
  * Ideal para cards de biblioteca, MaterialPreview e qualquer lugar que
@@ -54,7 +94,8 @@ export function AlphaTexInlineRenderer({
   const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const hasExplicitTimeSignature = /\\ts\s+\d+\s+\d+/.test(tex)
+  const normalizedTex = normalizeAlphaTex(tex)
+  const hasExplicitTimeSignature = /\\ts\s+\d+\s+\d+/.test(normalizedTex)
 
   // Injetar CSS uma vez
   useEffect(() => {
@@ -68,7 +109,7 @@ export function AlphaTexInlineRenderer({
   }, [])
 
   useEffect(() => {
-    if (!containerRef.current || !tex) return
+    if (!containerRef.current || !normalizedTex) return
 
     setLoading(true)
     setError(null)
@@ -83,8 +124,8 @@ export function AlphaTexInlineRenderer({
     settings.core.fontDirectory = window.location.origin + '/font/'
     settings.core.tex = true
 
-    // Layout page — preenche largura do container
-    settings.display.layoutMode = alphaTabModule.LayoutMode.Page
+    // Layout horizontal — evita quebrar em múltiplos sistemas cedo demais no preview
+    settings.display.layoutMode = alphaTabModule.LayoutMode.Horizontal
     settings.display.scale = scale
     settings.display.systemPaddingBottom = systemPaddingBottom
 
@@ -164,15 +205,15 @@ export function AlphaTexInlineRenderer({
       setLoading(false)
     })
 
-    api.tex(tex)
+    api.tex(normalizedTex)
 
     return () => {
       api.destroy()
       apiRef.current = null
     }
-  }, [tex, staveProfile, scale, systemPaddingBottom])
+  }, [normalizedTex, staveProfile, scale, systemPaddingBottom])
 
-  if (!tex) return null
+  if (!normalizedTex) return null
 
   return (
     <div

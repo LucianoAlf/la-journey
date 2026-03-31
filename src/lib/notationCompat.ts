@@ -140,6 +140,51 @@ export function legacyStaveToPreviewItem(
   }
 }
 
+export function legacyNotationToCombinedPreviewItem(
+  notation: LegacyNotationData | null | undefined,
+  fallback: {
+    clef?: string
+    keySignature?: string
+    timeSignature?: string | null
+    width?: number
+  } = {},
+): NotationPreviewItem | null {
+  const staves = notation?.staves ?? []
+  if (!staves.length) return null
+
+  const combinedBeats = staves.flatMap((stave, index) => {
+    const beats = legacyNotesToBeats(stave.notes, stave.accidentals)
+    if (!beats.length) return []
+
+    if (index < staves.length - 1) {
+      const lastBeat = beats[beats.length - 1]
+      beats[beats.length - 1] = {
+        ...lastBeat,
+        barAfter: true,
+      }
+    }
+
+    return beats
+  })
+
+  if (!combinedBeats.length) return null
+
+  const firstStave = staves[0]
+  const resolvedWidth = Math.max(notation?.width ?? 0, firstStave?.width ?? 0, fallback.width ?? 0, 620)
+  const tex = beatsToAlphaTex(combinedBeats, {
+    clef: firstStave?.clef || fallback.clef || 'treble',
+    keySignature: firstStave?.key_signature || fallback.keySignature || 'C',
+    timeSignature: firstStave?.time_signature ?? fallback.timeSignature ?? null,
+    includeLyrics: false,
+  })
+
+  return {
+    tex,
+    label: firstStave?.label,
+    width: resolvedWidth,
+  }
+}
+
 export function legacyNotationToPreviewItems(
   notation: LegacyNotationData | null | undefined,
   fallback: {

@@ -967,9 +967,11 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Grade de teclados — estado e handlers (antes do save genérico)
   const [keyboardGridTargetBlockId, setKeyboardGridTargetBlockId] = useState<string | null>(null)
+  const [keyboardGridEditingIndex, setKeyboardGridEditingIndex] = useState<number | null>(null)
 
-  const openKeyboardEditorForGrid = useCallback((blockId: string) => {
+  const openKeyboardEditorForGrid = useCallback((blockId: string, keyboardToEdit?: any, index?: number) => {
     setKeyboardGridTargetBlockId(blockId)
+    setKeyboardGridEditingIndex(typeof index === 'number' ? index : null)
     setKeyboardEditorBlockId(null)
     setKeyboardEditorOpen(true)
   }, [])
@@ -992,12 +994,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setBlocksWithHistory(prev => prev.map(b => {
       if (b.id !== keyboardGridTargetBlockId) return b
       const existingKbs = ((b.render_data as any)?.keyboards ?? []) as any[]
-      return { ...b, render_data: { ...(b.render_data ?? {}), keyboards: [...existingKbs, newKeyboard] } }
+      const updatedKeyboards = keyboardGridEditingIndex !== null
+        ? existingKbs.map((kb, idx) => idx === keyboardGridEditingIndex ? { ...kb, ...newKeyboard } : kb)
+        : [...existingKbs, newKeyboard]
+      return { ...b, render_data: { ...(b.render_data ?? {}), keyboards: updatedKeyboards } }
     }))
     setKeyboardGridTargetBlockId(null)
+    setKeyboardGridEditingIndex(null)
     setKeyboardEditorOpen(false)
-    toast.success(`Teclado "${data.name || 'Acorde'}" adicionado à grade`)
-  }, [keyboardGridTargetBlockId])
+    toast.success(keyboardGridEditingIndex !== null
+      ? `Teclado "${data.name || 'Acorde'}" atualizado na grade`
+      : `Teclado "${data.name || 'Acorde'}" adicionado à grade`)
+  }, [keyboardGridTargetBlockId, keyboardGridEditingIndex])
 
   const handleKeyboardEditorSave = useCallback(async (data: PianoChordData) => {
     // Se estamos adicionando à grade de teclados, despacha para o handler da grade
@@ -1038,19 +1046,29 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Abrir ChordEditor para grade de acordes (adiciona acorde à grade)
   const [chordGridTargetBlockId, setChordGridTargetBlockId] = useState<string | null>(null)
+  const [chordGridEditingIndex, setChordGridEditingIndex] = useState<number | null>(null)
 
-  const openChordEditorForGrid = useCallback((blockId: string) => {
+  const openChordEditorForGrid = useCallback((blockId: string, chordToEdit?: any, index?: number) => {
     setChordGridTargetBlockId(blockId)
-    setChordEditorState(createEmptyState())
-    setChordEditorName('')
-    setChordEditorStartFret(1)
+    setChordGridEditingIndex(typeof index === 'number' ? index : null)
+
+    const positions: ChordPositions = {
+      fingers: (chordToEdit?.fingers ?? []) as any[],
+      barres: (chordToEdit?.barres ?? []) as any[],
+      muted: (chordToEdit?.muted ?? []) as number[],
+    }
+    const startFret = (chordToEdit?.position ?? 1) as number
+
+    setChordEditorState(chordToEdit ? positionsToState(positions, startFret) : createEmptyState())
+    setChordEditorName((chordToEdit?.chord_name ?? chordToEdit?.name ?? '') as string)
+    setChordEditorStartFret(startFret)
     setChordEditorBlockId(null) // não é edição de chord_diagram individual
     setChordEditorOpen(true)
   }, [])
 
   const handleChordGridSave = useCallback(() => {
     if (!chordGridTargetBlockId) return
-    const positions = stateToPositions(chordEditorState)
+    const positions = stateToPositions(chordEditorState, chordEditorStartFret)
     const newChord = {
       chord_name: chordEditorName || 'Acorde',
       fingers: positions.fingers,
@@ -1061,11 +1079,17 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setBlocksWithHistory(prev => prev.map(b => {
       if (b.id !== chordGridTargetBlockId) return b
       const existingChords = ((b.render_data as any)?.chords ?? []) as any[]
-      return { ...b, render_data: { ...(b.render_data ?? {}), chords: [...existingChords, newChord] } }
+      const updatedChords = chordGridEditingIndex !== null
+        ? existingChords.map((chord, idx) => idx === chordGridEditingIndex ? { ...chord, ...newChord } : chord)
+        : [...existingChords, newChord]
+      return { ...b, render_data: { ...(b.render_data ?? {}), chords: updatedChords } }
     }))
     setChordGridTargetBlockId(null)
-    toast.success(`Acorde "${chordEditorName || 'Acorde'}" adicionado à grade`)
-  }, [chordGridTargetBlockId, chordEditorState, chordEditorName, chordEditorStartFret])
+    setChordGridEditingIndex(null)
+    toast.success(chordGridEditingIndex !== null
+      ? `Acorde "${chordEditorName || 'Acorde'}" atualizado na grade`
+      : `Acorde "${chordEditorName || 'Acorde'}" adicionado à grade`)
+  }, [chordGridTargetBlockId, chordGridEditingIndex, chordEditorState, chordEditorName, chordEditorStartFret])
 
   // Gerar imagem de capa com IA (Nano Banana 2)
   const [coverImageLoading, setCoverImageLoading] = useState(false)
@@ -2235,6 +2259,94 @@ Regras:
     }
   }, [])
 
+  const alphaTexToNotationData = useCallback((alphaTex: string, fallback?: { clef?: string | null; keySignature?: string | null; timeSignature?: string | null }) => {
+    if (!alphaTex?.trim()) return null
+
+    const normalized = alphaTex
+      .trim()
+      .replace(/:w\b/g, ':1')
+      .replace(/:h\b/g, ':2')
+      .replace(/:q\b/g, ':4')
+      .replace(/\{t\}/g, '{-}')
+      .replace(/:2d\s+/g, ':2 ')
+
+    const clefMatch = normalized.match(/\\clef\s+(treble|bass|alto|percussion)/i)
+    const keySignatureMatch = normalized.match(/\\ks\s+([A-G][b#]?)/)
+    const timeSignatureMatch = normalized.match(/\\ts\s+(\d+)\s+(\d+)/)
+    const bpmMatch = normalized.match(/\\tempo\s+(\d+)/)
+
+    const body = normalized
+      .replace(/\\title\s+"[^"]*"/g, ' ')
+      .replace(/\\tempo\s+\d+/g, ' ')
+      .replace(/\\clef\s+(treble|bass|alto|percussion)/gi, ' ')
+      .replace(/\\ks\s+[A-G][b#]?/g, ' ')
+      .replace(/\\ts\s+\d+\s+\d+/g, ' ')
+      .replace(/\./g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    const noteToPitch = (value: string) => {
+      const match = value.trim().match(/^([a-gA-G])([#bn]?)(\d)$/)
+
+      if (!match) return null
+      const note = match[1].toUpperCase()
+      const accidental = match[2] || ''
+      const octave = match[3]
+      return {
+        pitch: `${note}${accidental}/${octave}`,
+        accidental: accidental || undefined,
+      }
+    }
+
+    const beats: any[] = []
+    const measures = body.split('|').map((measure) => measure.trim()).filter(Boolean)
+    let currentDuration = '4'
+
+    for (let measureIndex = 0; measureIndex < measures.length; measureIndex++) {
+      const measure = measures[measureIndex]
+      const entries = measure.match(/(?::(?:1|2|4|8|16|32|64)\s+)?(?:\([^)]+\)|r|[a-gA-G][#bn]?\d)(?:\{[^}]+\})?/g) ?? []
+
+      for (let tokenIndex = 0; tokenIndex < entries.length; tokenIndex++) {
+        const entry = entries[tokenIndex].trim()
+        const fullMatch = entry.match(/^(?::(1|2|4|8|16|32|64)\s+)?(\([^)]+\)|r|[a-gA-G][#bn]?\d)(\{[^}]+\})?$/)
+        if (!fullMatch) continue
+
+        const [, explicitDuration, noteToken, modifierToken] = fullMatch
+        const duration = explicitDuration ?? currentDuration
+        currentDuration = duration
+
+        const isRest = noteToken === 'r'
+        const chordTokens = noteToken.startsWith('(')
+          ? noteToken.slice(1, -1).trim().split(/\s+/).map(noteToPitch).filter(Boolean)
+          : isRest
+            ? []
+            : [noteToPitch(noteToken)].filter(Boolean)
+
+        const modifiers = modifierToken ?? ''
+
+        beats.push({
+          pitches: chordTokens,
+          duration,
+          isRest,
+          dotted: modifiers.includes('{d}') && !modifiers.includes('{dd}'),
+          doubleDotted: modifiers.includes('{dd}'),
+          tieToNext: modifiers.includes('{-}'),
+          ...(tokenIndex === entries.length - 1 && measureIndex < measures.length - 1 ? { barAfter: true } : {}),
+        })
+      }
+    }
+
+    if (beats.length === 0) return null
+
+    return {
+      beats,
+      clef: clefMatch?.[1] ?? fallback?.clef ?? 'treble',
+      keySignature: keySignatureMatch?.[1] ?? fallback?.keySignature ?? 'C',
+      timeSignature: timeSignatureMatch ? `${timeSignatureMatch[1]}/${timeSignatureMatch[2]}` : (fallback?.timeSignature ?? 'free'),
+      bpm: bpmMatch ? Number(bpmMatch[1]) : 120,
+    }
+  }, [])
+
   // Helper: converter render_data de um bloco para um NotationLibraryRow fake para o NotationEditor
   const blockToNotationRow = useCallback((block: EditorBlock) => {
     const rd = (block.render_data ?? {}) as any
@@ -2247,6 +2359,13 @@ Regras:
       : (block.content as any)?.notation_data
         ?? rd.notation_data
         ?? vexNotesToBeats(rd.notation?.staves)
+        ?? (typeof rd.alphaTex === 'string'
+          ? alphaTexToNotationData(rd.alphaTex, {
+              clef: rd.clef ?? targetedLegacyStave?.clef ?? null,
+              keySignature: rd.key_signature ?? targetedLegacyStave?.key_signature ?? null,
+              timeSignature: rd.time_signature ?? targetedLegacyStave?.time_signature ?? null,
+            })
+          : null)
         ?? null
     return {
       id: block.id,
@@ -2260,7 +2379,7 @@ Regras:
       tags: [],
       description: null,
     }
-  }, [notationEditorStaveIndex, vexNotesToBeats])
+  }, [notationEditorStaveIndex, vexNotesToBeats, alphaTexToNotationData])
 
   // Abrir editor de notação para um bloco
   const openNotationEditorForBlock = useCallback((blockId: string) => {
@@ -2899,6 +3018,20 @@ ${pagesHtml}
       // Os atalhos abaixo NÃO funcionam dentro de inputs/textareas
       if (isInput) return
 
+      // Delete / Backspace — Remover elemento selecionado da capa
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedOverlayId) {
+          e.preventDefault()
+          removeOverlayElement(selectedOverlayId)
+          return
+        }
+        if (selectedTextId && !editingTextId) {
+          e.preventDefault()
+          removeTextElement(selectedTextId)
+          return
+        }
+      }
+
       // Shift+Delete — Remover bloco ou floating element sem confirmação
       if (e.key === 'Delete' && e.shiftKey) {
         e.preventDefault()
@@ -2941,7 +3074,7 @@ ${pagesHtml}
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -3658,7 +3791,7 @@ ${pagesHtml}
                           if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
                           else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
                           else if (block.block_type === 'cover') setCoverTitleEditing(true)
-                          else if ((isTextBlock || canInlineEditTitle) && !isInlineEditing) setInlineEditingBlockId(block.id)
+                          else if (!isTextBlock && canInlineEditTitle && !isInlineEditing) setInlineEditingBlockId(block.id)
                         }}
                       >
                         {isInlineEditing && isTextBlock ? (
@@ -3709,6 +3842,12 @@ ${pagesHtml}
                               onLegacyNotationStavePointerDown={(staveIndex) => {
                                 notationPreviewStaveRef.current = { blockId: block.id, staveIndex }
                               }}
+                              onChordGridItemClick={(previewBlock, chord, index) => {
+                                openChordEditorForGrid(block.id, chord, index)
+                              }}
+                              onKeyboardGridItemClick={(previewBlock, keyboard, index) => {
+                                openKeyboardEditorForGrid(block.id, keyboard, index)
+                              }}
                             />
                             <div className="text-[10px] text-text3 mt-1 text-right opacity-60">
                               Enter ou Esc para sair
@@ -3720,7 +3859,13 @@ ${pagesHtml}
                             onLegacyNotationStavePointerDown={(staveIndex) => {
                               notationPreviewStaveRef.current = { blockId: block.id, staveIndex }
                             }}
-                            coverEditable={block.block_type === 'cover' && block.id === selectedBlockId}
+                            onChordGridItemClick={(previewBlock, chord, index) => {
+                              openChordEditorForGrid(block.id, chord, index)
+                            }}
+                            onKeyboardGridItemClick={(previewBlock, keyboard, index) => {
+                              openKeyboardEditorForGrid(block.id, keyboard, index)
+                            }}
+                            coverEditable={block.block_type === 'cover'}
                             onCoverPositionChange={block.block_type === 'cover' ? (field, pos) => {
                               setBlocks(prev => prev.map(b =>
                                 b.id === block.id
@@ -5609,7 +5754,7 @@ ${pagesHtml}
       </Dialog>
 
       {/* ChordEditor — edição de diagrama de acorde (wrapper Dialog) */}
-      <Dialog open={chordEditorOpen} onOpenChange={(v) => { setChordEditorOpen(v); if (!v) { setChordEditorBlockId(null); setChordGridTargetBlockId(null) } }}>
+      <Dialog open={chordEditorOpen} onOpenChange={(v) => { setChordEditorOpen(v); if (!v) { setChordEditorBlockId(null); setChordGridTargetBlockId(null); setChordGridEditingIndex(null) } }}>
         <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="font-serif text-[22px]">
@@ -5660,7 +5805,7 @@ ${pagesHtml}
                 handleSaveChordToBlock()
               }
             }}>
-              <FloppyDisk size={16} /> {chordGridTargetBlockId ? 'Adicionar à Grade' : 'Salvar Acorde'}
+              <FloppyDisk size={16} /> {chordGridTargetBlockId ? (chordGridEditingIndex !== null ? 'Salvar na Grade' : 'Adicionar à Grade') : 'Salvar Acorde'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -5669,7 +5814,7 @@ ${pagesHtml}
       {/* KeyboardEditor — edição de teclado/piano */}
       <KeyboardEditor
         open={keyboardEditorOpen}
-        onOpenChange={(v) => { setKeyboardEditorOpen(v); if (!v) { setKeyboardEditorBlockId(null); setKeyboardGridTargetBlockId(null) } }}
+        onOpenChange={(v) => { setKeyboardEditorOpen(v); if (!v) { setKeyboardEditorBlockId(null); setKeyboardGridTargetBlockId(null); setKeyboardGridEditingIndex(null) } }}
         chord={keyboardEditorBlockId ? (() => {
           const block = blocks.find(b => b.id === keyboardEditorBlockId)
           if (!block?.render_data?.keys) return null
@@ -5688,6 +5833,29 @@ ${pagesHtml}
               quality: rd.quality ?? 'Maior',
               octave_start: rd.octave_start ?? 3,
               octave_count: rd.octave_count ?? 2,
+            },
+            difficulty: 1,
+            tags: [],
+          }
+        })() : keyboardGridTargetBlockId && keyboardGridEditingIndex !== null ? (() => {
+          const block = blocks.find(b => b.id === keyboardGridTargetBlockId)
+          const kb = ((block?.render_data as any)?.keyboards ?? [])[keyboardGridEditingIndex]
+          if (!kb) return null
+          return {
+            id: `${keyboardGridTargetBlockId}-${keyboardGridEditingIndex}`,
+            name: kb.chord_name ?? kb.name ?? '',
+            instrument: 'piano' as const,
+            positions: {
+              keys: kb.keys ?? [],
+              root: kb.root ?? 'C',
+              octave: kb.octave ?? 4,
+              fingering_rh: kb.fingering_rh ?? [],
+              fingering_lh: kb.fingering_lh ?? [],
+              type: kb.type ?? 'major',
+              quality: kb.quality ?? 'Maior',
+              octave_start: kb.octave_start ?? 3,
+              octave_count: kb.octave_count ?? 2,
+              voicing_position: kb.voicing_position,
             },
             difficulty: 1,
             tags: [],
