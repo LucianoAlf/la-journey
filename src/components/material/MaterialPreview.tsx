@@ -904,6 +904,12 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               left: `${el.x}%`,
               top: `${el.y}%`,
               width: `${el.width}%`,
+              minHeight: '14px',
+              padding: '6px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
               transform: `translate(-50%, -50%) rotate(${el.rotation}deg)${el.flipX ? ' scaleX(-1)' : ''}`,
               opacity: el.opacity,
               zIndex: el.zIndex + 10,
@@ -948,7 +954,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             <img
               src={el.image_url}
               alt={el.label}
-              className="w-full h-auto pointer-events-none select-none"
+              className="w-full h-auto pointer-events-none select-none block"
               draggable={false}
             />
           </div>

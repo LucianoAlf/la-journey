@@ -1267,13 +1267,32 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [elementPickerOpen, setElementPickerOpen] = useState(false)
 
+  const activeCoverBlockId = useMemo(() => {
+    if (selectedBlock?.block_type === 'cover') return selectedBlock.id
+    return blocks.find(block => block.block_type === 'cover')?.id ?? null
+  }, [blocks, selectedBlock])
+
+  const activeCoverBlock = useMemo(() => {
+    if (!activeCoverBlockId) return null
+    return blocks.find(block => block.id === activeCoverBlockId) ?? null
+  }, [activeCoverBlockId, blocks])
+
   const overlayElements: CoverOverlayElement[] = useMemo(() => {
-    if (!selectedBlock || selectedBlock.block_type !== 'cover') return []
-    return ((selectedBlock.render_data as any)?.overlay_elements as CoverOverlayElement[]) ?? []
-  }, [selectedBlock])
+    if (!activeCoverBlock || activeCoverBlock.block_type !== 'cover') return []
+    return ((activeCoverBlock.render_data as any)?.overlay_elements as CoverOverlayElement[]) ?? []
+  }, [activeCoverBlock])
+
+  const updateCoverOverlayElements = useCallback((nextOverlayElements: CoverOverlayElement[]) => {
+    if (!activeCoverBlockId) return
+    setBlocks(prev => prev.map(block => (
+      block.id === activeCoverBlockId
+        ? { ...block, render_data: { ...(block.render_data ?? {}), overlay_elements: nextOverlayElements } }
+        : block
+    )))
+  }, [activeCoverBlockId])
 
   const addOverlayElement = useCallback((image: ImageLibraryItem) => {
-    if (!selectedBlockId) return
+    if (!activeCoverBlockId) return
     const el: CoverOverlayElement = {
       id: crypto.randomUUID(),
       image_url: image.image_url ?? '',
@@ -1286,21 +1305,21 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       zIndex: overlayElements.length + 1,
       flipX: false,
     }
-    updateSelectedRenderData('overlay_elements', [...overlayElements, el])
+    updateCoverOverlayElements([...overlayElements, el])
     setElementPickerOpen(false)
     setSelectedOverlayId(el.id)
     toast.success(`"${el.label}" adicionado à capa`)
-  }, [selectedBlockId, overlayElements, updateSelectedRenderData])
+  }, [activeCoverBlockId, overlayElements, updateCoverOverlayElements])
 
   const updateOverlayElement = useCallback((id: string, patch: Partial<CoverOverlayElement>) => {
     const updated = overlayElements.map(el => el.id === id ? { ...el, ...patch } : el)
-    updateSelectedRenderData('overlay_elements', updated)
-  }, [overlayElements, updateSelectedRenderData])
+    updateCoverOverlayElements(updated)
+  }, [overlayElements, updateCoverOverlayElements])
 
   const removeOverlayElement = useCallback((id: string) => {
-    updateSelectedRenderData('overlay_elements', overlayElements.filter(el => el.id !== id))
+    updateCoverOverlayElements(overlayElements.filter(el => el.id !== id))
     if (selectedOverlayId === id) setSelectedOverlayId(null)
-  }, [overlayElements, selectedOverlayId, updateSelectedRenderData])
+  }, [overlayElements, selectedOverlayId, updateCoverOverlayElements])
 
   const selectedOverlay = useMemo(() =>
     overlayElements.find(el => el.id === selectedOverlayId) ?? null
