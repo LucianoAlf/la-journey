@@ -158,18 +158,28 @@ export function AlphaTexInlineRenderer({
     elements.set(NE.EffectFreeTime, false)
     elements.set(NE.BarNumber, false)
 
-    // Cores adaptáveis ao tema
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+    // Cores adaptáveis ao tema — detecta pelo container pai para ser mais preciso
+    const containerEl = containerRef.current
+    const containerBg = containerEl
+      ? window.getComputedStyle(containerEl).backgroundColor
+      : ''
+    const isTransparentOrLight = !containerBg
+      || containerBg === 'rgba(0, 0, 0, 0)'
+      || containerBg === 'transparent'
+      || containerBg.includes('255')
+    const isDark = !isTransparentOrLight && (
+      document.documentElement.getAttribute('data-theme') === 'dark'
       || document.documentElement.classList.contains('dark')
+    )
     const res = settings.display.resources
     if (isDark) {
       res.mainGlyphColor = new alphaTabModule.model.Color(220, 225, 235, 255)
       res.secondaryGlyphColor = new alphaTabModule.model.Color(150, 160, 180, 255)
       res.staffLineColor = new alphaTabModule.model.Color(80, 90, 110, 255)
     } else {
-      res.mainGlyphColor = new alphaTabModule.model.Color(30, 30, 40, 255)
-      res.secondaryGlyphColor = new alphaTabModule.model.Color(100, 100, 120, 255)
-      res.staffLineColor = new alphaTabModule.model.Color(180, 185, 195, 255)
+      res.mainGlyphColor = new alphaTabModule.model.Color(10, 10, 10, 255)
+      res.secondaryGlyphColor = new alphaTabModule.model.Color(60, 60, 70, 255)
+      res.staffLineColor = new alphaTabModule.model.Color(120, 125, 135, 255)
     }
 
     const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)

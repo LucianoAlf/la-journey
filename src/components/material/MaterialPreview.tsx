@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState } from 'react'
+import React, { useRef, useCallback, useState, useEffect } from 'react'
 import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
 import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
@@ -659,6 +659,21 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const SNAP_THRESHOLD = 2 // % de proximidade para "grudar"
   const [activeGuides, setActiveGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null })
 
+  // Safety: sempre limpar guias em mouseup global ou quando sair do modo edição
+  useEffect(() => {
+    const clear = () => setActiveGuides({ x: null, y: null })
+    window.addEventListener('mouseup', clear)
+    window.addEventListener('blur', clear)
+    return () => {
+      window.removeEventListener('mouseup', clear)
+      window.removeEventListener('blur', clear)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!editable) setActiveGuides({ x: null, y: null })
+  }, [editable])
+
   const snapValue = (val: number): { snapped: number; guide: number | null } => {
     for (const sp of SNAP_POINTS) {
       if (Math.abs(val - sp) <= SNAP_THRESHOLD) return { snapped: sp, guide: sp }
@@ -710,7 +725,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const hasFooter = professor || escola || data
 
   return (
-    <div ref={coverRef} className={classes} style={bgStyle} onClick={() => { setActiveGuides({ x: null, y: null }); onTextSelect?.(null); onOverlaySelect?.(null); onTextEditStart?.(null) }}>
+    <div ref={coverRef} className={classes} style={bgStyle} onClick={() => { setActiveGuides({ x: null, y: null }); onTextSelect?.(null); onOverlaySelect?.(null); onTextEditStart?.(null) }} onMouseLeave={() => setActiveGuides({ x: null, y: null })}>
       {/* Overlay escuro quando tem imagem de fundo */}
       {hasImage && <div className="cover-overlay" />}
 
