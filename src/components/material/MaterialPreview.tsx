@@ -291,7 +291,8 @@ function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock;
     }
   })
   const canRenderAsDiagrams = normalizedChords.length > 0 && normalizedChords.some((chord: any) => Array.isArray(chord?.fingers) && chord.fingers.length > 0)
-  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), 4)
+  const configuredColumns = (renderData.columns as number) ?? 3
+  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), Math.max(configuredColumns, 1), 4)
 
   return (
     <div className="mb-4">
