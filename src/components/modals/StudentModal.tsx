@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createStudent, updateStudent } from '@/services/studentService'
-import { useAuth } from '@/contexts/AuthContext'
+import { useSchool } from '@/hooks/useSchool'
 import type { Tables } from '@/lib/database.types'
 
 type Student = Tables<'students'>
@@ -27,7 +27,7 @@ const emptyForm = {
 }
 
 export function StudentModal({ open, onClose, onSuccess, student }: StudentModalProps) {
-  const { user } = useAuth()
+  const { data: school } = useSchool()
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const isEditing = !!student
@@ -51,7 +51,7 @@ export function StudentModal({ open, onClose, onSuccess, student }: StudentModal
       return
     }
 
-    const schoolId = user?.user_metadata?.school_id
+    const schoolId = school?.id
     if (!schoolId) {
       toast.error('Escola não identificada. Faça login novamente.')
       return

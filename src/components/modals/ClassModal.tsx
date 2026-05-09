@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClass, updateClass } from '@/services/classService'
-import { useAuth } from '@/contexts/AuthContext'
+import { useSchool } from '@/hooks/useSchool'
 import { useUsers } from '@/hooks/useUsers'
 import { useJourneys } from '@/hooks/useJourneys'
 import type { Tables } from '@/lib/database.types'
@@ -30,7 +30,7 @@ const emptyForm = {
 }
 
 export function ClassModal({ open, onClose, onSuccess, classData }: ClassModalProps) {
-  const { user } = useAuth()
+  const { data: school } = useSchool()
   const { data: users } = useUsers()
   const { data: journeys } = useJourneys()
   const [form, setForm] = useState(emptyForm)
@@ -63,7 +63,7 @@ export function ClassModal({ open, onClose, onSuccess, classData }: ClassModalPr
       return
     }
 
-    const schoolId = user?.user_metadata?.school_id
+    const schoolId = school?.id
     if (!schoolId) {
       toast.error('Escola não identificada.')
       return

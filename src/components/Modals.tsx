@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAppContext } from '../AppContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { useSchool } from '@/hooks/useSchool';
 import { 
   FloppyDisk, Sparkle, Article, TextAa, Image as ImageIcon, Guitar, 
   MusicNotesSimple, ListNumbers, Barbell, MusicNote, Lightbulb, Trophy, QrCode, Minus, Trash 
@@ -22,7 +22,7 @@ import type { Chord } from '@/services/libraryService';
 
 export function Modals() {
   const { isModalOpen, closeModal, getModalData } = useAppContext();
-  const { user } = useAuth();
+  const { data: school } = useSchool();
 
   // Conteúdo form state
   const [topicForm, setTopicForm] = useState({ title: '', instrument: '', pillar: '', difficulty_level: '', estimated_minutes: '15' });
@@ -165,7 +165,7 @@ export function Modals() {
 
   const handleCreateTemplate = async () => {
     if (!tplForm.name.trim()) { toast.error('Informe o nome'); return; }
-    const schoolId = user?.user_metadata?.school_id;
+    const schoolId = school?.id;
     if (!schoolId) { toast.error('Escola não identificada'); return; }
     setTplSaving(true);
     try {

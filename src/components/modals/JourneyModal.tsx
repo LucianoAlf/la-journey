@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createJourneyWithStages, updateJourney } from '@/services/journeyService'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSchool } from '@/hooks/useSchool'
 import type { Tables } from '@/lib/database.types'
 
 type Journey = Tables<'journeys'>
@@ -28,6 +29,7 @@ const emptyForm = {
 
 export function JourneyModal({ open, onClose, onSuccess, journey }: JourneyModalProps) {
   const { user } = useAuth()
+  const { data: school } = useSchool()
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const isEditing = !!journey
@@ -55,7 +57,7 @@ export function JourneyModal({ open, onClose, onSuccess, journey }: JourneyModal
       return
     }
 
-    const schoolId = user?.user_metadata?.school_id
+    const schoolId = school?.id
     if (!schoolId) {
       toast.error('Escola não identificada.')
       return

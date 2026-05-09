@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
+import { getSchool } from './schoolService'
 
 // Helper para tabelas não tipadas no database.types.ts (regenerar tipos depois)
 const db = supabase as any
@@ -133,10 +134,8 @@ export async function duplicateExercise(id: string): Promise<ExerciseLibraryItem
   const original = await getExerciseById(id)
   if (!original) throw new Error('Exercício não encontrado')
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  const currentSchoolId = (user?.user_metadata as { school_id?: string } | undefined)?.school_id ?? null
+  const school = await getSchool().catch(() => null)
+  const currentSchoolId = school?.id ?? null
 
   const { id: _, created_at, updated_at, ...rest } = original
   return createExercise({
