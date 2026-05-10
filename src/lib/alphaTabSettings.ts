@@ -43,9 +43,11 @@ function applyNotationElements(
   settings: alphaTabModule.Settings,
   {
     isScoreMode,
+    isTab,
     showTimeSignature,
   }: {
     isScoreMode: boolean
+    isTab: boolean
     showTimeSignature: boolean
   },
 ) {
@@ -108,8 +110,10 @@ export function buildAlphaTabSettings({
   systemPaddingBottom,
 }: BuildAlphaTabSettingsOptions): alphaTabModule.Settings {
   const settings = new alphaTabModule.Settings()
-  const isHorizontalLayout = layout === 'horizontal'
   const isTab = isTabPurpose(purpose)
+  const effectiveLayout = isTab ? 'horizontal' : layout
+  const effectiveScale = isTab ? 0.9 : scale
+  const isHorizontalLayout = effectiveLayout === 'horizontal'
   const isScoreMode = !isTab
   const isGrandStaff = purpose === 'editor-notation-grand-staff'
 
@@ -121,11 +125,12 @@ export function buildAlphaTabSettings({
   settings.display.layoutMode = isHorizontalLayout
     ? alphaTabModule.LayoutMode.Horizontal
     : alphaTabModule.LayoutMode.Page
-  settings.display.scale = scale
+  settings.display.scale = effectiveScale
   settings.display.systemPaddingBottom = systemPaddingBottom ?? (isHorizontalLayout ? 0 : 20)
-  settings.display.stretchForce = isHorizontalLayout
+  const stretchForce = isHorizontalLayout
     ? (showTimeSignature ? 0.75 : 1.05)
     : (showTimeSignature ? 1.8 : 3.5)
+  settings.display.stretchForce = isTab ? 1.0 : stretchForce
   settings.display.staveProfile = isTab
     ? alphaTabModule.StaveProfile.Tab
     : alphaTabModule.StaveProfile.Score
@@ -134,11 +139,11 @@ export function buildAlphaTabSettings({
   settings.player.enableCursor = false
 
   settings.notation.rhythmMode = alphaTabModule.TabRhythmMode.ShowWithBars
-  settings.notation.notationMode = isGrandStaff
+  settings.notation.notationMode = (isTab || isGrandStaff)
     ? alphaTabModule.NotationMode.GuitarPro
     : alphaTabModule.NotationMode.SongBook
 
-  applyNotationElements(settings, { isScoreMode, showTimeSignature })
+  applyNotationElements(settings, { isScoreMode, isTab, showTimeSignature })
   applyThemeResources(settings, showTimeSignature)
 
   return settings

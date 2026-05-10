@@ -526,7 +526,13 @@ function BlockTablature({ block }: { block: MaterialBlock }) {
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
       {alphaTex ? (
-        <AlphaTexInlineRenderer tex={alphaTex} minHeight={120} scale={0.8} />
+        <AlphaTexInlineRenderer
+          tex={alphaTex}
+          minHeight={120}
+          scale={0.8}
+          staveProfile="tab"
+          purpose="canvas-tablature-tab"
+        />
       ) : (
         <Tablature tab={tab} title="" />
       )}

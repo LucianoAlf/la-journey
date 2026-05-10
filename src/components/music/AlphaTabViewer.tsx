@@ -63,6 +63,14 @@ const CLEAN_TAB_CSS = `
   .at-viewer-clean .at-surface > div:last-child { display: none !important; }
 `
 
+function isTimeSignatureGlyphText(text: string) {
+  return /^[\uE080-\uE089]+$/.test(text.trim())
+}
+
+function isFreeTimeGlyphText(text: string) {
+  return text.trim() === '\uE241'
+}
+
 function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature = false) {
   if (!container) return
 
@@ -80,7 +88,7 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
   const svgs = container.querySelectorAll('svg')
   svgs.forEach(svg => {
     if (!showTimeSignature) {
-      const gElements = svg.querySelectorAll(':scope > g[transform]')
+      const gElements = svg.querySelectorAll('g[transform]')
       gElements.forEach(g => {
         const transform = g.getAttribute('transform') || ''
         const match = transform.match(/translate\(\s*([\d.]+)/)
@@ -100,6 +108,12 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
         ;(t as SVGElement).style.display = 'none'
       }
       if (!showTimeSignature && content.toLowerCase().includes('free time')) {
+        ;(t as SVGElement).style.display = 'none'
+      }
+      if (!showTimeSignature && isTimeSignatureGlyphText(content)) {
+        ;(t as SVGElement).style.display = 'none'
+      }
+      if (!showTimeSignature && isFreeTimeGlyphText(content)) {
         ;(t as SVGElement).style.display = 'none'
       }
     })
@@ -191,7 +205,9 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     }, [])
 
     const alphaTabPurpose = resolvePurpose(purpose, staveProfile, grandStaffMode)
-    const configKey = `${layout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}|${alphaTabPurpose}`
+    const effectiveLayout = alphaTabPurpose.includes('tablature') ? 'horizontal' : layout
+    const renderTex = showTimeSignature ? tex : tex.replace(/\\ft\b/g, '')
+    const configKey = `${effectiveLayout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}|${alphaTabPurpose}`
 
     useEffect(() => {
       if (!containerRef.current) return
@@ -204,7 +220,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       const settings = buildAlphaTabSettings({
         purpose: alphaTabPurpose,
         showTimeSignature,
-        layout,
+        layout: effectiveLayout,
         scale,
         includeNoteBounds,
       })
@@ -263,11 +279,11 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
         onNoteMouseDownRef.current?.(note)
       })
 
-      if (tex) {
+      if (renderTex) {
         setLoading(true)
         setError(null)
         setPhase('loading')
-        api.tex(tex)
+        api.tex(renderTex)
       } else {
         setPhase('idle')
       }
@@ -284,20 +300,20 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     useEffect(() => {
       if (configKeyRef.current !== configKey) return
       const api = apiRef.current
-      if (!api || !tex) return
+      if (!api || !renderTex) return
 
       setLoading(true)
       setError(null)
       setPhase('loading')
-      api.tex(tex)
+      api.tex(renderTex)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tex])
+    }, [renderTex])
 
-    if (!tex) return null
+    if (!renderTex) return null
 
     return (
       <div
-        className={`relative at-viewer-clean ${layout === 'horizontal' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-hidden'} ${className}`}
+        className={`relative at-viewer-clean ${effectiveLayout === 'horizontal' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-hidden'} ${className}`}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-card/80 z-10 rounded-xl">

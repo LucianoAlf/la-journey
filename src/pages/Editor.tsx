@@ -301,6 +301,7 @@ function simpleHash(value: string): string {
 const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
 const ACTIVE_PAGE_RADIUS = 2
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
+const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-v2'
 
 const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
 
@@ -310,6 +311,7 @@ function getBlockHeightCacheKey(block: EditorBlock): string {
     title: block.title,
     content: block.content,
     render_data: block.render_data,
+    renderer_snapshot_version: block.block_type === 'tablature' ? TABLATURE_RENDERER_SNAPSHOT_VERSION : undefined,
   }))}`
 }
 
@@ -372,8 +374,60 @@ function getEstimatedBlockHeightForPagination(block: EditorBlock): number {
   return Math.round(estimated * 1.42)
 }
 
-function sanitizeMusicSnapshotHtml(html: string): string {
-  return html
+function isFreeTimeTablatureBlock(block: EditorBlock) {
+  const renderData = (block.render_data ?? {}) as Record<string, any>
+  const notationData = renderData.notation_data as Record<string, any> | undefined
+  const alphaTex = typeof renderData.alphaTex === 'string' ? renderData.alphaTex : ''
+  return block.block_type === 'tablature' && (
+    notationData?.timeSignature === 'free' ||
+    (alphaTex.includes('\\ft') && !/\\(?:ts|time)\s+\d+\s*(?:[\/xX]\s*)?\d+/.test(alphaTex))
+  )
+}
+
+function cleanTablatureSnapshotArtifacts(html: string, block: EditorBlock): string {
+  if (block.block_type !== 'tablature' || typeof DOMParser === 'undefined') return html
+
+  const shouldHideFreeTime = isFreeTimeTablatureBlock(block)
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  const hideSvgElement = (element: SVGElement) => {
+    const currentStyle = element.getAttribute('style') ?? ''
+    if (!/display\s*:\s*none/i.test(currentStyle)) {
+      element.setAttribute('style', `${currentStyle}${currentStyle && !currentStyle.trim().endsWith(';') ? ';' : ''} display: none;`.trim())
+    }
+  }
+
+  document.querySelectorAll('svg text').forEach(text => {
+    const content = text.textContent?.trim() ?? ''
+    const isTimeSignatureGlyph = /^[\uE080-\uE089]+$/.test(content)
+    const isFreeTimeGlyph = content === '\uE241'
+    if (shouldHideFreeTime && (content.toLowerCase().includes('free time') || isTimeSignatureGlyph || isFreeTimeGlyph)) {
+      hideSvgElement(text as unknown as SVGElement)
+    }
+  })
+
+  document.querySelectorAll('body *').forEach(element => {
+    if (element.textContent?.trim() === 'rendered by alphaTab') {
+      ;(element as HTMLElement).style.display = 'none'
+    }
+  })
+
+  if (shouldHideFreeTime) {
+    document.querySelectorAll('svg g[transform]').forEach(group => {
+      const transform = group.getAttribute('transform') ?? ''
+      const match = transform.match(/translate\(\s*([\d.]+)/)
+      if (!match) return
+      const tx = parseFloat(match[1])
+      if (tx >= 65 && tx < 110) {
+        hideSvgElement(group as unknown as SVGElement)
+      }
+    })
+  }
+
+  return document.body.innerHTML
+}
+
+function sanitizeMusicSnapshotHtml(html: string, block: EditorBlock): string {
+  return cleanTablatureSnapshotArtifacts(html, block)
     .replace(/at-surface/g, 'at-surface-snapshot')
     .replace(/\scontenteditable="[^"]*"/g, '')
     .replace(/\stabindex="[^"]*"/g, '')
@@ -729,7 +783,7 @@ function useEditorPagination({
 
         const block = blocksRef.current.find(item => item.id === id)
         if (block && (MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || blockUsesAlphaTab(block))) {
-          const html = sanitizeMusicSnapshotHtml(el.innerHTML)
+          const html = sanitizeMusicSnapshotHtml(el.innerHTML, block)
           if (isUsableMusicSnapshotHtml(html, block)) {
             musicRendererSnapshotCacheRef.current.set(id, {
               hash: key,
@@ -827,7 +881,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     const el = realRendererRef.current
     const rawHtml = htmlOverride ?? el?.innerHTML
     if (!rawHtml || rawHtml.trim().length === 0) return
-    const html = sanitizeMusicSnapshotHtml(rawHtml)
+    const html = sanitizeMusicSnapshotHtml(rawHtml, block)
     if (!isUsableMusicSnapshotHtml(html, block)) return
     musicRendererSnapshotCacheRef.current.set(block.id, {
       hash: snapshotKey,
@@ -1097,7 +1151,7 @@ function MusicSnapshotPreheater({
 
   const storePreheatedSnapshot = useCallback((block: EditorBlock, rawHtml: string) => {
     const el = containerRef.current
-    const snapshotHtml = sanitizeMusicSnapshotHtml(rawHtml)
+    const snapshotHtml = sanitizeMusicSnapshotHtml(rawHtml, block)
     if (!isUsableMusicSnapshotHtml(snapshotHtml, block)) {
       queueRef.current.push(block)
       finishPreheat()
@@ -1742,7 +1796,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
         const block = blocksRef.current.find(item => item.id === id)
         if (block && (MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || blockUsesAlphaTab(block))) {
-          const html = sanitizeMusicSnapshotHtml(el.innerHTML)
+          const html = sanitizeMusicSnapshotHtml(el.innerHTML, block)
           if (isUsableMusicSnapshotHtml(html, block)) {
             musicRendererSnapshotCacheRef.current.set(id, {
               hash: key,

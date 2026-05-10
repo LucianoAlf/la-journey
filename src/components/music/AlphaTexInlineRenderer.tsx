@@ -47,9 +47,20 @@ export function hasExplicitAlphaTexTimeSignature(input: string) {
   return /\\(?:ts|time)\s+\d+\s*(?:[\/xX]\s*)?\d+/.test(input)
 }
 
+function isTimeSignatureGlyphText(text: string) {
+  return /^[\uE080-\uE089]+$/.test(text.trim())
+}
+
+function isFreeTimeGlyphText(text: string) {
+  return text.trim() === '\uE241'
+}
+
 export function shouldHideAlphaTexInlineText(text: string | null | undefined, hasExplicitTimeSignature: boolean) {
+  const value = (text ?? '').trim()
   if (hasExplicitTimeSignature) return false
-  return (text ?? '').trim().toLowerCase().includes('free time')
+  return value.toLowerCase().includes('free time')
+    || isTimeSignatureGlyphText(value)
+    || isFreeTimeGlyphText(value)
 }
 
 export function getAlphaTexInlineFrameStyle({
@@ -115,7 +126,7 @@ function cleanupAlphaTexInlineDom(container: HTMLDivElement | null, hasExplicitT
     })
 
     if (!hasExplicitTimeSignature) {
-      const signatureGlyphs = svg.querySelectorAll(':scope > g[transform]')
+      const signatureGlyphs = svg.querySelectorAll('g[transform]')
       signatureGlyphs.forEach(g => {
         const transform = g.getAttribute('transform') || ''
         const match = transform.match(/translate\(\s*([\d.]+)/)
@@ -170,6 +181,9 @@ export function AlphaTexInlineRenderer({
   const [error, setError] = useState<string | null>(null)
   const normalizedTex = normalizeAlphaTex(tex)
   const hasExplicitTimeSignature = hasExplicitAlphaTexTimeSignature(normalizedTex)
+  const renderTex = hasExplicitTimeSignature ? normalizedTex : normalizedTex.replace(/\\ft\b/g, '')
+  const alphaTabPurpose = resolvePurpose(purpose, staveProfile)
+  const effectiveLayout = alphaTabPurpose.includes('tablature') ? 'horizontal' : layout
 
   onStableRenderRef.current = onStableRender
 
@@ -195,9 +209,9 @@ export function AlphaTexInlineRenderer({
     }
 
     const settings = buildAlphaTabSettings({
-      purpose: resolvePurpose(purpose, staveProfile),
+      purpose: alphaTabPurpose,
       showTimeSignature: hasExplicitTimeSignature,
-      layout,
+      layout: effectiveLayout,
       scale,
       systemPaddingBottom,
     })
@@ -207,7 +221,7 @@ export function AlphaTexInlineRenderer({
 
     api.scoreLoaded.on((score: any) => {
       for (const masterBar of score.masterBars) {
-        masterBar.isFreeTime = !hasExplicitTimeSignature
+        masterBar.isFreeTime = !hasExplicitTimeSignature && !alphaTabPurpose.includes('tablature')
         masterBar.tempoAutomations = []
       }
     })
@@ -231,20 +245,20 @@ export function AlphaTexInlineRenderer({
       setLoading(false)
     })
 
-    api.tex(normalizedTex)
+    api.tex(renderTex)
 
     return () => {
       api.destroy()
       apiRef.current = null
     }
-  }, [normalizedTex, staveProfile, scale, systemPaddingBottom, layout, hasExplicitTimeSignature, purpose])
+  }, [renderTex, scale, systemPaddingBottom, effectiveLayout, hasExplicitTimeSignature, alphaTabPurpose])
 
-  if (!normalizedTex) return null
+  if (!renderTex) return null
 
   return (
     <div
       className={`relative at-inline-clean notation-container ${className}`}
-      style={getAlphaTexInlineFrameStyle({ width, layout })}
+      style={getAlphaTexInlineFrameStyle({ width, layout: effectiveLayout })}
     >
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-card/80 z-10 rounded-lg">
