@@ -9,6 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useChords } from "@/hooks/useLibrary";
 import { ChordDiagram } from "@/components/music/ChordDiagram";
 import { PianoKeyboard } from "@/components/music/PianoKeyboard";
@@ -21,7 +31,7 @@ import { GuitarFretboardDiagram, type GuitarFretboardPositions } from "@/compone
 import { GuitarFretboardEditor } from "@/components/music/GuitarFretboardEditor";
 import { createChord, updateChord, deleteChord, insertChordsBatch } from "@/services/libraryService";
 import { generateAllChordsForPopulation } from "@/services/chordAutoFillService";
-import { type NotationLibraryRow } from "@/services/notationService";
+import { deleteNotation, type NotationLibraryRow } from "@/services/notationService";
 import { createTablature, updateTablature, deleteTablature, type TablatureLibraryRow } from "@/services/notationService";
 import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
@@ -233,6 +243,10 @@ const NOTATION_CATEGORY_BADGES: Record<string, { label: string; variant: string 
 
 type InstrumentFilter = 'guitar' | 'electric_guitar' | 'piano' | 'bass' | 'ukulele'
 
+type LibraryDeleteRequest =
+  | { type: 'notation'; id: string; name: string }
+  | { type: 'tablature'; id: string; name: string }
+
 
 export function Biblioteca() {
   const navigate = useNavigate();
@@ -308,6 +322,7 @@ export function Biblioteca() {
   const [notationDiffFilter, setNotationDiffFilter] = useState('todos');
   const [notationEditorOpen, setNotationEditorOpen] = useState(false);
   const [editingNotation, setEditingNotation] = useState<NotationLibraryRow | null>(null);
+  const [deleteRequest, setDeleteRequest] = useState<LibraryDeleteRequest | null>(null);
 
   // Estado do KeyboardEditor (piano)
   const [pianoEditorOpen, setPianoEditorOpen] = useState(false);
@@ -445,8 +460,14 @@ export function Biblioteca() {
     refetchNotations();
   };
 
-  const handleDeleteNotation = async (_id: string) => {
-    refetchNotations();
+  const handleDeleteNotation = async (id: string) => {
+    try {
+      await deleteNotation(id);
+      toast.success('Notação excluída');
+      refetchNotations();
+    } catch (e: any) {
+      toast.error('Erro ao excluir notação: ' + (e?.message ?? ''));
+    }
   };
 
   // Estado da aba Tablatura
@@ -491,6 +512,18 @@ export function Biblioteca() {
     } catch (e: any) {
       toast.error('Erro ao excluir: ' + (e?.message ?? ''));
     }
+  };
+
+  const handleConfirmLibraryDelete = async () => {
+    const request = deleteRequest;
+    if (!request) return;
+
+    setDeleteRequest(null);
+    if (request.type === 'notation') {
+      await handleDeleteNotation(request.id);
+      return;
+    }
+    await handleDeleteTab(request.id);
   };
 
   const filteredTablatures = useMemo(() => {
@@ -1238,12 +1271,23 @@ export function Biblioteca() {
                   return (
                     <div
                       key={nota.id}
-                      className="card p-4 hover:border-accent/30 transition-colors cursor-pointer"
+                      className="card p-4 hover:border-accent/30 transition-colors cursor-pointer group relative"
                       onClick={() => {
                         setEditingNotation(nota);
                         setNotationEditorOpen(true);
                       }}
                     >
+                      <button
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-vermelho/10 text-text3 hover:text-vermelho z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteRequest({ type: 'notation', id: nota.id, name: nota.name });
+                        }}
+                        title="Excluir notação"
+                      >
+                        <Trash size={14} />
+                      </button>
+
                       <div className="flex items-center justify-between mb-2">
                         <Badge variant={catBadge.variant as any} className="text-[8px]">{catBadge.label}</Badge>
                         <span className="text-[10px] text-text3 font-mono">Nível {nota.difficulty}</span>
@@ -1402,9 +1446,7 @@ export function Biblioteca() {
                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-vermelho/10 text-text3 hover:text-vermelho"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`Excluir tablatura "${tab.name}"?`)) {
-                            handleDeleteTab(tab.id);
-                          }
+                          setDeleteRequest({ type: 'tablature', id: tab.id, name: tab.name });
                         }}
                         title="Excluir tablatura"
                       >
@@ -1518,6 +1560,34 @@ export function Biblioteca() {
       />
 
       {/* ImageGeneratorModal — geração de imagens IA */}
+      <AlertDialog open={Boolean(deleteRequest)} onOpenChange={(open) => { if (!open) setDeleteRequest(null); }}>
+        <AlertDialogContent className="bg-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif text-[22px] text-text">
+              Excluir {deleteRequest?.type === 'notation' ? 'notação' : 'tablatura'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-text2">
+              {deleteRequest ? (
+                <>
+                  Você está prestes a remover <span className="font-semibold text-text">"{deleteRequest.name}"</span> da Biblioteca Musical. Essa ação não pode ser desfeita.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-border text-text2 hover:bg-surface">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleConfirmLibraryDelete}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <ImageGeneratorModal
         open={imageGenOpen}
         onOpenChange={setImageGenOpen}

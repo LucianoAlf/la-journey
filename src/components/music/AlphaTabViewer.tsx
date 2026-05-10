@@ -2,7 +2,12 @@ import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 're
 import * as alphaTabModule from '@coderline/alphatab'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { buildAlphaTabSettings, type AlphaTabPurpose } from '@/lib/alphaTabSettings'
-import { raiseTabSlursInSvg, shouldHideAlphaTabSvgGroup } from './AlphaTexInlineRenderer'
+import {
+  cleanupAlphaTabFreeTimeArtifacts,
+  raiseTabSlursInSvg,
+  shouldHideAlphaTabSvgGroup,
+  stripAlphaTexFreeTimeMarker,
+} from './AlphaTexInlineRenderer'
 import type { FretboardNote } from './GuitarFretboardDiagram'
 
 export function notesToAlphaTex(
@@ -88,10 +93,17 @@ function cleanupAlphaTabDom(
       raiseTabSlursInSvg(svg)
     }
 
+    cleanupAlphaTabFreeTimeArtifacts(svg, showTimeSignature, {
+      compactSignatureSpace: !isTablature,
+    })
+
     const gElements = svg.querySelectorAll('g[transform]')
     gElements.forEach(g => {
       if (shouldHideAlphaTabSvgGroup(g.textContent, showTimeSignature)) {
-        ;(g as SVGElement).style.display = 'none'
+        const element = g as SVGElement
+        if (!element.style.display.includes('none')) {
+          element.style.display = 'none'
+        }
       }
     })
 
@@ -100,13 +112,19 @@ function cleanupAlphaTabDom(
       const content = t.textContent?.trim() || ''
       const fill = t.getAttribute('fill') || ''
       if (fill.includes('C80000') || fill.includes('c80000')) {
-        ;(t as SVGElement).style.display = 'none'
+        if (!t.style.display.includes('none')) {
+          ;(t as SVGElement).style.display = 'none'
+        }
       }
       if (!showTimeSignature && content.toLowerCase().includes('free time')) {
-        ;(t as SVGElement).style.display = 'none'
+        if (!t.style.display.includes('none')) {
+          ;(t as SVGElement).style.display = 'none'
+        }
       }
       if (shouldHideAlphaTabSvgGroup(content, showTimeSignature)) {
-        ;(t as SVGElement).style.display = 'none'
+        if (!t.style.display.includes('none')) {
+          ;(t as SVGElement).style.display = 'none'
+        }
       }
     })
 
@@ -137,6 +155,10 @@ function resolvePurpose(
   if (staveProfile === 'tab') return 'canvas-tablature-tab'
   if (grandStaffMode) return 'editor-notation-grand-staff'
   return 'canvas-notation-score'
+}
+
+export function getAlphaTabViewerRenderTex(tex: string, showTimeSignature = false, isTablature = false) {
+  return showTimeSignature || isTablature ? tex : stripAlphaTexFreeTimeMarker(tex)
 }
 
 export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerProps>(
@@ -198,7 +220,8 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
 
     const alphaTabPurpose = resolvePurpose(purpose, staveProfile, grandStaffMode)
     const effectiveLayout = alphaTabPurpose.includes('tablature') ? 'horizontal' : layout
-    const renderTex = showTimeSignature ? tex : tex.replace(/\\ft\b/g, '')
+    const isTablaturePurpose = alphaTabPurpose.includes('tablature')
+    const renderTex = getAlphaTabViewerRenderTex(tex, showTimeSignature, isTablaturePurpose)
     const configKey = `${effectiveLayout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}|${alphaTabPurpose}`
 
     useEffect(() => {
@@ -231,7 +254,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
       apiRef.current = api
 
-      if (isTablature && containerRef.current) {
+      if (containerRef.current) {
         cleanupObserver = new MutationObserver(queueDomCleanup)
         cleanupObserver.observe(containerRef.current, {
           attributes: true,
@@ -244,6 +267,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       api.scoreLoaded.on((score: any) => {
         setPhase('rendering')
         for (const mb of score.masterBars) {
+          mb.isFreeTime = !showTimeSignature && !isTablature
           mb.tempoAutomations = []
         }
         for (const track of score.tracks) {

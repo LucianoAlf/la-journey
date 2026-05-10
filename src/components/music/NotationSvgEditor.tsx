@@ -238,22 +238,23 @@ function snapToStaffPosition(y: number, topY: number): number {
  * Verifica se uma posição Y precisa de linhas suplementares
  * Retorna array de posições Y das linhas suplementares necessárias
  */
-function getLedgerLines(y: number, topY: number): number[] {
+export function getLedgerLines(y: number, topY: number): number[] {
   const lines: number[] = []
   const staffTop = topY
   const staffBottom = topY + STAFF_HEIGHT
+  const epsilon = 0.5
   
   if (y < staffTop) {
     // Linhas suplementares acima
     let lineY = staffTop - LINE_SPACING
-    while (lineY >= y - HALF_SPACING) {
+    while (lineY >= y - epsilon) {
       lines.push(lineY)
       lineY -= LINE_SPACING
     }
   } else if (y > staffBottom) {
     // Linhas suplementares abaixo
     let lineY = staffBottom + LINE_SPACING
-    while (lineY <= y + HALF_SPACING) {
+    while (lineY <= y + epsilon) {
       lines.push(lineY)
       lineY += LINE_SPACING
     }

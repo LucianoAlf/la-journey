@@ -258,6 +258,7 @@ const freeTex = beatsToAlphaTex(
   [makeBeat({ pitches: [makeNote('C/4')] })],
   { ...defaultOptions, timeSignature: 'free' as any },
 )
+assertContains(freeTex, '\\ft', 'Emite marcador AlphaTab de tempo livre')
 assertNotContains(freeTex, '\\ts', 'Nao emite formula de compasso para "free"')
 assertNotContains(freeTex, 'undefined', 'Nao emite fragmento invalido com "free"')
 

@@ -47,6 +47,19 @@ export function hasExplicitAlphaTexTimeSignature(input: string) {
   return /\\(?:ts|time)\s+\d+\s*(?:[\/xX]\s*)?\d+/.test(input)
 }
 
+export function stripAlphaTexFreeTimeMarker(input: string) {
+  return input.replace(/\\ft\b\s*/g, '')
+}
+
+export function getAlphaTexInlineRenderTex(
+  input: string,
+  hasExplicitTimeSignature = hasExplicitAlphaTexTimeSignature(input),
+  isTablature = false,
+) {
+  const normalized = normalizeAlphaTex(input)
+  return hasExplicitTimeSignature || isTablature ? normalized : stripAlphaTexFreeTimeMarker(normalized)
+}
+
 function isTimeSignatureGlyphText(text: string) {
   return /^[\uE080-\uE089]+$/.test(text.trim())
 }
@@ -65,6 +78,116 @@ export function shouldHideAlphaTexInlineText(text: string | null | undefined, ha
 
 export function shouldHideAlphaTabSvgGroup(text: string | null | undefined, hasExplicitTimeSignature: boolean) {
   return shouldHideAlphaTexInlineText(text, hasExplicitTimeSignature)
+}
+
+export function isFreeTimeSignaturePathData(pathData: string | null | undefined) {
+  if (!pathData || !/[,\s]C-?\d/.test(pathData)) return false
+
+  const values = pathData.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)?.map(Number)
+  if (!values || values.length !== 14 || values.some(value => Number.isNaN(value))) return false
+
+  const xs = values.filter((_, index) => index % 2 === 0)
+  const ys = values.filter((_, index) => index % 2 === 1)
+  const width = Math.max(...xs) - Math.min(...xs)
+  const height = Math.max(...ys) - Math.min(...ys)
+
+  return width > 0 && width <= 12 && height >= 20
+}
+
+function getTranslate(transform: string | null | undefined) {
+  const match = transform?.match(/translate\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)/)
+  if (!match) return null
+  return { x: Number(match[1]), y: Number(match[2]) }
+}
+
+export function shiftAlphaTabTranslate(transform: string | null | undefined, deltaX: number) {
+  const point = getTranslate(transform)
+  if (!point) return transform ?? ''
+  return `translate(${formatPathNumber(point.x - deltaX)} ${formatPathNumber(point.y)})`
+}
+
+function hideSvgElement(element: SVGElement) {
+  if (!element.style.display.includes('none')) {
+    element.style.display = 'none'
+  }
+}
+
+function compactFreeTimeSignatureSpace(svg: SVGSVGElement) {
+  const glyphGroups = Array.from(svg.querySelectorAll('g[transform]')) as SVGElement[]
+  const hiddenSignatureXs = glyphGroups
+    .filter(group => shouldHideAlphaTabSvgGroup(group.textContent, false))
+    .map(group => getTranslate(group.getAttribute('transform'))?.x)
+    .filter((x): x is number => typeof x === 'number')
+
+  if (hiddenSignatureXs.length === 0) return
+
+  const signatureRight = Math.max(...hiddenSignatureXs)
+  const movableGroups = glyphGroups
+    .map(group => ({
+      group,
+      point: getTranslate(group.getAttribute('transform')),
+      text: group.textContent?.trim() ?? '',
+    }))
+    .filter(({ point, text }) => point && point.x > signatureRight + 8 && !shouldHideAlphaTabSvgGroup(text, false))
+
+  if (movableGroups.length === 0) return
+
+  const firstMusicX = Math.min(...movableGroups.map(({ point }) => point?.x ?? Infinity))
+  const targetFirstMusicX = signatureRight + 12
+  const deltaX = Math.max(0, Math.min(26, firstMusicX - targetFirstMusicX))
+  if (deltaX < 1) return
+
+  movableGroups.forEach(({ group, point }) => {
+    if (!point || point.x < firstMusicX - 0.5) return
+    group.setAttribute('transform', shiftAlphaTabTranslate(group.getAttribute('transform'), deltaX))
+  })
+
+  const rects = Array.from(svg.querySelectorAll('rect[x][width][height]')) as SVGRectElement[]
+  rects.forEach(rect => {
+    const x = Number(rect.getAttribute('x'))
+    const width = Number(rect.getAttribute('width'))
+    const height = Number(rect.getAttribute('height'))
+    if (!Number.isFinite(x) || !Number.isFinite(width) || !Number.isFinite(height)) return
+    const isStemOrBarline = width <= 3 && height > 8
+    const isLedgerLine = width >= 6 && width <= 28 && height <= 2
+    if ((isStemOrBarline && x >= firstMusicX - 0.5) || (isLedgerLine && x >= firstMusicX - 8)) {
+      rect.setAttribute('x', formatPathNumber(x - deltaX))
+    }
+  })
+}
+
+export function cleanupAlphaTabFreeTimeArtifacts(
+  svg: SVGSVGElement,
+  hasExplicitTimeSignature: boolean,
+  options: { compactSignatureSpace?: boolean } = {},
+) {
+  if (hasExplicitTimeSignature) return
+  const { compactSignatureSpace = true } = options
+
+  const texts = svg.querySelectorAll('text')
+  texts.forEach(text => {
+    if (shouldHideAlphaTexInlineText(text.textContent, hasExplicitTimeSignature)) {
+      hideSvgElement(text)
+    }
+  })
+
+  const glyphGroups = svg.querySelectorAll('g[transform]')
+  glyphGroups.forEach(group => {
+    if (shouldHideAlphaTabSvgGroup(group.textContent, hasExplicitTimeSignature)) {
+      hideSvgElement(group as SVGElement)
+    }
+  })
+
+  const paths = svg.querySelectorAll('path[d]')
+  paths.forEach(path => {
+    if (isFreeTimeSignaturePathData(path.getAttribute('d'))) {
+      hideSvgElement(path as SVGElement)
+    }
+  })
+
+  if (compactSignatureSpace) {
+    compactFreeTimeSignatureSpace(svg)
+  }
 }
 
 function formatPathNumber(value: number) {
@@ -171,18 +294,8 @@ function cleanupAlphaTexInlineDom(
       raiseTabSlursInSvg(svg)
     }
 
-    const texts = svg.querySelectorAll('text')
-    texts.forEach(text => {
-      if (shouldHideAlphaTexInlineText(text.textContent, hasExplicitTimeSignature)) {
-        ;(text as SVGElement).style.display = 'none'
-      }
-    })
-
-    const glyphGroups = svg.querySelectorAll('g[transform]')
-    glyphGroups.forEach(g => {
-      if (shouldHideAlphaTabSvgGroup(g.textContent, hasExplicitTimeSignature)) {
-        ;(g as SVGElement).style.display = 'none'
-      }
+    cleanupAlphaTabFreeTimeArtifacts(svg, hasExplicitTimeSignature, {
+      compactSignatureSpace: !isTablature,
     })
 
     const svgWidth = parseFloat(svg.getAttribute('width') || '0')
@@ -228,9 +341,10 @@ export function AlphaTexInlineRenderer({
   const [error, setError] = useState<string | null>(null)
   const normalizedTex = normalizeAlphaTex(tex)
   const hasExplicitTimeSignature = hasExplicitAlphaTexTimeSignature(normalizedTex)
-  const renderTex = hasExplicitTimeSignature ? normalizedTex : normalizedTex.replace(/\\ft\b/g, '')
   const alphaTabPurpose = resolvePurpose(purpose, staveProfile)
   const effectiveLayout = alphaTabPurpose.includes('tablature') ? 'horizontal' : layout
+  const isTablaturePurpose = alphaTabPurpose.includes('tablature')
+  const renderTex = getAlphaTexInlineRenderTex(normalizedTex, hasExplicitTimeSignature, isTablaturePurpose)
 
   onStableRenderRef.current = onStableRender
 
@@ -277,7 +391,7 @@ export function AlphaTexInlineRenderer({
     const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
     apiRef.current = api
 
-    if (isTablature && containerRef.current) {
+    if (containerRef.current) {
       cleanupObserver = new MutationObserver(queueDomCleanup)
       cleanupObserver.observe(containerRef.current, {
         attributes: true,
@@ -289,7 +403,7 @@ export function AlphaTexInlineRenderer({
 
     api.scoreLoaded.on((score: any) => {
       for (const masterBar of score.masterBars) {
-        masterBar.isFreeTime = !hasExplicitTimeSignature && !alphaTabPurpose.includes('tablature')
+        masterBar.isFreeTime = !hasExplicitTimeSignature && !isTablature
         masterBar.tempoAutomations = []
       }
     })

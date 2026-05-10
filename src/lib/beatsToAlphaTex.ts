@@ -301,6 +301,7 @@ export function beatsToAlphaTex(
   const timeSignatureMode = options.timeSignatureMode ??
     (normalizedTimeSignature ? 'metered' : 'free')
   const shouldEmitMeter = timeSignatureMode === 'metered' && Boolean(normalizedTimeSignature)
+  const shouldEmitFreeTime = !shouldEmitMeter
   const includeBarlines = timeSignatureMode === 'metered'
 
   // Header global
@@ -401,6 +402,8 @@ export function beatsToAlphaTex(
     if (shouldEmitMeter && normalizedTimeSignature) {
       const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
+    } else if (shouldEmitFreeTime) {
+      lines.push('\\ft')
     }
 
     if (syncedTrebleBeats.length > 0) {
@@ -418,6 +421,8 @@ export function beatsToAlphaTex(
     if (shouldEmitMeter && normalizedTimeSignature) {
       const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
+    } else if (shouldEmitFreeTime) {
+      lines.push('\\ft')
     }
 
     if (syncedBassBeats.length > 0) {
@@ -455,6 +460,8 @@ export function beatsToAlphaTex(
     if (shouldEmitMeter && normalizedTimeSignature) {
       const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
+    } else if (shouldEmitFreeTime) {
+      lines.push('\\ft')
     }
 
     // Lyrics — metadado de track (sintaxe: \lyrics "sílaba1 sílaba2 ...")
@@ -503,6 +510,7 @@ export function beatsToAlphaTexWithMap(
   const timeSignatureMode = options.timeSignatureMode ??
     (normalizedTimeSignature ? 'metered' : 'free')
   const shouldEmitMeter = timeSignatureMode === 'metered' && Boolean(normalizedTimeSignature)
+  const shouldEmitFreeTime = !shouldEmitMeter
   const includeBarlines = timeSignatureMode === 'metered'
 
   // Header global
@@ -540,6 +548,8 @@ export function beatsToAlphaTexWithMap(
   if (shouldEmitMeter && normalizedTimeSignature) {
     const [n, d] = normalizedTimeSignature.split('/')
     lines.push(`\\ts ${n} ${d}`)
+  } else if (shouldEmitFreeTime) {
+    lines.push('\\ft')
   }
 
   // Lyrics — só incluir se includeLyrics !== false

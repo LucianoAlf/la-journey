@@ -1,11 +1,15 @@
 import {
   getAlphaTexInlineFrameStyle,
+  getAlphaTexInlineRenderTex,
   hasExplicitAlphaTexTimeSignature,
+  isFreeTimeSignaturePathData,
   normalizeAlphaTex,
   raiseTabSlurPathData,
   shouldHideAlphaTabSvgGroup,
   shouldHideAlphaTexInlineText,
+  shiftAlphaTabTranslate,
 } from '../../components/music/AlphaTexInlineRenderer'
+import { getAlphaTabViewerRenderTex } from '../../components/music/AlphaTabViewer'
 import { getTabSvgTiePath } from '../../components/music/TabSvgEditor'
 
 function assert(condition: boolean, message: string) {
@@ -41,10 +45,39 @@ test('hides AlphaTab free-time text from canvas previews without changing the mu
   assert(!shouldHideAlphaTexInlineText('Escala de Do', false), 'regular labels should stay visible')
 })
 
+test('renders free notation without reserving visible free-time marker space', () => {
+  const freeTex = '\\track \\staff{score} \\ft . :4 c3 d3'
+
+  assert(!getAlphaTexInlineRenderTex(freeTex).includes('\\ft'), 'inline renderer strips visual \\ft marker and marks the score free-time through the AlphaTab model')
+  assert(!getAlphaTabViewerRenderTex(freeTex).includes('\\ft'), 'modal viewer strips visual \\ft marker and marks the score free-time through the AlphaTab model')
+})
+
+test('keeps tablature AlphaTex untouched when hiding notation free-time markers', () => {
+  const freeTab = '\\track \\staff{tabs} \\ft . :4 1.6 3.6 5.6'
+
+  assert(getAlphaTexInlineRenderTex(freeTab, false, true).includes('\\ft'), 'inline tablature should keep AlphaTex free-time data intact')
+  assert(getAlphaTabViewerRenderTex(freeTab, false, true).includes('\\ft'), 'viewer tablature should keep AlphaTex free-time data intact')
+})
+
 test('does not hide pick-stroke glyphs while hiding free-mode signature glyphs', () => {
   assert(shouldHideAlphaTabSvgGroup('\uE084', false), 'free-mode signature glyph should be hidden')
   assert(!shouldHideAlphaTabSvgGroup('\uE610', false), 'down pick-stroke glyph must stay visible')
   assert(!shouldHideAlphaTabSvgGroup('\uE612', false), 'up pick-stroke glyph must stay visible')
+})
+
+test('hides path-based free-time parentheses without hiding slurs', () => {
+  const leftParen = ' M76.49600000000001,64.41499999999999 C73.796,55.41499999999999,73.796,37.41499999999999,76.49600000000001,28.415 C71.42000000000002,37.41499999999999,71.42000000000002,55.41499999999999,76.49600000000001,64.41499999999999 z'
+  const downwardSlur = ' M124.97516363636363,115.47349999999999 C131.90762727272727,123.25807374708694,145.77255454545454,123.25807374708694,152.70501818181816,115.47349999999999 C145.77255454545454,125.39647374708694,131.90762727272727,125.39647374708694,124.97516363636363,115.47349999999999 z'
+
+  assert(isFreeTimeSignaturePathData(leftParen), 'free-time parentheses can be emitted as narrow path glyphs')
+  assert(!isFreeTimeSignaturePathData(downwardSlur), 'musical slurs must not be treated as free-time parentheses')
+})
+
+test('compacts free-time signature gap by shifting AlphaTab glyph transforms', () => {
+  assert(
+    shiftAlphaTabTranslate('translate(104.08460000000001 97.40275)', 24) === 'translate(80.08460000000001 97.40275)',
+    'expected free-mode music glyphs to move left without changing vertical placement',
+  )
 })
 
 test('raises AlphaTab tablature slur paths above the fret numbers', () => {
