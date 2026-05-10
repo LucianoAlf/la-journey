@@ -1,123 +1,126 @@
-import { useMemo, useState, useEffect, useSyncExternalStore } from 'react'
-import { renderSVG } from 'svg-piano'
-
-/** Singleton: 1 único MutationObserver compartilhado por todas as instâncias */
-let _themeListeners = new Set<() => void>()
-let _cachedTheme: string | null = null
-let _observerStarted = false
-
-function _getTheme() {
-  if (_cachedTheme === null) {
-    _cachedTheme = typeof document !== 'undefined'
-      ? document.documentElement.getAttribute('data-theme') ?? 'dark'
-      : 'dark'
-  }
-  return _cachedTheme
-}
-
-function _subscribeTheme(cb: () => void) {
-  _themeListeners.add(cb)
-  if (!_observerStarted && typeof document !== 'undefined') {
-    _observerStarted = true
-    const obs = new MutationObserver(() => {
-      _cachedTheme = document.documentElement.getAttribute('data-theme') ?? 'dark'
-      _themeListeners.forEach(fn => fn())
-    })
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
-  }
-  return () => { _themeListeners.delete(cb) }
-}
-
-function useTheme() {
-  return useSyncExternalStore(_subscribeTheme, _getTheme, () => 'dark')
-}
+import { useMemo } from 'react'
 
 interface PianoKeyboardProps {
-  /** Notas da mão direita: ["C4", "E4", "G4"] */
+  /** Notas da mao direita: ["C4", "E4", "G4"] */
   keys: string[]
-  /** Notas da mão esquerda: ["G3"] */
+  /** Notas da mao esquerda: ["G3"] */
   keysLh?: string[]
-  /** Nota fundamental (nome sem oitava): "C" — será pintada de laranja */
+  /** Nota fundamental sem oitava: "C" */
   rootNote?: string
-  /** Oitava da fundamental (para identificar a tecla exata) */
+  /** Oitava da fundamental */
   rootOctave?: number
-  /** Fundamental: "C" (legado, usado se rootNote não definido) */
+  /** Fundamental legado: "C" ou "C4" */
   root?: string
-  /** Dedilhado mão direita: [1, 3, 5] */
+  /** Dedilhado mao direita */
   fingeringRH?: number[]
-  /** Dedilhado mão esquerda: [5, 3, 1] */
+  /** Dedilhado mao esquerda */
   fingeringLH?: number[]
   /** Nome do acorde/escala */
   label?: string
-  /** Range do teclado visível (default: auto) */
+  /** Range visivel. O fim e exclusivo: C3-C5 renderiza C3-B4. */
   range?: [string, string]
-  /** Cor das teclas ativas (default: accent) */
+  /** Cor das teclas ativas */
   highlightColor?: string
-  /** Mostrar dedilhado nas teclas (default: true) */
+  /** Marcacoes pedagogicas entre teclas, ex: semitons */
+  highlights?: Array<{ from: string; to: string; label?: string }>
+  /** Mostrar dedilhado nas teclas */
   showLabels?: boolean
-  /** Qual mão mostrar (default: 'rh') */
+  /** Qual mao destacar como principal */
   hand?: 'rh' | 'lh'
-  /** Escala do SVG */
+  /** Escala visual do desenho */
   scale?: number
-  /** Forçar tema (ignora detecção automática) — útil para PDF */
+  /** Mantido por compatibilidade com PDF */
   forceTheme?: 'light' | 'dark'
-  /** Cor dos textos (label, dedilhado) — útil para PDF com fundo branco */
+  /** Cor dos textos externos */
   labelColor?: string
   className?: string
 }
 
-/** Mapa de bemóis para equivalentes com sustenido */
-const FLAT_TO_SHARP: Record<string, string> = {
-  Db: 'C#', Eb: 'D#', Fb: 'E', Gb: 'F#', Ab: 'G#', Bb: 'A#', Cb: 'B',
-}
-
 const NOTE_ORDER = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+const WHITE_NOTES = [
+  { note: 'C', semitone: 0, label: 'Do' },
+  { note: 'D', semitone: 2, label: 'Re' },
+  { note: 'E', semitone: 4, label: 'Mi' },
+  { note: 'F', semitone: 5, label: 'Fa' },
+  { note: 'G', semitone: 7, label: 'Sol' },
+  { note: 'A', semitone: 9, label: 'La' },
+  { note: 'B', semitone: 11, label: 'Si' },
+]
+const BLACK_KEYS = [
+  { note: 'C#', semitone: 1, label: 'Do#', afterWhite: 0 },
+  { note: 'D#', semitone: 3, label: 'Re#', afterWhite: 1 },
+  { note: 'F#', semitone: 6, label: 'Fa#', afterWhite: 3 },
+  { note: 'G#', semitone: 8, label: 'Sol#', afterWhite: 4 },
+  { note: 'A#', semitone: 10, label: 'La#', afterWhite: 5 },
+]
 
-/** Converte nota MIDI (ex: "Eb4", "C#5") para índice numérico */
-function noteToMidi(note: string): number | null {
-  const match = note.match(/^([A-G][b#]?)(\d)$/)
-  if (!match) return null
-  let noteName = match[1]
-  const octave = parseInt(match[2])
-  // Converter bemol para sustenido
-  if (noteName.length === 2 && noteName[1] === 'b') {
-    noteName = FLAT_TO_SHARP[noteName] ?? noteName
-  }
-  const idx = NOTE_ORDER.indexOf(noteName)
-  if (idx === -1) return null
-  return octave * 12 + idx
+const FLAT_TO_SHARP: Record<string, string> = {
+  Db: 'C#',
+  Eb: 'D#',
+  Fb: 'E',
+  Gb: 'F#',
+  Ab: 'G#',
+  Bb: 'A#',
+  Cb: 'B',
 }
 
-// Cores padrão para mão direita, esquerda e fundamental
 const COLOR_RH = '#FF2D78'
 const COLOR_LH = '#6366F1'
 const COLOR_ROOT = '#F97316'
+const COLOR_BLACK = '#171827'
+const COLOR_BORDER = '#CBD5E1'
 
-/** Calcula range fixo de 2 oitavas começando na oitava da nota mais grave */
-function calculateRange(keys: string[], keysLh?: string[]): [string, string] {
-  const allKeys = [...keys, ...(keysLh ?? [])]
-  if (allKeys.length === 0) return ['C4', 'C6']
+function normalizeNoteName(noteName: string): string {
+  return FLAT_TO_SHARP[noteName] ?? noteName
+}
 
-  const midis = allKeys.map(noteToMidi).filter((m): m is number => m !== null)
-  if (midis.length === 0) return ['C4', 'C6']
+function parseNote(note: string): { name: string; octave: number } | null {
+  const match = note.match(/^([A-G][b#]?)(\d)$/)
+  if (!match) return null
+  return {
+    name: normalizeNoteName(match[1]),
+    octave: Number(match[2]),
+  }
+}
 
-  const minMidi = Math.min(...midis)
-  const maxMidi = Math.max(...midis)
+function noteToMidi(note: string): number | null {
+  const parsed = parseNote(note)
+  if (!parsed) return null
+  const idx = NOTE_ORDER.indexOf(parsed.name)
+  if (idx === -1) return null
+  return idx + (parsed.octave + 1) * 12
+}
 
-  // Começar na oitava da nota mais grave (baixo fica na extrema esquerda)
-  let startOctave = Math.floor(minMidi / 12)
-  let endOctave = startOctave + 2
+function noteLabel(note: string): string {
+  const parsed = parseNote(note)
+  if (!parsed) return note
+  const white = WHITE_NOTES.find(item => item.note === parsed.name)
+  const black = BLACK_KEYS.find(item => item.note === parsed.name)
+  return `${white?.label ?? black?.label ?? parsed.name}${parsed.octave}`
+}
 
-  // Se a nota mais aguda não couber em 2 oitavas, expandir para 3
-  if (maxMidi >= endOctave * 12) {
-    endOctave = startOctave + 3
+function rangeOctaves(range: [string, string] | undefined, keys: string[], keysLh?: string[]): [number, number] {
+  if (range) {
+    const start = parseNote(range[0])
+    const end = parseNote(range[1])
+    if (start && end) return [start.octave, Math.max(start.octave + 1, end.octave)]
   }
 
-  // Clamp para range razoável (C1-C8)
-  startOctave = Math.max(1, startOctave)
-  endOctave = Math.min(8, endOctave)
+  const allKeys = [...keys, ...(keysLh ?? [])]
+  const midis = allKeys.map(noteToMidi).filter((midi): midi is number => midi !== null)
+  if (midis.length === 0) return [4, 6]
 
-  return [`C${startOctave}`, `C${endOctave}`]
+  const minOctave = Math.floor(Math.min(...midis) / 12) - 1
+  const maxOctave = Math.floor(Math.max(...midis) / 12) - 1
+  const start = Math.max(1, minOctave)
+  const end = Math.min(8, Math.max(start + 2, maxOctave + 1))
+  return [start, end]
+}
+
+function samePitch(a: string, b: string): boolean {
+  const pa = parseNote(a)
+  const pb = parseNote(b)
+  return !!pa && !!pb && pa.name === pb.name && pa.octave === pb.octave
 }
 
 export function PianoKeyboard({
@@ -131,154 +134,274 @@ export function PianoKeyboard({
   label,
   range,
   highlightColor = COLOR_RH,
+  highlights = [],
   showLabels = true,
-  hand = 'rh',
   scale = 1,
-  forceTheme,
   labelColor,
   className,
 }: PianoKeyboardProps) {
-  const detectedTheme = useTheme()
-  const isDark = forceTheme ? forceTheme === 'dark' : detectedTheme === 'dark'
-  const effectiveRange = range || calculateRange(keys, keysLh)
-  const fingering = hand === 'rh' ? fingeringRH : fingeringLH
   const lhKeys = keysLh ?? []
+  const [startOctave, endOctave] = rangeOctaves(range, keys, lhKeys)
+  const octaveCount = endOctave - startOctave
+  const totalWhiteKeys = octaveCount * 7
 
-  // Identificar a nota fundamental (laranja) entre as teclas
+  const dims = useMemo(() => {
+    const whiteWidth = 38 * scale
+    const whiteHeight = 132 * scale
+    const blackWidth = 22 * scale
+    const blackHeight = 86 * scale
+    const topPad = 6 * scale
+    const bottomPad = 26 * scale
+    return {
+      whiteWidth,
+      whiteHeight,
+      blackWidth,
+      blackHeight,
+      topPad,
+      bottomPad,
+      width: totalWhiteKeys * whiteWidth,
+      height: topPad + whiteHeight + bottomPad,
+    }
+  }, [scale, totalWhiteKeys])
+
+  const renderedKeys = useMemo(() => {
+    const whites: Array<{ note: string; label: string; octave: number; x: number; y: number; midi: number }> = []
+    const blacks: Array<{ note: string; label: string; octave: number; x: number; y: number; midi: number }> = []
+
+    for (let octave = startOctave; octave < endOctave; octave++) {
+      const octaveOffset = (octave - startOctave) * 7
+      WHITE_NOTES.forEach((white, index) => {
+        whites.push({
+          note: `${white.note}${octave}`,
+          label: white.label,
+          octave,
+          midi: white.semitone + (octave + 1) * 12,
+          x: (octaveOffset + index) * dims.whiteWidth,
+          y: dims.topPad,
+        })
+      })
+
+      BLACK_KEYS.forEach((black) => {
+        blacks.push({
+          note: `${black.note}${octave}`,
+          label: black.label,
+          octave,
+          midi: black.semitone + (octave + 1) * 12,
+          x: (octaveOffset + black.afterWhite + 1) * dims.whiteWidth - dims.blackWidth / 2,
+          y: dims.topPad,
+        })
+      })
+    }
+
+    return { whites, blacks }
+  }, [dims.blackWidth, dims.topPad, dims.whiteWidth, endOctave, startOctave])
+
   const fundamentalKey = useMemo(() => {
-    let rn = rootNote ?? root
-    if (!rn) return null
-    // root pode vir como "C4" (com oitava) ou "C" (sem oitava) — extrair só o nome
-    const rootMatch = rn.match(/^([A-G][b#]?)(\d?)$/)
-    const rootName = rootMatch ? rootMatch[1] : rn
-    const rootOct = rootOctave ?? (rootMatch?.[2] ? parseInt(rootMatch[2]) : null)
-    // Procurar a fundamental nas keys (MR) e keysLh (ME)
-    const allK = [...keys, ...lhKeys]
-    // Fundamental exata: nome + oitava
+    const rawRoot = rootNote ?? root
+    if (!rawRoot) return null
+    const rootMatch = rawRoot.match(/^([A-G][b#]?)(\d?)$/)
+    const rootName = rootMatch ? normalizeNoteName(rootMatch[1]) : normalizeNoteName(rawRoot)
+    const rootOct = rootOctave ?? (rootMatch?.[2] ? Number(rootMatch[2]) : null)
+    const allKeys = [...keys, ...lhKeys]
     if (rootOct != null) {
       const exact = `${rootName}${rootOct}`
-      if (allK.includes(exact)) return exact
+      if (allKeys.some(key => samePitch(key, exact))) return exact
     }
-    // Fallback: primeira nota que começa com o nome da fundamental
-    return allK.find(k => {
-      const m = k.match(/^([A-G][b#]?)/)
-      return m && m[1] === rootName
-    }) ?? null
-  }, [rootNote, root, rootOctave, keys, lhKeys])
+    return allKeys.find(key => parseNote(key)?.name === rootName) ?? null
+  }, [keys, lhKeys, root, rootNote, rootOctave])
 
-  // Separar keys por cor: fundamental (laranja) > MR (rosa) > ME (azul)
-  const { rhOnly, lhOnly, rootKey } = useMemo(() => {
-    const rootK = fundamentalKey
-    const rh = keys.filter(k => k !== rootK)
-    const lh = lhKeys.filter(k => k !== rootK)
-    return { rhOnly: rh, lhOnly: lh, rootKey: rootK }
-  }, [keys, lhKeys, fundamentalKey])
+  const activeState = useMemo(() => {
+    const map = new Map<string, { color: string; finger?: number; role: 'rh' | 'lh' | 'root' }>()
 
-  const rendered = useMemo(() => {
-    // Montar labels do dedilhado (MR + ME)
-    const labelMap: Record<string, string> = {}
-    if (showLabels) {
-      if (fingeringRH) {
-        keys.forEach((key, i) => {
-          if (fingeringRH[i] != null) labelMap[key] = String(fingeringRH[i])
-        })
-      }
-      if (fingeringLH) {
-        lhKeys.forEach((key, i) => {
-          if (fingeringLH[i] != null) labelMap[key] = String(fingeringLH[i])
-        })
-      }
-    }
-
-    // palette: [teclas pretas, teclas brancas]
-    const palette: [string, string] = isDark
-      ? ['#0F172A', '#1E293B']
-      : ['#1E293B', '#FFFFFF']
-
-    const stroke = isDark ? '#475569' : '#CBD5E1'
-
-    // Colorize por prioridade: fundamental (laranja) > ME (azul) > MR (rosa)
-    const colorize: { keys: string[]; color: string }[] = []
-    if (rhOnly.length > 0) colorize.push({ keys: rhOnly, color: COLOR_RH })
-    if (lhOnly.length > 0) colorize.push({ keys: lhOnly, color: COLOR_LH })
-    if (rootKey) colorize.push({ keys: [rootKey], color: COLOR_ROOT })
-
-    return renderSVG({
-      range: effectiveRange,
-      colorize,
-      labels: labelMap,
-      palette,
-      stroke,
-      strokeWidth: 1,
-      scaleX: scale,
-      scaleY: scale,
+    keys.forEach((key, index) => {
+      map.set(key, {
+        color: highlightColor || COLOR_RH,
+        finger: fingeringRH?.[index],
+        role: 'rh',
+      })
     })
-  }, [keys, lhKeys, rhOnly, lhOnly, rootKey, effectiveRange, showLabels, fingeringRH, fingeringLH, scale, isDark])
 
-  // Mapa de nota → cor para usar nos circles/texts
-  const keyColorMap = useMemo(() => {
-    const map = new Map<string, string>()
-    rhOnly.forEach(k => map.set(k, COLOR_RH))
-    lhOnly.forEach(k => map.set(k, COLOR_LH))
-    if (rootKey) map.set(rootKey, COLOR_ROOT)
+    lhKeys.forEach((key, index) => {
+      map.set(key, {
+        color: COLOR_LH,
+        finger: fingeringLH?.[index],
+        role: 'lh',
+      })
+    })
+
+    if (fundamentalKey) {
+      const existing = [...map.entries()].find(([key]) => samePitch(key, fundamentalKey))
+      map.set(existing?.[0] ?? fundamentalKey, {
+        color: COLOR_ROOT,
+        finger: existing?.[1]?.finger,
+        role: 'root',
+      })
+    }
+
     return map
-  }, [rhOnly, lhOnly, rootKey])
+  }, [fingeringLH, fingeringRH, fundamentalKey, highlightColor, keys, lhKeys])
 
-  const labelFill = '#FFFFFF'
-  const contrastText = isDark ? '#F1F5F9' : '#1E293B'
+  function getState(note: string) {
+    return [...activeState.entries()].find(([key]) => samePitch(key, note))?.[1] ?? null
+  }
 
-  // Set de todas as cores usadas para detecção de highlight
-  const allColors = new Set([COLOR_RH, COLOR_LH, COLOR_ROOT, highlightColor])
+  function keyCenter(note: string) {
+    const white = renderedKeys.whites.find(item => samePitch(item.note, note))
+    if (white) return white.x + dims.whiteWidth / 2
+    const black = renderedKeys.blacks.find(item => samePitch(item.note, note))
+    if (black) return black.x + dims.blackWidth / 2
+    return null
+  }
+
+  const highlightMarkers = highlights
+    .map((highlight) => {
+      const x1 = keyCenter(highlight.from)
+      const x2 = keyCenter(highlight.to)
+      if (x1 == null || x2 == null) return null
+      return { ...highlight, x1, x2, midX: (x1 + x2) / 2 }
+    })
+    .filter((item): item is { from: string; to: string; label?: string; x1: number; x2: number; midX: number } => item !== null)
 
   return (
-    <div className={className}>
+    <div className={className} style={{ width: '100%', maxWidth: `${dims.width}px` }}>
       {label && (
         <div className="text-center font-semibold text-sm mb-1" style={labelColor ? { color: labelColor } : undefined}>{label}</div>
       )}
       <svg
-        viewBox={`0 0 ${rendered.svg.width} ${rendered.svg.height}`}
+        viewBox={`0 0 ${dims.width} ${dims.height}`}
         preserveAspectRatio="xMidYMid meet"
         style={{ display: 'block', width: '100%', height: 'auto' }}
       >
-        {rendered.children.map((child, index) => {
-          if (!child) return null
-          const { polygon, circle, text } = child
-          const fillColor = child.key.fill
-          const isHighlighted = allColors.has(fillColor)
+        <defs>
+          <filter id="piano-black-shadow" x="-30%" y="-10%" width="160%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="3" floodColor="#0F172A" floodOpacity="0.26" />
+          </filter>
+        </defs>
+
+        {highlightMarkers.map((marker, index) => (
+          <g key={`highlight-${marker.from}-${marker.to}-${index}`}>
+            <line
+              x1={marker.x1}
+              x2={marker.x2}
+              y1={dims.topPad + 8}
+              y2={dims.topPad + 8}
+              stroke={COLOR_ROOT}
+              strokeWidth={2.4}
+              strokeLinecap="round"
+            />
+            {marker.label && (
+              <text
+                x={marker.midX}
+                y={dims.topPad + 20}
+                textAnchor="middle"
+                fontSize={10}
+                fontFamily="'DM Sans', sans-serif"
+                fontWeight={800}
+                fill={COLOR_ROOT}
+              >
+                {marker.label}
+              </text>
+            )}
+          </g>
+        ))}
+
+        {renderedKeys.whites.map((key) => {
+          const state = getState(key.note)
+          const isActive = !!state
+          const fill = state?.color ?? '#FFFFFF'
+          const textColor = isActive ? '#FFFFFF' : '#94A3B8'
 
           return (
-            <g key={index}>
-              {polygon && (
-                <polygon
-                  points={polygon.points}
-                  fill={polygon.style.fill}
-                  stroke={polygon.style.stroke}
-                  strokeWidth={polygon.style.strokeWidth}
-                />
-              )}
-              {circle && (
-                <circle
-                  cx={circle.cx}
-                  cy={circle.cy}
-                  r={circle.r}
-                  fill={isHighlighted ? fillColor : contrastText}
-                  stroke={circle.stroke}
-                  strokeWidth={circle.strokeWidth}
-                />
-              )}
-              {text && (
+            <g key={key.note}>
+              <rect
+                x={key.x}
+                y={key.y}
+                width={dims.whiteWidth}
+                height={dims.whiteHeight}
+                rx={4}
+                fill={fill}
+                stroke={COLOR_BORDER}
+                strokeWidth={1.2}
+              />
+              {showLabels && state?.finger != null && (
                 <text
-                  x={text.x}
-                  y={text.y}
-                  textAnchor={text.textAnchor as 'start' | 'middle' | 'end'}
-                  fontSize={text.fontSize}
+                  x={key.x + dims.whiteWidth / 2}
+                  y={key.y + dims.whiteHeight - 46 * scale}
+                  textAnchor="middle"
+                  fontSize={18 * scale}
                   fontFamily="'DM Sans', sans-serif"
-                  fontWeight={600}
-                  fill={labelFill}
+                  fontWeight={900}
+                  fill="#FFFFFF"
                 >
-                  {text.value}
+                  {state.finger}
                 </text>
               )}
+              <text
+                x={key.x + dims.whiteWidth / 2}
+                y={key.y + dims.whiteHeight - 24 * scale}
+                textAnchor="middle"
+                fontSize={10 * scale}
+                fontFamily="'DM Sans', sans-serif"
+                fontWeight={isActive ? 800 : 500}
+                fill={textColor}
+              >
+                {key.label}
+              </text>
+              <text
+                x={key.x + dims.whiteWidth / 2}
+                y={key.y + dims.whiteHeight - 9 * scale}
+                textAnchor="middle"
+                fontSize={8 * scale}
+                fontFamily="'DM Mono', monospace"
+                fontWeight={600}
+                fill={isActive ? 'rgba(255,255,255,0.72)' : '#CBD5E1'}
+              >
+                {key.note}
+              </text>
+            </g>
+          )
+        })}
+
+        {renderedKeys.blacks.map((key) => {
+          const state = getState(key.note)
+          const isActive = !!state
+          const fill = state?.color ?? COLOR_BLACK
+
+          return (
+            <g key={key.note}>
+              <rect
+                x={key.x}
+                y={key.y}
+                width={dims.blackWidth}
+                height={dims.blackHeight}
+                rx={4}
+                fill={fill}
+                filter="url(#piano-black-shadow)"
+              />
+              {showLabels && state?.finger != null && (
+                <text
+                  x={key.x + dims.blackWidth / 2}
+                  y={key.y + dims.blackHeight * 0.45}
+                  textAnchor="middle"
+                  fontSize={14 * scale}
+                  fontFamily="'DM Sans', sans-serif"
+                  fontWeight={900}
+                  fill="#FFFFFF"
+                >
+                  {state.finger}
+                </text>
+              )}
+              <text
+                x={key.x + dims.blackWidth / 2}
+                y={key.y + dims.blackHeight - 11 * scale}
+                textAnchor="middle"
+                fontSize={8 * scale}
+                fontFamily="'DM Sans', sans-serif"
+                fontWeight={700}
+                fill={isActive ? '#FFFFFF' : '#64748B'}
+              >
+                {key.label}
+              </text>
             </g>
           )
         })}

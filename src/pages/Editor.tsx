@@ -58,6 +58,7 @@ import { raiseTabSlursInSvg, shouldHideAlphaTabSvgGroup } from "@/components/mus
 import { generateText } from "@/services/aiService";
 import { generateCoverImageRaw, enhancePromptWithAI, IMAGE_STYLES, fetchImageLibrary, type ImageLibraryItem, type ImageStyle } from "@/services/imageGenerationService";
 import { supabase } from "@/lib/supabase";
+import { editorChordToKeyboardRenderData, keyboardBlockToEditorChord } from "@/lib/keyboardBlockAdapter";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -2263,19 +2264,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   const handleKeyboardGridSave = useCallback((data: PianoChordData) => {
     if (!keyboardGridTargetBlockId) return
-    const newKeyboard = {
-      chord_name: data.name || 'Acorde',
-      keys: data.positions.keys,
-      root: data.positions.root,
-      octave: data.positions.octave,
-      fingering_rh: data.positions.fingering_rh,
-      fingering_lh: data.positions.fingering_lh,
-      type: data.positions.type,
-      quality: data.positions.quality,
-      octave_start: data.positions.octave_start,
-      octave_count: data.positions.octave_count,
-      hand: 'rh',
-    }
+    const newKeyboard = editorChordToKeyboardRenderData(data)
     setBlocksWithHistory(prev => prev.map(b => {
       if (b.id !== keyboardGridTargetBlockId) return b
       const existingKbs = ((b.render_data as any)?.keyboards ?? []) as any[]
@@ -2299,26 +2288,42 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       return
     }
     if (!keyboardEditorBlockId) return
-    const newRenderData = {
-      chord_name: data.name,
-      keys: data.positions.keys,
-      root: data.positions.root,
-      octave: data.positions.octave,
-      fingering_rh: data.positions.fingering_rh,
-      fingering_lh: data.positions.fingering_lh,
-      type: data.positions.type,
-      quality: data.positions.quality,
-      octave_start: data.positions.octave_start,
-      octave_count: data.positions.octave_count,
-      hand: 'rh',
-    }
+    const newKeyboard = editorChordToKeyboardRenderData(data)
+    const blockToUpdate = blocksRef.current.find(b => b.id === keyboardEditorBlockId)
+    const currentRenderData = (blockToUpdate?.render_data as any) ?? {}
+    const newRenderData = Array.isArray(currentRenderData.chords)
+      ? {
+          ...currentRenderData,
+          chords: currentRenderData.chords.map((chord: any, index: number) =>
+            index === 0
+              ? {
+                  ...chord,
+                  name: data.name || chord.name,
+                  keys: newKeyboard.keys,
+                  keys_lh: newKeyboard.keys_lh,
+                  root: newKeyboard.root,
+                  octave: newKeyboard.octave,
+                  fingering_rh: newKeyboard.fingering_rh,
+                  fingering_lh: newKeyboard.fingering_lh,
+                  type: newKeyboard.type,
+                  quality: newKeyboard.quality,
+                  octave_start: newKeyboard.octave_start,
+                  octave_count: newKeyboard.octave_count,
+                  voicing_position: newKeyboard.voicing_position,
+                  hand: newKeyboard.hand,
+                }
+              : chord,
+          ),
+        }
+      : newKeyboard
+    const nextTitle = Array.isArray(currentRenderData.chords) ? blockToUpdate?.title : data.name
     setBlocksWithHistory(prev => prev.map(b =>
-      b.id === keyboardEditorBlockId ? { ...b, title: data.name || b.title, render_data: newRenderData } : b,
+      b.id === keyboardEditorBlockId ? { ...b, title: nextTitle || b.title, render_data: newRenderData } : b,
     ))
     try {
       await updateMaterialBlockRpc({
         blockId: keyboardEditorBlockId,
-        title: data.name,
+        title: nextTitle,
         renderData: newRenderData,
       })
       toast.success('Teclado atualizado no bloco')
@@ -7271,49 +7276,10 @@ ${pagesHtml}
         onOpenChange={(v) => { setKeyboardEditorOpen(v); if (!v) { setKeyboardEditorBlockId(null); setKeyboardGridTargetBlockId(null); setKeyboardGridEditingIndex(null) } }}
         chord={keyboardEditorBlockId ? (() => {
           const block = blocks.find(b => b.id === keyboardEditorBlockId)
-          if (!block?.render_data?.keys) return null
-          const rd = block.render_data as any
-          return {
-            id: block.id,
-            name: rd.chord_name ?? block.title ?? '',
-            instrument: 'piano' as const,
-            positions: {
-              keys: rd.keys ?? [],
-              root: rd.root ?? 'C',
-              octave: rd.octave ?? 4,
-              fingering_rh: rd.fingering_rh ?? [],
-              fingering_lh: rd.fingering_lh ?? [],
-              type: rd.type ?? 'major',
-              quality: rd.quality ?? 'Maior',
-              octave_start: rd.octave_start ?? 3,
-              octave_count: rd.octave_count ?? 2,
-            },
-            difficulty: 1,
-            tags: [],
-          }
+          return keyboardBlockToEditorChord(block)
         })() : keyboardGridTargetBlockId && keyboardGridEditingIndex !== null ? (() => {
           const block = blocks.find(b => b.id === keyboardGridTargetBlockId)
-          const kb = ((block?.render_data as any)?.keyboards ?? [])[keyboardGridEditingIndex]
-          if (!kb) return null
-          return {
-            id: `${keyboardGridTargetBlockId}-${keyboardGridEditingIndex}`,
-            name: kb.chord_name ?? kb.name ?? '',
-            instrument: 'piano' as const,
-            positions: {
-              keys: kb.keys ?? [],
-              root: kb.root ?? 'C',
-              octave: kb.octave ?? 4,
-              fingering_rh: kb.fingering_rh ?? [],
-              fingering_lh: kb.fingering_lh ?? [],
-              type: kb.type ?? 'major',
-              quality: kb.quality ?? 'Maior',
-              octave_start: kb.octave_start ?? 3,
-              octave_count: kb.octave_count ?? 2,
-              voicing_position: kb.voicing_position,
-            },
-            difficulty: 1,
-            tags: [],
-          }
+          return keyboardBlockToEditorChord(block, { keyboardIndex: keyboardGridEditingIndex })
         })() : null}
         onSave={handleKeyboardEditorSave}
       />

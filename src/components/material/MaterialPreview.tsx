@@ -7,6 +7,7 @@ import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
+import { keyboardEntryToDisplayData } from '@/lib/keyboardBlockAdapter'
 import { lookupGuitarChord } from '@/services/chordAutoFillService'
 import {
   notFoundGridChord,
@@ -1079,33 +1080,43 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
 
 function BlockKeyboard({ block }: { block: MaterialBlock }) {
   const rd = getBlockRenderData(block)
-  const keys = (rd.keys as string[]) ?? []
-  const chords = Array.isArray(rd.chords) ? rd.chords as Array<{ name?: string; keys?: string[]; fingering_rh?: number[]; fingering_lh?: number[]; hand?: 'rh' | 'lh' }> : []
-  const fingeringRH = (rd.fingering_rh as number[]) ?? []
-  const fingeringLH = (rd.fingering_lh as number[]) ?? []
-  const hand = (rd.hand as 'rh' | 'lh') ?? 'rh'
   const chordName = (rd.chord_name as string) ?? block.title ?? ''
+  const displayData = keyboardEntryToDisplayData(rd, chordName)
+  const chords = Array.isArray(rd.chords) ? rd.chords as Array<Record<string, unknown>> : []
+  const chordColumns = Math.min(Math.max(chords.length, 1), 2)
 
   if (chords.length > 0) {
     return (
       <div className="mb-4">
         {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
-        <div className="flex flex-wrap gap-4 justify-center">
+        <div
+          className="mx-auto grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${chordColumns}, minmax(0, 1fr))`,
+            width: '100%',
+            maxWidth: 660,
+          }}
+        >
           {chords.map((chord, index) => {
-            const chordKeys = Array.isArray(chord.keys) ? chord.keys : []
-            if (chordKeys.length === 0) return null
+            const chordDisplay = keyboardEntryToDisplayData(chord, chordName)
+            if (!chordDisplay) return null
 
             return (
-              <div key={`${chord.name ?? 'chord'}-${index}`} className="text-center rounded-[var(--radius-sm)] border border-border bg-card/40 p-3">
-                {chord.name && <div className="text-[11px] font-semibold text-text mb-2">{chord.name}</div>}
-                <div className="w-[220px] max-w-full">
+              <div key={`${chordDisplay.name || 'chord'}-${index}`} className="text-center rounded-[var(--radius-sm)] border border-border bg-card/40 p-3">
+                {chordDisplay.name && <div className="text-[11px] font-semibold text-text mb-2">{chordDisplay.name}</div>}
+                <div className="w-full">
                   <PianoKeyboard
-                    keys={chordKeys}
-                    fingeringRH={Array.isArray(chord.fingering_rh) ? chord.fingering_rh : []}
-                    fingeringLH={Array.isArray(chord.fingering_lh) ? chord.fingering_lh : []}
-                    hand={chord.hand ?? 'rh'}
+                    keys={chordDisplay.keys}
+                    keysLh={chordDisplay.keysLh}
+                    root={chordDisplay.root}
+                    rootOctave={chordDisplay.rootOctave}
+                    fingeringRH={chordDisplay.fingeringRH}
+                    fingeringLH={chordDisplay.fingeringLH}
+                    highlights={chordDisplay.highlights}
+                    range={chordDisplay.range}
+                    hand={chordDisplay.hand}
                     showLabels={true}
-                    scale={0.85}
+                    scale={1}
                   />
                 </div>
               </div>
@@ -1116,7 +1127,7 @@ function BlockKeyboard({ block }: { block: MaterialBlock }) {
     )
   }
 
-  if (keys.length === 0) {
+  if (!displayData) {
     return (
       <div className="mb-4 p-6 bg-bg2 border border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
         Teclado vazio — abra o editor para configurar
@@ -1129,10 +1140,15 @@ function BlockKeyboard({ block }: { block: MaterialBlock }) {
       {chordName && <h3 className="font-bold text-[14px] text-text mb-2">{chordName}</h3>}
       <div className="flex justify-center">
         <PianoKeyboard
-          keys={keys}
-          fingeringRH={fingeringRH}
-          fingeringLH={fingeringLH}
-          hand={hand}
+          keys={displayData.keys}
+          keysLh={displayData.keysLh}
+          root={displayData.root}
+          rootOctave={displayData.rootOctave}
+          fingeringRH={displayData.fingeringRH}
+          fingeringLH={displayData.fingeringLH}
+          highlights={displayData.highlights}
+          range={displayData.range}
+          hand={displayData.hand}
           showLabels={true}
           scale={1}
         />
@@ -1147,7 +1163,7 @@ function BlockKeyboardGrid({ block, onKeyboardGridItemClick }: { block: Material
   const rd = getBlockRenderData(block)
   const keyboards = (rd.keyboards as any[]) ?? []
   const configuredColumns = (rd.columns as number) ?? 3
-  const keyboardColumns = Math.min(Math.max(keyboards.length, 1), Math.max(configuredColumns, 1), 4)
+  const keyboardColumns = Math.min(Math.max(keyboards.length, 1), Math.max(configuredColumns, 1), 2)
 
   if (keyboards.length === 0) {
     return (
@@ -1162,30 +1178,41 @@ function BlockKeyboardGrid({ block, onKeyboardGridItemClick }: { block: Material
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
       <div
-        className="mx-auto grid gap-4 justify-center"
+        className="mx-auto grid gap-4"
         style={{
-          gridTemplateColumns: `repeat(${keyboardColumns}, minmax(0, 190px))`,
-          width: 'fit-content',
-          maxWidth: '100%',
+          gridTemplateColumns: `repeat(${keyboardColumns}, minmax(0, 1fr))`,
+          width: '100%',
+          maxWidth: 660,
         }}
       >
         {keyboards.map((kb: any, i: number) => (
-          <button
-            key={i}
-            type="button"
-            className="rounded-[12px] p-1 text-center transition-colors hover:bg-bg2/40"
-            onClick={() => onKeyboardGridItemClick?.(block, kb, i)}
-          >
-            {kb.chord_name && <div className="text-[11px] font-semibold text-text mb-1">{kb.chord_name}</div>}
-            <PianoKeyboard
-              keys={kb.keys ?? []}
-              fingeringRH={kb.fingering_rh ?? []}
-              fingeringLH={kb.fingering_lh ?? []}
-              hand={kb.hand ?? 'rh'}
-              showLabels={true}
-              scale={0.7}
-            />
-          </button>
+          (() => {
+            const display = keyboardEntryToDisplayData(kb, kb.chord_name ?? kb.name ?? '')
+            if (!display) return null
+            return (
+              <button
+                key={i}
+                type="button"
+                className="rounded-[12px] p-1 text-center transition-colors hover:bg-bg2/40"
+                onClick={() => onKeyboardGridItemClick?.(block, kb, i)}
+              >
+                {display.name && <div className="text-[11px] font-semibold text-text mb-1">{display.name}</div>}
+                <PianoKeyboard
+                  keys={display.keys}
+                  keysLh={display.keysLh}
+                  root={display.root}
+                  rootOctave={display.rootOctave}
+                  fingeringRH={display.fingeringRH}
+                  fingeringLH={display.fingeringLH}
+                  highlights={display.highlights}
+                  range={display.range}
+                  hand={display.hand}
+                  showLabels={true}
+                  scale={0.92}
+                />
+              </button>
+            )
+          })()
         ))}
       </div>
     </div>
