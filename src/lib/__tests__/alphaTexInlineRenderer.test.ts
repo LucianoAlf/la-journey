@@ -68,9 +68,11 @@ test('does not hide pick-stroke glyphs while hiding free-mode signature glyphs',
 test('hides path-based free-time parentheses without hiding slurs', () => {
   const leftParen = ' M76.49600000000001,64.41499999999999 C73.796,55.41499999999999,73.796,37.41499999999999,76.49600000000001,28.415 C71.42000000000002,37.41499999999999,71.42000000000002,55.41499999999999,76.49600000000001,64.41499999999999 z'
   const downwardSlur = ' M124.97516363636363,115.47349999999999 C131.90762727272727,123.25807374708694,145.77255454545454,123.25807374708694,152.70501818181816,115.47349999999999 C145.77255454545454,125.39647374708694,131.90762727272727,125.39647374708694,124.97516363636363,115.47349999999999 z'
+  const noteheadLike = ' M20,20 C23,12,35,12,38,20 C35,28,23,28,20,20 z'
 
   assert(isFreeTimeSignaturePathData(leftParen), 'free-time parentheses can be emitted as narrow path glyphs')
   assert(!isFreeTimeSignaturePathData(downwardSlur), 'musical slurs must not be treated as free-time parentheses')
+  assert(!isFreeTimeSignaturePathData(noteheadLike), 'musical noteheads must not be treated as free-time parentheses')
 })
 
 test('compacts free-time signature gap by shifting AlphaTab glyph transforms', () => {

@@ -91,7 +91,7 @@ export function isFreeTimeSignaturePathData(pathData: string | null | undefined)
   const width = Math.max(...xs) - Math.min(...xs)
   const height = Math.max(...ys) - Math.min(...ys)
 
-  return width > 0 && width <= 12 && height >= 20
+  return width > 0 && width <= 8 && height >= 28 && height / width >= 3
 }
 
 function getTranslate(transform: string | null | undefined) {

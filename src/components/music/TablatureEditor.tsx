@@ -771,11 +771,21 @@ export function TablatureEditor({
     setSelectedString(s)
     const val = grid[s]?.[c]
     setFretInput(val !== null ? String(val) : '')
+    const columnHasNotation = grid.some(row => row?.[c] !== null)
+      || (dots[c] ?? 0) > 0
+      || (tuplets[c] ?? 0) > 0
+      || (pickings[c] ?? 'none') !== 'none'
+      || chordNames[c] !== null
+    if (columnHasNotation) {
+      setCurrentDuration(durations[c] ?? 'q')
+      setCurrentDot((dots[c] ?? 0) as DotType)
+      setCurrentTuplet((tuplets[c] ?? 0) as TupletValue)
+    }
     // Focar o hidden input para capturar teclado
     requestAnimationFrame(() => {
       hiddenInputRef.current?.focus()
     })
-  }, [grid])
+  }, [grid, durations, dots, tuplets, pickings, chordNames])
 
   // Duplo clique — remover valor
   const handleCellDoubleClick = useCallback((s: number, c: number) => {
@@ -1597,13 +1607,33 @@ export function TablatureEditor({
                   <Select
                     value={selectValue}
                     onValueChange={(v) => {
+                      let nextDuration: BeatDuration
+                      let nextDot: DotType
                       if (v.includes(':')) {
                         const [dur, dot] = v.split(':')
-                        setCurrentDuration(dur as BeatDuration)
-                        setCurrentDot(parseInt(dot) as DotType)
+                        nextDuration = dur as BeatDuration
+                        nextDot = parseInt(dot) as DotType
                       } else {
-                        setCurrentDuration(v as BeatDuration)
-                        setCurrentDot(0)
+                        nextDuration = v as BeatDuration
+                        nextDot = 0
+                      }
+
+                      setCurrentDuration(nextDuration)
+                      setCurrentDot(nextDot)
+
+                      if (selectedCol !== null) {
+                        setDurations(prev => {
+                          if (prev[selectedCol] === nextDuration) return prev
+                          const next = [...prev]
+                          next[selectedCol] = nextDuration
+                          return next
+                        })
+                        setDots(prev => {
+                          if (prev[selectedCol] === nextDot) return prev
+                          const next = [...prev]
+                          next[selectedCol] = nextDot
+                          return next
+                        })
                       }
                       focusGrid()
                     }}
