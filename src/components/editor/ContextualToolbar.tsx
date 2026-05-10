@@ -5,8 +5,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   BookmarkSimple, Copy, Trash, ArrowUp, ArrowDown, ArrowsOutSimple, PaintBucket, MagicWand,
+  PencilSimple, MusicNotes, Guitar, PianoKeys, Image as ImageIcon, X, ListNumbers,
 } from '@phosphor-icons/react'
 import type { BlockStyle } from '@/lib/blockStyles'
+import { getCanvasToolbarActions, type CanvasToolbarMode, type CanvasToolbarPlacement } from '@/lib/editorCanvasInteraction'
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   text: 'Texto',
@@ -46,7 +48,8 @@ const PADDING_OPTIONS = [
 
 interface ContextualToolbarProps {
   blockType: string
-  position: { top: number; left: number }
+  position: { top: number; left: number; placement?: CanvasToolbarPlacement }
+  mode?: CanvasToolbarMode
   onDuplicate: () => void
   onDelete: () => void
   onMoveUp: () => void
@@ -58,14 +61,24 @@ interface ContextualToolbarProps {
   isAIProcessing?: boolean
   onSaveReusable?: () => void
   saveReusableDisabled?: boolean
+  onEditInline?: () => void
+  onEditNotation?: () => void
+  onEditTablature?: () => void
+  onEditChord?: () => void
+  onEditKeyboard?: () => void
+  onReplaceImage?: () => void
+  onExitEdit?: () => void
 }
 
 export function ContextualToolbar({
   blockType, position, onDuplicate, onDelete, onMoveUp, onMoveDown,
   onStyleChange, isFirst, isLast, onAIRewrite, isAIProcessing,
-  onSaveReusable, saveReusableDisabled = false,
+  onSaveReusable, saveReusableDisabled = false, onEditInline,
+  onEditNotation, onEditTablature, onEditChord, onEditKeyboard, onReplaceImage, onExitEdit,
+  mode = 'selected',
 }: ContextualToolbarProps) {
   const [showBgPicker, setShowBgPicker] = useState(false)
+  const actions = getCanvasToolbarActions(blockType)
 
   // Não mostrar para cover e page_break
   if (['cover', 'page_break'].includes(blockType)) return null
@@ -84,6 +97,7 @@ export function ContextualToolbar({
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      data-testid="contextual-toolbar"
     >
       {/* Badge tipo do bloco */}
       <span className="text-[9px] text-accent bg-accent/10 px-1.5 py-0.5 rounded font-medium uppercase tracking-wider mr-1 whitespace-nowrap">
@@ -92,11 +106,51 @@ export function ContextualToolbar({
 
       <Separator orientation="vertical" className="h-5" />
 
+      {mode === 'editing' && (
+        <>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-accent" onClick={onExitEdit} data-testid="canvas-toolbar-exit-edit">
+                  <X size={14} />
+                  <span className="text-[10px]">Sair</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p>Sair da edicao (Esc)</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {onAIRewrite && (
+            <>
+              <Separator orientation="vertical" className="h-5" />
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-7 w-7 p-0 text-roxo"
+                      onClick={onAIRewrite}
+                      disabled={isAIProcessing}
+                    >
+                      <MagicWand size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>IA</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+        </>
+      )}
+
+      {mode === 'selected' && (
+        <>
+
       {/* Mover ↑ */}
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isFirst} onClick={onMoveUp}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isFirst} onClick={onMoveUp} data-testid="canvas-toolbar-move-up">
               <ArrowUp size={14} />
             </Button>
           </TooltipTrigger>
@@ -108,7 +162,7 @@ export function ContextualToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isLast} onClick={onMoveDown}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isLast} onClick={onMoveDown} data-testid="canvas-toolbar-move-down">
               <ArrowDown size={14} />
             </Button>
           </TooltipTrigger>
@@ -119,6 +173,93 @@ export function ContextualToolbar({
       <Separator orientation="vertical" className="h-5" />
 
       {/* Background rápido */}
+      {actions.includes('edit-inline') && onEditInline && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-accent" onClick={onEditInline} data-testid="canvas-toolbar-edit-inline">
+                <PencilSimple size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p>Editar no canvas (Enter)</p></TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {actions.includes('edit-notation') && onEditNotation && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-master" onClick={onEditNotation} data-testid="canvas-toolbar-edit-notation">
+                <MusicNotes size={14} />
+                <span className="text-[10px]">Editar notação</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p>Editar Notação</p></TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {actions.includes('edit-tablature') && onEditTablature && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-foundation" onClick={onEditTablature} data-testid="canvas-toolbar-edit-tablature">
+                <ListNumbers size={14} />
+                <span className="text-[10px]">Editar tablatura</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p>Editar Tablatura</p></TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {actions.includes('edit-chord') && onEditChord && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-grow" onClick={onEditChord} data-testid="canvas-toolbar-edit-chord">
+                <Guitar size={14} />
+                <span className="text-[10px]">Trocar acorde</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p>Trocar Acorde</p></TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {actions.includes('edit-keyboard') && onEditKeyboard && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-foundation" onClick={onEditKeyboard} data-testid="canvas-toolbar-edit-keyboard">
+                <PianoKeys size={14} />
+                <span className="text-[10px]">Editar teclado</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p>Editar Teclado</p></TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {actions.includes('replace-image') && onReplaceImage && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-accent" onClick={onReplaceImage} data-testid="canvas-toolbar-replace-image">
+                <ImageIcon size={14} />
+                <span className="text-[10px]">Trocar imagem</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom"><p>Trocar Imagem</p></TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {actions.some(action => ['edit-inline', 'edit-notation', 'edit-tablature', 'edit-chord', 'edit-keyboard', 'replace-image'].includes(action)) && (
+        <Separator orientation="vertical" className="h-5" />
+      )}
+
       <Popover open={showBgPicker} onOpenChange={setShowBgPicker}>
         <PopoverTrigger asChild>
           <TooltipProvider delayDuration={300}>
@@ -250,7 +391,7 @@ export function ContextualToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onDuplicate}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onDuplicate} data-testid="canvas-toolbar-duplicate">
               <Copy size={14} />
             </Button>
           </TooltipTrigger>
@@ -262,13 +403,15 @@ export function ContextualToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-text3 hover:text-[var(--vermelho)]" onClick={onDelete}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-text3 hover:text-[var(--vermelho)]" onClick={onDelete} data-testid="canvas-toolbar-delete">
               <Trash size={14} />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom"><p>Excluir (Shift+Del)</p></TooltipContent>
         </Tooltip>
       </TooltipProvider>
+        </>
+      )}
     </div>
   )
 }

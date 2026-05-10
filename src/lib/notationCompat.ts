@@ -103,6 +103,7 @@ export function notationDataToPreviewItem(
     clef: notationData.clef || fallback.clef || 'treble',
     keySignature: notationData.keySignature || fallback.keySignature || 'C',
     timeSignature: notationData.timeSignature ?? fallback.timeSignature ?? null,
+    timeSignatureMode: notationData.time_signature_mode ?? notationData.timeSignatureMode,
     grandStaff: Boolean(notationData.grandStaff),
     bpm: notationData.bpm,
     includeLyrics: false,

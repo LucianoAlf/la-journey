@@ -49,6 +49,7 @@ export interface Beat {
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
   notehead?: 'normal' | 'x'
   barAfter?: boolean
+  pedagogical_separator?: boolean
   stemDirection?: 'up' | 'down'
   cifra: string | null
   cifra_offset?: OffsetXY
@@ -81,6 +82,7 @@ export interface BeatsToAlphaTexOptions {
   clef: string                    // 'treble' | 'bass' | 'alto' | 'percussion'
   keySignature: string            // 'C' | 'G' | 'D' | 'F' | 'Bb' | etc.
   timeSignature: string | null    // '4/4' | '3/4' | null (livre)
+  timeSignatureMode?: 'free' | 'free-with-separators' | 'metered' | 'tablature'
   grandStaff?: boolean            // true = piano (treble + bass)
   octaveOffset?: number           // ajuste fino da oitava ao exportar para AlphaTex
   instrument?: string             // nome General MIDI
@@ -164,11 +166,16 @@ export interface AlphaTexNotesResult {
 
 // ─── Converter array de beats em notas AlphaTex ───
 
-function beatsToAlphaTexNotes(beats: Beat[], octaveOffset = -1): AlphaTexNotesResult {
+function beatsToAlphaTexNotes(
+  beats: Beat[],
+  octaveOffset = -1,
+  options: { includeBarlines?: boolean } = {},
+): AlphaTexNotesResult {
   const parts: string[] = []
   const indexMap: number[] = []  // alphaTabBeatIdx → ourBeatIdx
   let lastDuration = ''
   let activeTupletGroupId: string | null = null
+  const includeBarlines = options.includeBarlines ?? true
 
   for (let i = 0; i < beats.length; i++) {
     const beat = beats[i]
@@ -275,7 +282,7 @@ function beatsToAlphaTexNotes(beats: Beat[], octaveOffset = -1): AlphaTexNotesRe
     indexMap.push(i)
 
     // Barline após o beat (não conta como beat no AlphaTab)
-    if (beat.barAfter) {
+    if (includeBarlines && beat.barAfter) {
       parts.push('|')
     }
   }
@@ -291,6 +298,10 @@ export function beatsToAlphaTex(
 ): string {
   const lines: string[] = []
   const normalizedTimeSignature = normalizeTimeSignature(options.timeSignature)
+  const timeSignatureMode = options.timeSignatureMode ??
+    (normalizedTimeSignature ? 'metered' : 'free')
+  const shouldEmitMeter = timeSignatureMode === 'metered' && Boolean(normalizedTimeSignature)
+  const includeBarlines = timeSignatureMode === 'metered'
 
   // Header global
   if (options.title) lines.push(`\\title "${options.title}"`)
@@ -387,13 +398,13 @@ export function beatsToAlphaTex(
     if (options.keySignature && options.keySignature !== 'C') {
       lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
     }
-    if (normalizedTimeSignature) {
+    if (shouldEmitMeter && normalizedTimeSignature) {
       const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
     }
 
     if (syncedTrebleBeats.length > 0) {
-      lines.push(beatsToAlphaTexNotes(syncedTrebleBeats, options.octaveOffset ?? 0).tex)
+      lines.push(beatsToAlphaTexNotes(syncedTrebleBeats, options.octaveOffset ?? 0, { includeBarlines }).tex)
     } else {
       lines.push(':1 r')
     }
@@ -404,13 +415,13 @@ export function beatsToAlphaTex(
     if (options.keySignature && options.keySignature !== 'C') {
       lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
     }
-    if (normalizedTimeSignature) {
+    if (shouldEmitMeter && normalizedTimeSignature) {
       const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
     }
 
     if (syncedBassBeats.length > 0) {
-      lines.push(beatsToAlphaTexNotes(syncedBassBeats, options.octaveOffset ?? 0).tex)
+      lines.push(beatsToAlphaTexNotes(syncedBassBeats, options.octaveOffset ?? 0, { includeBarlines }).tex)
     } else {
       lines.push(':1 r')
     }
@@ -441,7 +452,7 @@ export function beatsToAlphaTex(
     }
 
     // Fórmula de compasso
-    if (normalizedTimeSignature) {
+    if (shouldEmitMeter && normalizedTimeSignature) {
       const [n, d] = normalizedTimeSignature.split('/')
       lines.push(`\\ts ${n} ${d}`)
     }
@@ -462,7 +473,7 @@ export function beatsToAlphaTex(
     lines.push('.')
 
     // Notas
-    lines.push(beatsToAlphaTexNotes(beats, options.octaveOffset ?? -1).tex)
+    lines.push(beatsToAlphaTexNotes(beats, options.octaveOffset ?? -1, { includeBarlines }).tex)
   }
 
   return lines.join('\n')
@@ -489,6 +500,10 @@ export function beatsToAlphaTexWithMap(
   const lines: string[] = []
   let indexMap: number[] = []
   const normalizedTimeSignature = normalizeTimeSignature(options.timeSignature)
+  const timeSignatureMode = options.timeSignatureMode ??
+    (normalizedTimeSignature ? 'metered' : 'free')
+  const shouldEmitMeter = timeSignatureMode === 'metered' && Boolean(normalizedTimeSignature)
+  const includeBarlines = timeSignatureMode === 'metered'
 
   // Header global
   if (options.title) lines.push(`\\title "${options.title}"`)
@@ -522,7 +537,7 @@ export function beatsToAlphaTexWithMap(
     lines.push(`\\ks ${KEY_SIG_MAP[options.keySignature] || options.keySignature}`)
   }
 
-  if (normalizedTimeSignature) {
+  if (shouldEmitMeter && normalizedTimeSignature) {
     const [n, d] = normalizedTimeSignature.split('/')
     lines.push(`\\ts ${n} ${d}`)
   }
@@ -539,7 +554,7 @@ export function beatsToAlphaTexWithMap(
   lines.push('.')
 
   // Notas com mapa de índice
-  const notesResult = beatsToAlphaTexNotes(beats, options.octaveOffset ?? -1)
+  const notesResult = beatsToAlphaTexNotes(beats, options.octaveOffset ?? -1, { includeBarlines })
   lines.push(notesResult.tex)
   indexMap = notesResult.indexMap
 

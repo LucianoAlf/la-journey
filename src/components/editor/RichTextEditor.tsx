@@ -79,6 +79,7 @@ interface RichTextEditorProps {
   disabled?: boolean
   /** Callback para ações de IA — recebe (textoSelecionado, ação) e retorna texto transformado */
   onAIAction?: (selectedText: string, action: AIActionType) => Promise<string | null>
+  focusOnMountAt?: { x: number; y: number } | null
 }
 
 // ─── Botão da toolbar ─────────────────────────────────────────────
@@ -111,9 +112,10 @@ function ToolbarSep() {
 // ─── Componente principal ─────────────────────────────────────────
 export function RichTextEditor({
   content, onChange, placeholder = 'Digite o conteúdo...', compact = false, inline = false,
-  variant = 'full', className = '', disabled = false, onAIAction,
+  variant = 'full', className = '', disabled = false, onAIAction, focusOnMountAt = null,
 }: RichTextEditorProps) {
   const isInternalUpdate = useRef(false)
+  const didFocusOnMount = useRef(false)
   const [aiMenuOpen, setAiMenuOpen] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
 
@@ -137,6 +139,17 @@ export function RichTextEditor({
     ],
     content,
     editable: !disabled,
+    editorProps: {
+      attributes: {
+        'data-rich-text-editor-content': 'true',
+      },
+      handleKeyDown: (view, event) => {
+        if (event.key !== 'Tab') return false
+        event.preventDefault()
+        view.dispatch(view.state.tr.insertText('    '))
+        return true
+      },
+    },
     onUpdate: ({ editor: ed }) => {
       isInternalUpdate.current = true
       onChange(ed.getHTML())
@@ -160,6 +173,17 @@ export function RichTextEditor({
   useEffect(() => {
     if (editor) editor.setEditable(!disabled)
   }, [disabled, editor])
+
+  useEffect(() => {
+    if (!editor || !inline || disabled || didFocusOnMount.current) return
+    didFocusOnMount.current = true
+    window.requestAnimationFrame(() => {
+      const position = focusOnMountAt
+        ? editor.view.posAtCoords({ left: focusOnMountAt.x, top: focusOnMountAt.y })?.pos
+        : null
+      editor.chain().focus(position ?? 'end').run()
+    })
+  }, [disabled, editor, focusOnMountAt, inline])
 
   const setLink = useCallback(() => {
     if (!editor) return
@@ -211,6 +235,9 @@ export function RichTextEditor({
 
   /** Detecta a fonte ativa no cursor */
   const currentFont = editor?.getAttributes('textStyle')?.fontFamily ?? ''
+  const aiActions = inline
+    ? AI_ACTIONS.filter(action => ['rewrite', 'simplify', 'expand'].includes(action.type))
+    : AI_ACTIONS
 
   if (!editor) return null
 
@@ -416,7 +443,7 @@ export function RichTextEditor({
                 </button>
                 {aiMenuOpen && (
                   <div className="absolute left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-xl p-1 z-50 min-w-[160px]">
-                    {AI_ACTIONS.map(a => (
+                    {aiActions.map(a => (
                       <button
                         key={a.type}
                         type="button"

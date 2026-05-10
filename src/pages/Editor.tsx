@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type WheelEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -41,7 +41,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useMaterials, useMaterialWithBlocks } from "@/hooks/useMaterials";
 import { useSchool } from "@/hooks/useSchool";
-import { useUndoRedo } from "@/hooks/useUndoRedo";
 import {
   updateMaterialBlockRpc, reorderMaterialBlocks, addMaterialBlock,
   deleteMaterialBlock, updateMaterial,
@@ -54,6 +53,7 @@ import { ExerciseLibraryBrowser } from "@/components/content/ExerciseLibraryBrow
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
 import type { ChordPositions } from "@/components/music/ChordDiagram";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
+import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
 import { generateText } from "@/services/aiService";
 import { generateCoverImageRaw, enhancePromptWithAI, IMAGE_STYLES, fetchImageLibrary, type ImageLibraryItem, type ImageStyle } from "@/services/imageGenerationService";
 import { supabase } from "@/lib/supabase";
@@ -74,7 +74,12 @@ import { LayersPanel } from "@/components/editor/LayersPanel";
 import { ContextualToolbar } from "@/components/editor/ContextualToolbar";
 import { AIVariationsDialog } from "@/components/editor/AIVariationsDialog";
 import { CanvasRuler } from "@/components/editor/CanvasRuler";
+import { BlockListSidebar } from "@/components/editor/BlockListSidebar";
+import { EditorCanvas } from "@/components/editor/EditorCanvas";
+import { EditableBlock, type EditableBlockData } from "@/components/editor/EditableBlock";
+import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
+import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
 import { type MaterialTemplate } from "@/lib/materialTemplates";
@@ -94,11 +99,16 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
+type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
   DEFAULT_FLOATING_TEXT, DEFAULT_FLOATING_IMAGE, DEFAULT_SHAPE,
   snapValue as floatingSnapValue,
 } from "@/lib/floatingElements";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
+import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
+import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
+import { canDeleteSelectedBlock, canEnterInlineEdit, getCanvasToolbarMode, getCanvasToolbarPosition, getInlineEditingBlockAfterCanvasBlockClick, isTextInputTarget } from "@/lib/editorCanvasInteraction";
+
+type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
 
 // --- Tipos internos ---
 
@@ -209,6 +219,221 @@ function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+const DEFAULT_TAB_COLUMNS = 24
+
+function createEmptyTablatureData(label = 'Tablatura', instrument: TabInstrument = 'guitar'): TablatureData {
+  const stringCount = TAB_INSTRUMENTS[instrument]?.stringCount ?? TAB_INSTRUMENTS.guitar.stringCount
+  return {
+    instrument,
+    grid: Array.from({ length: stringCount }, () => Array(DEFAULT_TAB_COLUMNS).fill(null)),
+    columns: DEFAULT_TAB_COLUMNS,
+    durations: Array(DEFAULT_TAB_COLUMNS).fill('q'),
+    label,
+    timeSignature: 'free',
+  }
+}
+
+function getDefaultBlockPayload(blockType: string, materialTitle: string): {
+  title: string | null
+  content: Record<string, unknown>
+  renderData: Record<string, unknown> | null
+} {
+  if (blockType === 'cover') {
+    return {
+      title: materialTitle || 'Capa',
+      content: { text: '' },
+      renderData: { template: 'minimal', titulo: materialTitle || '', subtitulo: '', instrumento: '', nivel: '', professor: '', escola: '', data: '' },
+    }
+  }
+  if (blockType === 'chord_grid') return { title: 'Grade de Acordes', content: { text: '' }, renderData: { chords: [], columns: 3 } }
+  if (blockType === 'keyboard') return { title: 'Teclado', content: { text: '' }, renderData: { keys: [], hand: 'rh' } }
+  if (blockType === 'keyboard_grid') return { title: 'Grade de Teclados', content: { text: '' }, renderData: { keyboards: [], columns: 3 } }
+  if (blockType === 'columns') return { title: null, content: { text: '' }, renderData: { columns: [{ blocks: [] }, { blocks: [] }] } }
+  if (blockType === 'tablature') {
+    const notationData = createEmptyTablatureData()
+    return {
+      title: 'Tablatura',
+      content: { text: '' },
+      renderData: {
+        notation_data: notationData,
+        lines: [],
+        tab: '',
+        alphaTex: '',
+        instrument: notationData.instrument,
+      },
+    }
+  }
+  return { title: null, content: { text: '' }, renderData: null }
+}
+
+function insertBlocksAfterOrder(existing: EditorBlock[], newBlocks: EditorBlock[], anchorOrder: number): EditorBlock[] {
+  if (newBlocks.length === 0) return existing
+  const sorted = [...existing].sort((a, b) => a.sort_order - b.sort_order)
+  const before = sorted.filter(block => block.sort_order <= anchorOrder)
+  const after = sorted.filter(block => block.sort_order > anchorOrder)
+  const inserted = newBlocks.map((block, index) => ({
+    ...block,
+    sort_order: anchorOrder + index + 1,
+  }))
+  const shiftedAfter = after.map((block, index) => ({
+    ...block,
+    sort_order: anchorOrder + inserted.length + index + 1,
+  }))
+  return [...before, ...inserted, ...shiftedAfter]
+}
+
+function stableSerialize(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? null)
+  } catch {
+    return String(value ?? '')
+  }
+}
+
+function simpleHash(value: string): string {
+  let hash = 0
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash).toString(36)
+}
+
+const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
+const ACTIVE_PAGE_RADIUS = 2
+const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
+
+const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
+
+function getBlockHeightCacheKey(block: EditorBlock): string {
+  return `${block.id}-${simpleHash(stableSerialize({
+    block_type: block.block_type,
+    title: block.title,
+    content: block.content,
+    render_data: block.render_data,
+  }))}`
+}
+
+function estimateBlockHeight(block: EditorBlock): number {
+  const content = block.content ?? {}
+  const renderData = block.render_data ?? {}
+  const text = [
+    typeof content.text === 'string' ? content.text : '',
+    typeof content.html === 'string' ? content.html : '',
+    typeof content.title_html === 'string' ? content.title_html : '',
+  ].join(' ')
+  const textLines = Math.max(1, Math.ceil(text.replace(/<[^>]+>/g, ' ').length / 95))
+
+  switch (block.block_type) {
+    case 'cover':
+      return A4_CONTENT_HEIGHT
+    case 'title':
+      return 56
+    case 'text':
+      return Math.max(90, Math.min(420, 42 + textLines * 22))
+    case 'tip':
+      return Math.max(86, Math.min(240, 54 + textLines * 18))
+    case 'exercise':
+      return Math.max(130, Math.min(360, 80 + textLines * 20))
+    case 'notation':
+    case 'rhythm':
+    case 'tablature':
+      return 200
+    case 'keyboard':
+      return Array.isArray(renderData.chords) && renderData.chords.length > 0 ? 260 : 160
+    case 'keyboard_grid': {
+      const count = Array.isArray(renderData.keyboards) ? renderData.keyboards.length : 1
+      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
+      return 52 + Math.ceil(count / columns) * 150
+    }
+    case 'chord_grid': {
+      const count = Array.isArray(renderData.chords) ? renderData.chords.length : 1
+      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
+      return 56 + Math.ceil(count / columns) * 190
+    }
+    case 'chord_diagram':
+      return 220
+    case 'image':
+      return 280
+    case 'audio':
+    case 'video':
+      return 150
+    case 'columns':
+      return 220
+    case 'separator':
+      return 28
+    default:
+      return 120
+  }
+}
+
+function getEstimatedBlockHeightForPagination(block: EditorBlock): number {
+  const estimated = estimateBlockHeight(block)
+  if (block.block_type === 'cover') return estimated
+  return Math.round(estimated * 1.42)
+}
+
+function sanitizeMusicSnapshotHtml(html: string): string {
+  return html
+    .replace(/at-surface/g, 'at-surface-snapshot')
+    .replace(/\scontenteditable="[^"]*"/g, '')
+    .replace(/\stabindex="[^"]*"/g, '')
+}
+
+function scheduleEditorIdleCallback(callback: () => void, timeout = 1200): () => void {
+  if (typeof window === 'undefined') return () => {}
+  const win = window as unknown as {
+    requestIdleCallback?: (cb: () => void, options?: { timeout?: number }) => number
+    cancelIdleCallback?: (handle: number) => void
+  }
+
+  if (typeof win.requestIdleCallback === 'function') {
+    const handle = win.requestIdleCallback(callback, { timeout })
+    return () => win.cancelIdleCallback?.(handle)
+  }
+
+  const handle = window.setTimeout(callback, 200)
+  return () => window.clearTimeout(handle)
+}
+
+function isElementComfortablyVisibleInContainer(element: HTMLElement, container: HTMLElement): boolean {
+  const elementRect = element.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  const verticalPadding = 80
+
+  return elementRect.top >= containerRect.top + verticalPadding &&
+    elementRect.bottom <= containerRect.bottom - verticalPadding
+}
+
+function getEditorPerformanceDomMetrics() {
+  if (typeof document === 'undefined') {
+    return {
+      pages: 0,
+      activePages: 0,
+      placeholderPages: 0,
+      canvasBlocks: 0,
+      measurementBlocks: 0,
+      totalBlocksInDom: 0,
+      alphaTabSurfaces: 0,
+      svgCount: 0,
+    }
+  }
+
+  const canvasBlocks = document.querySelectorAll('.canvas-block').length
+  const measurementBlocks = document.querySelectorAll('[data-editor-measurement-block]').length
+  const activePages = document.querySelectorAll('[data-editor-page-active="true"]').length
+  const placeholderPages = document.querySelectorAll('[data-editor-page-active="false"]').length
+  return {
+    pages: document.querySelectorAll('.a4-page').length,
+    activePages,
+    placeholderPages,
+    canvasBlocks,
+    measurementBlocks,
+    totalBlocksInDom: canvasBlocks + measurementBlocks,
+    alphaTabSurfaces: document.querySelectorAll('.at-surface').length,
+    svgCount: document.querySelectorAll('svg').length,
+  }
+}
+
 function editorBlockToExerciseBlock(block: EditorBlock) {
   return {
     block_type: block.block_type,
@@ -221,22 +446,32 @@ function editorBlockToExerciseBlock(block: EditorBlock) {
 
 // --- Componente Sortable para sidebar ---
 
-function SortableBlockItem({
-  block, isSelected, onSelect, onDelete, onDuplicate,
+const SortableBlockItem = memo(function SortableBlockItem({
+  block, isSelected, onSelectBlock, onDeleteBlock, onDuplicateBlock,
 }: {
-  block: EditorBlock; isSelected: boolean; onSelect: () => void; onDelete: () => void; onDuplicate: () => void
+  block: EditorBlock
+  isSelected: boolean
+  onSelectBlock: (id: string) => void
+  onDeleteBlock: (id: string) => void
+  onDuplicateBlock: (id: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
   const cfg = getBlockConfig(block.block_type)
   const Icon = cfg.icon
+  const handleSelect = useCallback(() => onSelectBlock(block.id), [block.id, onSelectBlock])
+  const handleDuplicate = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onDuplicateBlock(block.id)
+  }, [block.id, onDuplicateBlock])
+  const handleDelete = useCallback(() => onDeleteBlock(block.id), [block.id, onDeleteBlock])
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`block-item ${isSelected ? 'selected' : ''}`}
-      onClick={onSelect}
+      onClick={handleSelect}
     >
       <div className="drag-handle" {...attributes} {...listeners}>
         <DotsSixVertical size={14} />
@@ -254,7 +489,7 @@ function SortableBlockItem({
         {block.is_edited && (
           <span className="text-[9px] text-dourado font-bold mr-1">editado</span>
         )}
-        <button onClick={e => { e.stopPropagation(); onDuplicate() }} title="Duplicar bloco" className="hover:text-accent transition-colors">
+        <button onClick={handleDuplicate} title="Duplicar bloco" className="hover:text-accent transition-colors">
           <Copy size={12} />
         </button>
         <AlertDialog>
@@ -272,7 +507,7 @@ function SortableBlockItem({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete} className="bg-vermelho hover:bg-vermelho/80">
+              <AlertDialogAction onClick={handleDelete} className="bg-vermelho hover:bg-vermelho/80">
                 Remover
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -281,6 +516,835 @@ function SortableBlockItem({
       </div>
     </div>
   )
+})
+
+function useEditorAutosave({
+  blocksRef,
+  initialLoadDone,
+}: {
+  blocksRef: React.MutableRefObject<EditorBlock[]>
+  initialLoadDone: React.MutableRefObject<boolean>
+}) {
+  const [, setHasUnsavedChanges] = useState(false)
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedBlockRef = useRef<string | null>(null)
+  const savedBlockHashRef = useRef<Record<string, string>>({})
+  const [dirtySignal, setDirtySignal] = useState<{ blockId: string; token: number } | null>(null)
+
+  const resetAutosaveBaseline = useCallback((blocks: EditorBlock[]) => {
+    const next: Record<string, string> = {}
+    for (const block of blocks) {
+      if (!block.id.startsWith('temp_')) {
+        next[block.id] = getBlockHeightCacheKey(block)
+      }
+    }
+    savedBlockHashRef.current = next
+    setAutoSaveStatus('saved')
+    setHasUnsavedChanges(false)
+  }, [])
+
+  const queueBlockAutosave = useCallback((blockId: string) => {
+    if (!initialLoadDone.current || blockId.startsWith('temp_')) return
+    setDirtySignal({ blockId, token: performance.now() })
+  }, [initialLoadDone])
+
+  useEffect(() => {
+    if (!initialLoadDone.current || !dirtySignal) return
+    const { blockId } = dirtySignal
+    const block = blocksRef.current.find(b => b.id === blockId)
+    if (!block || block.id.startsWith('temp_')) return
+    const blockHash = getBlockHeightCacheKey(block)
+    if (savedBlockHashRef.current[block.id] === blockHash) return
+
+    setAutoSaveStatus('unsaved')
+    setHasUnsavedChanges(true)
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const current = blocksRef.current.find(b => b.id === blockId)
+      if (!current || current.id.startsWith('temp_')) return
+      const currentHash = getBlockHeightCacheKey(current)
+      if (savedBlockHashRef.current[current.id] === currentHash) return
+      setAutoSaveStatus('saving')
+      const saveStartedAt = import.meta.env.DEV ? performance.now() : 0
+      try {
+        await updateMaterialBlockRpc({
+          blockId: current.id,
+          title: current.title,
+          content: current.content,
+          renderData: current.render_data,
+        })
+        if (import.meta.env.DEV) {
+          console.info('[EditorPerf] autosave ' + JSON.stringify({
+            blockId: current.id,
+            blockType: current.block_type,
+            title: current.title,
+            durationMs: Math.round((performance.now() - saveStartedAt) * 10) / 10,
+            ...getEditorPerformanceDomMetrics(),
+          }))
+        }
+        lastSavedBlockRef.current = current.id
+        savedBlockHashRef.current[current.id] = currentHash
+        setAutoSaveStatus('saved')
+        setHasUnsavedChanges(false)
+      } catch (e: any) {
+        setAutoSaveStatus('unsaved')
+        toast.error('Erro no autosave: ' + (e?.message ?? ''))
+      }
+    }, 800)
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [blocksRef, dirtySignal, initialLoadDone])
+
+  return {
+    autoSaveStatus,
+    queueBlockAutosave,
+    resetAutosaveBaseline,
+  }
+}
+
+function useEditorPagination({
+  blocks,
+  blocksRef,
+  canvasScrollRef,
+  musicRendererSnapshotCacheRef,
+  selectedBlockId,
+}: {
+  blocks: EditorBlock[]
+  blocksRef: React.MutableRefObject<EditorBlock[]>
+  canvasScrollRef: React.RefObject<HTMLDivElement | null>
+  musicRendererSnapshotCacheRef: React.MutableRefObject<Map<string, MusicSnapshotCacheEntry>>
+  selectedBlockId: string | null
+}) {
+  const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
+  const blockHeightCacheRef = useRef<Map<string, number>>(new Map())
+  const blockHeightKeyByIdRef = useRef<Record<string, string>>({})
+  const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
+  const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
+
+  useEffect(() => {
+    const keysById: Record<string, string> = {}
+    const estimatedHeights: Record<string, number> = {}
+
+    for (const block of blocks) {
+      if (block.block_type === 'page_break') continue
+      const key = getBlockHeightCacheKey(block)
+      keysById[block.id] = key
+      estimatedHeights[block.id] = blockHeightCacheRef.current.get(key) ?? getEstimatedBlockHeightForPagination(block)
+    }
+    blockHeightKeyByIdRef.current = keysById
+
+    setBlockHeights(prev => {
+      const same = Object.keys(estimatedHeights).length === Object.keys(prev).length &&
+        Object.entries(estimatedHeights).every(([id, height]) => Math.abs((prev[id] ?? 0) - height) < 2)
+      return same ? prev : estimatedHeights
+    })
+  }, [blocks])
+
+  const pages = useMemo(() => {
+    const result: EditorBlock[][] = [[]]
+    let currentHeight = 0
+
+    for (const block of blocks) {
+      if (block.block_type === 'page_break') {
+        result.push([])
+        currentHeight = 0
+        continue
+      }
+
+      if (block.block_type === 'cover') {
+        if (result[result.length - 1].length > 0) result.push([])
+        result[result.length - 1].push(block)
+        result.push([])
+        currentHeight = 0
+        continue
+      }
+
+      const h = blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
+      if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
+        result.push([])
+        currentHeight = 0
+      }
+
+      result[result.length - 1].push(block)
+      currentHeight += h
+    }
+
+    return result
+  }, [blocks, blockHeights])
+
+  const pageIndexByBlockId = useMemo(() => {
+    const indexById: Record<string, number> = {}
+    pages.forEach((pageBlocks, pageIdx) => {
+      pageBlocks.forEach(block => {
+        indexById[block.id] = pageIdx
+      })
+    })
+    return indexById
+  }, [pages])
+
+  const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
+  const activePageIndexes = useMemo(() => {
+    if (forceAllPagesActive) {
+      return new Set(pages.map((_, idx) => idx))
+    }
+
+    const active = new Set<number>()
+    const addWindow = (center: number | undefined) => {
+      if (typeof center !== 'number' || Number.isNaN(center)) return
+      for (let idx = center - ACTIVE_PAGE_RADIUS; idx <= center + ACTIVE_PAGE_RADIUS; idx += 1) {
+        if (idx >= 0 && idx < pages.length) active.add(idx)
+      }
+    }
+
+    addWindow(currentVisiblePage)
+    if (typeof selectedPageIndex === 'number' && selectedPageIndex >= 0 && selectedPageIndex < pages.length) {
+      active.add(selectedPageIndex)
+    }
+
+    if (active.size === 0 && pages.length > 0) addWindow(0)
+    return active
+  }, [currentVisiblePage, forceAllPagesActive, pages, selectedPageIndex])
+
+  useEffect(() => {
+    const canvas = canvasScrollRef.current
+    if (!canvas || blocks.length === 0) return
+
+    const timer = window.setTimeout(() => {
+      const measured: Record<string, number> = {}
+      const children = canvas.querySelectorAll<HTMLElement>('.canvas-block[data-block-id]')
+
+      children.forEach(el => {
+        const id = el.getAttribute('data-block-id')
+        if (!id) return
+        const key = blockHeightKeyByIdRef.current[id]
+        if (!key) return
+        const height = el.offsetHeight
+        if (height <= 0) return
+        blockHeightCacheRef.current.set(key, height)
+        measured[id] = height
+
+        const block = blocksRef.current.find(item => item.id === id)
+        if (block && (MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || blockUsesAlphaTab(block))) {
+          const html = sanitizeMusicSnapshotHtml(el.innerHTML)
+          if (isUsableMusicSnapshotHtml(html, block)) {
+            musicRendererSnapshotCacheRef.current.set(id, {
+              hash: key,
+              html,
+              height,
+            })
+          }
+        }
+      })
+
+      setBlockHeights(prev => {
+        if (Object.keys(measured).length === 0) return prev
+        let changed = false
+        const next = { ...prev }
+        for (const [id, height] of Object.entries(measured)) {
+          if (Math.abs((prev[id] ?? 0) - height) >= 2) {
+            next[id] = height
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 150)
+
+    return () => window.clearTimeout(timer)
+  }, [blocks, blocksRef, canvasScrollRef, musicRendererSnapshotCacheRef, pages.length])
+
+  return {
+    activePageIndexes,
+    currentVisiblePage,
+    forceAllPagesActive,
+    pageIndexByBlockId,
+    pages,
+    setCurrentVisiblePage,
+    setForceAllPagesActive,
+  }
+}
+
+interface CanvasMaterialPreviewProps {
+  block: EditorBlock
+  coverTitleEditing: boolean
+  musicRendererSnapshotCacheRef?: React.MutableRefObject<Map<string, MusicSnapshotCacheEntry>>
+  canHydrateMusicRenderer?: boolean
+  overlayElements?: CoverOverlayElement[]
+  selectedOverlayId?: string | null
+  onOverlaySelect?: (id: string | null) => void
+  onOverlayUpdate?: (id: string, patch: Partial<CoverOverlayElement>) => void
+  textElements?: CoverTextElement[]
+  selectedTextId?: string | null
+  editingTextId?: string | null
+  onTextSelect?: (id: string | null) => void
+  onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
+  onTextEditStart?: (id: string | null) => void
+  onLegacyNotationStavePointerDown: (blockId: string, staveIndex: number) => void
+  onChordGridItemClick: (blockId: string, chord: any, index: number) => void
+  onKeyboardGridItemClick: (blockId: string, keyboard: any, index: number) => void
+  onCoverPositionChange: (blockId: string, field: string, pos: { x: number; y: number }) => void
+  onCoverTitleChange: (value: string) => void
+}
+
+const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
+  block,
+  coverTitleEditing,
+  musicRendererSnapshotCacheRef,
+  canHydrateMusicRenderer = true,
+  overlayElements,
+  selectedOverlayId,
+  onOverlaySelect,
+  onOverlayUpdate,
+  textElements,
+  selectedTextId,
+  editingTextId,
+  onTextSelect,
+  onTextUpdate,
+  onTextEditStart,
+  onLegacyNotationStavePointerDown,
+  onChordGridItemClick,
+  onKeyboardGridItemClick,
+  onCoverPositionChange,
+  onCoverTitleChange,
+}: CanvasMaterialPreviewProps) {
+  const realRendererRef = useRef<HTMLDivElement | null>(null)
+  const previewBlock = useMemo(() => editorBlockToPreview(block), [block])
+  const previewBlocks = useMemo(() => [previewBlock], [previewBlock])
+  const snapshotKey = useMemo(() => getBlockHeightCacheKey(block), [block])
+  const isAlphaTabRendererBlock = blockUsesAlphaTab(block)
+  const isMusicRendererBlock = MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || isAlphaTabRendererBlock
+  const cachedSnapshot = isMusicRendererBlock ? musicRendererSnapshotCacheRef?.current.get(block.id) : undefined
+  const validSnapshot = cachedSnapshot?.hash === snapshotKey ? cachedSnapshot : null
+  const [mountRealRenderer, setMountRealRenderer] = useState(() => !validSnapshot)
+  const [showSnapshot, setShowSnapshot] = useState(() => Boolean(validSnapshot))
+
+  const captureMusicSnapshot = useCallback((htmlOverride?: string) => {
+    if (!isMusicRendererBlock || !musicRendererSnapshotCacheRef) return
+    const el = realRendererRef.current
+    const rawHtml = htmlOverride ?? el?.innerHTML
+    if (!rawHtml || rawHtml.trim().length === 0) return
+    const html = sanitizeMusicSnapshotHtml(rawHtml)
+    if (!isUsableMusicSnapshotHtml(html, block)) return
+    musicRendererSnapshotCacheRef.current.set(block.id, {
+      hash: snapshotKey,
+      html,
+      height: el?.offsetHeight || validSnapshot?.height || getEstimatedBlockHeightForPagination(block),
+    })
+    setShowSnapshot(false)
+    if (import.meta.env.DEV) {
+      console.info('[EditorPerf] musicSnapshot ' + JSON.stringify({
+        action: 'capture',
+        blockId: block.id,
+        blockType: block.block_type,
+        htmlLength: html.length,
+      }))
+    }
+  }, [block, block.id, isMusicRendererBlock, musicRendererSnapshotCacheRef, snapshotKey, validSnapshot?.height])
+
+  useEffect(() => {
+    if (!isMusicRendererBlock) {
+      setMountRealRenderer(true)
+      setShowSnapshot(false)
+      return
+    }
+
+    const snapshot = musicRendererSnapshotCacheRef?.current.get(block.id)
+    const hasSnapshot = snapshot?.hash === snapshotKey
+    if (import.meta.env.DEV && hasSnapshot) {
+      console.info('[EditorPerf] musicSnapshot ' + JSON.stringify({
+        action: 'use',
+        blockId: block.id,
+        blockType: block.block_type,
+        htmlLength: snapshot.html.length,
+      }))
+    }
+    setShowSnapshot(Boolean(hasSnapshot))
+    setMountRealRenderer(shouldMountMusicRenderer({
+      hasValidSnapshot: Boolean(hasSnapshot),
+      canHydrateMusicRenderer,
+    }))
+
+    if (!hasSnapshot || !canHydrateMusicRenderer) return
+
+    const hydrationTimer = window.setTimeout(() => setMountRealRenderer(true), isAlphaTabRendererBlock ? 80 : 700)
+    return () => window.clearTimeout(hydrationTimer)
+  }, [block.id, canHydrateMusicRenderer, isAlphaTabRendererBlock, isMusicRendererBlock, musicRendererSnapshotCacheRef, snapshotKey])
+
+  useEffect(() => {
+    if (!mountRealRenderer || !isMusicRendererBlock || isAlphaTabRendererBlock) return
+    let frameOne = 0
+    let frameTwo = 0
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => captureMusicSnapshot())
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameOne)
+      window.cancelAnimationFrame(frameTwo)
+    }
+  }, [captureMusicSnapshot, isAlphaTabRendererBlock, isMusicRendererBlock, mountRealRenderer])
+
+  const handleMusicStableRender = useCallback(
+    (_previewBlock: MaterialBlock, html: string) => captureMusicSnapshot(html),
+    [captureMusicSnapshot],
+  )
+
+  useLayoutEffect(() => () => captureMusicSnapshot(), [captureMusicSnapshot])
+
+  const handleLegacyNotationStavePointerDown = useCallback(
+    (staveIndex: number) => onLegacyNotationStavePointerDown(block.id, staveIndex),
+    [block.id, onLegacyNotationStavePointerDown],
+  )
+  const handleChordGridItemClick = useCallback(
+    (_previewBlock: MaterialBlock, chord: any, index: number) => onChordGridItemClick(block.id, chord, index),
+    [block.id, onChordGridItemClick],
+  )
+  const handleKeyboardGridItemClick = useCallback(
+    (_previewBlock: MaterialBlock, keyboard: any, index: number) => onKeyboardGridItemClick(block.id, keyboard, index),
+    [block.id, onKeyboardGridItemClick],
+  )
+  const handleCoverPositionChange = useCallback(
+    (field: string, pos: { x: number; y: number }) => onCoverPositionChange(block.id, field, pos),
+    [block.id, onCoverPositionChange],
+  )
+
+  const preview = (
+    <MaterialPreview
+      blocks={previewBlocks}
+      onLegacyNotationStavePointerDown={handleLegacyNotationStavePointerDown}
+      onMusicStableRender={handleMusicStableRender}
+      onChordGridItemClick={handleChordGridItemClick}
+      onKeyboardGridItemClick={handleKeyboardGridItemClick}
+      coverEditable={block.block_type === 'cover'}
+      onCoverPositionChange={block.block_type === 'cover' ? handleCoverPositionChange : undefined}
+      coverTitleEditing={block.block_type === 'cover' && coverTitleEditing}
+      onCoverTitleChange={block.block_type === 'cover' ? onCoverTitleChange : undefined}
+      overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
+      selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
+      onOverlaySelect={block.block_type === 'cover' ? onOverlaySelect : undefined}
+      onOverlayUpdate={block.block_type === 'cover' ? onOverlayUpdate : undefined}
+      textElements={block.block_type === 'cover' ? textElements : undefined}
+      selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
+      editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
+      onTextSelect={block.block_type === 'cover' ? onTextSelect : undefined}
+      onTextUpdate={block.block_type === 'cover' ? onTextUpdate : undefined}
+      onTextEditStart={block.block_type === 'cover' ? onTextEditStart : undefined}
+    />
+  )
+
+  if (!isMusicRendererBlock) {
+    return preview
+  }
+
+  return (
+    <div className="relative" data-editor-music-preview={block.id}>
+      {showSnapshot && validSnapshot && (
+        <div
+          data-editor-music-snapshot={block.id}
+          className="canvas-block-snapshot pointer-events-none"
+          style={{ minHeight: `${validSnapshot.height}px` }}
+          dangerouslySetInnerHTML={{ __html: validSnapshot.html }}
+        />
+      )}
+      {!showSnapshot && !mountRealRenderer && (
+        <div
+          data-editor-music-placeholder={block.id}
+          className="canvas-block-snapshot pointer-events-none"
+          style={{ minHeight: `${validSnapshot?.height ?? getEstimatedBlockHeightForPagination(block)}px` }}
+        />
+      )}
+      {mountRealRenderer && (
+        <div
+          ref={realRendererRef}
+          style={showSnapshot ? { position: 'absolute', inset: 0, visibility: 'hidden', pointerEvents: 'none' } : undefined}
+          aria-hidden={showSnapshot ? true : undefined}
+        >
+          {preview}
+        </div>
+      )}
+    </div>
+  )
+}, (prev, next) => {
+  if (prev.block !== next.block) return false
+
+  const isCover = prev.block.block_type === 'cover'
+  if (!isCover) {
+    return (
+      prev.onLegacyNotationStavePointerDown === next.onLegacyNotationStavePointerDown &&
+      prev.onChordGridItemClick === next.onChordGridItemClick &&
+      prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
+      prev.onCoverPositionChange === next.onCoverPositionChange &&
+      prev.onCoverTitleChange === next.onCoverTitleChange &&
+      prev.musicRendererSnapshotCacheRef === next.musicRendererSnapshotCacheRef &&
+      prev.canHydrateMusicRenderer === next.canHydrateMusicRenderer
+    )
+  }
+
+  return (
+    prev.coverTitleEditing === next.coverTitleEditing &&
+    prev.overlayElements === next.overlayElements &&
+    prev.selectedOverlayId === next.selectedOverlayId &&
+    prev.onOverlaySelect === next.onOverlaySelect &&
+    prev.onOverlayUpdate === next.onOverlayUpdate &&
+    prev.textElements === next.textElements &&
+    prev.selectedTextId === next.selectedTextId &&
+    prev.editingTextId === next.editingTextId &&
+    prev.onTextSelect === next.onTextSelect &&
+    prev.onTextUpdate === next.onTextUpdate &&
+    prev.onTextEditStart === next.onTextEditStart &&
+    prev.onLegacyNotationStavePointerDown === next.onLegacyNotationStavePointerDown &&
+    prev.onChordGridItemClick === next.onChordGridItemClick &&
+    prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
+    prev.onCoverPositionChange === next.onCoverPositionChange &&
+    prev.onCoverTitleChange === next.onCoverTitleChange &&
+    prev.musicRendererSnapshotCacheRef === next.musicRendererSnapshotCacheRef &&
+    prev.canHydrateMusicRenderer === next.canHydrateMusicRenderer
+  )
+})
+
+function MusicSnapshotPreheater({
+  blocks,
+  enabled,
+  musicRendererSnapshotCacheRef,
+}: {
+  blocks: EditorBlock[]
+  enabled: boolean
+  musicRendererSnapshotCacheRef: React.MutableRefObject<Map<string, MusicSnapshotCacheEntry>>
+}) {
+  const [currentBlock, setCurrentBlock] = useState<EditorBlock | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const queueRef = useRef<EditorBlock[]>([])
+  const runningRef = useRef(false)
+  const cancelIdleRef = useRef<(() => void) | null>(null)
+  const lastInteractionRef = useRef(typeof performance === 'undefined' ? 0 : performance.now())
+
+  const scheduleNext = useCallback(() => {
+    cancelIdleRef.current?.()
+    cancelIdleRef.current = scheduleEditorIdleCallback(() => {
+      if (!enabled || runningRef.current) return
+      if (performance.now() - lastInteractionRef.current < EDITOR_INTERACTION_PREHEAT_PAUSE_MS) {
+        scheduleNext()
+        return
+      }
+
+      while (queueRef.current.length > 0) {
+        const next = queueRef.current.shift()!
+        const key = getBlockHeightCacheKey(next)
+        const cached = musicRendererSnapshotCacheRef.current.get(next.id)
+        if (cached?.hash === key && cached.html.trim().length > 0) continue
+
+        runningRef.current = true
+        setCurrentBlock(next)
+        return
+      }
+
+      setCurrentBlock(null)
+    }, 300)
+  }, [enabled, musicRendererSnapshotCacheRef])
+
+  useEffect(() => {
+    const markInteraction = () => {
+      lastInteractionRef.current = performance.now()
+      cancelIdleRef.current?.()
+      if (runningRef.current) {
+        runningRef.current = false
+        setCurrentBlock(null)
+      }
+      window.setTimeout(scheduleNext, EDITOR_INTERACTION_PREHEAT_PAUSE_MS)
+    }
+    window.addEventListener('pointerdown', markInteraction, true)
+    window.addEventListener('keydown', markInteraction, true)
+    window.addEventListener('wheel', markInteraction, true)
+    return () => {
+      window.removeEventListener('pointerdown', markInteraction, true)
+      window.removeEventListener('keydown', markInteraction, true)
+      window.removeEventListener('wheel', markInteraction, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!enabled || blocks.length === 0) {
+      queueRef.current = []
+      runningRef.current = false
+      setCurrentBlock(null)
+      cancelIdleRef.current?.()
+      return
+    }
+
+    queueRef.current = blocks.filter(block => {
+      if (!MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) && !blockUsesAlphaTab(block)) return false
+      const key = getBlockHeightCacheKey(block)
+      const cached = musicRendererSnapshotCacheRef.current.get(block.id)
+      return cached?.hash !== key || cached.html.trim().length === 0
+    })
+
+    scheduleNext()
+
+    return () => {
+      cancelIdleRef.current?.()
+    }
+  }, [blocks, enabled, musicRendererSnapshotCacheRef, scheduleNext])
+
+  const finishPreheat = useCallback(() => {
+    runningRef.current = false
+    setCurrentBlock(null)
+    scheduleEditorIdleCallback(scheduleNext, 1500)
+  }, [scheduleNext])
+
+  const storePreheatedSnapshot = useCallback((block: EditorBlock, rawHtml: string) => {
+    const el = containerRef.current
+    const snapshotHtml = sanitizeMusicSnapshotHtml(rawHtml)
+    if (!isUsableMusicSnapshotHtml(snapshotHtml, block)) {
+      queueRef.current.push(block)
+      finishPreheat()
+      return
+    }
+
+    musicRendererSnapshotCacheRef.current.set(block.id, {
+      hash: getBlockHeightCacheKey(block),
+      html: snapshotHtml,
+      height: el?.offsetHeight || getEstimatedBlockHeightForPagination(block),
+    })
+
+    if (import.meta.env.DEV) {
+      console.info('[EditorPerf] musicSnapshot ' + JSON.stringify({
+        action: 'preheat',
+        blockId: block.id,
+        blockType: block.block_type,
+        htmlLength: snapshotHtml.length,
+      }))
+    }
+
+    finishPreheat()
+  }, [finishPreheat, musicRendererSnapshotCacheRef])
+
+  const handlePreheaterStableRender = useCallback((_previewBlock: MaterialBlock, html: string) => {
+    if (!currentBlock) return
+    storePreheatedSnapshot(currentBlock, html)
+  }, [currentBlock, storePreheatedSnapshot])
+
+  useEffect(() => {
+    if (!currentBlock || blockUsesAlphaTab(currentBlock)) return
+    let frameOne = 0
+    let frameTwo = 0
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        const html = containerRef.current?.innerHTML
+        if (!html) {
+          queueRef.current.push(currentBlock)
+          finishPreheat()
+          return
+        }
+        storePreheatedSnapshot(currentBlock, html)
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameOne)
+      window.cancelAnimationFrame(frameTwo)
+    }
+  }, [currentBlock, finishPreheat, storePreheatedSnapshot])
+
+  const previewBlocks = useMemo(
+    () => currentBlock ? [editorBlockToPreview(currentBlock)] : [],
+    [currentBlock],
+  )
+
+  if (!currentBlock) return null
+
+  return (
+    <div
+      ref={containerRef}
+      data-editor-snapshot-preheater={currentBlock.id}
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        left: '0px',
+        top: '0px',
+        zIndex: -1,
+        width: '746px',
+        minHeight: '120px',
+        opacity: 0,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+      }}
+    >
+      <MaterialPreview blocks={previewBlocks} onMusicStableRender={handlePreheaterStableRender} />
+    </div>
+  )
+}
+
+function useEditorBlocks() {
+  const [blocks, setBlocks] = useState<EditorBlock[]>([])
+  const blocksRef = useRef<EditorBlock[]>([])
+  blocksRef.current = blocks
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const undoStack = useRef<Array<{
+    patches: EditorBlockPatch<EditorBlock>[]
+    beforeOrder: string[]
+    afterOrder: string[]
+  }>>([])
+  const redoStack = useRef<Array<{
+    patches: EditorBlockPatch<EditorBlock>[]
+    beforeOrder: string[]
+    afterOrder: string[]
+  }>>([])
+  const pendingBeforeBlocksRef = useRef<EditorBlock[] | null>(null)
+  const [, setHistoryVersion] = useState(0)
+
+  const createHistoryEntry = useCallback((before: EditorBlock[], after: EditorBlock[]) => {
+    const beforeMap = new Map(before.map(block => [block.id, block]))
+    const afterMap = new Map(after.map(block => [block.id, block]))
+    const patches: EditorBlockPatch<EditorBlock>[] = []
+
+    for (const block of before) {
+      const nextBlock = afterMap.get(block.id)
+      if (!nextBlock) {
+        patches.push(createBlockPatch(block.id, block, null))
+        continue
+      }
+      if (block !== nextBlock && stableSerialize(block) !== stableSerialize(nextBlock)) {
+        patches.push(createBlockPatch(block.id, block, nextBlock))
+      }
+    }
+
+    for (const block of after) {
+      if (!beforeMap.has(block.id)) {
+        patches.push(createBlockPatch(block.id, null, block))
+      }
+    }
+
+    const beforeOrder = before.map(block => block.id)
+    const afterOrder = after.map(block => block.id)
+    const orderChanged = beforeOrder.length !== afterOrder.length ||
+      beforeOrder.some((id, index) => afterOrder[index] !== id)
+
+    if (patches.length === 0 && !orderChanged) return null
+    return { patches, beforeOrder, afterOrder }
+  }, [])
+
+  const pushHistoryEntry = useCallback((entry: ReturnType<typeof createHistoryEntry>) => {
+    if (!entry) return
+    undoStack.current = [...undoStack.current.slice(-29), entry]
+    redoStack.current = []
+    setHistoryVersion(v => v + 1)
+  }, [])
+
+  const applyOrder = useCallback((items: EditorBlock[], order: string[]) => {
+    const byId = new Map(items.map(block => [block.id, block]))
+    const ordered = order
+      .map(id => byId.get(id))
+      .filter((block): block is EditorBlock => Boolean(block))
+    const orderedIds = new Set(ordered.map(block => block.id))
+    const remaining = items.filter(block => !orderedIds.has(block.id))
+    return [...ordered, ...remaining]
+  }, [])
+
+  const applyHistoryEntry = useCallback((
+    current: EditorBlock[],
+    entry: NonNullable<ReturnType<typeof createHistoryEntry>>,
+    direction: 'forward' | 'backward',
+  ) => {
+    const patches = direction === 'forward' ? entry.patches : [...entry.patches].reverse()
+    const patched = patches.reduce(
+      (nextBlocks, patch) => applyBlockPatch(nextBlocks, patch, direction),
+      current,
+    )
+    return applyOrder(patched, direction === 'forward' ? entry.afterOrder : entry.beforeOrder)
+  }, [applyOrder, createHistoryEntry])
+
+  const setBlocksWithHistory = useCallback((updater: EditorBlock[] | ((prev: EditorBlock[]) => EditorBlock[])) => {
+    setBlocks(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      pushHistoryEntry(createHistoryEntry(prev, next))
+      return next
+    })
+  }, [createHistoryEntry, pushHistoryEntry])
+
+  const setBlockWithHistory = useCallback((
+    blockId: string,
+    updater: (block: EditorBlock) => EditorBlock,
+  ) => {
+    setBlocks(prev => {
+      const before = prev.find(block => block.id === blockId)
+      if (!before) return prev
+      const after = updater(before)
+      if (before === after || stableSerialize(before) === stableSerialize(after)) return prev
+      pushHistoryEntry({
+        patches: [createBlockPatch(blockId, before, after)],
+        beforeOrder: prev.map(block => block.id),
+        afterOrder: prev.map(block => block.id),
+      })
+      return prev.map(block => block.id === blockId ? after : block)
+    })
+  }, [pushHistoryEntry])
+
+  const pushSnapshot = useCallback((snapshot: EditorBlock[]) => {
+    pendingBeforeBlocksRef.current = snapshot
+  }, [])
+
+  useEffect(() => {
+    const before = pendingBeforeBlocksRef.current
+    if (!before || before === blocks) return
+    pendingBeforeBlocksRef.current = null
+    pushHistoryEntry(createHistoryEntry(before, blocks))
+  }, [blocks, createHistoryEntry, pushHistoryEntry])
+
+  const handleUndo = useCallback(() => {
+    const entry = undoStack.current.pop()
+    if (entry) {
+      redoStack.current.push(entry)
+      setBlocks(prev => applyHistoryEntry(prev, entry, 'backward'))
+      setHistoryVersion(v => v + 1)
+      toast.info('Desfazer', { duration: 1500 })
+    }
+  }, [applyHistoryEntry])
+
+  const handleRedo = useCallback(() => {
+    const entry = redoStack.current.pop()
+    if (entry) {
+      undoStack.current.push(entry)
+      setBlocks(prev => applyHistoryEntry(prev, entry, 'forward'))
+      setHistoryVersion(v => v + 1)
+      toast.info('Refazer', { duration: 1500 })
+    }
+  }, [applyHistoryEntry])
+
+  const canUndo = useCallback(() => undoStack.current.length > 0, [])
+  const canRedo = useCallback(() => redoStack.current.length > 0, [])
+
+  const clearHistory = useCallback(() => {
+    undoStack.current = []
+    redoStack.current = []
+    pendingBeforeBlocksRef.current = null
+    setHistoryVersion(v => v + 1)
+  }, [])
+
+  const selectedBlock = useMemo(
+    () => blocks.find(b => b.id === selectedBlockId) ?? null,
+    [blocks, selectedBlockId],
+  )
+
+  return {
+    blocks,
+    blocksRef,
+    clearHistory,
+    canRedo,
+    canUndo,
+    handleRedo,
+    handleUndo,
+    pushSnapshot,
+    selectedBlock,
+    selectedBlockId,
+    setBlockWithHistory,
+    setBlocks,
+    setBlocksWithHistory,
+    setSelectedBlockId,
+  }
 }
 
 // =============================================
@@ -390,18 +1454,35 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const { data: school } = useSchool()
   const { data: rawData, loading, error, refetch } = useMaterialWithBlocks(materialId)
 
-  const [blocks, setBlocks] = useState<EditorBlock[]>([])
-  const blocksRef = useRef<EditorBlock[]>([])
-  blocksRef.current = blocks
+  const {
+    blocks,
+    blocksRef,
+    clearHistory,
+    canRedo,
+    canUndo,
+    handleRedo,
+    handleUndo,
+    pushSnapshot,
+    selectedBlock,
+    selectedBlockId,
+    setBlockWithHistory,
+    setBlocks,
+    setBlocksWithHistory,
+    setSelectedBlockId,
+  } = useEditorBlocks()
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialMeta, setMaterialMeta] = useState<MaterialWithBlocks | null>(null)
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const canvasRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const musicRendererSnapshotCacheRef = useRef<Map<string, MusicSnapshotCacheEntry>>(new Map())
+  const selectedBlockIdRef = useRef<string | null>(null)
+  selectedBlockIdRef.current = selectedBlockId
 
   // Edição inline no canvas
   const [inlineEditingBlockId, setInlineEditingBlockId] = useState<string | null>(null)
+  const [inlineEditFocusPoint, setInlineEditFocusPoint] = useState<{ x: number; y: number } | null>(null)
   const [coverTitleEditing, setCoverTitleEditing] = useState(false)
 
   // Zoom do canvas A4
@@ -420,40 +1501,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   })
 
   // Toolbar contextual position
-  const [toolbarPosition, setToolbarPosition] = useState<{ top: number; left: number } | null>(null)
+  const [toolbarPosition, setToolbarPosition] = useState<{ top: number; left: number; placement?: 'above' | 'below' } | null>(null)
 
   // Undo/Redo global
-  const { pushSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo<EditorBlock[]>()
-  const isUndoRedoAction = useRef(false)
-
   /** setBlocks com snapshot automático para undo (exceto durante undo/redo) */
-  const setBlocksWithHistory = useCallback((updater: EditorBlock[] | ((prev: EditorBlock[]) => EditorBlock[])) => {
-    if (!isUndoRedoAction.current) {
-      pushSnapshot(blocksRef.current)
-    }
-    setBlocks(updater)
-  }, [pushSnapshot])
-
-  const handleUndo = useCallback(() => {
-    const previous = undo(blocksRef.current)
-    if (previous) {
-      isUndoRedoAction.current = true
-      setBlocks(previous)
-      isUndoRedoAction.current = false
-      toast.info('Desfazer', { duration: 1500 })
-    }
-  }, [undo])
-
-  const handleRedo = useCallback(() => {
-    const next = redo(blocksRef.current)
-    if (next) {
-      isUndoRedoAction.current = true
-      setBlocks(next)
-      isUndoRedoAction.current = false
-      toast.info('Refazer', { duration: 1500 })
-    }
-  }, [redo])
-
   // Estados dos editores visuais integrados
   const [notationEditorOpen, setNotationEditorOpen] = useState(false)
   const [notationEditorBlockId, setNotationEditorBlockId] = useState<string | null>(null)
@@ -468,12 +1519,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState())
   const [chordEditorName, setChordEditorName] = useState('')
   const [chordEditorStartFret, setChordEditorStartFret] = useState(1)
+  const [tablatureEditorOpen, setTablatureEditorOpen] = useState(false)
+  const [tablatureEditorBlockId, setTablatureEditorBlockId] = useState<string | null>(null)
 
-  // Autosave — estado de alterações não salvas
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoadDone = useRef(false)
+  const selectBlockPerfRef = useRef<{ blockId: string; startedAt: number } | null>(null)
+  const { autoSaveStatus, queueBlockAutosave, resetAutosaveBaseline } = useEditorAutosave({
+    blocksRef,
+    initialLoadDone,
+  })
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -482,6 +1536,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       setMaterialMeta(material)
       setMaterialTitle(material.material_title)
       setBlocks(parsed)
+      resetAutosaveBaseline(parsed)
       // Limpar histórico apenas no primeiro carregamento
       if (!initialLoadDone.current) {
         clearHistory()
@@ -496,53 +1551,74 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       }
       initialLoadDone.current = true
     }
-  }, [rawData])
+  }, [rawData, resetAutosaveBaseline])
 
-  const selectedBlock = useMemo(
-    () => blocks.find(b => b.id === selectedBlockId) ?? null,
-    [blocks, selectedBlockId],
-  )
   const selectedBlockCanBeReusable = useMemo(
     () => Boolean(selectedBlock && isReusableBlockType(selectedBlock.block_type)),
     [selectedBlock],
   )
+  const [propertiesBlockId, setPropertiesBlockId] = useState<string | null>(selectedBlockId)
+  const propertiesSelectedBlock = useMemo(
+    () => blocks.find(b => b.id === propertiesBlockId) ?? null,
+    [blocks, propertiesBlockId],
+  )
 
-  /** Auto-paginação A4: mede blocos e distribui entre páginas */
-  const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
-  const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
-  const measureContainerRef = useRef<HTMLDivElement>(null)
-
-  // Medir blocos no container de medição oculto
   useEffect(() => {
-    const container = measureContainerRef.current
-    if (!container) return
-
-    const measure = () => {
-      const heights: Record<string, number> = {}
-      const children = container.querySelectorAll<HTMLElement>('[data-block-id]')
-      children.forEach(el => {
-        const id = el.getAttribute('data-block-id')
-        if (id) heights[id] = el.offsetHeight
-      })
-      setBlockHeights(prev => {
-        if (Object.keys(heights).length === 0) return prev
-        const same = Object.keys(heights).length === Object.keys(prev).length &&
-          Object.entries(heights).every(([k, v]) => Math.abs((prev[k] ?? 0) - v) < 2)
-        return same ? prev : heights
-      })
+    if (!selectedBlockId) {
+      setPropertiesBlockId(null)
+      return
     }
 
-    const timer = setTimeout(measure, 150)
-    const observer = new ResizeObserver(() => measure())
-    observer.observe(container)
+    const timer = window.setTimeout(() => setPropertiesBlockId(selectedBlockId), 520)
+    return () => window.clearTimeout(timer)
+  }, [selectedBlockId])
 
-    return () => {
-      clearTimeout(timer)
-      observer.disconnect()
+  useEffect(() => {
+    if (!import.meta.env.DEV || !selectedBlockId) return
+    const pending = selectBlockPerfRef.current
+    if (!pending || pending.blockId !== selectedBlockId) return
+
+    window.requestAnimationFrame(() => {
+      const selected = blocksRef.current.find(b => b.id === selectedBlockId)
+      console.info('[EditorPerf] selectBlock ' + JSON.stringify({
+        blockId: selectedBlockId,
+        blockType: selected?.block_type,
+        title: selected?.title,
+        durationMs: Math.round((performance.now() - pending.startedAt) * 10) / 10,
+        ...getEditorPerformanceDomMetrics(),
+      }))
+      if (selectBlockPerfRef.current?.blockId === selectedBlockId) {
+        selectBlockPerfRef.current = null
+      }
+    })
+  }, [selectedBlockId])
+
+  /** Auto-paginação A4: estima alturas, mede o canvas real e distribui entre páginas */
+  const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
+  const blockHeightCacheRef = useRef<Map<string, number>>(new Map())
+  const blockHeightKeyByIdRef = useRef<Record<string, string>>({})
+
+  // Preparar estimativas de altura por bloco sem renderizar copias ocultas.
+  useEffect(() => {
+    const keysById: Record<string, string> = {}
+    const estimatedHeights: Record<string, number> = {}
+
+    for (const block of blocks) {
+      if (block.block_type === 'page_break') continue
+      const key = getBlockHeightCacheKey(block)
+      keysById[block.id] = key
+      estimatedHeights[block.id] = blockHeightCacheRef.current.get(key) ?? getEstimatedBlockHeightForPagination(block)
     }
+    blockHeightKeyByIdRef.current = keysById
+
+    setBlockHeights(prev => {
+      const same = Object.keys(estimatedHeights).length === Object.keys(prev).length &&
+        Object.entries(estimatedHeights).every(([id, height]) => Math.abs((prev[id] ?? 0) - height) < 2)
+      return same ? prev : estimatedHeights
+    })
   }, [blocks])
 
-  /** Distribui blocos em páginas A4 respeitando alturas medidas */
+  /** Distribui blocos em páginas A4 respeitando estimativas e alturas reais medidas */
   const pages = useMemo(() => {
     const result: EditorBlock[][] = [[]]
     let currentHeight = 0
@@ -563,7 +1639,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         continue
       }
 
-      const h = blockHeights[block.id] ?? 120 // fallback estimado
+      const h = blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
       if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
         result.push([])
         currentHeight = 0
@@ -576,39 +1652,123 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return result
   }, [blocks, blockHeights])
 
-  // --- Autosave: salvar bloco selecionado a cada 3s de inatividade ---
-  const lastSavedBlockRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!initialLoadDone.current || !selectedBlockId) return
-    const block = blocksRef.current.find(b => b.id === selectedBlockId)
-    if (!block || block.id.startsWith('temp_')) return
+  const pageIndexByBlockId = useMemo(() => {
+    const indexById: Record<string, number> = {}
+    pages.forEach((pageBlocks, pageIdx) => {
+      pageBlocks.forEach(block => {
+        indexById[block.id] = pageIdx
+      })
+    })
+    return indexById
+  }, [pages])
 
-    setAutoSaveStatus('unsaved')
+  const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
+  const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
+  const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
+  const activePageIndexes = useMemo(() => {
+    if (forceAllPagesActive) {
+      return new Set(pages.map((_, idx) => idx))
+    }
 
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
-    autoSaveTimerRef.current = setTimeout(async () => {
-      const current = blocksRef.current.find(b => b.id === selectedBlockId)
-      if (!current || current.id.startsWith('temp_')) return
-      setAutoSaveStatus('saving')
-      try {
-        await updateMaterialBlockRpc({
-          blockId: current.id,
-          title: current.title,
-          content: current.content,
-          renderData: current.render_data,
-        })
-        lastSavedBlockRef.current = current.id
-        setAutoSaveStatus('saved')
-        setHasUnsavedChanges(false)
-      } catch {
-        setAutoSaveStatus('unsaved')
+    const active = new Set<number>()
+    const addWindow = (center: number | undefined) => {
+      if (typeof center !== 'number' || Number.isNaN(center)) return
+      for (let idx = center - ACTIVE_PAGE_RADIUS; idx <= center + ACTIVE_PAGE_RADIUS; idx += 1) {
+        if (idx >= 0 && idx < pages.length) active.add(idx)
       }
-    }, 3000)
+    }
+
+    addWindow(currentVisiblePage)
+    if (typeof selectedPageIndex === 'number' && selectedPageIndex >= 0 && selectedPageIndex < pages.length) {
+      active.add(selectedPageIndex)
+    }
+
+    if (active.size === 0 && pages.length > 0) addWindow(0)
+    return active
+  }, [currentVisiblePage, forceAllPagesActive, pages, pages.length, selectedPageIndex])
+
+  const [hydratingAlphaTabBlockIds, setHydratingAlphaTabBlockIds] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    setHydratingAlphaTabBlockIds(new Set())
+
+    let cancelled = false
+    let cancelIdle: (() => void) | null = null
+    const timeoutHandle = window.setTimeout(() => {
+      cancelIdle = scheduleEditorIdleCallback(() => {
+        if (cancelled) return
+        const plan = buildMusicHydrationPlan({
+          pages,
+          activePageIndexes,
+          selectedBlockId,
+          maxPerPage: 2,
+        })
+        const next = new Set(plan.allowedBlockIds)
+        setHydratingAlphaTabBlockIds(next)
+
+        if (import.meta.env.DEV) {
+          console.info('[EditorPerf] alphaTabHydration ' + JSON.stringify({
+            action: 'release',
+            selectedBlockId,
+            allowedBlockIds: plan.allowedBlockIds,
+            alphaTabSurfaces: document.querySelectorAll('.at-surface').length,
+          }))
+        }
+      }, 1200)
+    }, 300)
 
     return () => {
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+      cancelled = true
+      window.clearTimeout(timeoutHandle)
+      cancelIdle?.()
     }
-  }, [blocks, selectedBlockId])
+  }, [activePageIndexes, pages, selectedBlockId])
+  useEffect(() => {
+    const canvas = canvasScrollRef.current
+    if (!canvas || blocks.length === 0) return
+
+    const timer = window.setTimeout(() => {
+      const measured: Record<string, number> = {}
+      const children = canvas.querySelectorAll<HTMLElement>('.canvas-block[data-block-id]')
+
+      children.forEach(el => {
+        const id = el.getAttribute('data-block-id')
+        if (!id) return
+        const key = blockHeightKeyByIdRef.current[id]
+        if (!key) return
+        const height = el.offsetHeight
+        if (height <= 0) return
+        blockHeightCacheRef.current.set(key, height)
+        measured[id] = height
+
+        const block = blocksRef.current.find(item => item.id === id)
+        if (block && (MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || blockUsesAlphaTab(block))) {
+          const html = sanitizeMusicSnapshotHtml(el.innerHTML)
+          if (isUsableMusicSnapshotHtml(html, block)) {
+            musicRendererSnapshotCacheRef.current.set(id, {
+              hash: key,
+              html,
+              height,
+            })
+          }
+        }
+      })
+
+      setBlockHeights(prev => {
+        if (Object.keys(measured).length === 0) return prev
+        let changed = false
+        const next = { ...prev }
+        for (const [id, height] of Object.entries(measured)) {
+          if (Math.abs((prev[id] ?? 0) - height) >= 2) {
+            next[id] = height
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 150)
+
+    return () => window.clearTimeout(timer)
+  }, [blocks, pages.length])
 
   // --- Persistir pageConfig quando muda ---
   useEffect(() => {
@@ -648,54 +1808,101 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Selecionar bloco + scroll no canvas
   const selectBlock = useCallback((id: string) => {
+    if (import.meta.env.DEV) {
+      selectBlockPerfRef.current = { blockId: id, startedAt: performance.now() }
+    }
+    const pageIdx = pageIndexByBlockId[id]
+    const canvas = canvasScrollRef.current
+    const currentEl = canvasRefs.current[id]
+    const isAlreadyVisible = Boolean(canvas && currentEl && isElementComfortablyVisibleInContainer(currentEl, canvas))
+
+    if (typeof pageIdx === 'number') {
+      if (!activePageIndexes.has(pageIdx)) {
+        setCurrentVisiblePage(pageIdx)
+      }
+      setSelectedBlockId(id)
+      if (isAlreadyVisible) return
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const el = canvasRefs.current[id]
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            return
+          }
+          pageRefs.current[pageIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        })
+      })
+      return
+    }
+
     setSelectedBlockId(id)
     const el = canvasRefs.current[id]
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (el && !isAlreadyVisible) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [activePageIndexes, pageIndexByBlockId])
+
+  const handleCanvasClick = useCallback(() => {
+    setSelectedBlockId(null)
+    setSelectedFloatingId(null)
+    setEditingFloatingId(null)
+    if (inlineEditingBlockId) setInlineEditingBlockId(null)
+    setInlineEditFocusPoint(null)
+  }, [inlineEditingBlockId, setSelectedBlockId])
+
+  const handleCanvasWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
+    if (!e.ctrlKey) return
+    e.preventDefault()
+    setZoom(z => Math.max(0.5, Math.min(1.5, +(z + (e.deltaY > 0 ? -0.05 : 0.05)).toFixed(2))))
   }, [])
 
   // Adicionar bloco
   const handleAddBlock = useCallback(async (blockType: string) => {
-    const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
-    const defaultTitle = blockType === 'cover' ? (materialTitle || 'Capa')
-      : blockType === 'chord_grid' ? 'Grade de Acordes'
-      : blockType === 'keyboard' ? 'Teclado'
-      : blockType === 'keyboard_grid' ? 'Grade de Teclados'
-      : blockType === 'columns' ? null
+    const currentBlocks = blocksRef.current
+    const selectedBlockCurrent = selectedBlockId
+      ? currentBlocks.find((block) => block.id === selectedBlockId) ?? null
       : null
-    const defaultRenderData = blockType === 'cover'
-      ? { template: 'minimal', titulo: materialTitle || '', subtitulo: '', instrumento: '', nivel: '', professor: '', escola: '', data: '' }
-      : blockType === 'chord_grid' ? { chords: [], columns: 3 }
-      : blockType === 'keyboard' ? { keys: [], hand: 'rh' }
-      : blockType === 'keyboard_grid' ? { keyboards: [], columns: 3 }
-      : blockType === 'columns' ? { columns: [{ blocks: [] }, { blocks: [] }] }
-      : null
+    const lastOrder = currentBlocks.length > 0 ? Math.max(...currentBlocks.map(b => b.sort_order)) : 0
+    const anchorOrder = selectedBlockCurrent?.sort_order ?? lastOrder
+    const { title: defaultTitle, content: defaultContent, renderData: defaultRenderData } = getDefaultBlockPayload(blockType, materialTitle)
     try {
-      await addMaterialBlock({
+      const insertedId = await addMaterialBlock({
         materialId,
         blockType,
         title: defaultTitle,
-        content: { text: '' },
+        content: defaultContent,
         renderData: defaultRenderData,
-        afterOrder: lastOrder,
+        afterOrder: anchorOrder,
       })
+      const newBlock: EditorBlock = {
+        id: insertedId,
+        block_type: blockType,
+        title: defaultTitle,
+        content: defaultContent,
+        render_data: defaultRenderData,
+        sort_order: anchorOrder + 1,
+        is_edited: false,
+        original_content: null,
+      }
+      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], anchorOrder))
+      setSelectedBlockId(insertedId)
       toast.success('Bloco adicionado')
-      refetch()
     } catch (e: any) {
       // Fallback local: banco pode rejeitar block_types novos (CHECK constraint)
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      setBlocks(prev => [...prev, {
+      const newBlock: EditorBlock = {
         id: tempId,
         block_type: blockType,
         title: defaultTitle,
-        content: { text: '' },
+        content: defaultContent,
         render_data: defaultRenderData,
-        sort_order: lastOrder + 1,
+        sort_order: anchorOrder + 1,
         is_edited: false,
         original_content: null,
-      }])
+      }
+      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], anchorOrder))
+      setSelectedBlockId(tempId)
       toast.info('Bloco adicionado localmente (salvar no banco pendente)')
     }
-  }, [blocks, materialId, materialTitle, refetch])
+  }, [blocksRef, materialId, materialTitle, selectedBlockId, setBlocksWithHistory, setSelectedBlockId])
 
   const handleOpenSaveReusable = useCallback(() => {
     if (!selectedBlock) {
@@ -775,24 +1982,37 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         : 0
       const anchorOrder = selectedBlockCurrent?.sort_order ?? lastOrder
 
-      let firstInsertedId: string | null = null
+      const insertedBlocks: EditorBlock[] = []
       for (const libraryBlock of [...exerciseBlocks].reverse()) {
+        const blockType = String(libraryBlock?.block_type ?? 'text')
+        const title = typeof libraryBlock?.title === 'string' && libraryBlock.title.trim()
+          ? libraryBlock.title
+          : null
+        const content = libraryBlock?.content ? cloneJsonValue(libraryBlock.content) : null
+        const renderData = libraryBlock?.render_data ? cloneJsonValue(libraryBlock.render_data) : null
         const insertedId = await addMaterialBlock({
           materialId,
-          blockType: String(libraryBlock?.block_type ?? 'text'),
-          title: typeof libraryBlock?.title === 'string' && libraryBlock.title.trim()
-            ? libraryBlock.title
-            : null,
-          content: libraryBlock?.content ? cloneJsonValue(libraryBlock.content) : null,
-          renderData: libraryBlock?.render_data ? cloneJsonValue(libraryBlock.render_data) : null,
+          blockType,
+          title,
+          content,
+          renderData,
           afterOrder: anchorOrder,
         })
-        firstInsertedId = insertedId
+        insertedBlocks.unshift({
+          id: insertedId,
+          block_type: blockType,
+          title,
+          content,
+          render_data: renderData,
+          sort_order: anchorOrder + 1,
+          is_edited: false,
+          original_content: null,
+        })
       }
 
-      await refetch()
-      if (firstInsertedId) {
-        setSelectedBlockId(firstInsertedId)
+      if (insertedBlocks.length > 0) {
+        setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, insertedBlocks, anchorOrder))
+        setSelectedBlockId(insertedBlocks[0].id)
       }
       setExerciseBrowserOpen(false)
       toast.success(`${exerciseBlocks.length} bloco(s) inserido(s)!`)
@@ -801,28 +2021,27 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } finally {
       setInsertingExerciseId(null)
     }
-  }, [materialId, refetch, selectedBlockId, pushSnapshot])
+  }, [materialId, selectedBlockId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
 
   // Deletar bloco
   const handleDeleteBlock = useCallback(async (blockId: string) => {
     try {
       await deleteMaterialBlock(blockId)
       setBlocksWithHistory(prev => prev.filter(b => b.id !== blockId))
-      if (selectedBlockId === blockId) setSelectedBlockId(null)
+      if (selectedBlockIdRef.current === blockId) setSelectedBlockId(null)
       toast.success('Bloco removido')
     } catch (e: any) {
       toast.error('Erro ao remover bloco: ' + (e?.message ?? ''))
     }
-  }, [selectedBlockId])
+  }, [setBlocksWithHistory, setSelectedBlockId])
 
   // Duplicar bloco
   const handleDuplicateBlock = useCallback(async (blockId: string) => {
     const block = blocks.find(b => b.id === blockId)
     if (!block) return
-    const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
     pushSnapshot(blocksRef.current)
     try {
-      await addMaterialBlock({
+      const insertedId = await addMaterialBlock({
         materialId,
         blockType: block.block_type,
         title: block.title ? `${block.title} (cópia)` : null,
@@ -830,8 +2049,19 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         renderData: block.render_data ? { ...block.render_data } : null,
         afterOrder: block.sort_order,
       })
+      const newBlock: EditorBlock = {
+        id: insertedId,
+        block_type: block.block_type,
+        title: block.title ? `${block.title} (cópia)` : null,
+        content: block.content ? { ...block.content } : null,
+        render_data: block.render_data ? { ...block.render_data } : null,
+        sort_order: block.sort_order + 1,
+        is_edited: false,
+        original_content: null,
+      }
+      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], block.sort_order))
+      setSelectedBlockId(insertedId)
       toast.success('Bloco duplicado')
-      refetch()
     } catch (e: any) {
       // Fallback local
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -845,11 +2075,11 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         is_edited: false,
         original_content: null,
       }
-      const idx = blocks.findIndex(b => b.id === blockId)
-      setBlocksWithHistory(prev => [...prev.slice(0, idx + 1), newBlock, ...prev.slice(idx + 1)])
+      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], block.sort_order))
+      setSelectedBlockId(tempId)
       toast.info('Bloco duplicado localmente')
     }
-  }, [blocks, materialId, refetch])
+  }, [blocks, blocksRef, materialId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
 
   // Mover bloco acima/abaixo
   const handleMoveBlock = useCallback((blockId: string, direction: 'up' | 'down') => {
@@ -917,44 +2147,44 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   // Atualizar campo local do bloco selecionado
   const updateSelectedField = useCallback((field: 'title' | 'content', value: any) => {
     if (!selectedBlockId) return
-    setBlocks(prev => prev.map(b => {
-      if (b.id !== selectedBlockId) return b
+    setBlockWithHistory(selectedBlockId, b => {
       if (field === 'title') return { ...b, title: value }
       if (field === 'content') return { ...b, content: value }
       return b
-    }))
-  }, [selectedBlockId])
+    })
+    queueBlockAutosave(selectedBlockId)
+  }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
 
   // Atualizar render_data do bloco selecionado (para capa, grade de acordes, etc.)
   const updateSelectedRenderData = useCallback((field: string, value: any) => {
     if (!selectedBlockId) return
-    setBlocks(prev => prev.map(b => {
-      if (b.id !== selectedBlockId) return b
+    setBlockWithHistory(selectedBlockId, b => {
       return { ...b, render_data: { ...(b.render_data ?? {}), [field]: value } }
-    }))
-  }, [selectedBlockId])
+    })
+    queueBlockAutosave(selectedBlockId)
+  }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
 
   // Atualizar estilo visual do bloco selecionado (render_data.style)
   const updateBlockStyle = useCallback((updates: Partial<BlockStyle>) => {
     if (!selectedBlockId) return
-    setBlocks(prev => prev.map(b => {
-      if (b.id !== selectedBlockId) return b
+    setBlockWithHistory(selectedBlockId, b => {
       const currentStyle = (b.render_data?.style as BlockStyle | undefined) ?? undefined
       const newStyle = mergeBlockStyle(currentStyle, updates)
       return { ...b, render_data: { ...(b.render_data ?? {}), style: newStyle } }
-    }))
-  }, [selectedBlockId])
+    })
+    queueBlockAutosave(selectedBlockId)
+  }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
 
   // Atualizar estilo do separador (render_data.separatorStyle)
   const updateSeparatorStyle = useCallback((updates: Partial<SeparatorStyle>) => {
     if (!selectedBlockId) return
-    setBlocks(prev => prev.map(b => {
-      if (b.id !== selectedBlockId) return b
+    setBlockWithHistory(selectedBlockId, b => {
       const currentStyle = (b.render_data?.separatorStyle as SeparatorStyle | undefined) ?? undefined
       const newStyle = mergeSeparatorStyle(currentStyle, updates)
       return { ...b, render_data: { ...(b.render_data ?? {}), separatorStyle: newStyle } }
-    }))
-  }, [selectedBlockId])
+    })
+    queueBlockAutosave(selectedBlockId)
+  }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
 
   // Abrir KeyboardEditor para bloco tipo 'keyboard'
   const [keyboardEditorBlockId, setKeyboardEditorBlockId] = useState<string | null>(null)
@@ -1284,12 +2514,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   const updateCoverOverlayElements = useCallback((nextOverlayElements: CoverOverlayElement[]) => {
     if (!activeCoverBlockId) return
-    setBlocks(prev => prev.map(block => (
-      block.id === activeCoverBlockId
-        ? { ...block, render_data: { ...(block.render_data ?? {}), overlay_elements: nextOverlayElements } }
-        : block
-    )))
-  }, [activeCoverBlockId])
+    setBlockWithHistory(activeCoverBlockId, block => ({
+      ...block,
+      render_data: { ...(block.render_data ?? {}), overlay_elements: nextOverlayElements },
+    }))
+    queueBlockAutosave(activeCoverBlockId)
+  }, [activeCoverBlockId, queueBlockAutosave, setBlockWithHistory])
 
   const addOverlayElement = useCallback((image: ImageLibraryItem) => {
     if (!activeCoverBlockId) return
@@ -1835,9 +3065,6 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
     try { return localStorage.getItem('editor-show-rulers') === 'true' } catch { return false }
   })
 
-  // 7.2 — Mini-mapa de páginas
-  const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
-
   // 7.3 — Templates
   const [showTemplatesDialog, setShowTemplatesDialog] = useState(false)
 
@@ -2107,7 +3334,7 @@ Regras:
 
     const observer = new IntersectionObserver(
       (entries) => {
-        let maxRatio = 0
+        let maxRatio = -1
         let maxIndex = 0
         entries.forEach((entry) => {
           const idx = Number((entry.target as HTMLElement).dataset.pageIndex || 0)
@@ -2118,11 +3345,11 @@ Regras:
         })
         if (maxRatio > 0) setCurrentVisiblePage(maxIndex)
       },
-      { root: canvas, threshold: [0, 0.25, 0.5, 0.75, 1] },
+      { root: canvas, rootMargin: '0px', threshold: [0, 0.01, 0.25, 0.5, 0.75, 1] },
     )
 
     const timer = setTimeout(() => {
-      const pageEls = document.querySelectorAll('.a4-page')
+      const pageEls = canvas.querySelectorAll('.a4-page')
       pageEls.forEach((page, i) => {
         ;(page as HTMLElement).dataset.pageIndex = String(i)
         observer.observe(page)
@@ -2133,7 +3360,7 @@ Regras:
       clearTimeout(timer)
       observer.disconnect()
     }
-  }, [blocks, pages])
+  }, [pages.length])
 
   // 7.3 — Aplicar template
   const handleApplyTemplate = useCallback(async (template: MaterialTemplate) => {
@@ -2507,6 +3734,61 @@ Regras:
     }
   }, [notationEditorBlockId, notationEditorStaveIndex, blocks, v2BeatToLegacyNote])
 
+  const openTablatureEditorForBlock = useCallback((blockId: string) => {
+    setTablatureEditorBlockId(blockId)
+    setTablatureEditorOpen(true)
+  }, [])
+
+  const handleTablatureEditorSave = useCallback(async (lines: string[], label: string, data: TablatureData) => {
+    if (!tablatureEditorBlockId) return
+    const block = blocks.find(b => b.id === tablatureEditorBlockId)
+    if (!block) return
+
+    const instrument = data.instrument && TAB_INSTRUMENTS[data.instrument] ? data.instrument : 'guitar'
+    const normalizedData: TablatureData = {
+      ...data,
+      instrument,
+      label,
+    }
+    const alphaTex = gridToAlphaTex(
+      normalizedData.grid,
+      normalizedData.columns,
+      normalizedData.durations,
+      TAB_INSTRUMENTS[instrument],
+      label || undefined,
+      normalizedData.timeSignature ?? 'free',
+      new Set(normalizedData.ties ?? []),
+      normalizedData.dots ?? [],
+      normalizedData.pickings ?? [],
+      normalizedData.tuplets ?? [],
+      normalizedData.chordNames ?? [],
+    )
+    const newRenderData = {
+      ...(block.render_data ?? {}),
+      notation_data: normalizedData,
+      lines,
+      tab: lines.join('\n'),
+      alphaTex,
+      instrument,
+    }
+    const newTitle = label || block.title || 'Tablatura'
+
+    setBlocksWithHistory(prev => prev.map(b =>
+      b.id === tablatureEditorBlockId ? { ...b, title: newTitle, render_data: newRenderData } : b,
+    ))
+
+    try {
+      await updateMaterialBlockRpc({
+        blockId: tablatureEditorBlockId,
+        title: newTitle,
+        renderData: newRenderData,
+      })
+      toast.success('Tablatura atualizada no bloco')
+    } catch (e: any) {
+      toast.error('Erro ao salvar tablatura: ' + (e?.message ?? ''))
+    }
+  }, [blocks, tablatureEditorBlockId, setBlocksWithHistory])
+
   // Abrir editor de acorde para um bloco
   const openChordEditorForBlock = useCallback((blockId: string) => {
     const block = blocks.find(b => b.id === blockId)
@@ -2560,11 +3842,91 @@ Regras:
 
   // Helper: bloco tem notação editável?
   const blockHasNotation = useCallback((block: EditorBlock) => {
+    if (block.block_type === 'tablature') return false
     return block.render_data?.notation || block.render_data?.notation_data || block.render_data?.notes
   }, [])
 
+  const enterInlineEditForBlock = useCallback((blockId: string, focusPoint: { x: number; y: number } | null = null) => {
+    const block = blocksRef.current.find(b => b.id === blockId)
+    if (!block || !canEnterInlineEdit(block.block_type)) return false
+    setSelectedBlockId(blockId)
+    setInlineEditingBlockId(blockId)
+    setInlineEditFocusPoint(focusPoint)
+    setCoverTitleEditing(false)
+    return true
+  }, [setSelectedBlockId])
+
+  const openPrimaryCanvasActionForBlock = useCallback((block: EditorBlock, focusPoint: { x: number; y: number } | null = null) => {
+    if (canEnterInlineEdit(block.block_type)) {
+      enterInlineEditForBlock(block.id, focusPoint)
+      return
+    }
+    if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
+    else if (block.block_type === 'chord_grid') openChordEditorForGrid(block.id)
+    else if (block.block_type === 'keyboard') openKeyboardEditorForBlock(block.id)
+    else if (block.block_type === 'keyboard_grid') openKeyboardEditorForGrid(block.id)
+    else if (block.block_type === 'tablature') openTablatureEditorForBlock(block.id)
+    else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+    else if (block.block_type === 'image') imageInputRef.current?.click()
+    else if (block.block_type === 'cover') setCoverTitleEditing(true)
+  }, [
+    blockHasNotation,
+    enterInlineEditForBlock,
+    openChordEditorForBlock,
+    openChordEditorForGrid,
+    openKeyboardEditorForBlock,
+    openKeyboardEditorForGrid,
+    openNotationEditorForBlock,
+    openTablatureEditorForBlock,
+  ])
+
+  const handleCanvasInlineTitleChange = useCallback((blockId: string, title: string) => {
+    setBlockWithHistory(blockId, block => ({ ...block, title }))
+    queueBlockAutosave(blockId)
+  }, [queueBlockAutosave, setBlockWithHistory])
+
+  const handleCanvasInlineContentChange = useCallback((blockId: string, html: string) => {
+    setBlockWithHistory(blockId, block => ({
+      ...block,
+      content: { ...(block.content ?? {}), html, text: htmlToMarkdown(html) },
+    }))
+    queueBlockAutosave(blockId)
+  }, [queueBlockAutosave, setBlockWithHistory])
+
+  const exitInlineEdit = useCallback(() => {
+    setInlineEditingBlockId(null)
+    setInlineEditFocusPoint(null)
+  }, [])
+
+  const handleCanvasNotationStavePointerDown = useCallback((blockId: string, staveIndex: number) => {
+    notationPreviewStaveRef.current = { blockId, staveIndex }
+  }, [])
+
+  const handleCanvasChordGridItemClick = useCallback((blockId: string, chord: any, index: number) => {
+    openChordEditorForGrid(blockId, chord, index)
+  }, [openChordEditorForGrid])
+
+  const handleCanvasKeyboardGridItemClick = useCallback((blockId: string, keyboard: any, index: number) => {
+    openKeyboardEditorForGrid(blockId, keyboard, index)
+  }, [openKeyboardEditorForGrid])
+
+  const handleCanvasCoverPositionChange = useCallback((blockId: string, field: string, pos: { x: number; y: number }) => {
+    setBlockWithHistory(blockId, b => ({ ...b, render_data: { ...(b.render_data ?? {}), [field]: pos } }))
+    queueBlockAutosave(blockId)
+  }, [queueBlockAutosave, setBlockWithHistory])
+
+  const handleCanvasCoverTitleChange = useCallback((value: string) => {
+    updateSelectedRenderData('titulo', value)
+  }, [updateSelectedRenderData])
+
   // Exportação
-  const handlePrint = useCallback(() => {
+  const activateAllCanvasPages = useCallback(async () => {
+    setForceAllPagesActive(true)
+    await new Promise(resolve => setTimeout(resolve, 300))
+  }, [])
+
+  const handlePrint = useCallback(async () => {
+    await activateAllCanvasPages()
     // Forçar tema light para notações SVG (remove filter:invert do dark mode)
     const currentTheme = document.documentElement.getAttribute('data-theme')
     document.documentElement.setAttribute('data-theme', 'light')
@@ -2575,10 +3937,12 @@ Regras:
       window.print()
       if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
       else document.documentElement.removeAttribute('data-theme')
+      setForceAllPagesActive(false)
     }, 150)
-  }, [])
+  }, [activateAllCanvasPages])
 
   const handleExportHTML = useCallback(async () => {
+    await activateAllCanvasPages()
     const pagesEl = document.querySelectorAll('.a4-page')
     if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
 
@@ -2778,10 +4142,12 @@ ${pagesHtml}
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
     toast.success('HTML exportado em nova aba')
-  }, [materialTitle])
+    setForceAllPagesActive(false)
+  }, [activateAllCanvasPages, materialTitle])
 
   const handleDownloadPDF = useCallback(async () => {
     toast.info('Preparando PDF...')
+    await activateAllCanvasPages()
 
     // Mudar tema para light temporariamente para SVGs corretos
     const currentTheme = document.documentElement.getAttribute('data-theme')
@@ -2978,13 +4344,13 @@ ${pagesHtml}
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
     toast.success('PDF aberto em nova aba — use "Salvar como PDF" no diálogo de impressão')
-  }, [materialTitle])
+    setForceAllPagesActive(false)
+  }, [activateAllCanvasPages, materialTitle])
 
   // --- Atalhos de teclado globais ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
+      const isEditingTarget = isTextInputTarget(e.target)
 
       // Ctrl+Z — Undo (funciona mesmo em inputs, exceto contentEditable)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
@@ -3005,7 +4371,7 @@ ${pagesHtml}
         return
       }
       // Ctrl+D — Duplicar bloco
-      if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedBlockId) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedBlockId && !isEditingTarget) {
         e.preventDefault()
         handleDuplicateBlock(selectedBlockId)
         return
@@ -3034,8 +4400,14 @@ ${pagesHtml}
         return
       }
 
+      if (e.key === 'Escape' && inlineEditingBlockId) {
+        e.preventDefault()
+        exitInlineEdit()
+        return
+      }
+
       // Os atalhos abaixo NÃO funcionam dentro de inputs/textareas
-      if (isInput) return
+      if (isEditingTarget) return
 
       // Delete / Backspace — Remover elemento selecionado da capa
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -3049,6 +4421,11 @@ ${pagesHtml}
           removeTextElement(selectedTextId)
           return
         }
+        if (canDeleteSelectedBlock({ selectedBlockId, inlineEditingBlockId, isTextInputTarget: isEditingTarget })) {
+          e.preventDefault()
+          handleDeleteBlock(selectedBlockId!)
+          return
+        }
       }
 
       // Shift+Delete — Remover bloco ou floating element sem confirmação
@@ -3056,8 +4433,6 @@ ${pagesHtml}
         e.preventDefault()
         if (selectedFloatingId) {
           removeFloatingElement(selectedFloatingId)
-        } else if (selectedBlockId) {
-          handleDeleteBlock(selectedBlockId)
         }
         return
       }
@@ -3068,7 +4443,7 @@ ${pagesHtml}
         } else if (selectedFloatingId) {
           setSelectedFloatingId(null)
         } else if (inlineEditingBlockId) {
-          setInlineEditingBlockId(null)
+          exitInlineEdit()
         } else if (coverTitleEditing) {
           setCoverTitleEditing(false)
         } else {
@@ -3077,6 +4452,14 @@ ${pagesHtml}
         return
       }
       // Setas ↑↓ — Navegar entre blocos
+      if (e.key === 'Enter' && selectedBlockId && !inlineEditingBlockId) {
+        const block = blocks.find(b => b.id === selectedBlockId)
+        if (block) {
+          e.preventDefault()
+          openPrimaryCanvasActionForBlock(block)
+        }
+        return
+      }
       if (e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
         const idx = blocks.findIndex(b => b.id === selectedBlockId)
@@ -3093,7 +4476,7 @@ ${pagesHtml}
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -3102,7 +4485,7 @@ ${pagesHtml}
 
   // Posicionar toolbar contextual sobre o bloco selecionado
   useEffect(() => {
-    if (!selectedBlockId || inlineEditingBlockId) {
+    if (!selectedBlockId) {
       setToolbarPosition(null)
       return
     }
@@ -3110,10 +4493,14 @@ ${pagesHtml}
       const blockEl = canvasRefs.current[selectedBlockId]
       if (!blockEl) { setToolbarPosition(null); return }
       const rect = blockEl.getBoundingClientRect()
-      setToolbarPosition({
-        top: rect.top - 44,
-        left: rect.left + rect.width / 2,
-      })
+      const canvasRect = canvasScrollRef.current?.getBoundingClientRect()
+      setToolbarPosition(getCanvasToolbarPosition({
+        blockTop: rect.top,
+        blockBottom: rect.bottom,
+        blockLeft: rect.left,
+        blockWidth: rect.width,
+        viewportTop: canvasRect?.top ?? 0,
+      }))
     }
     updatePosition()
     const canvas = canvasScrollRef.current
@@ -3146,6 +4533,16 @@ ${pagesHtml}
   }
 
   const previewBlocks: MaterialBlock[] = blocks.map(editorBlockToPreview)
+  const activeTablatureBlock = tablatureEditorBlockId
+    ? blocks.find(block => block.id === tablatureEditorBlockId) ?? null
+    : null
+  const activeTablatureRenderData = (activeTablatureBlock?.render_data ?? {}) as any
+  const activeTablatureNotationData = activeTablatureRenderData.notation_data as TablatureData | undefined
+  const activeTablatureLines = Array.isArray(activeTablatureRenderData.lines)
+    ? activeTablatureRenderData.lines as string[]
+    : typeof activeTablatureRenderData.tab === 'string' && activeTablatureRenderData.tab.trim()
+      ? activeTablatureRenderData.tab.split('\n')
+      : []
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -3344,8 +4741,7 @@ ${pagesHtml}
       {/* Layout 3 colunas com sidebars retráteis */}
       <div className="editor-layout editor-layout--flex" style={{ marginTop: 0 }}>
         {/* Coluna 1 — Sidebar Esquerda: Lista de Blocos */}
-        <div className={`editor-sidebar transition-all duration-300 ease-in-out overflow-hidden ${leftSidebarOpen ? 'w-[260px] border-r border-border' : 'w-0 border-r-0'}`}>
-          <div className="w-[260px] h-full flex flex-col">
+        <BlockListSidebar open={leftSidebarOpen}>
           <Tabs defaultValue="blocks" className="flex flex-col h-full">
             <TabsList className="grid grid-cols-2 mx-3 mt-2 h-8 shrink-0">
               <TabsTrigger value="blocks" className="text-[10px] gap-1">Blocos</TabsTrigger>
@@ -3365,9 +4761,9 @@ ${pagesHtml}
                     key={block.id}
                     block={block}
                     isSelected={block.id === selectedBlockId}
-                    onSelect={() => selectBlock(block.id)}
-                    onDelete={() => handleDeleteBlock(block.id)}
-                    onDuplicate={() => handleDuplicateBlock(block.id)}
+                    onSelectBlock={selectBlock}
+                    onDeleteBlock={handleDeleteBlock}
+                    onDuplicateBlock={handleDuplicateBlock}
                   />
                 ))}
               </div>
@@ -3549,8 +4945,7 @@ ${pagesHtml}
               />
             </TabsContent>
           </Tabs>
-          </div>{/* fim w-[260px] wrapper */}
-        </div>{/* fim editor-sidebar */}
+        </BlockListSidebar>
 
         {/* Botão toggle sidebar esquerda */}
         <TooltipProvider>
@@ -3571,38 +4966,11 @@ ${pagesHtml}
           </Tooltip>
         </TooltipProvider>
 
-        {/* Container de medição oculto — mede alturas reais dos blocos */}
-        <div
-          ref={measureContainerRef}
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            left: '-9999px',
-            top: 0,
-            width: '674px', // 794 - 60*2 (padding A4 content)
-            overflow: 'visible',
-            visibility: 'hidden',
-            pointerEvents: 'none',
-          }}
-        >
-          {blocks.filter(b => b.block_type !== 'page_break').map(block => (
-            <div key={block.id} data-block-id={block.id} style={{ padding: '10px 16px', marginBottom: '4px' }}>
-              <MaterialPreview blocks={[editorBlockToPreview(block)]} />
-            </div>
-          ))}
-        </div>
-
         {/* Coluna 2 — Canvas A4 (Preview) */}
-        <div
+        <EditorCanvas
           ref={canvasScrollRef}
-          className="editor-canvas relative"
-          onClick={() => { setSelectedBlockId(null); setSelectedFloatingId(null); setEditingFloatingId(null); if (inlineEditingBlockId) setInlineEditingBlockId(null) }}
-          onWheel={(e) => {
-            if (e.ctrlKey) {
-              e.preventDefault()
-              setZoom(z => Math.max(0.5, Math.min(1.5, +(z + (e.deltaY > 0 ? -0.05 : 0.05)).toFixed(2))))
-            }
-          }}
+          onCanvasClick={handleCanvasClick}
+          onCanvasWheel={handleCanvasWheel}
         >
           {/* Botão Modo Foco */}
           <div className="sticky top-2 z-30 flex justify-end pr-2 pointer-events-none" style={{ marginBottom: '-32px' }}>
@@ -3700,12 +5068,44 @@ ${pagesHtml}
 
               const pageBgColor = !isCoverPage ? (pageConfig.background?.color || '#ffffff') : undefined
               const watermark = !isCoverPage ? pageConfig.background?.watermark : undefined
+              const isPageActive = activePageIndexes.has(pageIdx)
+
+              if (!isPageActive) {
+                return (
+                  <div
+                    key={pageIdx}
+                    ref={el => { pageRefs.current[pageIdx] = el }}
+                    className="a4-page a4-page--placeholder"
+                    data-page-index={pageIdx}
+                    data-editor-page-active="false"
+                    style={{ position: 'relative', backgroundColor: '#ffffff' }}
+                  >
+                    <div
+                      className="a4-page-content"
+                      style={!isCoverPage && pageConfig.margins ? {
+                        paddingLeft: `${pageConfig.margins.left}px`,
+                        paddingRight: `${pageConfig.margins.right}px`,
+                        paddingTop: `${pageConfig.margins.top / 4}px`,
+                        paddingBottom: `${pageConfig.margins.bottom / 4}px`,
+                      } : undefined}
+                    >
+                      <div
+                        data-editor-page-placeholder="true"
+                        className="h-full w-full rounded-sm bg-white"
+                        aria-label={`Pagina ${pageIdx + 1} em modo placeholder`}
+                      />
+                    </div>
+                  </div>
+                )
+              }
 
               return (
               <div
                 key={pageIdx}
+                ref={el => { pageRefs.current[pageIdx] = el }}
                 className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
                 data-page-index={pageIdx}
+                data-editor-page-active="true"
                 style={{ position: 'relative', ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
               >
                 {/* Guias visuais */}
@@ -3786,116 +5186,47 @@ ${pagesHtml}
                   } : undefined}
                 >
                   {pageBlocks.map(block => {
-                    const isTextBlock = ['text', 'tip', 'exercise', 'title'].includes(block.block_type)
                     const isInlineEditing = inlineEditingBlockId === block.id
-                    const canInlineEditTitle = !['cover', 'separator', 'page_break'].includes(block.block_type)
+                    const blockMode = isInlineEditing
+                      ? 'editing'
+                      : block.id === selectedBlockId
+                        ? 'selected'
+                        : 'idle'
 
                     const bStyle = !['cover', 'page_break', 'separator'].includes(block.block_type)
                       ? blockStyleToCSS(block.render_data?.style as BlockStyle | undefined)
                       : {}
 
                     return (
-                      <div
+                      <EditableBlock
                         key={block.id}
-                        ref={el => { canvasRefs.current[block.id] = el }}
-                        className={`canvas-block ${block.id === selectedBlockId ? 'selected' : ''} ${isInlineEditing ? 'inline-editing' : ''}`}
+                        block={block}
+                        mode={blockMode}
                         style={bStyle}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          selectBlock(block.id)
+                        blockRef={el => { canvasRefs.current[block.id] = el }}
+                        focusPoint={isInlineEditing ? inlineEditFocusPoint : null}
+                        onSelect={(blockId) => {
+                          selectBlock(blockId)
+                          const nextInlineEditingBlockId = getInlineEditingBlockAfterCanvasBlockClick({
+                            inlineEditingBlockId,
+                            clickedBlockId: blockId,
+                          })
+                          setInlineEditingBlockId(nextInlineEditingBlockId)
+                          if (!nextInlineEditingBlockId) setInlineEditFocusPoint(null)
                           if (block.block_type !== 'cover') setCoverTitleEditing(false)
                         }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation()
-                          if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
-                          else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
-                          else if (block.block_type === 'cover') setCoverTitleEditing(true)
-                          else if (!isTextBlock && canInlineEditTitle && !isInlineEditing) setInlineEditingBlockId(block.id)
-                        }}
-                      >
-                        {isInlineEditing && isTextBlock ? (
-                          <div onClick={e => e.stopPropagation()}>
-                            {block.title && (
-                              <Input
-                                value={block.title ?? ''}
-                                onChange={e => updateSelectedField('title', e.target.value)}
-                                className="font-bold text-[14px] text-text mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                                placeholder="Título do bloco"
-                              />
-                            )}
-                            <RichTextEditor
-                              key={`inline-${block.id}`}
-                              content={ensureHtml((block.content as any)?.html ?? (block.content as any)?.text ?? '')}
-                              onChange={(html) => {
-                                setBlocks(prev => prev.map(b => {
-                                  if (b.id !== block.id) return b
-                                  return {
-                                    ...b,
-                                    content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
-                                  }
-                                }))
-                              }}
-                              placeholder="Clique para editar..."
-                              inline
-                              onAIAction={handleAITextAction}
-                            />
-                            <div className="text-[10px] text-text3 mt-2 text-right opacity-60">
-                              Clique fora para sair da edição · Esc para cancelar
-                            </div>
-                          </div>
-                        ) : isInlineEditing && !isTextBlock && canInlineEditTitle ? (
-                          <div onClick={e => e.stopPropagation()}>
-                            <Input
-                              value={block.title ?? ''}
-                              onChange={e => {
-                                const val = e.target.value
-                                setBlocks(prev => prev.map(b => b.id !== block.id ? b : { ...b, title: val }))
-                              }}
-                              onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setInlineEditingBlockId(null) }}
-                              className="font-bold text-[14px] text-text mb-2 border-b border-accent/30 bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                              placeholder="Título do bloco"
-                              autoFocus
-                            />
-                            <MaterialPreview
-                              blocks={[editorBlockToPreview(block)]}
-                              onLegacyNotationStavePointerDown={(staveIndex) => {
-                                notationPreviewStaveRef.current = { blockId: block.id, staveIndex }
-                              }}
-                              onChordGridItemClick={(previewBlock, chord, index) => {
-                                openChordEditorForGrid(block.id, chord, index)
-                              }}
-                              onKeyboardGridItemClick={(previewBlock, keyboard, index) => {
-                                openKeyboardEditorForGrid(block.id, keyboard, index)
-                              }}
-                            />
-                            <div className="text-[10px] text-text3 mt-1 text-right opacity-60">
-                              Enter ou Esc para sair
-                            </div>
-                          </div>
-                        ) : (
-                          <MaterialPreview
-                            blocks={[editorBlockToPreview(block)]}
-                            onLegacyNotationStavePointerDown={(staveIndex) => {
-                              notationPreviewStaveRef.current = { blockId: block.id, staveIndex }
-                            }}
-                            onChordGridItemClick={(previewBlock, chord, index) => {
-                              openChordEditorForGrid(block.id, chord, index)
-                            }}
-                            onKeyboardGridItemClick={(previewBlock, keyboard, index) => {
-                              openKeyboardEditorForGrid(block.id, keyboard, index)
-                            }}
-                            coverEditable={block.block_type === 'cover'}
-                            onCoverPositionChange={block.block_type === 'cover' ? (field, pos) => {
-                              setBlocks(prev => prev.map(b =>
-                                b.id === block.id
-                                  ? { ...b, render_data: { ...(b.render_data ?? {}), [field]: pos } }
-                                  : b,
-                              ))
-                            } : undefined}
-                            coverTitleEditing={block.block_type === 'cover' && coverTitleEditing}
-                            onCoverTitleChange={block.block_type === 'cover' ? (value) => {
-                              updateSelectedRenderData('titulo', value)
-                            } : undefined}
+                        onPrimaryAction={(editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(editableBlock as EditorBlock, focusPoint)}
+                        onExitInlineEdit={exitInlineEdit}
+                        onTitleChange={handleCanvasInlineTitleChange}
+                        onContentChange={handleCanvasInlineContentChange}
+                        onAIAction={handleAITextAction}
+                        renderPreview={() => (
+                          <>
+                          <CanvasMaterialPreview
+                            block={block}
+                            coverTitleEditing={coverTitleEditing}
+                            musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
+                            canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
                             overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
                             selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
                             onOverlaySelect={block.block_type === 'cover' ? setSelectedOverlayId : undefined}
@@ -3906,9 +5237,15 @@ ${pagesHtml}
                             onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
                             onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
                             onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
+                            onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
+                            onChordGridItemClick={handleCanvasChordGridItemClick}
+                            onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
+                            onCoverPositionChange={handleCanvasCoverPositionChange}
+                            onCoverTitleChange={handleCanvasCoverTitleChange}
                           />
+                          </>
                         )}
-                      </div>
+                      />
                     )
                   })}
 
@@ -3959,7 +5296,12 @@ ${pagesHtml}
             })}
           </div>
           </div>{/* fecha grid réguas+canvas */}
-        </div>
+        </EditorCanvas>
+        <MusicSnapshotPreheater
+          blocks={blocks}
+          enabled={initialLoadDone.current && blocks.length > 0}
+          musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
+        />
 
         {/* Botão toggle sidebar direita */}
         <TooltipProvider>
@@ -3981,8 +5323,11 @@ ${pagesHtml}
         </TooltipProvider>
 
         {/* Coluna 3 — Propriedades */}
-        <div className={`editor-properties transition-all duration-300 ease-in-out overflow-hidden ${rightSidebarOpen ? 'w-[300px] border-l border-border' : 'w-0 border-l-0'}`}>
-          <div className="w-[300px] h-full overflow-y-auto p-4">
+        <PropertiesSidebar open={rightSidebarOpen}>
+          {(() => {
+            const selectedBlock = propertiesSelectedBlock
+            return (
+              <>
           {/* ── Painel de propriedades do Floating Element ── */}
           {selectedFloating && !selectedBlock ? (
             <div className="space-y-3 pb-4">
@@ -4232,14 +5577,12 @@ ${pagesHtml}
                     }
                     onChange={(html) => {
                       const plainText = html.replace(/<[^>]+>/g, '').trim()
-                      setBlocks(prev => prev.map(b => {
-                        if (b.id !== selectedBlockId) return b
-                        return {
+                      setBlockWithHistory(selectedBlockId, b => ({
                           ...b,
                           title: plainText,
                           content: { ...(b.content ?? {}), title_html: html },
-                        }
                       }))
+                      queueBlockAutosave(selectedBlockId)
                     }}
                     placeholder="Título do bloco"
                     variant="title"
@@ -4257,18 +5600,32 @@ ${pagesHtml}
                     key={selectedBlock.id}
                     content={ensureHtml((selectedBlock.content as any)?.html ?? (selectedBlock.content as any)?.text ?? '')}
                     onChange={(html) => {
-                      setBlocks(prev => prev.map(b => {
-                        if (b.id !== selectedBlockId) return b
-                        return {
+                      setBlockWithHistory(selectedBlockId, b => ({
                           ...b,
                           content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
-                        }
                       }))
+                      queueBlockAutosave(selectedBlockId)
                     }}
                     placeholder="Conteúdo do bloco"
                     compact
                     onAIAction={handleAITextAction}
                   />
+                </div>
+              )}
+
+              {/* Tablatura — botão para abrir editor visual */}
+              {selectedBlock.block_type === 'tablature' && (
+                <div className="prop-section">
+                  <div className="prop-label">Tablatura</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-center gap-2 border-foundation/30 text-foundation hover:bg-foundation/10"
+                    onClick={() => openTablatureEditorForBlock(selectedBlock.id)}
+                  >
+                    <ListNumbers size={14} weight="bold" />
+                    Editar Tablatura
+                  </Button>
                 </div>
               )}
 
@@ -5639,15 +6996,18 @@ ${pagesHtml}
               </div>
             </>
           )}
-          </div>{/* fim w-[300px] wrapper */}
-        </div>{/* fim editor-properties */}
+              </>
+            )
+          })()}
+        </PropertiesSidebar>
       </div>{/* fim editor-layout */}
 
       {/* ── Toolbar contextual flutuante ── */}
-      {selectedBlock && toolbarPosition && !inlineEditingBlockId && (
+      {selectedBlock && toolbarPosition && getCanvasToolbarMode({ selectedBlockId, inlineEditingBlockId }) && (
         <ContextualToolbar
           blockType={selectedBlock.block_type}
           position={toolbarPosition}
+          mode={getCanvasToolbarMode({ selectedBlockId, inlineEditingBlockId }) ?? 'selected'}
           onDuplicate={() => handleDuplicateBlock(selectedBlock.id)}
           onDelete={() => handleDeleteBlock(selectedBlock.id)}
           onMoveUp={() => handleMoveBlock(selectedBlock.id, 'up')}
@@ -5655,6 +7015,13 @@ ${pagesHtml}
           onStyleChange={updateBlockStyle}
           isFirst={blocks.findIndex(b => b.id === selectedBlock.id) === 0}
           isLast={blocks.findIndex(b => b.id === selectedBlock.id) === blocks.length - 1}
+          onEditInline={() => enterInlineEditForBlock(selectedBlock.id)}
+          onExitEdit={exitInlineEdit}
+          onEditNotation={() => openNotationEditorForBlock(selectedBlock.id)}
+          onEditTablature={() => openTablatureEditorForBlock(selectedBlock.id)}
+          onEditChord={() => selectedBlock.block_type === 'chord_grid' ? openChordEditorForGrid(selectedBlock.id) : openChordEditorForBlock(selectedBlock.id)}
+          onEditKeyboard={() => selectedBlock.block_type === 'keyboard_grid' ? openKeyboardEditorForGrid(selectedBlock.id) : openKeyboardEditorForBlock(selectedBlock.id)}
+          onReplaceImage={() => imageInputRef.current?.click()}
           onAIRewrite={() => handleAIRewrite('rewrite')}
           isAIProcessing={isAIProcessing}
           onSaveReusable={handleOpenSaveReusable}
@@ -5720,6 +7087,19 @@ ${pagesHtml}
         }}
         notation={notationEditorBlockId ? blockToNotationRow(blocks.find(b => b.id === notationEditorBlockId)!) as any : null}
         onSave={handleNotationEditorSave}
+      />
+
+      <TablatureEditor
+        open={tablatureEditorOpen}
+        onOpenChange={(v) => {
+          setTablatureEditorOpen(v)
+          if (!v) setTablatureEditorBlockId(null)
+        }}
+        initialLines={activeTablatureLines}
+        initialData={activeTablatureNotationData?.grid ? activeTablatureNotationData : null}
+        initialLabel={activeTablatureNotationData?.label ?? activeTablatureBlock?.title ?? ''}
+        initialInstrument={(activeTablatureNotationData?.instrument ?? activeTablatureRenderData.instrument ?? 'guitar') as TabInstrument}
+        onSave={handleTablatureEditorSave}
       />
 
       {/* Dialog — Gerar bloco com IA */}

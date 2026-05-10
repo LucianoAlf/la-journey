@@ -4,9 +4,16 @@ import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } 
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { Tablature } from '@/components/music/Tablature'
-import { AlphaTexInlineRenderer } from '@/components/music/AlphaTexInlineRenderer'
+import { AlphaTexInlineRenderer, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
+import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
 import { lookupGuitarChord } from '@/services/chordAutoFillService'
+import {
+  notFoundGridChord,
+  resolveGuitarChordFromLibrary,
+  shouldAllowLocalChordFallback,
+  type ResolvedGridChord,
+} from '@/services/chordLibraryResolver'
 
 export interface MaterialBlock {
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
@@ -91,6 +98,7 @@ export const DEFAULT_TEXT_BG: CoverTextBackground = { enabled: false, color: '#0
 interface MaterialPreviewProps {
   blocks: MaterialBlock[]
   onLegacyNotationStavePointerDown?: (staveIndex: number) => void
+  onMusicStableRender?: (block: MaterialBlock, html: string) => void
   onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void
   onKeyboardGridItemClick?: (block: MaterialBlock, keyboard: any, index: number) => void
   coverEditable?: boolean
@@ -108,6 +116,8 @@ interface MaterialPreviewProps {
   onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
   onTextEditStart?: (id: string | null) => void
 }
+
+type MusicStableRenderHandler = (block: MaterialBlock, html: string) => void
 
 const DIMENSION_COLORS: Record<string, string> = {
   teoria: 'text-foundation border-foundation/30',
@@ -275,21 +285,70 @@ function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock;
   const renderChords = renderData.chords
   const contentChords = Array.isArray(content.chords) ? content.chords : []
   const chords = renderChords?.length ? renderChords : contentChords
-  const normalizedChords = chords.map((chord: any) => {
-    if (typeof chord !== 'string') return chord
+  const [resolvedChords, setResolvedChords] = useState<any[]>([])
 
-    const found = lookupGuitarChord(chord)
-    if (!found) {
-      return { chord_name: chord, name: chord, fingers: [], barres: [], muted: [], _fallbackTextOnly: true }
+  useEffect(() => {
+    let cancelled = false
+
+    async function resolveChords() {
+      setResolvedChords([])
+      const next: any[] = []
+
+      for (const chord of chords) {
+        if (typeof chord !== 'string') {
+          next.push(chord)
+          continue
+        }
+
+        try {
+          const resolved = await resolveGuitarChordFromLibrary(chord)
+          if (resolved) {
+            next.push(resolved)
+            continue
+          }
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.warn('[ChordGrid] Erro ao buscar chord_library real:', chord, error)
+          }
+        }
+
+        if (import.meta.env.DEV) {
+          console.warn('[ChordGrid] Acorde nao encontrado na chord_library real:', chord)
+        }
+
+        if (shouldAllowLocalChordFallback(chord)) {
+          const found = lookupGuitarChord(chord)
+          if (found) {
+            next.push({
+              chord_name: chord,
+              name: chord,
+              source: 'fallback',
+              fingers: found.positions.fingers ?? [],
+              barres: found.positions.barres ?? [],
+              muted: found.positions.muted ?? [],
+              position: found.baseFret,
+            } satisfies ResolvedGridChord)
+            continue
+          }
+        }
+
+        next.push({ ...notFoundGridChord(chord), _fallbackTextOnly: true })
+      }
+
+      if (!cancelled) setResolvedChords(next)
     }
 
-    return {
-      chord_name: chord,
-      name: chord,
-      ...found.positions,
-      position: found.baseFret,
+    resolveChords()
+    return () => {
+      cancelled = true
     }
-  })
+  }, [chords])
+
+  const normalizedChords = resolvedChords.length === chords.length ? resolvedChords : chords.map((chord: any) => (
+    typeof chord === 'string'
+      ? { chord_name: chord, name: chord, fingers: [], barres: [], muted: [], _fallbackTextOnly: true, source: 'loading' }
+      : chord
+  ))
   const canRenderAsDiagrams = normalizedChords.length > 0 && normalizedChords.some((chord: any) => Array.isArray(chord?.fingers) && chord.fingers.length > 0)
   const configuredColumns = (renderData.columns as number) ?? 3
   const chordColumns = Math.min(Math.max(normalizedChords.length, 1), Math.max(configuredColumns, 1), 4)
@@ -342,17 +401,28 @@ function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock;
   )
 }
 
-function BlockNotation({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
+function BlockNotation({ block, onLegacyNotationStavePointerDown, onMusicStableRender }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void; onMusicStableRender?: MusicStableRenderHandler }) {
   const rd = getBlockRenderData(block)
   const alphaTex = typeof rd.alphaTex === 'string' ? rd.alphaTex.trim() : ''
   const hasPreview = rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0) || alphaTex
+  const shouldRenderStructuredNotation = Boolean(rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0))
   if (!hasPreview) return null
 
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      {alphaTex ? (
-        <AlphaTexInlineRenderer tex={alphaTex} width={rd.width ?? 500} minHeight={110} scale={0.85} />
+      {!shouldRenderStructuredNotation && alphaTex ? (
+        <AlphaTabViewer
+          tex={alphaTex}
+          minHeight={130}
+          scale={1}
+          staveProfile="score"
+          purpose="canvas-notation-score"
+          layout="page"
+          showTimeSignature={hasExplicitAlphaTexTimeSignature(alphaTex)}
+          className="notation-container"
+          onStableRender={(html) => onMusicStableRender?.(block, html)}
+        />
       ) : (
         <NotationPreviewCompat
           notation={rd.notation as any}
@@ -363,17 +433,18 @@ function BlockNotation({ block, onLegacyNotationStavePointerDown }: { block: Mat
           timeSignature={rd.time_signature}
           keySignature={rd.key_signature}
           width={rd.width ?? 500}
+          onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
       )}
     </div>
   )
 }
 
-function BlockRhythm({ block }: { block: MaterialBlock }) {
+function BlockRhythm({ block, onMusicStableRender }: { block: MaterialBlock; onMusicStableRender?: MusicStableRenderHandler }) {
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      <AlphaTexInlineRenderer tex={RHYTHM_FIGURES_TEX} minHeight={110} scale={0.72} />
+      <AlphaTexInlineRenderer tex={RHYTHM_FIGURES_TEX} minHeight={110} scale={0.72} purpose="canvas-rhythm-score" onStableRender={(html) => onMusicStableRender?.(block, html)} />
       <div className="flex justify-around mt-2 px-4">
         {RHYTHM_FIGURES.map(f => (
           <div key={f.duration} className="text-center">
@@ -386,7 +457,7 @@ function BlockRhythm({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
+function BlockExercise({ block, onLegacyNotationStavePointerDown, onMusicStableRender }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void; onMusicStableRender?: MusicStableRenderHandler }) {
   const rd = getBlockRenderData(block)
   const content = getBlockContent(block)
   const hasPreview = !!(rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0))
@@ -413,6 +484,7 @@ function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: Mat
           keySignature={rd.key_signature}
           width={rd.width ?? 450}
           className="mb-3"
+          onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
       )}
       {hasTab && <Tablature tab={rd.tab} />}
@@ -420,7 +492,7 @@ function BlockExercise({ block, onLegacyNotationStavePointerDown }: { block: Mat
   )
 }
 
-function BlockTip({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
+function BlockTip({ block, onLegacyNotationStavePointerDown, onMusicStableRender }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void; onMusicStableRender?: MusicStableRenderHandler }) {
   const content = getBlockContent(block)
   const renderData = getBlockRenderData(block)
   return (
@@ -438,6 +510,7 @@ function BlockTip({ block, onLegacyNotationStavePointerDown }: { block: Material
           notationData={renderData.notation_data}
           onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
           className="mt-3"
+          onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
       )}
     </div>
@@ -1236,7 +1309,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -1263,13 +1336,16 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onCh
           return <BlockText key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
         }
         if (block.block_type === 'notation') {
-          return <BlockNotation key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+          return <BlockNotation key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} onMusicStableRender={onMusicStableRender} />
+        }
+        if (block.block_type === 'rhythm') {
+          return <BlockRhythm key={i} block={block} onMusicStableRender={onMusicStableRender} />
         }
         if (block.block_type === 'exercise') {
-          return <BlockExercise key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+          return <BlockExercise key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} onMusicStableRender={onMusicStableRender} />
         }
         if (block.block_type === 'tip') {
-          return <BlockTip key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
+          return <BlockTip key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} onMusicStableRender={onMusicStableRender} />
         }
         return (
           <Renderer

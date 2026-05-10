@@ -17,6 +17,7 @@ import { Whatsapp } from './pages/Whatsapp'
 import { Relatorios } from './pages/Relatorios'
 import { Integracoes } from './pages/Integracoes'
 import { Configuracoes } from './pages/Configuracoes'
+import { AlphaTabFixtures } from './pages/AlphaTabFixtures'
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="relatorios" element={<Relatorios />} />
           <Route path="integracoes" element={<Integracoes />} />
           <Route path="configuracoes" element={<Configuracoes />} />
+          <Route path="dev/alphatab-fixtures" element={<AlphaTabFixtures />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

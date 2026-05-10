@@ -1,4 +1,5 @@
-import { AlphaTexInlineRenderer } from './AlphaTexInlineRenderer'
+import { AlphaTabViewer } from './AlphaTabViewer'
+import { hasExplicitAlphaTexTimeSignature } from './AlphaTexInlineRenderer'
 import { StaffNotation } from './StaffNotation'
 import {
   legacyNotationToCombinedPreviewItem,
@@ -20,6 +21,7 @@ interface NotationPreviewCompatProps {
   className?: string
   showLabels?: boolean
   scale?: number
+  onStableRender?: (html: string) => void
 }
 
 export function NotationPreviewCompat({
@@ -36,6 +38,7 @@ export function NotationPreviewCompat({
   className = '',
   showLabels = true,
   scale = 0.9,
+  onStableRender,
 }: NotationPreviewCompatProps) {
   const hasLegacyNotation = Boolean(notation?.staves?.length)
   const hasLegacyNotes = Boolean(notes?.length)
@@ -53,13 +56,16 @@ export function NotationPreviewCompat({
     return (
       <div className={`space-y-1.5 ${className}`}>
         <div onMouseDown={() => onLegacyStavePointerDown?.(0)}>
-          <AlphaTexInlineRenderer
+          <AlphaTabViewer
             tex={previewItem.tex}
-            width={previewItem.width}
             minHeight={minHeight}
             scale={scale}
-            pointerEvents="none"
-            systemPaddingBottom={0}
+            staveProfile="score"
+            purpose="canvas-notation-score"
+            layout="page"
+            showTimeSignature={hasExplicitAlphaTexTimeSignature(previewItem.tex)}
+            className="notation-container"
+            onStableRender={onStableRender}
           />
         </div>
       </div>
@@ -95,17 +101,19 @@ export function NotationPreviewCompat({
   })
 
   if (!directNotationDataItem) return null
-
   return (
     <div className={`space-y-1.5 ${className}`}>
       <div className="space-y-0.5">
-        <AlphaTexInlineRenderer
+        <AlphaTabViewer
           tex={directNotationDataItem.tex}
-          width={directNotationDataItem.width}
           minHeight={minHeight}
           scale={scale}
-          pointerEvents="none"
-          systemPaddingBottom={0}
+          staveProfile="score"
+          purpose="canvas-notation-score"
+          layout="page"
+          showTimeSignature={hasExplicitAlphaTexTimeSignature(directNotationDataItem.tex)}
+          className="notation-container"
+          onStableRender={onStableRender}
         />
         {showLabels && directNotationDataItem.label && (
           <div className="text-[11px] text-text3 italic px-2 -mt-1">

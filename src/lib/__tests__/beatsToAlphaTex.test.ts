@@ -73,7 +73,7 @@ const scaleBeats: Beat[] = 'C/4 D/4 E/4 F/4 G/4 A/4 B/4 C/5'.split(' ').map((p, 
   makeBeat({ pitches: [makeNote(p)], barAfter: i === 3 })
 )
 const scaleTex = beatsToAlphaTex(scaleBeats, { ...defaultOptions, timeSignature: '4/4' })
-assertContains(scaleTex, ':4 c4', 'Primeira nota c4 com duração :4')
+assertContains(scaleTex, ':4 c3', 'Primeira nota c3 com duração :4')
 assertContains(scaleTex, '|', 'Tem barline')
 assertContains(scaleTex, '\\ts 4 4', 'Tem time signature 4/4')
 assertContains(scaleTex, '\\staff{score}', 'Tem staff score')
@@ -88,11 +88,11 @@ const durBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('G/4')], duration: '16' }),
 ]
 const durTex = beatsToAlphaTexNotes(durBeats).tex
-assertContains(durTex, ':1 c4', 'Semibreve :1')
-assertContains(durTex, ':2 d4', 'Mínima :2')
-assertContains(durTex, ':4 e4', 'Semínima :4')
-assertContains(durTex, ':8 f4', 'Colcheia :8')
-assertContains(durTex, ':16 g4', 'Semicolcheia :16')
+assertContains(durTex, ':1 c3', 'Semibreve :1')
+assertContains(durTex, ':2 d3', 'Mínima :2')
+assertContains(durTex, ':4 e3', 'Semínima :4')
+assertContains(durTex, ':8 f3', 'Colcheia :8')
+assertContains(durTex, ':16 g3', 'Semicolcheia :16')
 
 // 4. Ponto de aumento
 console.log('\n--- Ponto de aumento ---')
@@ -122,7 +122,7 @@ const chordBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('C/4'), makeNote('E/4'), makeNote('G/4')] }),
 ]
 const chordTex = beatsToAlphaTexNotes(chordBeats).tex
-assertContains(chordTex, '(c4 e4 g4)', 'Acorde C-E-G entre parênteses')
+assertContains(chordTex, '(c3 e3 g3)', 'Acorde C-E-G entre parênteses')
 
 // 7. Acidentes
 console.log('\n--- Acidentes ---')
@@ -132,9 +132,9 @@ const accBeats: Beat[] = [
   makeBeat({ pitches: [makeNote('E/4', 'n')] }),
 ]
 const accTex = beatsToAlphaTexNotes(accBeats).tex
-assertContains(accTex, 'c#4', 'Sustenido c#4')
-assertContains(accTex, 'db4', 'Bemol db4')
-assertContains(accTex, 'en4', 'Bequadro en4')
+assertContains(accTex, 'c#3', 'Sustenido c#3')
+assertContains(accTex, 'db3', 'Bemol db3')
+assertContains(accTex, 'en3', 'Bequadro en3')
 
 // 8. Articulações
 console.log('\n--- Articulações ---')

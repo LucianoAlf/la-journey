@@ -1586,6 +1586,7 @@ export function NotationEditorV2({
                 <AlphaTabViewer
                   tex={alphaTex}
                   staveProfile="score"
+                  purpose={grandStaffMode ? 'editor-notation-grand-staff' : 'editor-notation-score'}
                   grandStaffMode={grandStaffMode}
                   layout={grandStaffMode ? 'horizontal' : 'page'}
                   scale={1.0}
