@@ -54,6 +54,7 @@ import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type
 import type { ChordPositions } from "@/components/music/ChordDiagram";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
 import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
+import { raiseTabSlursInSvg, shouldHideAlphaTabSvgGroup } from "@/components/music/AlphaTexInlineRenderer";
 import { generateText } from "@/services/aiService";
 import { generateCoverImageRaw, enhancePromptWithAI, IMAGE_STYLES, fetchImageLibrary, type ImageLibraryItem, type ImageStyle } from "@/services/imageGenerationService";
 import { supabase } from "@/lib/supabase";
@@ -301,7 +302,7 @@ function simpleHash(value: string): string {
 const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
 const ACTIVE_PAGE_RADIUS = 2
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
-const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-v2'
+const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-slur-above-v6'
 
 const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
 
@@ -405,6 +406,10 @@ function cleanTablatureSnapshotArtifacts(html: string, block: EditorBlock): stri
     }
   })
 
+  document.querySelectorAll('svg').forEach(svg => {
+    raiseTabSlursInSvg(svg as unknown as SVGSVGElement)
+  })
+
   document.querySelectorAll('body *').forEach(element => {
     if (element.textContent?.trim() === 'rendered by alphaTab') {
       ;(element as HTMLElement).style.display = 'none'
@@ -413,11 +418,7 @@ function cleanTablatureSnapshotArtifacts(html: string, block: EditorBlock): stri
 
   if (shouldHideFreeTime) {
     document.querySelectorAll('svg g[transform]').forEach(group => {
-      const transform = group.getAttribute('transform') ?? ''
-      const match = transform.match(/translate\(\s*([\d.]+)/)
-      if (!match) return
-      const tx = parseFloat(match[1])
-      if (tx >= 65 && tx < 110) {
+      if (shouldHideAlphaTabSvgGroup(group.textContent, false)) {
         hideSvgElement(group as unknown as SVGElement)
       }
     })

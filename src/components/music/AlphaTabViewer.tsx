@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 're
 import * as alphaTabModule from '@coderline/alphatab'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { buildAlphaTabSettings, type AlphaTabPurpose } from '@/lib/alphaTabSettings'
+import { raiseTabSlursInSvg, shouldHideAlphaTabSvgGroup } from './AlphaTexInlineRenderer'
 import type { FretboardNote } from './GuitarFretboardDiagram'
 
 export function notesToAlphaTex(
@@ -63,15 +64,11 @@ const CLEAN_TAB_CSS = `
   .at-viewer-clean .at-surface > div:last-child { display: none !important; }
 `
 
-function isTimeSignatureGlyphText(text: string) {
-  return /^[\uE080-\uE089]+$/.test(text.trim())
-}
-
-function isFreeTimeGlyphText(text: string) {
-  return text.trim() === '\uE241'
-}
-
-function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature = false) {
+function cleanupAlphaTabDom(
+  container: HTMLDivElement | null,
+  showTimeSignature = false,
+  isTablature = false,
+) {
   if (!container) return
 
   const surface = container.querySelector('.at-surface')
@@ -87,18 +84,16 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
 
   const svgs = container.querySelectorAll('svg')
   svgs.forEach(svg => {
-    if (!showTimeSignature) {
-      const gElements = svg.querySelectorAll('g[transform]')
-      gElements.forEach(g => {
-        const transform = g.getAttribute('transform') || ''
-        const match = transform.match(/translate\(\s*([\d.]+)/)
-        if (!match) return
-        const tx = parseFloat(match[1])
-        if (tx >= 65 && tx < 110) {
-          ;(g as SVGElement).style.display = 'none'
-        }
-      })
+    if (isTablature) {
+      raiseTabSlursInSvg(svg)
     }
+
+    const gElements = svg.querySelectorAll('g[transform]')
+    gElements.forEach(g => {
+      if (shouldHideAlphaTabSvgGroup(g.textContent, showTimeSignature)) {
+        ;(g as SVGElement).style.display = 'none'
+      }
+    })
 
     const texts = svg.querySelectorAll('text')
     texts.forEach(t => {
@@ -110,10 +105,7 @@ function cleanupAlphaTabDom(container: HTMLDivElement | null, showTimeSignature 
       if (!showTimeSignature && content.toLowerCase().includes('free time')) {
         ;(t as SVGElement).style.display = 'none'
       }
-      if (!showTimeSignature && isTimeSignatureGlyphText(content)) {
-        ;(t as SVGElement).style.display = 'none'
-      }
-      if (!showTimeSignature && isFreeTimeGlyphText(content)) {
+      if (shouldHideAlphaTabSvgGroup(content, showTimeSignature)) {
         ;(t as SVGElement).style.display = 'none'
       }
     })
@@ -217,6 +209,17 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
         apiRef.current = null
       }
 
+      const isTablature = alphaTabPurpose.includes('tablature')
+      let cleanupObserver: MutationObserver | null = null
+      let cleanupFrame: number | null = null
+      const queueDomCleanup = () => {
+        if (cleanupFrame !== null) return
+        cleanupFrame = window.requestAnimationFrame(() => {
+          cleanupFrame = null
+          cleanupAlphaTabDom(containerRef.current, showTimeSignature, isTablature)
+        })
+      }
+
       const settings = buildAlphaTabSettings({
         purpose: alphaTabPurpose,
         showTimeSignature,
@@ -227,6 +230,16 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
 
       const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
       apiRef.current = api
+
+      if (isTablature && containerRef.current) {
+        cleanupObserver = new MutationObserver(queueDomCleanup)
+        cleanupObserver.observe(containerRef.current, {
+          attributes: true,
+          attributeFilter: ['d', 'style'],
+          childList: true,
+          subtree: true,
+        })
+      }
 
       api.scoreLoaded.on((score: any) => {
         setPhase('rendering')
@@ -254,7 +267,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
 
       api.postRenderFinished.on(() => {
         window.requestAnimationFrame(() => {
-          cleanupAlphaTabDom(containerRef.current, showTimeSignature)
+          cleanupAlphaTabDom(containerRef.current, showTimeSignature, isTablature)
           setLoading(false)
           setPhase('ready')
           const html = containerRef.current?.innerHTML
@@ -291,6 +304,10 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       configKeyRef.current = configKey
 
       return () => {
+        cleanupObserver?.disconnect()
+        if (cleanupFrame !== null) {
+          window.cancelAnimationFrame(cleanupFrame)
+        }
         api.destroy()
         apiRef.current = null
       }

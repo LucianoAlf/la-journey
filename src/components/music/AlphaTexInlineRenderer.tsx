@@ -63,6 +63,51 @@ export function shouldHideAlphaTexInlineText(text: string | null | undefined, ha
     || isFreeTimeGlyphText(value)
 }
 
+export function shouldHideAlphaTabSvgGroup(text: string | null | undefined, hasExplicitTimeSignature: boolean) {
+  return shouldHideAlphaTexInlineText(text, hasExplicitTimeSignature)
+}
+
+function formatPathNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : String(value)
+}
+
+function nearlyEqual(a: number, b: number, tolerance = 0.001) {
+  return Math.abs(a - b) <= tolerance
+}
+
+const TAB_SLUR_VERTICAL_LIFT = 14
+
+export function raiseTabSlurPathData(pathData: string | null | undefined) {
+  if (!pathData || !/[,\s]C-?\d/.test(pathData) || /[,\s]L-?\d/.test(pathData)) return null
+
+  const values = pathData.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)?.map(Number)
+  if (!values || values.length !== 14 || values.some(value => Number.isNaN(value))) return null
+
+  const [startX, startY, c1X, c1Y, c2X, c2Y, endX, endY, c3X, c3Y, c4X, c4Y, closeX, closeY] = values
+  if (!nearlyEqual(startY, endY) || !nearlyEqual(startY, closeY) || !nearlyEqual(startX, closeX)) return null
+  if (c1Y <= startY || c2Y <= startY || c3Y <= startY || c4Y <= startY) return null
+
+  const raisedC1Y = startY - (c1Y - startY)
+  const raisedC2Y = startY - (c2Y - startY)
+  const raisedC3Y = startY - (c3Y - startY)
+  const raisedC4Y = startY - (c4Y - startY)
+  const liftedStartY = startY - TAB_SLUR_VERTICAL_LIFT
+  const liftedEndY = endY - TAB_SLUR_VERTICAL_LIFT
+  const liftedCloseY = closeY - TAB_SLUR_VERTICAL_LIFT
+
+  return ` M${formatPathNumber(startX)},${formatPathNumber(liftedStartY)} C${formatPathNumber(c1X)},${formatPathNumber(raisedC1Y - TAB_SLUR_VERTICAL_LIFT)},${formatPathNumber(c2X)},${formatPathNumber(raisedC2Y - TAB_SLUR_VERTICAL_LIFT)},${formatPathNumber(endX)},${formatPathNumber(liftedEndY)} C${formatPathNumber(c3X)},${formatPathNumber(raisedC3Y - TAB_SLUR_VERTICAL_LIFT)},${formatPathNumber(c4X)},${formatPathNumber(raisedC4Y - TAB_SLUR_VERTICAL_LIFT)},${formatPathNumber(closeX)},${formatPathNumber(liftedCloseY)} z`
+}
+
+export function raiseTabSlursInSvg(svg: SVGSVGElement) {
+  const paths = svg.querySelectorAll('path[d]')
+  paths.forEach(path => {
+    const raised = raiseTabSlurPathData(path.getAttribute('d'))
+    if (raised) {
+      path.setAttribute('d', raised)
+    }
+  })
+}
+
 export function getAlphaTexInlineFrameStyle({
   width,
   layout,
@@ -102,7 +147,11 @@ const INLINE_CSS = `
   .at-inline-clean .at-surface > div:last-child { display: none !important; }
 `
 
-function cleanupAlphaTexInlineDom(container: HTMLDivElement | null, hasExplicitTimeSignature: boolean) {
+function cleanupAlphaTexInlineDom(
+  container: HTMLDivElement | null,
+  hasExplicitTimeSignature: boolean,
+  isTablature = false,
+) {
   if (!container) return
 
   const surface = container.querySelector('.at-surface')
@@ -118,6 +167,10 @@ function cleanupAlphaTexInlineDom(container: HTMLDivElement | null, hasExplicitT
 
   const svgs = container.querySelectorAll('svg')
   svgs.forEach(svg => {
+    if (isTablature) {
+      raiseTabSlursInSvg(svg)
+    }
+
     const texts = svg.querySelectorAll('text')
     texts.forEach(text => {
       if (shouldHideAlphaTexInlineText(text.textContent, hasExplicitTimeSignature)) {
@@ -125,18 +178,12 @@ function cleanupAlphaTexInlineDom(container: HTMLDivElement | null, hasExplicitT
       }
     })
 
-    if (!hasExplicitTimeSignature) {
-      const signatureGlyphs = svg.querySelectorAll('g[transform]')
-      signatureGlyphs.forEach(g => {
-        const transform = g.getAttribute('transform') || ''
-        const match = transform.match(/translate\(\s*([\d.]+)/)
-        if (!match) return
-        const tx = parseFloat(match[1])
-        if (tx >= 65 && tx < 110) {
-          ;(g as SVGElement).style.display = 'none'
-        }
-      })
-    }
+    const glyphGroups = svg.querySelectorAll('g[transform]')
+    glyphGroups.forEach(g => {
+      if (shouldHideAlphaTabSvgGroup(g.textContent, hasExplicitTimeSignature)) {
+        ;(g as SVGElement).style.display = 'none'
+      }
+    })
 
     const svgWidth = parseFloat(svg.getAttribute('width') || '0')
     if (svgWidth > 0) {
@@ -208,6 +255,17 @@ export function AlphaTexInlineRenderer({
       apiRef.current = null
     }
 
+    const isTablature = alphaTabPurpose.includes('tablature')
+    let cleanupObserver: MutationObserver | null = null
+    let cleanupFrame: number | null = null
+    const queueDomCleanup = () => {
+      if (cleanupFrame !== null) return
+      cleanupFrame = window.requestAnimationFrame(() => {
+        cleanupFrame = null
+        cleanupAlphaTexInlineDom(containerRef.current, hasExplicitTimeSignature, isTablature)
+      })
+    }
+
     const settings = buildAlphaTabSettings({
       purpose: alphaTabPurpose,
       showTimeSignature: hasExplicitTimeSignature,
@@ -218,6 +276,16 @@ export function AlphaTexInlineRenderer({
 
     const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
     apiRef.current = api
+
+    if (isTablature && containerRef.current) {
+      cleanupObserver = new MutationObserver(queueDomCleanup)
+      cleanupObserver.observe(containerRef.current, {
+        attributes: true,
+        attributeFilter: ['d', 'style'],
+        childList: true,
+        subtree: true,
+      })
+    }
 
     api.scoreLoaded.on((score: any) => {
       for (const masterBar of score.masterBars) {
@@ -232,7 +300,7 @@ export function AlphaTexInlineRenderer({
 
     api.postRenderFinished.on(() => {
       window.requestAnimationFrame(() => {
-        cleanupAlphaTexInlineDom(containerRef.current, hasExplicitTimeSignature)
+        cleanupAlphaTexInlineDom(containerRef.current, hasExplicitTimeSignature, isTablature)
         setLoading(false)
         const html = containerRef.current?.innerHTML
         if (html) onStableRenderRef.current?.(html)
@@ -248,6 +316,10 @@ export function AlphaTexInlineRenderer({
     api.tex(renderTex)
 
     return () => {
+      cleanupObserver?.disconnect()
+      if (cleanupFrame !== null) {
+        window.cancelAnimationFrame(cleanupFrame)
+      }
       api.destroy()
       apiRef.current = null
     }

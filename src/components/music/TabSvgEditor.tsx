@@ -78,6 +78,11 @@ const C = {
   barNumber: '#6366F1',
 }
 
+export function getTabSvgTiePath(x1: number, x2: number, cy: number) {
+  const midX = (x1 + x2) / 2
+  return `M ${x1 + 5} ${cy - 8} Q ${midX} ${cy - 18} ${x2 - 5} ${cy - 8}`
+}
+
 // ─── Helper: distribuir beats em linhas ─────────────────────────────
 
 interface RowLayout {
@@ -527,12 +532,10 @@ export function TabSvgEditor({
               const x1 = row.beatCenters[i]
               const x2 = row.beatCenters[nextI]
               const cy = stringY(r, s)
-              const midX = (x1 + x2) / 2
-              const arcY = cy + 10
               els.push(
                 <path
                   key={`tie-${colIdx}-${s}`}
-                  d={`M ${x1 + 5} ${cy + 6} Q ${midX} ${arcY + 4} ${x2 - 5} ${cy + 6}`}
+                  d={getTabSvgTiePath(x1, x2, cy)}
                   fill="none"
                   stroke="#6366F1"
                   strokeWidth={1.5}
