@@ -110,6 +110,18 @@ import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
 import { canDeleteSelectedBlock, canEnterInlineEdit, getCanvasToolbarMode, getCanvasToolbarPosition, getInlineEditingBlockAfterCanvasBlockClick, isTextInputTarget } from "@/lib/editorCanvasInteraction";
+import {
+  A4_CONTENT_HEIGHT,
+  canSplitBlockForPagination,
+  describePaginationPolicy,
+  getBlockPaginationPolicy,
+  getEstimatedBlockHeightForPagination,
+  getPaginationFragmentData,
+  getPaginationSourceBlockId,
+  paginateBlocks,
+  shouldKeepBlocksTogether,
+  type BlockPaginationPolicy,
+} from "@/lib/sharedPagination";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
 
@@ -301,148 +313,12 @@ function simpleHash(value: string): string {
   return Math.abs(hash).toString(36)
 }
 
-const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
 const ACTIVE_PAGE_RADIUS = 2
-const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
-const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.54
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
 const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-slur-above-v6'
 type BlockHeightSource = 'estimated' | 'calibrated' | 'measured'
-type PaginationBehavior = 'unbreakable' | 'breakable'
-
-interface BlockPaginationPolicy {
-  behavior: PaginationBehavior
-  keepWithNext: boolean
-  startOnNewPage: boolean
-  allowSplit: boolean
-  source: 'default' | 'block'
-}
-
-interface PaginationGroup {
-  blocks: EditorBlock[]
-  height: number
-  policy: BlockPaginationPolicy
-}
 
 const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
-const BREAKABLE_TEXT_BLOCK_TYPES = new Set(['text', 'tip', 'exercise'])
-const PAGINATION_FRAGMENT_ID_SEPARATOR = '__pagination_fragment_'
-
-interface PaginationFragmentData {
-  source_block_id: string
-  index: number
-  total: number
-}
-
-function getPaginationFragmentData(block: EditorBlock): PaginationFragmentData | null {
-  const fragment = (block.render_data?.pagination_fragment ?? null) as Partial<PaginationFragmentData> | null
-  if (!fragment?.source_block_id || typeof fragment.index !== 'number' || typeof fragment.total !== 'number') return null
-  return {
-    source_block_id: fragment.source_block_id,
-    index: fragment.index,
-    total: fragment.total,
-  }
-}
-
-function getPaginationSourceBlockId(block: EditorBlock) {
-  return getPaginationFragmentData(block)?.source_block_id ?? block.id
-}
-
-function stripHtmlTags(value: string) {
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
-function splitHtmlIntoTopLevelSegments(html: string) {
-  const matches = html.match(/<(p|h[1-6]|ul|ol|blockquote|table|pre)[\s\S]*?<\/\1>/gi)
-  if (matches && matches.length > 1) return matches
-  return html
-    .split(/(?=<p\b|<h[1-6]\b|<ul\b|<ol\b|<blockquote\b|<table\b|<pre\b)/i)
-    .map(segment => segment.trim())
-    .filter(Boolean)
-}
-
-function splitTextIntoSegments(text: string) {
-  return text
-    .split(/\n{2,}/)
-    .map(segment => segment.trim())
-    .filter(Boolean)
-    .map(segment => `<p>${segment.replace(/\n/g, '<br />')}</p>`)
-}
-
-function estimateTextFragmentHeight(block: EditorBlock, segments: string[], includeTitle: boolean) {
-  const textLength = stripHtmlTags(segments.join(' ')).length
-  const lineCount = Math.max(1, Math.ceil(textLength / 95))
-  const titleHeight = includeTitle && block.title ? 28 : 0
-  const shellHeight = block.block_type === 'exercise' ? 72 : block.block_type === 'tip' ? 56 : 20
-  return titleHeight + shellHeight + lineCount * 22
-}
-
-function canSplitBlockForPagination(block: EditorBlock, policy: BlockPaginationPolicy) {
-  if (!BREAKABLE_TEXT_BLOCK_TYPES.has(block.block_type)) return false
-  if (!policy.allowSplit || policy.behavior !== 'breakable') return false
-  const renderData = block.render_data ?? {}
-  return !(
-    renderData.notation ||
-    renderData.notation_data ||
-    renderData.notes ||
-    renderData.tab ||
-    renderData.alphaTex
-  )
-}
-
-function createPaginationFragments(block: EditorBlock): EditorBlock[] {
-  const policy = getBlockPaginationPolicy(block)
-  if (!canSplitBlockForPagination(block, policy)) return [block]
-
-  const content = block.content ?? {}
-  const html = typeof content.html === 'string' ? content.html.trim() : ''
-  const text = typeof content.text === 'string' ? content.text.trim() : ''
-  const segments = html ? splitHtmlIntoTopLevelSegments(html) : splitTextIntoSegments(text)
-  if (segments.length <= 1) return [block]
-
-  const estimatedHeight = getEstimatedBlockHeightForPagination(block)
-  const targetHeight = Math.round(A4_CONTENT_HEIGHT * TEXT_FRAGMENT_TARGET_HEIGHT_RATIO)
-  if (estimatedHeight <= targetHeight) return [block]
-
-  const chunks: string[][] = []
-  let current: string[] = []
-
-  for (const segment of segments) {
-    const candidate = [...current, segment]
-    const includeTitle = chunks.length === 0
-    if (
-      current.length > 0 &&
-      estimateTextFragmentHeight(block, candidate, includeTitle) > targetHeight
-    ) {
-      chunks.push(current)
-      current = [segment]
-    } else {
-      current = candidate
-    }
-  }
-  if (current.length > 0) chunks.push(current)
-
-  if (chunks.length <= 1) return [block]
-
-  return chunks.map((chunk, index) => ({
-    ...block,
-    id: `${block.id}${PAGINATION_FRAGMENT_ID_SEPARATOR}${index}`,
-    title: index === 0 ? block.title : null,
-    content: {
-      ...(block.content ?? {}),
-      html: chunk.join(''),
-      text: stripHtmlTags(chunk.join(' ')),
-    },
-    render_data: {
-      ...(block.render_data ?? {}),
-      pagination_fragment: {
-        source_block_id: block.id,
-        index,
-        total: chunks.length,
-      } satisfies PaginationFragmentData,
-    },
-  }))
-}
 
 function getBlockHeightCacheKey(block: EditorBlock): string {
   return `${block.id}-${simpleHash(stableSerialize({
@@ -454,190 +330,11 @@ function getBlockHeightCacheKey(block: EditorBlock): string {
   }))}`
 }
 
-function estimateBlockHeight(block: EditorBlock): number {
-  const content = block.content ?? {}
-  const renderData = block.render_data ?? {}
-  const text = [
-    typeof content.text === 'string' ? content.text : '',
-    typeof content.html === 'string' ? content.html : '',
-    typeof content.title_html === 'string' ? content.title_html : '',
-  ].join(' ')
-  const textLines = Math.max(1, Math.ceil(text.replace(/<[^>]+>/g, ' ').length / 95))
-
-  switch (block.block_type) {
-    case 'cover':
-      return A4_CONTENT_HEIGHT
-    case 'title':
-      return 56
-    case 'text':
-      return Math.max(90, Math.min(420, 42 + textLines * 22))
-    case 'tip':
-      return Math.max(86, Math.min(240, 54 + textLines * 18))
-    case 'exercise':
-      return Math.max(130, Math.min(360, 80 + textLines * 20))
-    case 'notation':
-    case 'rhythm':
-    case 'tablature':
-      return 200
-    case 'keyboard':
-      return Array.isArray(renderData.chords) && renderData.chords.length > 0 ? 260 : 160
-    case 'keyboard_grid': {
-      const count = Array.isArray(renderData.keyboards) ? renderData.keyboards.length : 1
-      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
-      return 52 + Math.ceil(count / columns) * 150
-    }
-    case 'chord_grid': {
-      const count = Array.isArray(renderData.chords) ? renderData.chords.length : 1
-      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
-      return 56 + Math.ceil(count / columns) * 190
-    }
-    case 'chord_diagram':
-      return 220
-    case 'image':
-      return 280
-    case 'audio':
-    case 'video':
-      return 150
-    case 'columns':
-      return 220
-    case 'separator':
-      return 28
-    default:
-      return 120
-  }
-}
-
-function getEstimatedBlockHeightForPagination(block: EditorBlock): number {
-  const estimated = estimateBlockHeight(block)
-  const style = block.render_data?.style as Partial<BlockStyle> | undefined
-  const marginTop = Number(style?.margin?.top ?? 0)
-  const marginBottom = Number(style?.margin?.bottom ?? 0)
-  const verticalMargin = marginTop + marginBottom
-  if (block.block_type === 'cover') return estimated + verticalMargin
-  return Math.round(estimated * ESTIMATED_BLOCK_HEIGHT_FACTOR) + verticalMargin
-}
-
 function getMeasuredBlockOuterHeight(element: HTMLElement) {
   const style = window.getComputedStyle(element)
   const marginTop = Number.parseFloat(style.marginTop) || 0
   const marginBottom = Number.parseFloat(style.marginBottom) || 0
   return element.offsetHeight + marginTop + marginBottom
-}
-
-function getBlockPaginationPolicy(block: EditorBlock): BlockPaginationPolicy {
-  const rawPolicy = (block.render_data?.pagination ?? {}) as Partial<BlockPaginationPolicy>
-  const isMusicOrMedia = [
-    'notation',
-    'rhythm',
-    'tablature',
-    'keyboard',
-    'keyboard_grid',
-    'chord_grid',
-    'chord_diagram',
-    'image',
-    'cover',
-    'separator',
-  ].includes(block.block_type)
-  const defaultBehavior: PaginationBehavior = ['text', 'tip', 'exercise', 'columns'].includes(block.block_type)
-    ? 'breakable'
-    : isMusicOrMedia
-      ? 'unbreakable'
-      : 'unbreakable'
-
-  return {
-    behavior: rawPolicy.behavior ?? defaultBehavior,
-    keepWithNext: rawPolicy.keepWithNext ?? block.block_type === 'title',
-    startOnNewPage: rawPolicy.startOnNewPage ?? false,
-    allowSplit: rawPolicy.allowSplit ?? ['text', 'tip', 'exercise', 'columns'].includes(block.block_type),
-    source: Object.keys(rawPolicy).length > 0 ? 'block' : 'default',
-  }
-}
-
-function describePaginationPolicy(policy: BlockPaginationPolicy): string {
-  const parts: string[] = [policy.behavior]
-  if (policy.keepWithNext) parts.push('keep')
-  if (policy.startOnNewPage) parts.push('new-page')
-  if (policy.allowSplit) parts.push('split')
-  return parts.join(' · ')
-}
-
-function shouldKeepBlocksTogether(current: EditorBlock, next: EditorBlock | undefined): boolean {
-  if (!next || next.block_type === 'page_break' || next.block_type === 'cover') return false
-  const policy = getBlockPaginationPolicy(current)
-  if (policy.keepWithNext) return true
-  if (current.block_type === 'exercise' && ['notation', 'rhythm', 'tablature', 'keyboard', 'keyboard_grid', 'chord_grid'].includes(next.block_type)) {
-    return true
-  }
-  return false
-}
-
-function paginateEditorBlocks(
-  blocks: EditorBlock[],
-  getHeight: (block: EditorBlock) => number,
-) {
-  const pages: EditorBlock[][] = [[]]
-  const breakReasons = new Map<number, { reason: PaginationDebugPage['breakReason']; detail: string }>()
-  let currentHeight = 0
-
-  const pushPage = (reason: PaginationDebugPage['breakReason'], detail: string) => {
-    breakReasons.set(pages.length - 1, { reason, detail })
-    pages.push([])
-    currentHeight = 0
-  }
-
-  const groups: PaginationGroup[] = []
-  const paginationBlocks = blocks.flatMap(createPaginationFragments)
-  for (let index = 0; index < paginationBlocks.length; index += 1) {
-    const block = paginationBlocks[index]
-    if (block.block_type === 'page_break') {
-      groups.push({ blocks: [block], height: 0, policy: getBlockPaginationPolicy(block) })
-      continue
-    }
-
-    const policy = getBlockPaginationPolicy(block)
-    const groupBlocks = [block]
-    let height = getHeight(block)
-
-    if (shouldKeepBlocksTogether(block, paginationBlocks[index + 1]) && height + getHeight(paginationBlocks[index + 1]) <= A4_CONTENT_HEIGHT) {
-      const next = paginationBlocks[index + 1]
-      groupBlocks.push(next)
-      height += getHeight(next)
-      index += 1
-    }
-
-    groups.push({ blocks: groupBlocks, height, policy })
-  }
-
-  for (const group of groups) {
-    const firstBlock = group.blocks[0]
-
-    if (firstBlock.block_type === 'page_break') {
-      pushPage('manual', 'Quebra manual inserida pelo professor.')
-      continue
-    }
-
-    if (firstBlock.block_type === 'cover') {
-      if (pages[pages.length - 1].length > 0) {
-        pushPage('cover', 'A capa começa em página própria.')
-      }
-      pages[pages.length - 1].push(...group.blocks)
-      pushPage('cover', 'A capa ocupa uma página inteira.')
-      continue
-    }
-
-    if (group.policy.startOnNewPage && pages[pages.length - 1].length > 0) {
-      pushPage('manual', `${firstBlock.title || firstBlock.block_type} configurado para começar em nova página.`)
-    }
-
-    if (currentHeight + group.height > A4_CONTENT_HEIGHT && pages[pages.length - 1].length > 0) {
-      pushPage('overflow', `${firstBlock.title || firstBlock.block_type} não coube no espaço restante.`)
-    }
-
-    pages[pages.length - 1].push(...group.blocks)
-    currentHeight += group.height
-  }
-
-  return { pages, breakReasons }
 }
 
 function isFreeTimeTablatureBlock(block: EditorBlock) {
@@ -965,7 +662,7 @@ function useEditorPagination({
     })
   }, [blocks])
 
-  const paginationResult = useMemo(() => paginateEditorBlocks(
+  const paginationResult = useMemo(() => paginateBlocks(
     blocks,
     block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
   ), [blocks, blockHeights])
@@ -1938,7 +1635,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [blocks])
 
   /** Distribui blocos em páginas A4 respeitando estimativas e alturas reais medidas */
-  const paginationResult = useMemo(() => paginateEditorBlocks(
+  const paginationResult = useMemo(() => paginateBlocks(
     blocks,
     block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
   ), [blocks, blockHeights])

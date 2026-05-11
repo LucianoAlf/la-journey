@@ -567,6 +567,28 @@
   box-shadow:none!important;
   background:transparent!important;
 }
+.print-view .keyboard-container,
+.print-view .piano-keyboard,
+.print-view [class*="PianoKeyboard"],
+.print-view .chord-diagram,
+.print-view .chord-diagram-wrapper,
+.print-view .chord-grid-container,
+.print-view [class*="block-keyboard"],
+.print-view [class*="block-chord"],
+.print-view .alphatab-container,
+.print-view [class*="block-notation"]{
+  border:none!important;
+  box-shadow:none!important;
+  border-radius:0!important;
+  background:transparent!important;
+  outline:none!important;
+}
+.print-view button{
+  border:none!important;
+  box-shadow:none!important;
+  background:transparent!important;
+  outline:none!important;
+}
 .print-view [data-block-type="chord_grid"] svg,
 .print-view [data-block-type="chord_diagram"] svg{
   color:#111827!important;
