@@ -24,6 +24,11 @@ export interface PaginationDebugPage {
   freePercent: number
   breakReason: PaginationBreakReason
   breakDetail: string
+  opportunity: string | null
+  nextBlockTitle: string | null
+  nextBlockType: string | null
+  nextBlockHeight: number | null
+  nextBlockCanFit: boolean
   blocks: PaginationDebugBlock[]
 }
 
@@ -65,15 +70,15 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
 
   return (
     <div className="fixed inset-0 z-[90] bg-black/35 backdrop-blur-[1px]" role="dialog" aria-modal="true">
-      <div className="absolute right-4 top-4 bottom-4 w-[min(720px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
+      <div className="absolute right-4 top-4 bottom-4 w-[min(760px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
             <div className="flex items-center gap-2">
               <Gauge size={18} className="text-accent" />
-              <h2 className="text-sm font-semibold text-text">Mapa de Paginação</h2>
+              <h2 className="text-sm font-semibold text-text">Mapa de Pagina&ccedil;&atilde;o</h2>
             </div>
             <p className="mt-0.5 text-[11px] text-text3">
-              {pages.length} páginas · {actionableUnderfilledPages.length} problemas de paginação · {underfilledPages.length} páginas com mais de 30% livre no total
+              {pages.length} p&aacute;ginas &middot; {actionableUnderfilledPages.length} problemas de pagina&ccedil;&atilde;o &middot; {underfilledPages.length} p&aacute;ginas com mais de 30% livre no total
             </p>
           </div>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => onOpenChange(false)} aria-label="Fechar mapa">
@@ -84,7 +89,6 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
         <ScrollArea className="h-[calc(100%-64px)]">
           <div className="space-y-3 p-4">
             {pages.map(page => {
-              const isUnderfilled = page.freePercent > 30
               const isActionableUnderfilled = isActionableUnderfilledPage(page)
               return (
                 <section
@@ -99,10 +103,10 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                         ) : (
                           <CheckCircle size={15} className="text-verde" />
                         )}
-                        <h3 className="text-sm font-semibold text-text">Página {page.pageNumber}</h3>
+                        <h3 className="text-sm font-semibold text-text">P&aacute;gina {page.pageNumber}</h3>
                       </div>
                       <p className="mt-1 text-[11px] text-text3">
-                        Útil {formatHeight(page.totalHeight)} · usado {formatHeight(page.usedHeight)} · livre {formatHeight(page.freeHeight)} ({page.freePercent.toFixed(1)}%)
+                        &Uacute;til {formatHeight(page.totalHeight)} &middot; usado {formatHeight(page.usedHeight)} &middot; livre {formatHeight(page.freeHeight)} ({page.freePercent.toFixed(1)}%)
                       </p>
                     </div>
                     <div className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${reasonClasses[page.breakReason]}`}>
@@ -118,6 +122,18 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                   </div>
 
                   <p className="mt-2 text-[11px] text-text3">{page.breakDetail}</p>
+                  {page.opportunity ? (
+                    <p className="mt-1 rounded-md bg-dourado/10 px-2 py-1.5 text-[11px] text-dourado">
+                      {page.opportunity}
+                    </p>
+                  ) : null}
+                  {page.nextBlockTitle ? (
+                    <p className="mt-1 text-[10px] text-text3">
+                      Pr&oacute;ximo: <span className="font-semibold text-text">{page.nextBlockTitle}</span>
+                      {' '}({page.nextBlockType}) &middot; precisa {formatHeight(page.nextBlockHeight ?? 0)}
+                      {' '}&middot; {page.nextBlockCanFit ? 'caberia no espa\u00e7o livre' : 'n\u00e3o cabe no espa\u00e7o livre'}
+                    </p>
+                  ) : null}
 
                   <div className="mt-3 overflow-hidden rounded-md border border-border">
                     <table className="w-full border-collapse text-left text-[11px]">
@@ -125,7 +141,7 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                         <tr>
                           <th className="px-2 py-1.5 font-medium">Bloco</th>
                           <th className="px-2 py-1.5 font-medium">Tipo</th>
-                          <th className="px-2 py-1.5 font-medium">Política</th>
+                          <th className="px-2 py-1.5 font-medium">Pol&iacute;tica</th>
                           <th className="px-2 py-1.5 text-right font-medium">Estim.</th>
                           <th className="px-2 py-1.5 text-right font-medium">Real</th>
                           <th className="px-2 py-1.5 font-medium">Fonte</th>
@@ -135,7 +151,7 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                       <tbody>
                         {page.blocks.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-2 py-3 text-center text-text3">Página vazia</td>
+                            <td colSpan={7} className="px-2 py-3 text-center text-text3">P&aacute;gina vazia</td>
                           </tr>
                         ) : page.blocks.map(block => (
                           <tr key={block.id} className="border-t border-border/70">
@@ -145,7 +161,7 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                             <td className="px-2 py-1.5 text-right font-mono text-text3">{formatHeight(block.estimatedHeight)}</td>
                             <td className="px-2 py-1.5 text-right font-mono">
                               {block.measuredHeight == null ? (
-                                <span className="text-dourado">não medida</span>
+                                <span className="text-dourado">n&atilde;o medida</span>
                               ) : (
                                 <span className="text-text">{formatHeight(block.measuredHeight)}</span>
                               )}

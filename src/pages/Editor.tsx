@@ -304,6 +304,7 @@ function simpleHash(value: string): string {
 const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
 const ACTIVE_PAGE_RADIUS = 2
 const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
+const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.54
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
 const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-slur-above-v6'
 type BlockHeightSource = 'estimated' | 'calibrated' | 'measured'
@@ -400,7 +401,7 @@ function createPaginationFragments(block: EditorBlock): EditorBlock[] {
   if (segments.length <= 1) return [block]
 
   const estimatedHeight = getEstimatedBlockHeightForPagination(block)
-  const targetHeight = Math.round(A4_CONTENT_HEIGHT * 0.54)
+  const targetHeight = Math.round(A4_CONTENT_HEIGHT * TEXT_FRAGMENT_TARGET_HEIGHT_RATIO)
   if (estimatedHeight <= targetHeight) return [block]
 
   const chunks: string[][] = []
@@ -2045,26 +2046,61 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
       const engineBreak = paginationBreakReasons.get(pageIndex)
       let breakReason: PaginationDebugPage['breakReason'] = engineBreak?.reason ?? 'fim'
-      let breakDetail = engineBreak?.detail ?? 'Última página do material.'
+      let breakDetail = engineBreak?.detail ?? '\u00daltima p\u00e1gina do material.'
+      let opportunity: string | null = null
+      let nextBlockTitle: string | null = null
+      let nextBlockType: string | null = null
+      let nextBlockHeight: number | null = null
+      let nextBlockCanFit = false
 
-      if (nextFirstBlock && !engineBreak) {
+      if (nextFirstBlock) {
         const nextTitle = getShortTitle(nextFirstBlock)
-        const nextIndex = blockIndexById.get(nextFirstBlock.id)
+        const nextSourceBlockId = getPaginationSourceBlockId(nextFirstBlock)
+        const nextIndex = blockIndexById.get(nextSourceBlockId)
         const previousBlock = typeof nextIndex === 'number' ? blocks[nextIndex - 1] : undefined
+        const nextHeight = blockHeights[nextFirstBlock.id] ?? getEstimatedBlockHeightForPagination(nextFirstBlock)
+        nextBlockTitle = nextTitle
+        nextBlockType = nextFirstBlock.block_type
+        nextBlockHeight = nextHeight
+        nextBlockCanFit = nextHeight <= freeHeight
 
-        if (pageBlocks.some(block => block.block_type === 'cover')) {
-          breakReason = 'cover'
-          breakDetail = `A capa ocupa uma página inteira; próximo bloco: ${nextTitle}.`
-        } else if (previousBlock?.block_type === 'page_break') {
-          breakReason = 'manual'
-          breakDetail = `Quebra manual antes de ${nextTitle}.`
-        } else if (hasEstimatedBlock || nextFirstBlockEstimated) {
-          breakReason = 'estimativa'
-          breakDetail = `A quebra antes de ${nextTitle} ainda depende de altura estimada/cache.`
-        } else {
-          const nextHeight = blockHeights[nextFirstBlock.id] ?? getEstimatedBlockHeightForPagination(nextFirstBlock)
-          breakReason = 'overflow'
-          breakDetail = `${nextTitle} não coube: livre ${Math.round(freeHeight)}px, bloco precisa ${Math.round(nextHeight)}px.`
+        if (!engineBreak) {
+          if (pageBlocks.some(block => block.block_type === 'cover')) {
+            breakReason = 'cover'
+            breakDetail = `A capa ocupa uma p\u00e1gina inteira; pr\u00f3ximo bloco: ${nextTitle}.`
+          } else if (previousBlock?.block_type === 'page_break') {
+            breakReason = 'manual'
+            breakDetail = `Quebra manual antes de ${nextTitle}.`
+          } else if (hasEstimatedBlock || nextFirstBlockEstimated) {
+            breakReason = 'estimativa'
+            breakDetail = `A quebra antes de ${nextTitle} ainda depende de altura estimada/cache.`
+          } else {
+            breakReason = 'overflow'
+            breakDetail = `${nextTitle} n\u00e3o coube: livre ${Math.round(freeHeight)}px, bloco precisa ${Math.round(nextHeight)}px.`
+          }
+        }
+
+        if (freeHeight > A4_CONTENT_HEIGHT * 0.3) {
+          const nextPolicy = getBlockPaginationPolicy(nextFirstBlock)
+          const canSplitNext = canSplitBlockForPagination(nextFirstBlock, nextPolicy)
+          if (breakReason === 'manual') {
+            opportunity = 'Espa\u00e7o livre causado por quebra manual/pedag\u00f3gica. Ajuste apenas se o professor quiser juntar se\u00e7\u00f5es.'
+          } else if (nextBlockCanFit) {
+            opportunity = 'O pr\u00f3ximo bloco caberia no espa\u00e7o livre. Verifique se alguma pol\u00edtica, medi\u00e7\u00e3o ou keep-with-next impediu a subida.'
+          } else if (canSplitNext) {
+            opportunity = 'O pr\u00f3ximo bloco \u00e9 textual e pode ser candidato a fragmenta\u00e7\u00e3o para aproveitar melhor esta p\u00e1gina.'
+          } else if (['notation', 'rhythm', 'tablature'].includes(nextFirstBlock.block_type)) {
+            opportunity = 'O pr\u00f3ximo bloco \u00e9 musical e deve permanecer inteiro para preservar a nota\u00e7\u00e3o.'
+          } else {
+            opportunity = 'O pr\u00f3ximo bloco n\u00e3o cabe no espa\u00e7o livre atual; o buraco \u00e9 estrutural ou depende de uma decis\u00e3o de layout.'
+          }
+        }
+
+        if (breakReason === 'cover' || freeHeight <= 80) {
+          nextBlockTitle = null
+          nextBlockType = null
+          nextBlockHeight = null
+          nextBlockCanFit = false
         }
       }
 
@@ -2076,6 +2112,11 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         freePercent: (freeHeight / A4_CONTENT_HEIGHT) * 100,
         breakReason,
         breakDetail,
+        opportunity,
+        nextBlockTitle,
+        nextBlockType,
+        nextBlockHeight,
+        nextBlockCanFit,
         blocks: debugBlocks,
       }
     })
