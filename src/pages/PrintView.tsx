@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { MaterialPreview } from '@/components/material/MaterialPreview'
-import { supabase } from '@/lib/supabase'
 import {
   paginatePrintBlocks,
   parsePrintMaterialRows,
   type PrintBlock,
 } from '@/lib/printPagination'
 import { getMaterialWithBlocks, type MaterialWithBlocks } from '@/services/materialService'
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://rkfszavfqplhorvfpkcq.supabase.co'
+const GET_PRINT_MATERIAL_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-print-material`
 
 type WindowWithPrintStatus = Window & typeof globalThis & {
   status: string
@@ -96,15 +98,20 @@ export function PrintView() {
         }
 
         if (token) {
-          const { data: functionData, error: functionError } = await supabase.functions.invoke(
-            'get-print-material',
-            {
-              body: { materialId: id, token },
+          const response = await fetch(GET_PRINT_MATERIAL_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-          )
+            body: JSON.stringify({ materialId: id, token }),
+          })
 
-          if (functionError) throw functionError
+          if (!response.ok) {
+            const errorBody = await response.text()
+            throw new Error(errorBody || `Erro ao buscar material para impressao (${response.status}).`)
+          }
 
+          const functionData = await response.json()
           const rows = (functionData as { rows?: MaterialWithBlocks[] } | null)?.rows
           if (!rows) {
             throw new Error('A Edge Function nao retornou o material para impressao.')
