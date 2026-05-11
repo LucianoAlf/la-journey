@@ -6211,12 +6211,12 @@ ${pagesHtml}
               {/* Tablatura — botão para abrir editor visual */}
               {selectedPaginationPolicy && !['cover', 'page_break'].includes(selectedBlock.block_type) && (
                 <div className="prop-section">
-                  <div className="prop-label">PaginaÃ§Ã£o</div>
+                  <div className="prop-label">Paginação</div>
                   <div className="space-y-2 rounded-lg border border-border bg-bg/70 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <Label className="text-[11px] font-semibold text-text">Manter com prÃ³ximo</Label>
-                        <p className="mt-0.5 text-[9px] leading-snug text-text3">Evita separar tÃ­tulo/enunciado do bloco seguinte.</p>
+                        <Label className="text-[11px] font-semibold text-text">Manter com próximo</Label>
+                        <p className="mt-0.5 text-[9px] leading-snug text-text3">Evita separar título/enunciado do bloco seguinte.</p>
                       </div>
                       <Switch
                         checked={selectedPaginationPolicy.keepWithNext}
@@ -6226,8 +6226,8 @@ ${pagesHtml}
 
                     <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-2">
                       <div>
-                        <Label className="text-[11px] font-semibold text-text">ComeÃ§ar em nova pÃ¡gina</Label>
-                        <p className="mt-0.5 text-[9px] leading-snug text-text3">ForÃ§a este bloco a abrir uma nova pÃ¡gina A4.</p>
+                        <Label className="text-[11px] font-semibold text-text">Começar em nova página</Label>
+                        <p className="mt-0.5 text-[9px] leading-snug text-text3">Força este bloco a abrir uma nova página A4.</p>
                       </div>
                       <Switch
                         checked={selectedPaginationPolicy.startOnNewPage}
@@ -6240,7 +6240,7 @@ ${pagesHtml}
                         <Label className="text-[11px] font-semibold text-text">Permitir quebra</Label>
                         <p className="mt-0.5 text-[9px] leading-snug text-text3">
                           {['text', 'tip', 'exercise', 'columns'].includes(selectedBlock.block_type)
-                            ? 'PolÃ­tica para textos longos; a divisÃ£o real entra na prÃ³xima fase.'
+                            ? 'Política para textos longos; a divisão real entra na próxima fase.'
                             : 'Blocos musicais ficam inteiros para preservar partitura e PDF.'}
                         </p>
                       </div>
@@ -6255,12 +6255,12 @@ ${pagesHtml}
                     </div>
 
                     <div className="rounded-md bg-bg2 px-2 py-1.5 text-[10px] text-text3">
-                      PolÃ­tica atual: <span className="font-semibold text-text">{describePaginationPolicy(selectedPaginationPolicy)}</span>
+                      Política atual: <span className="font-semibold text-text">{describePaginationPolicy(selectedPaginationPolicy)}</span>
                     </div>
 
                     <div className="space-y-2 border-t border-border/70 pt-2">
                       <div className="flex items-center gap-2">
-                        <Label className="w-20 text-[10px] text-text3">EspaÃ§o antes</Label>
+                        <Label className="w-20 text-[10px] text-text3">Espaço antes</Label>
                         <input
                           type="range"
                           min={0}
@@ -6275,7 +6275,7 @@ ${pagesHtml}
                         <span className="w-9 text-right font-mono text-[10px] text-text3">{selectedBlockStyle.margin.top}px</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label className="w-20 text-[10px] text-text3">EspaÃ§o depois</Label>
+                        <Label className="w-20 text-[10px] text-text3">Espaço depois</Label>
                         <input
                           type="range"
                           min={0}
