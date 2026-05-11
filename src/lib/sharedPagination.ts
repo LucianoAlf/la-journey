@@ -41,7 +41,7 @@ export const CONTENT_VERTICAL_PADDING = 40
 export const PRINT_SAFE_AREA = 24
 export const A4_CONTENT_HEIGHT = A4_TOTAL_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - CONTENT_VERTICAL_PADDING - PRINT_SAFE_AREA
 export const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
-export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.54
+export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.42
 export const PAGINATION_FRAGMENT_ID_SEPARATOR = '__pagination_fragment_'
 
 const BREAKABLE_TEXT_BLOCK_TYPES = new Set(['text', 'tip', 'exercise'])
@@ -82,12 +82,41 @@ function splitHtmlIntoTopLevelSegments(html: string) {
     .filter(Boolean)
 }
 
+function splitLongPlainTextLine(line: string) {
+  const trimmed = line.trim()
+  if (trimmed.length <= 360) return [trimmed]
+
+  const chunks: string[] = []
+  let current = ''
+  for (const part of trimmed.split(/(?<=[,.;:])\s+|\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç])/g)) {
+    const candidate = current ? `${current} ${part}` : part
+    if (candidate.length > 300 && current) {
+      chunks.push(current)
+      current = part
+    } else {
+      current = candidate
+    }
+  }
+  if (current) chunks.push(current)
+
+  return chunks.length > 0 ? chunks : trimmed.match(/.{1,300}/g) ?? [trimmed]
+}
+
 function splitTextIntoSegments(text: string) {
-  return text
+  const paragraphSegments = text
     .split(/\n{2,}/)
     .map(segment => segment.trim())
     .filter(Boolean)
-    .map(segment => `<p>${segment.replace(/\n/g, '<br />')}</p>`)
+
+  const rawSegments = paragraphSegments.length > 1
+    ? paragraphSegments
+    : text
+      .split(/\n/)
+      .map(segment => segment.trim())
+      .filter(Boolean)
+      .flatMap(splitLongPlainTextLine)
+
+  return rawSegments.map(segment => `<p>${segment.replace(/\n/g, '<br />')}</p>`)
 }
 
 function estimateTextFragmentHeight(block: SharedPaginationBlock, segments: string[], includeTitle: boolean) {
