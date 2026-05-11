@@ -39,7 +39,7 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   cover: A4_TOTAL_HEIGHT,
   title: 60,
   text: 200,
-  exercise: 180,
+  exercise: 220,
   tip: 120,
   notation: 320,
   rhythm: 260,
@@ -226,7 +226,7 @@ function estimateBlockHeight(block: PrintBlock): number {
     case 'tip':
       return Math.max(BLOCK_HEIGHT_ESTIMATES.tip, Math.min(260, 54 + textLines * 18))
     case 'exercise':
-      return Math.max(BLOCK_HEIGHT_ESTIMATES.exercise, Math.min(440, 88 + textLines * 22))
+      return Math.max(BLOCK_HEIGHT_ESTIMATES.exercise, Math.min(620, 104 + textLines * 28))
     case 'notation':
     case 'rhythm':
       return block.block_type === 'rhythm' ? BLOCK_HEIGHT_ESTIMATES.rhythm : BLOCK_HEIGHT_ESTIMATES.notation
