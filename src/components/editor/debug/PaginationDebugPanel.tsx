@@ -9,6 +9,7 @@ export interface PaginationDebugBlock {
   id: string
   type: string
   title: string
+  policy: string
   estimatedHeight: number
   measuredHeight: number | null
   heightSource: 'estimated' | 'calibrated' | 'measured'
@@ -124,6 +125,7 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                         <tr>
                           <th className="px-2 py-1.5 font-medium">Bloco</th>
                           <th className="px-2 py-1.5 font-medium">Tipo</th>
+                          <th className="px-2 py-1.5 font-medium">Política</th>
                           <th className="px-2 py-1.5 text-right font-medium">Estim.</th>
                           <th className="px-2 py-1.5 text-right font-medium">Real</th>
                           <th className="px-2 py-1.5 font-medium">Fonte</th>
@@ -133,12 +135,13 @@ export function PaginationDebugPanel({ open, pages, onOpenChange }: PaginationDe
                       <tbody>
                         {page.blocks.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-2 py-3 text-center text-text3">Página vazia</td>
+                            <td colSpan={7} className="px-2 py-3 text-center text-text3">Página vazia</td>
                           </tr>
                         ) : page.blocks.map(block => (
                           <tr key={block.id} className="border-t border-border/70">
                             <td className="max-w-[230px] truncate px-2 py-1.5 text-text" title={block.title}>{block.title}</td>
                             <td className="px-2 py-1.5 font-mono text-[10px] text-text3">{block.type}</td>
+                            <td className="px-2 py-1.5 text-[10px] text-text3">{block.policy}</td>
                             <td className="px-2 py-1.5 text-right font-mono text-text3">{formatHeight(block.estimatedHeight)}</td>
                             <td className="px-2 py-1.5 text-right font-mono">
                               {block.measuredHeight == null ? (

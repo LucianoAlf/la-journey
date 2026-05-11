@@ -307,6 +307,21 @@ const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
 const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-slur-above-v6'
 type BlockHeightSource = 'estimated' | 'calibrated' | 'measured'
+type PaginationBehavior = 'unbreakable' | 'breakable'
+
+interface BlockPaginationPolicy {
+  behavior: PaginationBehavior
+  keepWithNext: boolean
+  startOnNewPage: boolean
+  allowSplit: boolean
+  source: 'default' | 'block'
+}
+
+interface PaginationGroup {
+  blocks: EditorBlock[]
+  height: number
+  policy: BlockPaginationPolicy
+}
 
 const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
 
@@ -377,6 +392,121 @@ function getEstimatedBlockHeightForPagination(block: EditorBlock): number {
   const estimated = estimateBlockHeight(block)
   if (block.block_type === 'cover') return estimated
   return Math.round(estimated * ESTIMATED_BLOCK_HEIGHT_FACTOR)
+}
+
+function getBlockPaginationPolicy(block: EditorBlock): BlockPaginationPolicy {
+  const rawPolicy = (block.render_data?.pagination ?? {}) as Partial<BlockPaginationPolicy>
+  const isMusicOrMedia = [
+    'notation',
+    'rhythm',
+    'tablature',
+    'keyboard',
+    'keyboard_grid',
+    'chord_grid',
+    'chord_diagram',
+    'image',
+    'cover',
+    'separator',
+  ].includes(block.block_type)
+  const defaultBehavior: PaginationBehavior = ['text', 'tip', 'exercise', 'columns'].includes(block.block_type)
+    ? 'breakable'
+    : isMusicOrMedia
+      ? 'unbreakable'
+      : 'unbreakable'
+
+  return {
+    behavior: rawPolicy.behavior ?? defaultBehavior,
+    keepWithNext: rawPolicy.keepWithNext ?? block.block_type === 'title',
+    startOnNewPage: rawPolicy.startOnNewPage ?? false,
+    allowSplit: rawPolicy.allowSplit ?? ['text', 'tip', 'exercise', 'columns'].includes(block.block_type),
+    source: Object.keys(rawPolicy).length > 0 ? 'block' : 'default',
+  }
+}
+
+function describePaginationPolicy(policy: BlockPaginationPolicy): string {
+  const parts: string[] = [policy.behavior]
+  if (policy.keepWithNext) parts.push('keep')
+  if (policy.startOnNewPage) parts.push('new-page')
+  if (policy.allowSplit) parts.push('split')
+  return parts.join(' · ')
+}
+
+function shouldKeepBlocksTogether(current: EditorBlock, next: EditorBlock | undefined): boolean {
+  if (!next || next.block_type === 'page_break' || next.block_type === 'cover') return false
+  const policy = getBlockPaginationPolicy(current)
+  if (policy.keepWithNext) return true
+  if (current.block_type === 'exercise' && ['notation', 'rhythm', 'tablature', 'keyboard', 'keyboard_grid', 'chord_grid'].includes(next.block_type)) {
+    return true
+  }
+  return false
+}
+
+function paginateEditorBlocks(
+  blocks: EditorBlock[],
+  getHeight: (block: EditorBlock) => number,
+) {
+  const pages: EditorBlock[][] = [[]]
+  const breakReasons = new Map<number, { reason: PaginationDebugPage['breakReason']; detail: string }>()
+  let currentHeight = 0
+
+  const pushPage = (reason: PaginationDebugPage['breakReason'], detail: string) => {
+    breakReasons.set(pages.length - 1, { reason, detail })
+    pages.push([])
+    currentHeight = 0
+  }
+
+  const groups: PaginationGroup[] = []
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]
+    if (block.block_type === 'page_break') {
+      groups.push({ blocks: [block], height: 0, policy: getBlockPaginationPolicy(block) })
+      continue
+    }
+
+    const policy = getBlockPaginationPolicy(block)
+    const groupBlocks = [block]
+    let height = getHeight(block)
+
+    if (shouldKeepBlocksTogether(block, blocks[index + 1]) && height + getHeight(blocks[index + 1]) <= A4_CONTENT_HEIGHT) {
+      const next = blocks[index + 1]
+      groupBlocks.push(next)
+      height += getHeight(next)
+      index += 1
+    }
+
+    groups.push({ blocks: groupBlocks, height, policy })
+  }
+
+  for (const group of groups) {
+    const firstBlock = group.blocks[0]
+
+    if (firstBlock.block_type === 'page_break') {
+      pushPage('manual', 'Quebra manual inserida pelo professor.')
+      continue
+    }
+
+    if (firstBlock.block_type === 'cover') {
+      if (pages[pages.length - 1].length > 0) {
+        pushPage('cover', 'A capa começa em página própria.')
+      }
+      pages[pages.length - 1].push(...group.blocks)
+      pushPage('cover', 'A capa ocupa uma página inteira.')
+      continue
+    }
+
+    if (group.policy.startOnNewPage && pages[pages.length - 1].length > 0) {
+      pushPage('manual', `${firstBlock.title || firstBlock.block_type} configurado para começar em nova página.`)
+    }
+
+    if (currentHeight + group.height > A4_CONTENT_HEIGHT && pages[pages.length - 1].length > 0) {
+      pushPage('overflow', `${firstBlock.title || firstBlock.block_type} não coube no espaço restante.`)
+    }
+
+    pages[pages.length - 1].push(...group.blocks)
+    currentHeight += group.height
+  }
+
+  return { pages, breakReasons }
 }
 
 function isFreeTimeTablatureBlock(block: EditorBlock) {
@@ -704,37 +834,12 @@ function useEditorPagination({
     })
   }, [blocks])
 
-  const pages = useMemo(() => {
-    const result: EditorBlock[][] = [[]]
-    let currentHeight = 0
-
-    for (const block of blocks) {
-      if (block.block_type === 'page_break') {
-        result.push([])
-        currentHeight = 0
-        continue
-      }
-
-      if (block.block_type === 'cover') {
-        if (result[result.length - 1].length > 0) result.push([])
-        result[result.length - 1].push(block)
-        result.push([])
-        currentHeight = 0
-        continue
-      }
-
-      const h = blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
-      if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
-        result.push([])
-        currentHeight = 0
-      }
-
-      result[result.length - 1].push(block)
-      currentHeight += h
-    }
-
-    return result
-  }, [blocks, blockHeights])
+  const paginationResult = useMemo(() => paginateEditorBlocks(
+    blocks,
+    block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
+  ), [blocks, blockHeights])
+  const pages = paginationResult.pages
+  const paginationBreakReasons = paginationResult.breakReasons
 
   const pageIndexByBlockId = useMemo(() => {
     const indexById: Record<string, number> = {}
@@ -1388,6 +1493,10 @@ function useEditorBlocks() {
     () => blocks.find(b => b.id === selectedBlockId) ?? null,
     [blocks, selectedBlockId],
   )
+  const selectedPaginationPolicy = useMemo(
+    () => selectedBlock ? getBlockPaginationPolicy(selectedBlock) : null,
+    [selectedBlock],
+  )
 
   return {
     blocks,
@@ -1400,6 +1509,7 @@ function useEditorBlocks() {
     pushSnapshot,
     selectedBlock,
     selectedBlockId,
+    selectedPaginationPolicy,
     setBlockWithHistory,
     setBlocks,
     setBlocksWithHistory,
@@ -1525,6 +1635,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     pushSnapshot,
     selectedBlock,
     selectedBlockId,
+    selectedPaginationPolicy,
     setBlockWithHistory,
     setBlocks,
     setBlocksWithHistory,
@@ -1680,7 +1791,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [blocks])
 
   /** Distribui blocos em páginas A4 respeitando estimativas e alturas reais medidas */
-  const pages = useMemo(() => {
+  const paginationResult = useMemo(() => paginateEditorBlocks(
+    blocks,
+    block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
+  ), [blocks, blockHeights])
+  const pages = paginationResult.pages
+  const paginationBreakReasons = paginationResult.breakReasons
+
+  /* const pages = useMemo(() => {
     const result: EditorBlock[][] = [[]]
     let currentHeight = 0
 
@@ -1711,7 +1829,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     }
 
     return result
-  }, [blocks, blockHeights])
+  }, [blocks, blockHeights]) */
 
   const pageIndexByBlockId = useMemo(() => {
     const indexById: Record<string, number> = {}
@@ -1745,6 +1863,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         id: block.id,
         type: block.block_type,
         title: getShortTitle(block),
+        policy: describePaginationPolicy(getBlockPaginationPolicy(block)),
         estimatedHeight,
         measuredHeight: cacheEntry.source === 'measured' ? cacheEntry.height : null,
         heightSource: cacheEntry.source,
@@ -1760,10 +1879,11 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       const hasEstimatedBlock = pageBlocks.some(block => getHeightCacheEntry(block).source === 'estimated')
       const nextFirstBlockEstimated = nextFirstBlock ? getHeightCacheEntry(nextFirstBlock).source === 'estimated' : false
 
-      let breakReason: PaginationDebugPage['breakReason'] = 'fim'
-      let breakDetail = 'Última página do material.'
+      const engineBreak = paginationBreakReasons.get(pageIndex)
+      let breakReason: PaginationDebugPage['breakReason'] = engineBreak?.reason ?? 'fim'
+      let breakDetail = engineBreak?.detail ?? 'Última página do material.'
 
-      if (nextFirstBlock) {
+      if (nextFirstBlock && !engineBreak) {
         const nextTitle = getShortTitle(nextFirstBlock)
         const nextIndex = blockIndexById.get(nextFirstBlock.id)
         const previousBlock = typeof nextIndex === 'number' ? blocks[nextIndex - 1] : undefined
@@ -1795,7 +1915,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         blocks: debugBlocks,
       }
     })
-  }, [blocks, blockHeights, pages])
+  }, [blocks, blockHeights, pages, paginationBreakReasons])
 
   const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
   const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
@@ -2373,6 +2493,23 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!selectedBlockId) return
     setBlockWithHistory(selectedBlockId, b => {
       return { ...b, render_data: { ...(b.render_data ?? {}), [field]: value } }
+    })
+    queueBlockAutosave(selectedBlockId)
+  }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
+
+  const updateBlockPaginationPolicy = useCallback((updates: Partial<BlockPaginationPolicy>) => {
+    if (!selectedBlockId) return
+    setBlockWithHistory(selectedBlockId, b => {
+      const current = ((b.render_data ?? {}).pagination ?? {}) as Partial<BlockPaginationPolicy>
+      const next = { ...current, ...updates }
+      delete next.source
+      return {
+        ...b,
+        render_data: {
+          ...(b.render_data ?? {}),
+          pagination: next,
+        },
+      }
     })
     queueBlockAutosave(selectedBlockId)
   }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
@@ -5898,6 +6035,58 @@ ${pagesHtml}
               )}
 
               {/* Tablatura — botão para abrir editor visual */}
+              {selectedPaginationPolicy && !['cover', 'page_break'].includes(selectedBlock.block_type) && (
+                <div className="prop-section">
+                  <div className="prop-label">PaginaÃ§Ã£o</div>
+                  <div className="space-y-2 rounded-lg border border-border bg-bg/70 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="text-[11px] font-semibold text-text">Manter com prÃ³ximo</Label>
+                        <p className="mt-0.5 text-[9px] leading-snug text-text3">Evita separar tÃ­tulo/enunciado do bloco seguinte.</p>
+                      </div>
+                      <Switch
+                        checked={selectedPaginationPolicy.keepWithNext}
+                        onCheckedChange={(checked) => updateBlockPaginationPolicy({ keepWithNext: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-2">
+                      <div>
+                        <Label className="text-[11px] font-semibold text-text">ComeÃ§ar em nova pÃ¡gina</Label>
+                        <p className="mt-0.5 text-[9px] leading-snug text-text3">ForÃ§a este bloco a abrir uma nova pÃ¡gina A4.</p>
+                      </div>
+                      <Switch
+                        checked={selectedPaginationPolicy.startOnNewPage}
+                        onCheckedChange={(checked) => updateBlockPaginationPolicy({ startOnNewPage: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-2">
+                      <div>
+                        <Label className="text-[11px] font-semibold text-text">Permitir quebra</Label>
+                        <p className="mt-0.5 text-[9px] leading-snug text-text3">
+                          {['text', 'tip', 'exercise', 'columns'].includes(selectedBlock.block_type)
+                            ? 'PolÃ­tica para textos longos; a divisÃ£o real entra na prÃ³xima fase.'
+                            : 'Blocos musicais ficam inteiros para preservar partitura e PDF.'}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={selectedPaginationPolicy.allowSplit}
+                        disabled={!['text', 'tip', 'exercise', 'columns'].includes(selectedBlock.block_type)}
+                        onCheckedChange={(checked) => updateBlockPaginationPolicy({
+                          allowSplit: checked,
+                          behavior: checked ? 'breakable' : 'unbreakable',
+                        })}
+                      />
+                    </div>
+
+                    <div className="rounded-md bg-bg2 px-2 py-1.5 text-[10px] text-text3">
+                      PolÃ­tica atual: <span className="font-semibold text-text">{describePaginationPolicy(selectedPaginationPolicy)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {selectedBlock.block_type === 'tablature' && (
                 <div className="prop-section">
                   <div className="prop-label">Tablatura</div>
