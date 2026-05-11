@@ -324,6 +324,124 @@ interface PaginationGroup {
 }
 
 const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
+const BREAKABLE_TEXT_BLOCK_TYPES = new Set(['text', 'tip', 'exercise'])
+const PAGINATION_FRAGMENT_ID_SEPARATOR = '__pagination_fragment_'
+
+interface PaginationFragmentData {
+  source_block_id: string
+  index: number
+  total: number
+}
+
+function getPaginationFragmentData(block: EditorBlock): PaginationFragmentData | null {
+  const fragment = (block.render_data?.pagination_fragment ?? null) as Partial<PaginationFragmentData> | null
+  if (!fragment?.source_block_id || typeof fragment.index !== 'number' || typeof fragment.total !== 'number') return null
+  return {
+    source_block_id: fragment.source_block_id,
+    index: fragment.index,
+    total: fragment.total,
+  }
+}
+
+function getPaginationSourceBlockId(block: EditorBlock) {
+  return getPaginationFragmentData(block)?.source_block_id ?? block.id
+}
+
+function stripHtmlTags(value: string) {
+  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function splitHtmlIntoTopLevelSegments(html: string) {
+  const matches = html.match(/<(p|h[1-6]|ul|ol|blockquote|table|pre)[\s\S]*?<\/\1>/gi)
+  if (matches && matches.length > 1) return matches
+  return html
+    .split(/(?=<p\b|<h[1-6]\b|<ul\b|<ol\b|<blockquote\b|<table\b|<pre\b)/i)
+    .map(segment => segment.trim())
+    .filter(Boolean)
+}
+
+function splitTextIntoSegments(text: string) {
+  return text
+    .split(/\n{2,}/)
+    .map(segment => segment.trim())
+    .filter(Boolean)
+    .map(segment => `<p>${segment.replace(/\n/g, '<br />')}</p>`)
+}
+
+function estimateTextFragmentHeight(block: EditorBlock, segments: string[], includeTitle: boolean) {
+  const textLength = stripHtmlTags(segments.join(' ')).length
+  const lineCount = Math.max(1, Math.ceil(textLength / 95))
+  const titleHeight = includeTitle && block.title ? 28 : 0
+  const shellHeight = block.block_type === 'exercise' ? 72 : block.block_type === 'tip' ? 56 : 20
+  return titleHeight + shellHeight + lineCount * 22
+}
+
+function canSplitBlockForPagination(block: EditorBlock, policy: BlockPaginationPolicy) {
+  if (!BREAKABLE_TEXT_BLOCK_TYPES.has(block.block_type)) return false
+  if (!policy.allowSplit || policy.behavior !== 'breakable') return false
+  const renderData = block.render_data ?? {}
+  return !(
+    renderData.notation ||
+    renderData.notation_data ||
+    renderData.notes ||
+    renderData.tab ||
+    renderData.alphaTex
+  )
+}
+
+function createPaginationFragments(block: EditorBlock): EditorBlock[] {
+  const policy = getBlockPaginationPolicy(block)
+  if (!canSplitBlockForPagination(block, policy)) return [block]
+
+  const content = block.content ?? {}
+  const html = typeof content.html === 'string' ? content.html.trim() : ''
+  const text = typeof content.text === 'string' ? content.text.trim() : ''
+  const segments = html ? splitHtmlIntoTopLevelSegments(html) : splitTextIntoSegments(text)
+  if (segments.length <= 1) return [block]
+
+  const estimatedHeight = getEstimatedBlockHeightForPagination(block)
+  const targetHeight = Math.round(A4_CONTENT_HEIGHT * 0.54)
+  if (estimatedHeight <= targetHeight) return [block]
+
+  const chunks: string[][] = []
+  let current: string[] = []
+
+  for (const segment of segments) {
+    const candidate = [...current, segment]
+    const includeTitle = chunks.length === 0
+    if (
+      current.length > 0 &&
+      estimateTextFragmentHeight(block, candidate, includeTitle) > targetHeight
+    ) {
+      chunks.push(current)
+      current = [segment]
+    } else {
+      current = candidate
+    }
+  }
+  if (current.length > 0) chunks.push(current)
+
+  if (chunks.length <= 1) return [block]
+
+  return chunks.map((chunk, index) => ({
+    ...block,
+    id: `${block.id}${PAGINATION_FRAGMENT_ID_SEPARATOR}${index}`,
+    title: index === 0 ? block.title : null,
+    content: {
+      ...(block.content ?? {}),
+      html: chunk.join(''),
+      text: stripHtmlTags(chunk.join(' ')),
+    },
+    render_data: {
+      ...(block.render_data ?? {}),
+      pagination_fragment: {
+        source_block_id: block.id,
+        index,
+        total: chunks.length,
+      } satisfies PaginationFragmentData,
+    },
+  }))
+}
 
 function getBlockHeightCacheKey(block: EditorBlock): string {
   return `${block.id}-${simpleHash(stableSerialize({
@@ -467,8 +585,9 @@ function paginateEditorBlocks(
   }
 
   const groups: PaginationGroup[] = []
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index]
+  const paginationBlocks = blocks.flatMap(createPaginationFragments)
+  for (let index = 0; index < paginationBlocks.length; index += 1) {
+    const block = paginationBlocks[index]
     if (block.block_type === 'page_break') {
       groups.push({ blocks: [block], height: 0, policy: getBlockPaginationPolicy(block) })
       continue
@@ -478,8 +597,8 @@ function paginateEditorBlocks(
     const groupBlocks = [block]
     let height = getHeight(block)
 
-    if (shouldKeepBlocksTogether(block, blocks[index + 1]) && height + getHeight(blocks[index + 1]) <= A4_CONTENT_HEIGHT) {
-      const next = blocks[index + 1]
+    if (shouldKeepBlocksTogether(block, paginationBlocks[index + 1]) && height + getHeight(paginationBlocks[index + 1]) <= A4_CONTENT_HEIGHT) {
+      const next = paginationBlocks[index + 1]
       groupBlocks.push(next)
       height += getHeight(next)
       index += 1
@@ -857,9 +976,21 @@ function useEditorPagination({
     pages.forEach((pageBlocks, pageIdx) => {
       pageBlocks.forEach(block => {
         indexById[block.id] = pageIdx
+        const sourceBlockId = getPaginationSourceBlockId(block)
+        if (sourceBlockId !== block.id && indexById[sourceBlockId] == null) {
+          indexById[sourceBlockId] = pageIdx
+        }
       })
     })
     return indexById
+  }, [pages])
+
+  const pageBlockById = useMemo(() => {
+    const byId = new Map<string, EditorBlock>()
+    pages.forEach(pageBlocks => {
+      pageBlocks.forEach(block => byId.set(block.id, block))
+    })
+    return byId
   }, [pages])
 
   const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
@@ -896,14 +1027,14 @@ function useEditorPagination({
       children.forEach(el => {
         const id = el.getAttribute('data-block-id')
         if (!id) return
-        const key = blockHeightKeyByIdRef.current[id]
+        const block = pageBlockById.get(id) ?? blocksRef.current.find(item => item.id === id)
+        const key = blockHeightKeyByIdRef.current[id] ?? (block ? getBlockHeightCacheKey(block) : undefined)
         if (!key) return
         const height = getMeasuredBlockOuterHeight(el)
         if (height <= 0) return
         blockHeightCacheRef.current.set(key, height)
         measured[id] = height
 
-        const block = blocksRef.current.find(item => item.id === id)
         if (block && MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) && !blockUsesAlphaTab(block)) {
           const html = sanitizeMusicSnapshotHtml(el.innerHTML, block)
           if (isUsableMusicSnapshotHtml(html, block)) {
@@ -931,7 +1062,7 @@ function useEditorPagination({
     }, 150)
 
     return () => window.clearTimeout(timer)
-  }, [blocks, blocksRef, canvasScrollRef, musicRendererSnapshotCacheRef, pages.length])
+  }, [blocks, blocksRef, canvasScrollRef, musicRendererSnapshotCacheRef, pageBlockById, pages.length])
 
   return {
     activePageIndexes,
@@ -1851,9 +1982,21 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     pages.forEach((pageBlocks, pageIdx) => {
       pageBlocks.forEach(block => {
         indexById[block.id] = pageIdx
+        const sourceBlockId = getPaginationSourceBlockId(block)
+        if (sourceBlockId !== block.id && indexById[sourceBlockId] == null) {
+          indexById[sourceBlockId] = pageIdx
+        }
       })
     })
     return indexById
+  }, [pages])
+
+  const pageBlockById = useMemo(() => {
+    const byId = new Map<string, EditorBlock>()
+    pages.forEach(pageBlocks => {
+      pageBlocks.forEach(block => byId.set(block.id, block))
+    })
+    return byId
   }, [pages])
 
   const [showPaginationDebug, setShowPaginationDebug] = useState(false)
@@ -1872,12 +2015,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       return rawTitle.length > 54 ? `${rawTitle.slice(0, 51)}...` : rawTitle
     }
     const getBlockDetail = (block: EditorBlock) => {
+      const fragment = getPaginationFragmentData(block)
+      const sourceBlock = fragment
+        ? blocks.find(item => item.id === fragment.source_block_id)
+        : null
       const estimatedHeight = getEstimatedBlockHeightForPagination(block)
       const cacheEntry = getHeightCacheEntry(block)
       return {
         id: block.id,
         type: block.block_type,
-        title: getShortTitle(block),
+        title: fragment
+          ? `${getShortTitle(sourceBlock ?? block)} (${fragment.index + 1}/${fragment.total})`
+          : getShortTitle(block),
         policy: describePaginationPolicy(getBlockPaginationPolicy(block)),
         estimatedHeight,
         measuredHeight: cacheEntry.source === 'measured' ? cacheEntry.height : null,
@@ -2080,7 +2229,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       children.forEach(el => {
         const id = el.getAttribute('data-block-id')
         if (!id) return
-        const key = blockHeightKeyByIdRef.current[id]
+        const block = pageBlockById.get(id) ?? blocksRef.current.find(item => item.id === id)
+        const key = blockHeightKeyByIdRef.current[id] ?? (block ? getBlockHeightCacheKey(block) : undefined)
         if (!key) return
         const height = getMeasuredBlockOuterHeight(el)
         if (height <= 0) return
@@ -2088,7 +2238,6 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         blockHeightSourceByKeyRef.current.set(key, 'measured')
         measured[id] = height
 
-        const block = blocksRef.current.find(item => item.id === id)
         if (block && MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) && !blockUsesAlphaTab(block)) {
           const html = sanitizeMusicSnapshotHtml(el.innerHTML, block)
           if (isUsableMusicSnapshotHtml(html, block)) {
@@ -5620,10 +5769,15 @@ ${pagesHtml}
                   } : undefined}
                 >
                   {pageBlocks.map(block => {
-                    const isInlineEditing = inlineEditingBlockId === block.id
+                    const fragment = getPaginationFragmentData(block)
+                    const sourceBlockId = getPaginationSourceBlockId(block)
+                    const sourceBlock = fragment ? blocksRef.current.find(item => item.id === sourceBlockId) : null
+                    const interactionBlock = sourceBlock ?? block
+                    const isVirtualFragment = Boolean(fragment)
+                    const isInlineEditing = !isVirtualFragment && inlineEditingBlockId === sourceBlockId
                     const blockMode = isInlineEditing
                       ? 'editing'
-                      : block.id === selectedBlockId
+                      : sourceBlockId === selectedBlockId
                         ? 'selected'
                         : 'idle'
 
@@ -5637,19 +5791,24 @@ ${pagesHtml}
                         block={block}
                         mode={blockMode}
                         style={bStyle}
-                        blockRef={el => { canvasRefs.current[block.id] = el }}
+                        blockRef={el => {
+                          canvasRefs.current[block.id] = el
+                          if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
+                            canvasRefs.current[sourceBlockId] = el
+                          }
+                        }}
                         focusPoint={isInlineEditing ? inlineEditFocusPoint : null}
-                        onSelect={(blockId) => {
-                          selectBlock(blockId)
+                        onSelect={() => {
+                          selectBlock(sourceBlockId)
                           const nextInlineEditingBlockId = getInlineEditingBlockAfterCanvasBlockClick({
                             inlineEditingBlockId,
-                            clickedBlockId: blockId,
+                            clickedBlockId: isVirtualFragment ? null : sourceBlockId,
                           })
                           setInlineEditingBlockId(nextInlineEditingBlockId)
                           if (!nextInlineEditingBlockId) setInlineEditFocusPoint(null)
-                          if (block.block_type !== 'cover') setCoverTitleEditing(false)
+                          if (interactionBlock.block_type !== 'cover') setCoverTitleEditing(false)
                         }}
-                        onPrimaryAction={(editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(editableBlock as EditorBlock, focusPoint)}
+                        onPrimaryAction={(_editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(interactionBlock as EditorBlock, focusPoint)}
                         onExitInlineEdit={exitInlineEdit}
                         onTitleChange={handleCanvasInlineTitleChange}
                         onContentChange={handleCanvasInlineContentChange}
