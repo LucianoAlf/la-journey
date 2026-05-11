@@ -6272,6 +6272,22 @@ ${pagesHtml}
                         onCheckedChange={(checked) => updateBlockPaginationPolicy({ keepWithNext: checked })}
                       />
                     </div>
+                    {selectedPaginationPolicy.keepWithNext && (
+                      <div className="rounded-md border border-dourado/30 bg-dourado/10 px-2 py-2">
+                        <p className="text-[10px] leading-snug text-text3">
+                          Este bloco est&aacute; acoplado ao pr&oacute;ximo. Solte apenas quando quiser permitir que ele suba sozinho na pagina&ccedil;&atilde;o.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-7 w-full border-dourado/40 text-[10px] text-dourado hover:bg-dourado/10"
+                          onClick={() => updateBlockPaginationPolicy({ keepWithNext: false })}
+                        >
+                          Soltar do pr&oacute;ximo
+                        </Button>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-2">
                       <div>
