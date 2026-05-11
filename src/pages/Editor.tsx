@@ -4748,206 +4748,69 @@ ${pagesHtml}
   }, [activateAllCanvasPages, materialTitle])
 
   const handleDownloadPDF = useCallback(async () => {
-    toast.info('Preparando PDF...')
-    await activateAllCanvasPages()
+    const toastId = toast.loading('Gerando PDF profissional...')
+    const pdfTab = window.open('', '_blank')
 
-    // Mudar tema para light temporariamente para SVGs corretos
-    const currentTheme = document.documentElement.getAttribute('data-theme')
-    document.documentElement.setAttribute('data-theme', 'light')
-    await new Promise(r => setTimeout(r, 150))
-
-    // Aguardar fontes do browser antes de serializar SVGs inline
-    await document.fonts.ready
-
-    const pagesEl = document.querySelectorAll('.a4-page')
-    if (!pagesEl.length) { toast.error('Nenhuma página encontrada'); return }
-
-    // Converter SVG inline para PNG antes de enviar ao export de PDF
-    const svgToImg = async (svgEl: SVGSVGElement): Promise<string> => {
-      return new Promise((resolve) => {
-        try {
-          const cl = svgEl.cloneNode(true) as SVGSVGElement
-          cl.style.filter = 'none'
-          if (!cl.getAttribute('fill')) cl.setAttribute('fill', 'black')
-          if (!cl.getAttribute('stroke')) cl.setAttribute('stroke', 'black')
-          cl.querySelectorAll('text').forEach(t => { if (!t.getAttribute('fill')) t.setAttribute('fill', '#333') })
-          if (!cl.getAttribute('xmlns')) cl.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-
-          const w = parseInt(cl.getAttribute('width') || '500')
-          const h = parseInt(cl.getAttribute('height') || '200')
-          const svgData = new XMLSerializer().serializeToString(cl)
-          const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-          const blobUrl = URL.createObjectURL(svgBlob)
-          const img = new Image()
-          const canvas = document.createElement('canvas')
-          canvas.width = w * 2; canvas.height = h * 2
-          const ctx = canvas.getContext('2d')!
-          ctx.scale(2, 2)
-          img.onload = () => { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h); URL.revokeObjectURL(blobUrl); resolve(canvas.toDataURL('image/png')) }
-          img.onerror = () => { URL.revokeObjectURL(blobUrl); resolve('') }
-          img.src = blobUrl
-        } catch (e) { resolve('') }
-      })
+    if (pdfTab) {
+      pdfTab.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <title>Gerando PDF...</title>
+            <style>
+              body {
+                margin: 0;
+                min-height: 100vh;
+                display: grid;
+                place-items: center;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                color: #10233f;
+                background: #f7f4fb;
+              }
+              div {
+                padding: 24px 28px;
+                border: 1px solid #e3ddea;
+                border-radius: 14px;
+                background: white;
+                box-shadow: 0 16px 40px rgb(16 35 63 / 12%);
+              }
+            </style>
+          </head>
+          <body>
+            <div>Gerando PDF profissional...</div>
+          </body>
+        </html>
+      `)
+      pdfTab.document.close()
     }
 
-    // Clonar e limpar páginas
-    const pagesHtmlParts: string[] = []
-    for (let i = 0; i < pagesEl.length; i++) {
-      const page = pagesEl[i]
-      const clone = page.cloneNode(true) as HTMLElement
-      clone.querySelectorAll('.block-selection-border, .cover-snap-guide, .add-block-btn, button, [contenteditable]').forEach(el => {
-        if (el.tagName === 'BUTTON') el.remove()
-        if (el.classList?.contains('block-selection-border') || el.classList?.contains('cover-snap-guide')) el.remove()
-        el.removeAttribute('contenteditable')
-      })
-      clone.querySelectorAll('.cover-draggable').forEach(el => el.classList.remove('cover-draggable'))
-      clone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'))
-      clone.querySelectorAll('[class*="ring-"], [class*="cursor-move"]').forEach(el => {
-        const cls = el.getAttribute('class') || ''
-        const cleaned = cls.split(' ').filter(c => !c.startsWith('ring-') && c !== 'cursor-move' && c !== 'cursor-grab').join(' ')
-        el.setAttribute('class', cleaned)
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-pdf', {
+        body: { materialId },
       })
 
-      // Injetar classes semânticas para blocos de dica e exercício
-      clone.querySelectorAll('[class*="bg-dourado-soft"]').forEach(el => {
-        el.classList.add('block-tip')
-      })
-      clone.querySelectorAll('[class*="bg-advance"]').forEach(el => {
-        if ((el.getAttribute('class') || '').includes('bg-advance/10') || (el.getAttribute('class') || '').includes('bg-advance')) {
-          el.classList.add('block-exercise')
-        }
-      })
+      if (error) throw error
 
-      // Converter SVGs de notação para imagens PNG
-      const allOrigSvgs = page.querySelectorAll('.notation-container svg')
-      const allCloneSvgs = clone.querySelectorAll('.notation-container svg')
-      for (let s = 0; s < allCloneSvgs.length; s++) {
-        const origSvg = allOrigSvgs[s] as SVGSVGElement | undefined
-        if (origSvg) {
-          const dataUrl = await svgToImg(origSvg)
-          if (dataUrl) {
-            const w = origSvg.getAttribute('width') || '500'
-            const imgEl = document.createElement('img')
-            imgEl.src = dataUrl
-            imgEl.style.width = w + 'px'
-            imgEl.style.maxWidth = '100%'
-            imgEl.style.height = 'auto'
-            imgEl.alt = 'Notação musical'
-            allCloneSvgs[s].replaceWith(imgEl)
-          }
+      const url = (data as { url?: string } | null)?.url
+      if (!url) throw new Error('A Edge Function nao retornou a URL do PDF.')
+
+      toast.success('PDF gerado com sucesso.', { id: toastId })
+      if (pdfTab && !pdfTab.closed) {
+        pdfTab.location.href = url
+      } else {
+        const openedPdf = window.open(url, '_blank')
+        if (!openedPdf) {
+          window.location.href = url
         }
       }
-      clone.querySelectorAll('.notation-container').forEach(el => { (el as HTMLElement).style.background = '#fff' })
-
-      // Se é capa, copiar background computado do .block-cover para inline
-      const isCover = clone.classList.contains('a4-page--cover')
-      if (isCover) {
-        const origBlockCover = page.querySelector('.block-cover') as HTMLElement | null
-        const cloneBlockCover = clone.querySelector('.block-cover') as HTMLElement | null
-        if (origBlockCover && cloneBlockCover) {
-          const computed = getComputedStyle(origBlockCover)
-          cloneBlockCover.style.background = computed.background
-          cloneBlockCover.style.backgroundColor = computed.backgroundColor
-          cloneBlockCover.style.color = computed.color
-        }
+    } catch (error) {
+      console.error('[PDF] Erro ao gerar PDF profissional:', error)
+      if (pdfTab && !pdfTab.closed) {
+        pdfTab.document.body.innerHTML = '<div>Erro ao gerar PDF. Volte ao editor e tente novamente.</div>'
       }
-
-      const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;break-after:page;' : ''
-      const coverStyle = isCover ? 'min-height:297mm;background:transparent;' : ''
-      pagesHtmlParts.push(`<div class="${clone.className}" style="${coverStyle}${pageBreak}">${clone.innerHTML}</div>`)
+      toast.error(error instanceof Error ? error.message : 'Erro ao gerar PDF.', { id: toastId })
     }
-
-    // Restaurar tema
-    if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
-    else document.documentElement.removeAttribute('data-theme')
-
-    const pagesHtml = pagesHtmlParts.join('\n')
-    const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>${materialTitle || 'Material Didático'} — PDF</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=DM+Mono&family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400;1,700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Oswald:wght@400;500;700&family=Bebas+Neue&family=Righteous&family=Pacifico&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',sans-serif;background:#fff;color:#1E293B;line-height:1.7}
-h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
-h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
-strong{font-weight:600} p{margin:0 0 12px}
-.a4-page{width:210mm;height:297mm;margin:0 auto;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative}
-.a4-page--cover{background:transparent;height:297mm;min-height:297mm}
-.a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;flex-shrink:0}
-.a4-page-content{padding:12px 60px;flex:1;overflow:hidden}
-.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0}
-.canvas-block{padding:10px 16px;margin-bottom:4px}
-.block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
-.block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
-.cover-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45)}
-.cover-content,.cover-footer,.cover-logo{position:absolute;z-index:1}
-.cover-title{font-family:'DM Sans',sans-serif;font-size:36px;font-weight:700;line-height:1.2;margin:0 0 16px;width:100%}
-.cover-subtitle{font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.5;max-width:480px;margin:0 auto;opacity:.8}
-.cover-instrument{font-family:'DM Sans',sans-serif;font-size:13px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;font-weight:600}
-.cover-content{z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:90%;max-width:90%;color:#fff;text-align:center}
-.cover-footer{font-size:12px;opacity:.7;color:#fff;text-align:center}
-.cover-professor{font-weight:600}
-.cover-escola,.cover-data{opacity:.8}
-.cover-logo{z-index:2}
-.cover-logo img{filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
-.a4-page--cover .a4-page-content{padding:0}
-.a4-page--cover .canvas-block{padding:0;margin:0;border:none}
-.absolute{position:absolute}
-.select-none{user-select:none}
-.pointer-events-none{pointer-events:none}
-img{max-width:100%}
-.notation-container{background:#fff;border-radius:4px;border:1px solid #e2e8f0;overflow:hidden;margin:8px 0;padding:16px}
-.notation-container img{display:block;max-width:100%}
-.block-columns{display:grid;gap:16px;align-items:start}
-.block-column{min-width:0}
-.block-tip{margin-bottom:16px;padding:16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px}
-.block-tip .tip-icon{color:#F59E0B;font-weight:700;margin-right:6px}
-.block-tip h3,.block-tip .tip-title{color:#F59E0B;font-weight:700;font-size:14px;margin-bottom:4px}
-.block-exercise{margin-bottom:16px;padding:16px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px}
-.block-exercise .exercise-icon{color:#22C55E;font-weight:700;margin-right:6px}
-.block-exercise h3,.block-exercise .exercise-title{color:#22C55E;font-weight:700;font-size:14px;margin-bottom:4px}
-.block-cover--geometric{background:#0f172a;position:relative;overflow:hidden}
-.block-cover--geometric .cover-deco-1,.block-cover--geometric .cover-deco-2,.block-cover--geometric .cover-deco-3{position:absolute;border-radius:50%}
-.block-cover--geometric .cover-deco-1{width:300px;height:300px;background:rgba(30,58,138,.7);top:-60px;right:-60px}
-.block-cover--geometric .cover-deco-2{width:120px;height:120px;background:rgba(71,85,105,.5);bottom:-30px;left:-30px}
-.block-cover--geometric .cover-deco-3{width:80px;height:80px;background:rgba(120,113,108,.4);top:55%;right:20%;transform:rotate(45deg);border-radius:8px}
-.block-cover--minimal{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);position:relative;overflow:hidden}
-.block-cover--waves{background:linear-gradient(180deg,#0c4a6e 0%,#164e63 50%,#155e75 100%);position:relative;overflow:hidden}
-#print-btn{position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);font-family:'DM Sans',sans-serif}
-#print-btn:hover{background:#1d4ed8}
-@media print{
-  body{background:#fff;margin:0;padding:0}
-  #print-btn{display:none!important}
-  [data-canvas-ruler],[data-guide-overlay]{display:none!important}
-  .a4-page{width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;page-break-after:always;break-after:page;margin:0!important;background:white!important}
-  .a4-page:last-child{page-break-after:auto}
-  .a4-page--cover{background:transparent!important;height:297mm!important;min-height:297mm!important}
-  .a4-page-content{flex:1!important;overflow:hidden!important}
-  .a4-page-header{flex-shrink:0!important}
-  .a4-page-footer{flex-shrink:0!important}
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-  .canvas-block,.notation-container,.block-tip,.block-exercise,.mb-4,img,svg,table,pre,figure{page-break-inside:avoid!important;break-inside:avoid!important}
-  h1,h2,h3,h4{page-break-after:avoid!important;break-after:avoid!important}
-  [class*="bg-dourado-soft"],[class*="bg-advance"]{page-break-inside:avoid!important;break-inside:avoid!important}
-  @page{size:A4 portrait;margin:0}
-}
-</style>
-</head>
-<body>
-<button id="print-btn" onclick="window.print()">Salvar como PDF (Ctrl+P)</button>
-${pagesHtml}
-</body>
-</html>`
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-    toast.success('PDF aberto em nova aba — use "Salvar como PDF" no diálogo de impressão')
-    setForceAllPagesActive(false)
-  }, [activateAllCanvasPages, materialTitle])
+  }, [materialId])
 
   // --- Atalhos de teclado globais ---
   useEffect(() => {
@@ -5742,7 +5605,7 @@ ${pagesHtml}
               >
                 {/* Guias visuais */}
                 {showRulers && pageConfig.guides && pageConfig.guides.length > 0 && (
-                  <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 100 }}>
+                  <div className="page-guides-overlay absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 100 }}>
                     {pageConfig.guides.map(guide => (
                       guide.type === 'vertical' ? (
                         <div

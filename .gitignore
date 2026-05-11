@@ -18,3 +18,6 @@ scripts/olga-import
 
 # MCP config (contém tokens)
 .mcp.json
+
+# Supabase CLI local metadata
+supabase/.temp/

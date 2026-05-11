@@ -474,6 +474,74 @@
 #print-container .canvas-block.selected { border:none; box-shadow:none }
 #print-container .add-block-btn { display:none }
 
+/* Rota /print/:id - render completo para Puppeteer/Chromium */
+.print-view{
+  min-height:100vh;
+  background:#fff;
+  color:#1E293B;
+  padding:0;
+  margin:0;
+}
+.print-view-loading{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  font-size:14px;
+  color:var(--text2);
+  background:#fff;
+}
+.print-page{
+  width:210mm!important;
+  height:297mm!important;
+  min-height:297mm!important;
+  max-height:297mm!important;
+  margin:0 auto;
+  box-shadow:none!important;
+  border-radius:0!important;
+  overflow:hidden!important;
+  page-break-after:always;
+  break-after:page;
+}
+.print-page:last-child{page-break-after:auto;break-after:auto}
+.print-page-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom:none!important;
+  padding:8px 60px 0!important;
+  font-size:9px!important;
+}
+.print-page-content{padding:12px 60px!important}
+.print-page-footer{
+  border-top:none!important;
+  padding:0 60px 8px!important;
+}
+.print-page--cover .print-page-content{
+  padding:0!important;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+.print-page--cover .print-block{
+  padding:0!important;
+  margin:0!important;
+  border:none!important;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+.print-block{
+  border:none!important;
+  box-shadow:none!important;
+  page-break-inside:avoid;
+  break-inside:avoid;
+  padding:10px 16px!important;
+  overflow:visible!important;
+}
+.print-block .space-y-1 > :not([hidden]) ~ :not([hidden]){margin-top:0!important}
+
 @media print {
   /* 1. Esconder sidebar, painel de propriedades, header, nav, container de medição */
   nav { display:none !important }
@@ -507,9 +575,27 @@
   .canvas-block { border:none !important; box-shadow:none !important; page-break-inside:avoid; break-inside:avoid; padding:12px 0 !important; overflow:visible !important }
   .canvas-block.selected { border:none !important; box-shadow:none !important }
   .block-selection-border { border:none !important; outline:none !important; box-shadow:none !important }
-  .add-block-btn,.cover-draggable:hover,.cover-snap-guide { display:none !important }
+  .add-block-btn,
+  .cover-draggable:hover,
+  .cover-snap-guide,
+  .page-guides-overlay,
+  [data-testid="contextual-toolbar"] { display:none !important }
+
+  .a4-page-header,
+  .a4-page-footer {
+    display:flex !important;
+    visibility:visible !important;
+  }
 
   /* 5b. Sub-elementos: evitar corte de notações, dicas, exercícios, imagens */
+  [data-block-type="notation"],
+  [data-block-type="rhythm"],
+  [data-block-type="tablature"],
+  [data-block-type="keyboard"],
+  [data-block-type="keyboard_grid"],
+  [data-block-type="chord_grid"],
+  [data-block-type="chord_diagram"],
+  [data-block-type="image"],
   .notation-container,
   .block-tip,
   .block-exercise,
@@ -536,7 +622,16 @@
   /* 7. Notação musical: fundo branco, sem filter invert (dark mode) */
   /* Seletor com alta especificidade para vencer [data-theme="dark"] .notation-container svg */
   .notation-container { background:white !important; border:1px solid #e2e8f0 !important; page-break-inside:avoid !important; break-inside:avoid !important }
-  .notation-container svg { filter:none !important; max-width:100% !important }
+  .notation-container svg,
+  [data-block-type="keyboard"] svg,
+  [data-block-type="keyboard_grid"] svg,
+  [data-block-type="chord_grid"] svg,
+  [data-block-type="chord_diagram"] svg,
+  [data-block-type="tablature"] svg {
+    filter:none !important;
+    max-width:100% !important;
+    overflow:visible !important;
+  }
   [data-theme="dark"] .notation-container svg { filter:none !important }
   html[data-theme="dark"] .notation-container svg { filter:none !important }
 

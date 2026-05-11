@@ -18,12 +18,14 @@ import { Relatorios } from './pages/Relatorios'
 import { Integracoes } from './pages/Integracoes'
 import { Configuracoes } from './pages/Configuracoes'
 import { AlphaTabFixtures } from './pages/AlphaTabFixtures'
+import { PrintView } from './pages/PrintView'
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/print/:id" element={<PrintView />} />
 
         <Route
           element={
