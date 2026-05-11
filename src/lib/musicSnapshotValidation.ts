@@ -24,10 +24,10 @@ function countMatches(html: string, pattern: RegExp) {
 
 function hasAlphaTabNotehead(html: string) {
   const hasRoundNotehead = /<(?:circle|ellipse)\b/i.test(html)
-  const pathCount = countMatches(html, /<path\b/gi)
+  const filledNoteheadPath = /<path\b[^>]*\bd="[^"]*C[^"]*Z[^"]*"/i.test(html)
   const textTabNumbers = countMatches(html, /<text\b[^>]*>\s*(?:[0-9]|x)\s*<\/text>/gi)
 
-  return hasRoundNotehead || pathCount >= 2 || textTabNumbers > 0
+  return hasRoundNotehead || filledNoteheadPath || textTabNumbers > 0
 }
 
 function hasKeyboardKeys(html: string) {

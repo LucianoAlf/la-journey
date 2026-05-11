@@ -727,6 +727,12 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     ?? (rd.text_elements as CoverTextElement[] | undefined)
     ?? []  // vazio = modo legado
   const hasTextElements = resolvedTextElements.length > 0
+  const hasLegacyContent = Boolean(
+    instrumento.trim() ||
+    titulo.trim() ||
+    subtitulo.trim() ||
+    titleEditing
+  )
 
   const coverRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -954,7 +960,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       ))}
 
       {/* ── Conteúdo legado (se não tem text_elements) ── */}
-      {!hasTextElements && (
+      {!hasTextElements && hasLegacyContent && (
         <div
           className={`cover-content ${editable ? 'cover-draggable' : ''}`}
           style={{
@@ -978,9 +984,9 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               onMouseDown={e => e.stopPropagation()}
               style={{ background: 'rgba(0,0,0,.2)', border: 'none', outline: '2px dashed rgba(255,255,255,.5)', outlineOffset: '4px', textAlign: titleAlign as any, width: '100%', color: titleColor || 'inherit', padding: '8px 12px', borderRadius: '8px', fontSize: `${titleFontSize}px` }}
             />
-          ) : (
+          ) : titulo.trim() ? (
             <h1 className="cover-title" style={{ fontSize: `${titleFontSize}px`, ...(titleColor ? { color: titleColor } : {}), textAlign: titleAlign as any }}>{titulo}</h1>
-          )}
+          ) : null}
           {subtitulo && <p className="cover-subtitle">{subtitulo}</p>}
         </div>
       )}
@@ -991,6 +997,10 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
         .map((el) => (
           <div
             key={el.id}
+            data-cover-overlay-id={el.id}
+            role={editable ? 'button' : undefined}
+            tabIndex={editable ? 0 : undefined}
+            aria-label={el.label}
             className={`absolute select-none ${
               editable ? 'cursor-move' : ''
             } ${
@@ -1020,10 +1030,24 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               const container = coverRef.current
               if (!container) return
               const rect = container.getBoundingClientRect()
+              const targetEl = e.currentTarget
               const startX = e.clientX
               const startY = e.clientY
               const startElX = el.x
               const startElY = el.y
+              let pendingPosition: { x: number; y: number } | null = null
+              let finalPosition = { x: startElX, y: startElY }
+              let animationFrame: number | null = null
+
+              const flushPosition = () => {
+                animationFrame = null
+                if (!pendingPosition) return
+                finalPosition = pendingPosition
+                targetEl.style.left = `${finalPosition.x}%`
+                targetEl.style.top = `${finalPosition.y}%`
+                pendingPosition = null
+              }
+
               const move = (ev: MouseEvent) => {
                 const dx = ((ev.clientX - startX) / rect.width) * 100
                 const dy = ((ev.clientY - startY) / rect.height) * 100
@@ -1032,16 +1056,26 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
                 const sx = snapValue(rawX)
                 const sy = snapValue(rawY)
                 setActiveGuides({ x: sx.guide, y: sy.guide })
-                onOverlayUpdate(el.id, {
+                pendingPosition = {
                   x: Math.max(0, Math.min(100, Math.round(sx.snapped * 10) / 10)),
                   y: Math.max(0, Math.min(100, Math.round(sy.snapped * 10) / 10)),
-                })
+                }
+                if (animationFrame === null) {
+                  animationFrame = window.requestAnimationFrame(flushPosition)
+                }
               }
               const up = () => {
+                if (animationFrame !== null) {
+                  window.cancelAnimationFrame(animationFrame)
+                  flushPosition()
+                }
+                targetEl.style.willChange = ''
                 setActiveGuides({ x: null, y: null })
+                onOverlayUpdate(el.id, finalPosition)
                 document.removeEventListener('mousemove', move)
                 document.removeEventListener('mouseup', up)
               }
+              targetEl.style.willChange = 'left, top'
               document.addEventListener('mousemove', move)
               document.addEventListener('mouseup', up)
             }}

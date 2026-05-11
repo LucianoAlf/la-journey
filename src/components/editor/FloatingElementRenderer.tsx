@@ -131,7 +131,7 @@ interface FloatingElementRendererProps {
   isEditing: boolean
   onSelect: () => void
   onDoubleClick: () => void
-  onDragStart: (e: React.MouseEvent) => void
+  onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void
   onUpdate: (updates: Partial<FloatingElement>) => void
 }
 
@@ -154,6 +154,12 @@ export function FloatingElementRenderer({
 
   return (
     <div
+      data-floating-element-id={element.id}
+      data-floating-element-type={element.type}
+      data-floating-shape={element.type === 'shape' ? (element as FloatingShape).shape : undefined}
+      role="button"
+      tabIndex={0}
+      aria-label={element.name}
       style={baseStyle}
       onClick={(e) => {
         e.stopPropagation()
@@ -164,6 +170,8 @@ export function FloatingElementRenderer({
         onDoubleClick()
       }}
       onMouseDown={(e) => {
+        e.stopPropagation()
+        onSelect()
         if (!element.locked && !isEditing) onDragStart(e)
       }}
     >

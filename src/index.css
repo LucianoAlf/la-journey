@@ -275,7 +275,7 @@
 }
 
 /* EDITOR */
-.editor-layout{display:grid;grid-template-columns:260px 1fr 300px;gap:0;height:100vh;margin:-28px;overflow:hidden}
+.editor-layout{display:grid;grid-template-columns:260px 1fr 300px;gap:0;height:100%;margin:0;overflow:hidden}
 .editor-layout.editor-layout--flex{display:flex;grid-template-columns:none}
 .editor-sidebar{shrink:0;overflow:hidden;background:var(--surface)}
 .editor-layout:not(.editor-layout--flex) .editor-sidebar{border-right:1px solid var(--border);padding:16px;overflow-y:auto}

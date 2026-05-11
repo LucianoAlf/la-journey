@@ -81,6 +81,7 @@ import { EditorCanvas } from "@/components/editor/EditorCanvas";
 import { EditableBlock, type EditableBlockData } from "@/components/editor/EditableBlock";
 import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
+import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
@@ -302,8 +303,10 @@ function simpleHash(value: string): string {
 
 const A4_CONTENT_HEIGHT = 1029 // 1123 - 38(header) - 32(footer) - 24(content padding 12+12) px
 const ACTIVE_PAGE_RADIUS = 2
+const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
 const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-slur-above-v6'
+type BlockHeightSource = 'estimated' | 'calibrated' | 'measured'
 
 const MUSIC_RENDERER_BLOCK_TYPES = new Set(['notation', 'rhythm', 'tablature', 'chord_grid', 'keyboard', 'keyboard_grid', 'chord_diagram'])
 
@@ -373,7 +376,7 @@ function estimateBlockHeight(block: EditorBlock): number {
 function getEstimatedBlockHeightForPagination(block: EditorBlock): number {
   const estimated = estimateBlockHeight(block)
   if (block.block_type === 'cover') return estimated
-  return Math.round(estimated * 1.42)
+  return Math.round(estimated * ESTIMATED_BLOCK_HEIGHT_FACTOR)
 }
 
 function isFreeTimeTablatureBlock(block: EditorBlock) {
@@ -677,6 +680,7 @@ function useEditorPagination({
 }) {
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
   const blockHeightCacheRef = useRef<Map<string, number>>(new Map())
+  const blockHeightSourceByKeyRef = useRef<Map<string, BlockHeightSource>>(new Map())
   const blockHeightKeyByIdRef = useRef<Record<string, string>>({})
   const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
   const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
@@ -784,7 +788,7 @@ function useEditorPagination({
         measured[id] = height
 
         const block = blocksRef.current.find(item => item.id === id)
-        if (block && (MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || blockUsesAlphaTab(block))) {
+        if (block && MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) && !blockUsesAlphaTab(block)) {
           const html = sanitizeMusicSnapshotHtml(el.innerHTML, block)
           if (isUsableMusicSnapshotHtml(html, block)) {
             musicRendererSnapshotCacheRef.current.set(id, {
@@ -1652,6 +1656,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   /** Auto-paginação A4: estima alturas, mede o canvas real e distribui entre páginas */
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
   const blockHeightCacheRef = useRef<Map<string, number>>(new Map())
+  const blockHeightSourceByKeyRef = useRef<Map<string, BlockHeightSource>>(new Map())
   const blockHeightKeyByIdRef = useRef<Record<string, string>>({})
 
   // Preparar estimativas de altura por bloco sem renderizar copias ocultas.
@@ -1718,6 +1723,80 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return indexById
   }, [pages])
 
+  const [showPaginationDebug, setShowPaginationDebug] = useState(false)
+  const paginationDebugPages = useMemo<PaginationDebugPage[]>(() => {
+    const blockIndexById = new Map(blocks.map((block, index) => [block.id, index]))
+    const getHeightCacheEntry = (block: EditorBlock) => {
+      const key = blockHeightKeyByIdRef.current[block.id] ?? getBlockHeightCacheKey(block)
+      const height = blockHeightCacheRef.current.get(key) ?? null
+      const source = height == null
+        ? 'estimated'
+        : blockHeightSourceByKeyRef.current.get(key) ?? 'measured'
+      return { height, source: source as BlockHeightSource }
+    }
+    const getShortTitle = (block: EditorBlock) => {
+      const rawTitle = block.title || String(block.content?.title || block.content?.heading || block.block_type)
+      return rawTitle.length > 54 ? `${rawTitle.slice(0, 51)}...` : rawTitle
+    }
+    const getBlockDetail = (block: EditorBlock) => {
+      const estimatedHeight = getEstimatedBlockHeightForPagination(block)
+      const cacheEntry = getHeightCacheEntry(block)
+      return {
+        id: block.id,
+        type: block.block_type,
+        title: getShortTitle(block),
+        estimatedHeight,
+        measuredHeight: cacheEntry.source === 'measured' ? cacheEntry.height : null,
+        heightSource: cacheEntry.source,
+        usedHeight: blockHeights[block.id] ?? estimatedHeight,
+      }
+    }
+
+    return pages.map((pageBlocks, pageIndex) => {
+      const debugBlocks = pageBlocks.map(getBlockDetail)
+      const usedHeight = debugBlocks.reduce((sum, block) => sum + block.usedHeight, 0)
+      const freeHeight = Math.max(0, A4_CONTENT_HEIGHT - usedHeight)
+      const nextFirstBlock = pages[pageIndex + 1]?.[0]
+      const hasEstimatedBlock = pageBlocks.some(block => getHeightCacheEntry(block).source === 'estimated')
+      const nextFirstBlockEstimated = nextFirstBlock ? getHeightCacheEntry(nextFirstBlock).source === 'estimated' : false
+
+      let breakReason: PaginationDebugPage['breakReason'] = 'fim'
+      let breakDetail = 'Última página do material.'
+
+      if (nextFirstBlock) {
+        const nextTitle = getShortTitle(nextFirstBlock)
+        const nextIndex = blockIndexById.get(nextFirstBlock.id)
+        const previousBlock = typeof nextIndex === 'number' ? blocks[nextIndex - 1] : undefined
+
+        if (pageBlocks.some(block => block.block_type === 'cover')) {
+          breakReason = 'cover'
+          breakDetail = `A capa ocupa uma página inteira; próximo bloco: ${nextTitle}.`
+        } else if (previousBlock?.block_type === 'page_break') {
+          breakReason = 'manual'
+          breakDetail = `Quebra manual antes de ${nextTitle}.`
+        } else if (hasEstimatedBlock || nextFirstBlockEstimated) {
+          breakReason = 'estimativa'
+          breakDetail = `A quebra antes de ${nextTitle} ainda depende de altura estimada/cache.`
+        } else {
+          const nextHeight = blockHeights[nextFirstBlock.id] ?? getEstimatedBlockHeightForPagination(nextFirstBlock)
+          breakReason = 'overflow'
+          breakDetail = `${nextTitle} não coube: livre ${Math.round(freeHeight)}px, bloco precisa ${Math.round(nextHeight)}px.`
+        }
+      }
+
+      return {
+        pageNumber: pageIndex + 1,
+        totalHeight: A4_CONTENT_HEIGHT,
+        usedHeight,
+        freeHeight,
+        freePercent: (freeHeight / A4_CONTENT_HEIGHT) * 100,
+        breakReason,
+        breakDetail,
+        blocks: debugBlocks,
+      }
+    })
+  }, [blocks, blockHeights, pages])
+
   const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
   const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
   const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
@@ -1778,6 +1857,83 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       cancelIdle?.()
     }
   }, [activePageIndexes, pages, selectedBlockId])
+
+  useEffect(() => {
+    if (blocks.length === 0 || pages.length === 0) return
+
+    const statsByType = new Map<string, { measuredTotal: number; estimatedTotal: number; count: number }>()
+    for (const block of blocks) {
+      if (block.block_type === 'page_break' || block.block_type === 'cover') continue
+      const key = blockHeightKeyByIdRef.current[block.id] ?? getBlockHeightCacheKey(block)
+      if (blockHeightSourceByKeyRef.current.get(key) !== 'measured') continue
+      const measuredHeight = blockHeightCacheRef.current.get(key)
+      if (!measuredHeight) continue
+      const current = statsByType.get(block.block_type) ?? { measuredTotal: 0, estimatedTotal: 0, count: 0 }
+      current.measuredTotal += measuredHeight
+      current.estimatedTotal += getEstimatedBlockHeightForPagination(block)
+      current.count += 1
+      statsByType.set(block.block_type, current)
+    }
+
+    const ratioByType = new Map<string, number>()
+    for (const [type, stats] of statsByType.entries()) {
+      if (stats.count === 0 || stats.estimatedTotal <= 0) continue
+      ratioByType.set(type, Math.max(0.72, Math.min(1.1, stats.measuredTotal / stats.estimatedTotal)))
+    }
+
+    if (ratioByType.size === 0) return
+
+    const activePages = Array.from(activePageIndexes)
+    const distanceFromActiveWindow = (block: EditorBlock) => {
+      const pageIndex = pageIndexByBlockId[block.id]
+      if (typeof pageIndex !== 'number') return Number.MAX_SAFE_INTEGER
+      if (activePages.length === 0) return pageIndex
+      return Math.min(...activePages.map(activePageIndex => Math.abs(activePageIndex - pageIndex)))
+    }
+
+    const pending = blocks
+      .filter(block => {
+        if (block.block_type === 'page_break' || block.block_type === 'cover') return false
+        if (!ratioByType.has(block.block_type)) return false
+        const key = blockHeightKeyByIdRef.current[block.id] ?? getBlockHeightCacheKey(block)
+        const source = blockHeightSourceByKeyRef.current.get(key)
+        return source !== 'measured' && source !== 'calibrated'
+      })
+      .sort((a, b) => distanceFromActiveWindow(a) - distanceFromActiveWindow(b))
+
+    if (pending.length === 0) return
+
+    let cancelled = false
+    let cancelIdle: (() => void) | null = null
+    const processNext = () => {
+      if (cancelled) return
+      const block = pending.shift()
+      if (!block) return
+
+      const ratio = ratioByType.get(block.block_type)
+      if (ratio) {
+        const key = blockHeightKeyByIdRef.current[block.id] ?? getBlockHeightCacheKey(block)
+        const calibratedHeight = Math.max(24, Math.round(getEstimatedBlockHeightForPagination(block) * ratio))
+        blockHeightCacheRef.current.set(key, calibratedHeight)
+        blockHeightSourceByKeyRef.current.set(key, 'calibrated')
+        setBlockHeights(prev => {
+          if (Math.abs((prev[block.id] ?? 0) - calibratedHeight) < 2) return prev
+          return { ...prev, [block.id]: calibratedHeight }
+        })
+      }
+
+      if (pending.length > 0) {
+        cancelIdle = scheduleEditorIdleCallback(processNext, 1500)
+      }
+    }
+
+    cancelIdle = scheduleEditorIdleCallback(processNext, 1500)
+    return () => {
+      cancelled = true
+      cancelIdle?.()
+    }
+  }, [activePageIndexes, blockHeights, blocks, pageIndexByBlockId, pages.length])
+
   useEffect(() => {
     const canvas = canvasScrollRef.current
     if (!canvas || blocks.length === 0) return
@@ -1794,10 +1950,11 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         const height = el.offsetHeight
         if (height <= 0) return
         blockHeightCacheRef.current.set(key, height)
+        blockHeightSourceByKeyRef.current.set(key, 'measured')
         measured[id] = height
 
         const block = blocksRef.current.find(item => item.id === id)
-        if (block && (MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || blockUsesAlphaTab(block))) {
+        if (block && MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) && !blockUsesAlphaTab(block)) {
           const html = sanitizeMusicSnapshotHtml(el.innerHTML, block)
           if (isUsableMusicSnapshotHtml(html, block)) {
             musicRendererSnapshotCacheRef.current.set(id, {
@@ -1824,7 +1981,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     }, 150)
 
     return () => window.clearTimeout(timer)
-  }, [blocks, pages.length])
+  }, [activePageIndexes, blocks, pages.length])
 
   // --- Persistir pageConfig quando muda ---
   useEffect(() => {
@@ -2611,6 +2768,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (selectedOverlayId === id) setSelectedOverlayId(null)
   }, [overlayElements, selectedOverlayId, updateCoverOverlayElements])
 
+  const selectOverlayElement = useCallback((id: string | null) => {
+    setSelectedOverlayId(id)
+    if (id) {
+      setSelectedBlockId(null)
+      setInlineEditingBlockId(null)
+      setToolbarPosition(null)
+      setSelectedFloatingId(null)
+      setSelectedTextId(null)
+      setEditingTextId(null)
+    }
+  }, [])
+
   const selectedOverlay = useMemo(() =>
     overlayElements.find(el => el.id === selectedOverlayId) ?? null
   , [overlayElements, selectedOverlayId])
@@ -2814,7 +2983,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (editingFloatingId === id) setEditingFloatingId(null)
   }, [selectedFloatingId, editingFloatingId])
 
-  const handleFloatingDragStart = useCallback((e: React.MouseEvent, elementId: string) => {
+  const handleFloatingDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>, elementId: string) => {
     e.preventDefault()
     e.stopPropagation()
     const element = floatingElements.find(el => el.id === elementId)
@@ -2829,23 +2998,46 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const startY = e.clientY
     const startElX = element.x
     const startElY = element.y
+    const targetEl = e.currentTarget
+    let pendingPosition: { x: number; y: number } | null = null
+    let finalPosition = { x: startElX, y: startElY }
+    let animationFrame: number | null = null
+
+    const flushPosition = () => {
+      animationFrame = null
+      if (!pendingPosition) return
+      finalPosition = pendingPosition
+      targetEl.style.left = `${finalPosition.x}%`
+      targetEl.style.top = `${finalPosition.y}%`
+      pendingPosition = null
+    }
 
     const handleMove = (moveEvent: MouseEvent) => {
       const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100
       const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100
       const sx = floatingSnapValue(Math.max(0, Math.min(100, startElX + deltaX)))
       const sy = floatingSnapValue(Math.max(0, Math.min(100, startElY + deltaY)))
-      updateFloatingElement(elementId, {
+      pendingPosition = {
         x: Math.round(sx.snapped * 10) / 10,
         y: Math.round(sy.snapped * 10) / 10,
-      })
+      }
+      if (animationFrame === null) {
+        animationFrame = window.requestAnimationFrame(flushPosition)
+      }
     }
 
     const handleUp = () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame)
+        flushPosition()
+      }
+      targetEl.style.willChange = ''
+      updateFloatingElement(elementId, finalPosition)
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseup', handleUp)
     }
 
+    targetEl.style.willChange = 'left, top'
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
   }, [floatingElements, updateFloatingElement])
@@ -4471,6 +4663,11 @@ ${pagesHtml}
 
       // Delete / Backspace — Remover elemento selecionado da capa
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedFloatingId && !editingFloatingId) {
+          e.preventDefault()
+          removeFloatingElement(selectedFloatingId)
+          return
+        }
         if (selectedOverlayId) {
           e.preventDefault()
           removeOverlayElement(selectedOverlayId)
@@ -4481,7 +4678,14 @@ ${pagesHtml}
           removeTextElement(selectedTextId)
           return
         }
-        if (canDeleteSelectedBlock({ selectedBlockId, inlineEditingBlockId, isTextInputTarget: isEditingTarget })) {
+        const blockToDelete = selectedBlockId
+          ? blocks.find(block => block.id === selectedBlockId)
+          : null
+        if (
+          blockToDelete &&
+          !['cover', 'page_break'].includes(blockToDelete.block_type) &&
+          canDeleteSelectedBlock({ selectedBlockId, inlineEditingBlockId, isTextInputTarget: isEditingTarget })
+        ) {
           e.preventDefault()
           handleDeleteBlock(selectedBlockId!)
           return
@@ -4605,9 +4809,9 @@ ${pagesHtml}
       : []
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+    <div className="h-screen flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Header do Editor */}
-      <div className="editor-header flex items-center justify-between mb-0 -mt-4 -mx-7 px-5 py-3 border-b border-border bg-surface sticky top-0 z-10">
+      <div className="editor-header flex items-center justify-between mb-0 px-5 py-3 border-b border-border bg-surface sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate('/editor')}>
             <ArrowLeft size={16} />
@@ -4705,6 +4909,24 @@ ${pagesHtml}
             </Tooltip>
           </TooltipProvider>
 
+          {import.meta.env.DEV && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showPaginationDebug ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 gap-1 text-[11px]"
+                    onClick={() => setShowPaginationDebug(true)}
+                  >
+                    <MapTrifold size={14} /> Mapa
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Mapa de paginação</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           {/* 7.3 — Templates */}
           <TooltipProvider>
             <Tooltip>
@@ -4799,7 +5021,7 @@ ${pagesHtml}
       </div>
 
       {/* Layout 3 colunas com sidebars retráteis */}
-      <div className="editor-layout editor-layout--flex" style={{ marginTop: 0 }}>
+      <div className="editor-layout editor-layout--flex flex-1 min-h-0" style={{ marginTop: 0 }}>
         {/* Coluna 1 — Sidebar Esquerda: Lista de Blocos */}
         <BlockListSidebar open={leftSidebarOpen}>
           <Tabs defaultValue="blocks" className="flex flex-col h-full">
@@ -5289,7 +5511,7 @@ ${pagesHtml}
                             canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
                             overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
                             selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
-                            onOverlaySelect={block.block_type === 'cover' ? setSelectedOverlayId : undefined}
+                            onOverlaySelect={block.block_type === 'cover' ? selectOverlayElement : undefined}
                             onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
                             textElements={block.block_type === 'cover' ? textElements : undefined}
                             selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
@@ -5341,6 +5563,8 @@ ${pagesHtml}
                       onSelect={() => {
                         setSelectedFloatingId(el.id)
                         setSelectedBlockId(null)
+                        setInlineEditingBlockId(null)
+                        setToolbarPosition(null)
                       }}
                       onDoubleClick={() => {
                         if (el.type === 'floating_text' && !el.locked) {
@@ -7090,6 +7314,14 @@ ${pagesHtml}
       )}
 
       {/* 6.2 — Dialog de variações */}
+      {import.meta.env.DEV && (
+        <PaginationDebugPanel
+          open={showPaginationDebug}
+          onOpenChange={setShowPaginationDebug}
+          pages={paginationDebugPages}
+        />
+      )}
+
       <AIVariationsDialog
         open={showVariationsDialog}
         onOpenChange={setShowVariationsDialog}
