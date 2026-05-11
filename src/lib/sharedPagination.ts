@@ -76,6 +76,20 @@ export function stripHtmlTags(value: string) {
 function splitHtmlIntoTopLevelSegments(html: string) {
   const matches = html.match(/<(p|h[1-6]|ul|ol|blockquote|table|pre)[\s\S]*?<\/\1>/gi)
   if (matches && matches.length > 1) return matches
+
+  const fallbackText = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s+/g, '\n')
+    .trim()
+
+  if (fallbackText.length > 320) {
+    return splitTextIntoSegments(fallbackText)
+  }
+
   return html
     .split(/(?=<p\b|<h[1-6]\b|<ul\b|<ol\b|<blockquote\b|<table\b|<pre\b)/i)
     .map(segment => segment.trim())
