@@ -219,3 +219,35 @@ Proximo passo mais seguro:
 - O caminho de produto e Browserless/Puppeteer server-side.
 - O gargalo atual e paridade de layout/paginacao, nao mais a infraestrutura de PDF.
 - O PDF atual e utilizavel como prova tecnica do pipeline, mas ainda nao esta pronto para beta comercial.
+
+## Atualizacao - 11/05/2026, pos Fase A/B
+
+PDF auditado: `docs/audit-assets/pdf-after-exercise-estimates.pdf`  
+Origem: Edge Function `generate-pdf` + Browserless + Storage publico  
+Commit validado: `f14e3a8`
+
+### Resultado
+
+- O PDF agora gera com 50 paginas.
+- Os cortes criticos em blocos de exercicio foram reduzidos: o caso do `Exercicio 22` nao fica mais preso no rodape anterior.
+- `chord_grid` aparece com contraste adequado.
+- `keyboard_grid` aparece legivel e sem corte nas paginas auditadas.
+- Rodape esta separado em regioes e nao fica mais colado ao conteudo.
+- A infraestrutura server-side esta funcionando: Vercel `/print`, token temporario, Browserless e upload no Storage.
+
+### O que ainda impede nota 10
+
+- A paginacao do `/print` ainda nao e identica ao editor. A calibragem por estimativa evita cortes, mas aumenta paginas e cria mais espaco branco em alguns pontos.
+- Blocos longos `exercise`/`text` ainda nao sao divididos semanticamente; eles sao movidos inteiros quando a estimativa recomenda.
+- A solucao correta para acabamento final continua sendo a Fase C/D: unificar o motor editor/print e implementar quebra real de blocos longos.
+
+### Evidencia visual
+
+Paginas renderizadas localmente para auditoria:
+
+- `docs/audit-assets/pdf-after-exercise-estimates-pages/contact-sheet.png`
+- `docs/audit-assets/pdf-after-exercise-estimates-pages/page-36.png`
+- `docs/audit-assets/pdf-after-exercise-estimates-pages/page-37.png`
+- `docs/audit-assets/pdf-after-exercise-estimates-pages/page-40.png`
+- `docs/audit-assets/pdf-after-exercise-estimates-pages/page-43.png`
+- `docs/audit-assets/pdf-after-exercise-estimates-pages/page-50.png`
