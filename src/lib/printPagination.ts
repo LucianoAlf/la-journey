@@ -24,12 +24,39 @@ interface BlockPaginationPolicy {
   allowSplit: boolean
 }
 
-const A4_CONTENT_HEIGHT = 1029
+const A4_TOTAL_HEIGHT = 1123
+const HEADER_HEIGHT = 60
+const FOOTER_HEIGHT = 48
+const CONTENT_VERTICAL_PADDING = 40
+const PRINT_SAFE_AREA = 24
+const A4_CONTENT_HEIGHT = A4_TOTAL_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - CONTENT_VERTICAL_PADDING - PRINT_SAFE_AREA
 const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
 const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.54
 const PAGINATION_FRAGMENT_ID_SEPARATOR = '__pagination_fragment_'
 
 const BREAKABLE_TEXT_BLOCK_TYPES = new Set(['text', 'tip', 'exercise'])
+const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
+  cover: A4_TOTAL_HEIGHT,
+  title: 60,
+  text: 200,
+  exercise: 180,
+  tip: 120,
+  notation: 320,
+  rhythm: 260,
+  keyboard: 280,
+  keyboard_grid: 400,
+  chord_grid: 380,
+  chord_diagram: 220,
+  tablature: 300,
+  image: 350,
+  page_break: 0,
+  separator: 30,
+  columns: 220,
+  audio: 150,
+  video: 150,
+  qr_code: 150,
+  badge: 140,
+}
 
 interface PaginationFragmentData {
   source_block_id: string
@@ -191,42 +218,43 @@ function estimateBlockHeight(block: PrintBlock): number {
 
   switch (block.block_type) {
     case 'cover':
-      return A4_CONTENT_HEIGHT
+      return BLOCK_HEIGHT_ESTIMATES.cover
     case 'title':
-      return 56
+      return BLOCK_HEIGHT_ESTIMATES.title
     case 'text':
-      return Math.max(90, Math.min(420, 42 + textLines * 22))
+      return Math.max(96, Math.min(320, 42 + textLines * 20))
     case 'tip':
-      return Math.max(86, Math.min(240, 54 + textLines * 18))
+      return Math.max(BLOCK_HEIGHT_ESTIMATES.tip, Math.min(260, 54 + textLines * 18))
     case 'exercise':
-      return Math.max(130, Math.min(360, 80 + textLines * 20))
+      return Math.max(BLOCK_HEIGHT_ESTIMATES.exercise, Math.min(440, 88 + textLines * 22))
     case 'notation':
     case 'rhythm':
+      return block.block_type === 'rhythm' ? BLOCK_HEIGHT_ESTIMATES.rhythm : BLOCK_HEIGHT_ESTIMATES.notation
     case 'tablature':
-      return 200
+      return BLOCK_HEIGHT_ESTIMATES.tablature
     case 'keyboard':
-      return Array.isArray(renderData.chords) && renderData.chords.length > 0 ? 260 : 160
+      return Array.isArray(renderData.chords) && renderData.chords.length > 0 ? 340 : BLOCK_HEIGHT_ESTIMATES.keyboard
     case 'keyboard_grid': {
       const count = Array.isArray(renderData.keyboards) ? renderData.keyboards.length : 1
-      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
-      return 52 + Math.ceil(count / columns) * 150
+      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 2), 2))
+      return 72 + Math.ceil(count / columns) * 190
     }
     case 'chord_grid': {
       const count = Array.isArray(renderData.chords) ? renderData.chords.length : 1
       const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
-      return 56 + Math.ceil(count / columns) * 190
+      return 80 + Math.ceil(count / columns) * 250
     }
     case 'chord_diagram':
-      return 220
+      return BLOCK_HEIGHT_ESTIMATES.chord_diagram
     case 'image':
-      return 280
+      return BLOCK_HEIGHT_ESTIMATES.image
     case 'audio':
     case 'video':
-      return 150
+      return BLOCK_HEIGHT_ESTIMATES[block.block_type]
     case 'columns':
-      return 220
+      return BLOCK_HEIGHT_ESTIMATES.columns
     case 'separator':
-      return 28
+      return BLOCK_HEIGHT_ESTIMATES.separator
     default:
       return 120
   }

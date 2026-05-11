@@ -518,6 +518,27 @@
   border-top:none!important;
   padding:0 60px 8px!important;
 }
+.print-footer{
+  display:flex!important;
+  justify-content:space-between!important;
+  align-items:center!important;
+  gap:24px!important;
+  font-size:10px!important;
+  line-height:1!important;
+  color:#64748b!important;
+  border-top:1px solid #e5e7eb!important;
+  padding:8px 60px 10px!important;
+  margin-top:8px!important;
+}
+.print-footer-left,
+.print-footer-center,
+.print-footer-right{
+  flex:1 1 0;
+  min-width:0;
+  white-space:nowrap;
+}
+.print-footer-center{text-align:center}
+.print-footer-right{text-align:right}
 .print-page--cover .print-page-content{
   padding:0!important;
   flex:1;
@@ -541,6 +562,45 @@
   overflow:visible!important;
 }
 .print-block .space-y-1 > :not([hidden]) ~ :not([hidden]){margin-top:0!important}
+.print-view .notation-container{
+  border:none!important;
+  box-shadow:none!important;
+  background:transparent!important;
+}
+.print-view [data-block-type="chord_grid"] svg,
+.print-view [data-block-type="chord_diagram"] svg{
+  color:#111827!important;
+  opacity:1!important;
+}
+.print-view [data-block-type="chord_grid"] svg text,
+.print-view [data-block-type="chord_diagram"] svg text{
+  fill:#111827!important;
+  opacity:1!important;
+}
+.print-view [data-block-type="chord_grid"] svg line,
+.print-view [data-block-type="chord_grid"] svg path,
+.print-view [data-block-type="chord_grid"] svg rect,
+.print-view [data-block-type="chord_diagram"] svg line,
+.print-view [data-block-type="chord_diagram"] svg path,
+.print-view [data-block-type="chord_diagram"] svg rect{
+  stroke:#111827!important;
+  opacity:1!important;
+}
+.print-view [data-block-type="chord_grid"] svg circle,
+.print-view [data-block-type="chord_diagram"] svg circle{
+  opacity:1!important;
+}
+.print-view .print-block--notation,
+.print-view .print-block--rhythm,
+.print-view .print-block--tablature,
+.print-view .print-block--keyboard,
+.print-view .print-block--keyboard-grid,
+.print-view .print-block--chord-grid,
+.print-view .print-block--chord-diagram,
+.print-view .print-block--image{
+  break-inside:avoid!important;
+  page-break-inside:avoid!important;
+}
 
 @media print {
   /* 1. Esconder sidebar, painel de propriedades, header, nav, container de medição */
@@ -570,6 +630,18 @@
   .a4-page-header { padding:20px 40px 8px !important; flex-shrink:0 !important }
   .a4-page-content { padding:12px 40px !important; flex:1 !important; overflow:hidden !important }
   .a4-page-footer { padding:8px 40px 16px !important; flex-shrink:0 !important }
+  .print-footer {
+    display:flex !important;
+    justify-content:space-between !important;
+    align-items:center !important;
+    gap:24px !important;
+    font-size:9px !important;
+    line-height:1 !important;
+    color:#64748b !important;
+    border-top:1px solid #e5e7eb !important;
+    padding:8px 40px 12px !important;
+    margin-top:0 !important;
+  }
 
   /* 5. Blocos: sem borda/seleção, evitar quebra */
   .canvas-block { border:none !important; box-shadow:none !important; page-break-inside:avoid; break-inside:avoid; padding:12px 0 !important; overflow:visible !important }
@@ -622,6 +694,7 @@
   /* 7. Notação musical: fundo branco, sem filter invert (dark mode) */
   /* Seletor com alta especificidade para vencer [data-theme="dark"] .notation-container svg */
   .notation-container { background:white !important; border:1px solid #e2e8f0 !important; page-break-inside:avoid !important; break-inside:avoid !important }
+  .print-view .notation-container { background:transparent !important; border:none !important; box-shadow:none !important }
   .notation-container svg,
   [data-block-type="keyboard"] svg,
   [data-block-type="keyboard_grid"] svg,

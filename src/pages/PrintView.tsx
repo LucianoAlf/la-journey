@@ -66,9 +66,10 @@ function Header({ schoolName, materialTitle }: { schoolName: string; materialTit
 
 function Footer({ pageIndex, totalPages, schoolName }: { pageIndex: number; totalPages: number; schoolName: string }) {
   return (
-    <div className="a4-page-footer print-page-footer">
-      <span>{schoolName}</span>
-      <span>{pageIndex + 1} de {totalPages}</span>
+    <div className="a4-page-footer print-page-footer print-footer">
+      <span className="print-footer-left">{schoolName}</span>
+      <span className="print-footer-center" aria-hidden="true" />
+      <span className="print-footer-right">{pageIndex + 1} de {totalPages}</span>
     </div>
   )
 }
@@ -240,10 +241,11 @@ export function PrintView() {
             <div className="a4-page-content print-page-content">
               {pageBlocks.map(block => {
                 if (block.block_type === 'page_break') return null
+                const printBlockTypeClass = `print-block--${block.block_type.replace(/_/g, '-')}`
                 return (
                   <div
                     key={block.id}
-                    className="canvas-block print-block"
+                    className={`canvas-block print-block ${printBlockTypeClass}`}
                     data-block-type={block.block_type}
                     data-print-block-id={block.id}
                     style={blockPrintStyle(block)}
