@@ -133,19 +133,11 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: printUrl,
-        bestAttempt: true,
         gotoOptions: {
-          waitUntil: 'networkidle2',
-          timeout: 45000,
+          waitUntil: 'domcontentloaded',
+          timeout: 30000,
         },
-        setExtraHTTPHeaders: {
-          'ngrok-skip-browser-warning': '1',
-          'User-Agent': 'Mozilla/5.0 (compatible; PDFGenerator/1.0)',
-        },
-        waitForSelector: {
-          selector: '.print-ready',
-          timeout: 20000,
-        },
+        waitForTimeout: 18000,
         options: {
           format: 'A4',
           printBackground: true,
