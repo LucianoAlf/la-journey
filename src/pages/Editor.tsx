@@ -6240,7 +6240,7 @@ ${pagesHtml}
                         <Label className="text-[11px] font-semibold text-text">Permitir quebra</Label>
                         <p className="mt-0.5 text-[9px] leading-snug text-text3">
                           {['text', 'tip', 'exercise', 'columns'].includes(selectedBlock.block_type)
-                            ? 'Política para textos longos; a divisão real entra na próxima fase.'
+                            ? 'Permite dividir visualmente textos longos entre páginas.'
                             : 'Blocos musicais ficam inteiros para preservar partitura e PDF.'}
                         </p>
                       </div>
