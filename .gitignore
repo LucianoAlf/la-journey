@@ -16,6 +16,9 @@ scripts/guitar-chords-db-json/
 
 scripts/olga-import
 
+# Artefatos locais de auditoria visual/PDF
+docs/audit-assets/
+
 # MCP config (contém tokens)
 .mcp.json
 
