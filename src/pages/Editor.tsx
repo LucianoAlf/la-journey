@@ -2058,7 +2058,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         const nextSourceBlockId = getPaginationSourceBlockId(nextFirstBlock)
         const nextIndex = blockIndexById.get(nextSourceBlockId)
         const previousBlock = typeof nextIndex === 'number' ? blocks[nextIndex - 1] : undefined
+        const nextSiblingBlock = typeof nextIndex === 'number' ? blocks[nextIndex + 1] : undefined
         const nextHeight = blockHeights[nextFirstBlock.id] ?? getEstimatedBlockHeightForPagination(nextFirstBlock)
+        const nextSiblingHeight = nextSiblingBlock
+          ? blockHeights[nextSiblingBlock.id] ?? getEstimatedBlockHeightForPagination(nextSiblingBlock)
+          : 0
+        const nextKeepsWithFollowing = shouldKeepBlocksTogether(nextFirstBlock, nextSiblingBlock)
+        const nextKeepGroupHeight = nextHeight + (nextKeepsWithFollowing ? nextSiblingHeight : 0)
         nextBlockTitle = nextTitle
         nextBlockType = nextFirstBlock.block_type
         nextBlockHeight = nextHeight
@@ -2085,6 +2091,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
           const canSplitNext = canSplitBlockForPagination(nextFirstBlock, nextPolicy)
           if (breakReason === 'manual') {
             opportunity = 'Espa\u00e7o livre causado por quebra manual/pedag\u00f3gica. Ajuste apenas se o professor quiser juntar se\u00e7\u00f5es.'
+          } else if (nextBlockCanFit && nextKeepsWithFollowing && nextKeepGroupHeight > freeHeight) {
+            opportunity = `O pr\u00f3ximo bloco caberia sozinho, mas est\u00e1 preso ao bloco seguinte por keep-with-next. O grupo precisa ${Math.round(nextKeepGroupHeight)}px.`
           } else if (nextBlockCanFit) {
             opportunity = 'O pr\u00f3ximo bloco caberia no espa\u00e7o livre. Verifique se alguma pol\u00edtica, medi\u00e7\u00e3o ou keep-with-next impediu a subida.'
           } else if (canSplitNext) {
