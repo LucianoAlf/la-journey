@@ -38,10 +38,10 @@ export const A4_TOTAL_HEIGHT = 1123
 export const HEADER_HEIGHT = 60
 export const FOOTER_HEIGHT = 48
 export const CONTENT_VERTICAL_PADDING = 40
-export const PRINT_SAFE_AREA = 24
+export const PRINT_SAFE_AREA = 96
 export const A4_CONTENT_HEIGHT = A4_TOTAL_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - CONTENT_VERTICAL_PADDING - PRINT_SAFE_AREA
 export const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
-export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.42
+export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.34
 export const PAGINATION_FRAGMENT_ID_SEPARATOR = '__pagination_fragment_'
 
 const BREAKABLE_TEXT_BLOCK_TYPES = new Set(['text', 'tip', 'exercise'])
@@ -135,10 +135,10 @@ function splitTextIntoSegments(text: string) {
 
 function estimateTextFragmentHeight(block: SharedPaginationBlock, segments: string[], includeTitle: boolean) {
   const textLength = stripHtmlTags(segments.join(' '))
-  const lineCount = Math.max(1, Math.ceil(textLength.length / 95))
+  const lineCount = Math.max(1, Math.ceil(textLength.length / 78))
   const titleHeight = includeTitle && block.title ? 28 : 0
   const shellHeight = block.block_type === 'exercise' ? 72 : block.block_type === 'tip' ? 56 : 20
-  return titleHeight + shellHeight + lineCount * 22
+  return titleHeight + shellHeight + lineCount * 24
 }
 
 export function getPaginationFragmentData(block: SharedPaginationBlock): PaginationFragmentData | null {
@@ -201,9 +201,7 @@ export function createPaginationFragments<TBlock extends SharedPaginationBlock>(
   const segments = html ? splitHtmlIntoTopLevelSegments(html) : splitTextIntoSegments(text)
   if (segments.length <= 1) return [block]
 
-  const estimatedHeight = getEstimatedBlockHeightForPagination(block)
   const targetHeight = Math.round(A4_CONTENT_HEIGHT * TEXT_FRAGMENT_TARGET_HEIGHT_RATIO)
-  if (estimatedHeight <= targetHeight) return [block]
 
   const chunks: string[][] = []
   let current: string[] = []
