@@ -166,7 +166,7 @@ export function PrintView() {
 
     const scheduleReady = () => {
       window.clearTimeout(readyTimer)
-      readyTimer = window.setTimeout(markReady, 1500)
+      readyTimer = window.setTimeout(markReady, 800)
     }
 
     const observer = new MutationObserver(scheduleReady)
@@ -178,7 +178,7 @@ export function PrintView() {
     })
 
     scheduleReady()
-    maxTimer = window.setTimeout(markReady, 20000)
+    maxTimer = window.setTimeout(markReady, 8000)
 
     return () => {
       cancelled = true

@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     await insertPdfToken(databaseUrl, token, materialId, expiresAt)
 
     const printUrl = `${appUrl.replace(/\/$/, '')}/print/${materialId}?token=${token}`
-    const pdfEndpoint = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}`
+    const pdfEndpoint = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}&timeout=60000`
 
     console.info('[generate-pdf] request browserless pdf')
     const pdfResponse = await fetch(pdfEndpoint, {
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
         },
         waitForSelector: {
           selector: '.print-ready',
-          timeout: 60000,
+          timeout: 20000,
         },
         options: {
           format: 'A4',
