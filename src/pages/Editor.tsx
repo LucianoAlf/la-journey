@@ -390,8 +390,19 @@ function estimateBlockHeight(block: EditorBlock): number {
 
 function getEstimatedBlockHeightForPagination(block: EditorBlock): number {
   const estimated = estimateBlockHeight(block)
-  if (block.block_type === 'cover') return estimated
-  return Math.round(estimated * ESTIMATED_BLOCK_HEIGHT_FACTOR)
+  const style = block.render_data?.style as Partial<BlockStyle> | undefined
+  const marginTop = Number(style?.margin?.top ?? 0)
+  const marginBottom = Number(style?.margin?.bottom ?? 0)
+  const verticalMargin = marginTop + marginBottom
+  if (block.block_type === 'cover') return estimated + verticalMargin
+  return Math.round(estimated * ESTIMATED_BLOCK_HEIGHT_FACTOR) + verticalMargin
+}
+
+function getMeasuredBlockOuterHeight(element: HTMLElement) {
+  const style = window.getComputedStyle(element)
+  const marginTop = Number.parseFloat(style.marginTop) || 0
+  const marginBottom = Number.parseFloat(style.marginBottom) || 0
+  return element.offsetHeight + marginTop + marginBottom
 }
 
 function getBlockPaginationPolicy(block: EditorBlock): BlockPaginationPolicy {
@@ -887,7 +898,7 @@ function useEditorPagination({
         if (!id) return
         const key = blockHeightKeyByIdRef.current[id]
         if (!key) return
-        const height = el.offsetHeight
+        const height = getMeasuredBlockOuterHeight(el)
         if (height <= 0) return
         blockHeightCacheRef.current.set(key, height)
         measured[id] = height
@@ -1641,6 +1652,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setBlocksWithHistory,
     setSelectedBlockId,
   } = useEditorBlocks()
+  const selectedBlockStyle = useMemo(
+    () => selectedBlock ? mergeBlockStyle(selectedBlock.render_data?.style as Partial<BlockStyle> | undefined, {}) : DEFAULT_BLOCK_STYLE,
+    [selectedBlock],
+  )
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialMeta, setMaterialMeta] = useState<MaterialWithBlocks | null>(null)
   const [saving, setSaving] = useState(false)
@@ -2067,7 +2082,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         if (!id) return
         const key = blockHeightKeyByIdRef.current[id]
         if (!key) return
-        const height = el.offsetHeight
+        const height = getMeasuredBlockOuterHeight(el)
         if (height <= 0) return
         blockHeightCacheRef.current.set(key, height)
         blockHeightSourceByKeyRef.current.set(key, 'measured')
@@ -6082,6 +6097,39 @@ ${pagesHtml}
 
                     <div className="rounded-md bg-bg2 px-2 py-1.5 text-[10px] text-text3">
                       PolÃ­tica atual: <span className="font-semibold text-text">{describePaginationPolicy(selectedPaginationPolicy)}</span>
+                    </div>
+
+                    <div className="space-y-2 border-t border-border/70 pt-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="w-20 text-[10px] text-text3">EspaÃ§o antes</Label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={96}
+                          step={4}
+                          value={selectedBlockStyle.margin.top}
+                          onChange={(event) => updateBlockStyle({
+                            margin: { ...selectedBlockStyle.margin, top: Number(event.target.value) },
+                          })}
+                          className="h-1 flex-1 accent-accent"
+                        />
+                        <span className="w-9 text-right font-mono text-[10px] text-text3">{selectedBlockStyle.margin.top}px</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="w-20 text-[10px] text-text3">EspaÃ§o depois</Label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={96}
+                          step={4}
+                          value={selectedBlockStyle.margin.bottom}
+                          onChange={(event) => updateBlockStyle({
+                            margin: { ...selectedBlockStyle.margin, bottom: Number(event.target.value) },
+                          })}
+                          className="h-1 flex-1 accent-accent"
+                        />
+                        <span className="w-9 text-right font-mono text-[10px] text-text3">{selectedBlockStyle.margin.bottom}px</span>
+                      </div>
                     </div>
                   </div>
                 </div>
