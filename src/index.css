@@ -589,6 +589,23 @@
   background:transparent!important;
   outline:none!important;
 }
+.print-view [data-block-type="keyboard"] .border,
+.print-view [data-block-type="keyboard_grid"] .border,
+.print-view [data-block-type="chord_grid"] .border,
+.print-view [data-block-type="chord_diagram"] .border{
+  border-color:transparent!important;
+}
+.print-view [data-block-type="keyboard"] [class*="bg-card"],
+.print-view [data-block-type="keyboard_grid"] [class*="bg-card"],
+.print-view [data-block-type="chord_grid"] [class*="bg-card"],
+.print-view [data-block-type="chord_diagram"] [class*="bg-card"]{
+  background:transparent!important;
+}
+.print-view [data-block-type="chord_grid"] svg > rect:first-child,
+.print-view [data-block-type="chord_diagram"] svg > rect:first-child{
+  fill:transparent!important;
+  stroke:transparent!important;
+}
 .print-view [data-block-type="chord_grid"] svg,
 .print-view [data-block-type="chord_diagram"] svg{
   color:#111827!important;
