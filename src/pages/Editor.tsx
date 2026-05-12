@@ -4486,6 +4486,8 @@ ${pagesHtml}
   // --- Atalhos de teclado globais ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.repeat) return
+
       const isEditingTarget = isTextInputTarget(e.target)
 
       // Ctrl+Z — Undo (funciona mesmo em inputs, exceto contentEditable)
