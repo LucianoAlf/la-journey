@@ -4,12 +4,7 @@
  */
 
 import {
-  createCanvasDropZoneId,
-  getDropInsertIndexFromDropZone,
-  getDropInsertIndexByPointerY,
-  parseCanvasDropZoneId,
-  reorderBlocksById,
-  reorderBlocksByInsertIndex,
+  reorderBlocksByDirection,
 } from '../canvasBlockReorder'
 
 type TestBlock = {
@@ -40,11 +35,11 @@ const blocks: TestBlock[] = [
 
 console.log('\nCanvas block reorder\n')
 
-const movedDown = reorderBlocksById(blocks, 'intro', 'keyboard')
+const movedDown = reorderBlocksByDirection(blocks, 'intro', 'down')
 assert(movedDown.changed, 'marca reordenacao valida como alterada')
 assert(
-  movedDown.blocks.map(block => block.id).join(',') === 'cover,notation,keyboard,intro',
-  'move bloco ativo para a posicao do bloco alvo',
+  movedDown.blocks.map(block => block.id).join(',') === 'cover,notation,intro,keyboard',
+  'move bloco ativo uma posicao para baixo',
 )
 assert(
   movedDown.blocks.every((block, index) => block.sort_order === index + 1),
@@ -55,60 +50,36 @@ assert(
   'cria novo objeto para bloco com sort_order alterado',
 )
 
-const movedUp = reorderBlocksById(blocks, 'keyboard', 'intro')
+const movedUp = reorderBlocksByDirection(blocks, 'keyboard', 'up')
 assert(
-  movedUp.blocks.map(block => block.id).join(',') === 'cover,keyboard,intro,notation',
-  'move bloco ativo para cima quando o alvo esta antes',
+  movedUp.blocks.map(block => block.id).join(',') === 'cover,intro,keyboard,notation',
+  'move bloco ativo uma posicao para cima',
 )
 
-const sameTarget = reorderBlocksById(blocks, 'intro', 'intro')
-assert(!sameTarget.changed && sameTarget.blocks === blocks, 'ignora drop sobre o proprio bloco')
-
-const missingTarget = reorderBlocksById(blocks, 'intro', 'missing')
-assert(!missingTarget.changed && missingTarget.blocks === blocks, 'ignora alvo inexistente')
-
-const dropInsertAfterNotation = getDropInsertIndexByPointerY([
-  { id: 'cover', index: 0, top: 0, bottom: 180 },
-  { id: 'intro', index: 1, top: 200, bottom: 320 },
-  { id: 'notation', index: 2, top: 340, bottom: 520 },
-  { id: 'keyboard', index: 3, top: 540, bottom: 700 },
-], 650)
-assert(dropInsertAfterNotation === 4, 'resolve slot depois do bloco cuja metade inferior recebeu o ponteiro')
-
-const noSwapWhenDroppingBelowSelf = reorderBlocksByInsertIndex(blocks, 'notation', 3)
+const firstBlockUp = reorderBlocksByDirection(blocks, 'cover', 'up')
 assert(
-  !noSwapWhenDroppingBelowSelf.changed && noSwapWhenDroppingBelowSelf.blocks === blocks,
-  'soltar logo abaixo do proprio bloco nao troca com o bloco acima',
+  !firstBlockUp.changed && firstBlockUp.blocks === blocks,
+  'ignora movimento para cima no primeiro bloco',
 )
 
-const moveIntroAfterKeyboard = reorderBlocksByInsertIndex(blocks, 'intro', 4)
+const lastBlockDown = reorderBlocksByDirection(blocks, 'keyboard', 'down')
 assert(
-  moveIntroAfterKeyboard.blocks.map(block => block.id).join(',') === 'cover,notation,keyboard,intro',
-  'insercao por slot move bloco para depois do alvo visual',
+  !lastBlockDown.changed && lastBlockDown.blocks === blocks,
+  'ignora movimento para baixo no ultimo bloco',
 )
 
-const moveKeyboardBeforeIntro = reorderBlocksByInsertIndex(blocks, 'keyboard', 1)
+const missingBlock = reorderBlocksByDirection(blocks, 'missing', 'down')
 assert(
-  moveKeyboardBeforeIntro.blocks.map(block => block.id).join(',') === 'cover,keyboard,intro,notation',
-  'insercao por slot move bloco para antes do alvo visual',
+  !missingBlock.changed && missingBlock.blocks === blocks,
+  'ignora bloco inexistente',
 )
 
-const afterIntroDropZone = createCanvasDropZoneId('intro', 'after')
 assert(
-  afterIntroDropZone === 'canvas-drop-zone:after:intro',
-  'cria id estavel para zona de drop do canvas',
-)
-assert(
-  parseCanvasDropZoneId(afterIntroDropZone)?.blockId === 'intro',
-  'parseia id de zona de drop',
-)
-assert(
-  getDropInsertIndexFromDropZone(blocks.map(block => block.id), afterIntroDropZone) === 2,
-  'zona depois do bloco aponta para o slot seguinte',
-)
-assert(
-  getDropInsertIndexFromDropZone(blocks.map(block => block.id), createCanvasDropZoneId('notation', 'before')) === 2,
-  'zona antes do bloco aponta para o proprio indice do alvo',
+  movedDown.patch?.type === 'reorder' &&
+  movedDown.patch.blockId === 'intro' &&
+  movedDown.patch.fromIndex === 1 &&
+  movedDown.patch.toIndex === 2,
+  'gera patch unico de reorder com fromIndex e toIndex',
 )
 
 if (failed > 0) {

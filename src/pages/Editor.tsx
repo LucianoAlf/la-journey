@@ -5,7 +5,7 @@ import {
   ArrowLeft, FloppyDisk, FilePdf, TextAa, Article,
   Guitar, MusicNotes, Lightbulb, PencilCircle, ListNumbers,
   TextHOne, LineSegment, Image as ImageIcon, Plus, Trash,
-  SpinnerGap, DotsSixVertical, PencilSimple, ArrowCounterClockwise,
+  SpinnerGap, PencilSimple, ArrowCounterClockwise,
   Printer, Code, Eye, EyeSlash, PencilLine, PianoKeys,
   MagnifyingGlassPlus, MagnifyingGlassMinus, Gear, Hash,
   TextAlignLeft, TextAlignCenter, TextAlignRight,
@@ -30,14 +30,6 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  DndContext,
-} from "@dnd-kit/core";
-import {
-  SortableContext, verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { useMaterials, useMaterialWithBlocks } from "@/hooks/useMaterials";
 import { useSchool } from "@/hooks/useSchool";
 import {
@@ -78,7 +70,6 @@ import { CanvasRuler } from "@/components/editor/CanvasRuler";
 import { BlockListSidebar } from "@/components/editor/BlockListSidebar";
 import { EditorCanvas } from "@/components/editor/EditorCanvas";
 import { EditableBlock, type EditableBlockData } from "@/components/editor/EditableBlock";
-import { SortableCanvasBlock } from "@/components/editor/SortableCanvasBlock";
 import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
@@ -108,7 +99,7 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
 } from "@/lib/floatingElements";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
-import { type CanvasReorderPatch } from "@/lib/canvasBlockReorder";
+import { reorderBlocksByDirection, type CanvasReorderPatch } from "@/lib/canvasBlockReorder";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
 import { canDeleteSelectedBlock, canEnterInlineEdit, getCanvasToolbarMode, getCanvasToolbarPosition, getInlineEditingBlockAfterCanvasBlockClick, isTextInputTarget } from "@/lib/editorCanvasInteraction";
 import {
@@ -123,7 +114,6 @@ import {
   shouldKeepBlocksTogether,
   type BlockPaginationPolicy,
 } from "@/lib/sharedPagination";
-import { useDragAndDrop } from "@/hooks/useDragAndDrop";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
 
@@ -470,9 +460,9 @@ function editorBlockToExerciseBlock(block: EditorBlock) {
   }
 }
 
-// --- Componente Sortable para sidebar ---
+// --- Item da sidebar de blocos ---
 
-const SortableBlockItem = memo(function SortableBlockItem({
+const BlockListItem = memo(function BlockListItem({
   block, isSelected, onSelectBlock, onDeleteBlock, onDuplicateBlock,
 }: {
   block: EditorBlock
@@ -481,8 +471,6 @@ const SortableBlockItem = memo(function SortableBlockItem({
   onDeleteBlock: (id: string) => void
   onDuplicateBlock: (id: string) => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
   const cfg = getBlockConfig(block.block_type)
   const Icon = cfg.icon
   const handleSelect = useCallback(() => onSelectBlock(block.id), [block.id, onSelectBlock])
@@ -494,15 +482,10 @@ const SortableBlockItem = memo(function SortableBlockItem({
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
       className={`block-item ${isSelected ? 'selected' : ''}`}
       onClick={handleSelect}
     >
-      <div className="drag-handle" {...attributes} {...listeners}>
-        <DotsSixVertical size={14} />
-      </div>
-      <div className="flex items-center gap-2 pl-3.5">
+      <div className="flex items-center gap-2">
         <div className="block-type-icon" style={{ background: cfg.bg, color: cfg.color }}>
           <Icon size={16} />
         </div>
@@ -2038,25 +2021,6 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     toast.error('Erro ao reordenar: ' + message)
   }, [])
 
-  const sidebarDragAndDrop = useDragAndDrop({
-    blocks,
-    persistOrder: persistBlockOrder,
-    refetch,
-    setBlocksWithHistory,
-    setSelectedBlockId,
-    onError: handleBlockReorderError,
-  })
-
-  const canvasDragAndDrop = useDragAndDrop({
-    blocks,
-    canvasScrollRef,
-    persistOrder: persistBlockOrder,
-    refetch,
-    setBlocksWithHistory,
-    setSelectedBlockId,
-    onError: handleBlockReorderError,
-  })
-
   // Selecionar bloco + scroll no canvas
   const selectBlock = useCallback((id: string) => {
     if (import.meta.env.DEV) {
@@ -2333,21 +2297,23 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [blocks, blocksRef, materialId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
 
   // Mover bloco acima/abaixo
-  const handleMoveBlock = useCallback((blockId: string, direction: 'up' | 'down') => {
-    const idx = blocks.findIndex(b => b.id === blockId)
-    if (idx < 0) return
-    if (direction === 'up' && idx === 0) return
-    if (direction === 'down' && idx === blocks.length - 1) return
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
-    setBlocksWithHistory(prev => {
-      const next = [...prev]
-      const tempOrder = next[idx].sort_order
-      next[idx] = { ...next[idx], sort_order: next[swapIdx].sort_order }
-      next[swapIdx] = { ...next[swapIdx], sort_order: tempOrder }
-      ;[next[idx], next[swapIdx]] = [next[swapIdx], next[idx]]
-      return next
-    })
-  }, [blocks, setBlocksWithHistory])
+  const handleMoveBlock = useCallback(async (blockId: string, direction: 'up' | 'down') => {
+    const result = reorderBlocksByDirection(blocks, blockId, direction)
+    if (!result.changed || !result.patch) return
+
+    setBlocksWithHistory(result.blocks, result.patch)
+    setSelectedBlockId(blockId)
+
+    try {
+      const persisted = await persistBlockOrder(result.blocks.map(block => block.id))
+      if (persisted === false) {
+        throw new Error('Banco nao confirmou a reordenacao')
+      }
+    } catch (error: any) {
+      handleBlockReorderError(error?.message ?? 'Erro desconhecido')
+      refetch()
+    }
+  }, [blocks, handleBlockReorderError, persistBlockOrder, refetch, setBlocksWithHistory, setSelectedBlockId])
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
@@ -4642,6 +4608,17 @@ ${pagesHtml}
         }
         return
       }
+      if (inlineEditingBlockId) return
+      if (e.altKey && e.key === 'ArrowUp' && selectedBlockId) {
+        e.preventDefault()
+        void handleMoveBlock(selectedBlockId, 'up')
+        return
+      }
+      if (e.altKey && e.key === 'ArrowDown' && selectedBlockId) {
+        e.preventDefault()
+        void handleMoveBlock(selectedBlockId, 'down')
+        return
+      }
       if (e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
         const idx = blocks.findIndex(b => b.id === selectedBlockId)
@@ -4658,7 +4635,7 @@ ${pagesHtml}
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -4953,29 +4930,18 @@ ${pagesHtml}
             <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
           </div>
 
-          <DndContext
-            sensors={sidebarDragAndDrop.sensors}
-            collisionDetection={sidebarDragAndDrop.collisionDetection}
-            onDragStart={sidebarDragAndDrop.handleDragStart}
-            onDragOver={sidebarDragAndDrop.handleDragOver}
-            onDragEnd={sidebarDragAndDrop.handleDragEnd}
-            onDragCancel={sidebarDragAndDrop.handleDragCancel}
-          >
-            <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-              <div className="flex flex-col">
-                {blocks.map(block => (
-                  <SortableBlockItem
-                    key={block.id}
-                    block={block}
-                    isSelected={block.id === selectedBlockId}
-                    onSelectBlock={selectBlock}
-                    onDeleteBlock={handleDeleteBlock}
-                    onDuplicateBlock={handleDuplicateBlock}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
+          <div className="flex flex-col">
+            {blocks.map(block => (
+              <BlockListItem
+                key={block.id}
+                block={block}
+                isSelected={block.id === selectedBlockId}
+                onSelectBlock={selectBlock}
+                onDeleteBlock={handleDeleteBlock}
+                onDuplicateBlock={handleDuplicateBlock}
+              />
+            ))}
+          </div>
 
           {/* Botão Adicionar */}
           <DropdownMenu>
@@ -5255,17 +5221,6 @@ ${pagesHtml}
               gridColumn: showRulers ? 2 : 1,
             }}
           >
-            <DndContext
-              sensors={canvasDragAndDrop.sensors}
-              collisionDetection={canvasDragAndDrop.collisionDetection}
-              onDragStart={canvasDragAndDrop.handleDragStart}
-              onDragOver={canvasDragAndDrop.handleDragOver}
-              onDragMove={canvasDragAndDrop.handleDragMove}
-              onDragEnd={canvasDragAndDrop.handleDragEnd}
-              onDragCancel={canvasDragAndDrop.handleDragCancel}
-              autoScroll={false}
-            >
-              <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
             {pages.map((pageBlocks, pageIdx) => {
               const isCoverPage = pageBlocks.some(b => b.block_type === 'cover')
               // Extrair dados da capa para contexto dos placeholders
@@ -5415,76 +5370,65 @@ ${pagesHtml}
                       : sourceBlockId === selectedBlockId
                         ? 'selected'
                         : 'idle'
-                    const dropIndicator = !isVirtualFragment
-                      ? canvasDragAndDrop.getDropIndicator(sourceBlockId)
-                      : null
 
                     const bStyle = !['cover', 'page_break', 'separator'].includes(block.block_type)
                       ? blockStyleToCSS(block.render_data?.style as BlockStyle | undefined)
                       : {}
 
                     return (
-                      <SortableCanvasBlock
+                      <EditableBlock
                         key={block.id}
-                        blockId={isVirtualFragment ? block.id : sourceBlockId}
-                        activeBlockId={canvasDragAndDrop.activeBlockId}
-                        disabled={isVirtualFragment}
-                        dropIndicator={dropIndicator}
-                        showHandle={blockMode === 'selected' && !isInlineEditing && !isVirtualFragment}
-                      >
-                        <EditableBlock
-                          block={block}
-                          mode={blockMode}
-                          style={bStyle}
-                          blockRef={el => {
-                            canvasRefs.current[block.id] = el
-                            if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
-                              canvasRefs.current[sourceBlockId] = el
-                            }
-                          }}
-                          focusPoint={isInlineEditing ? inlineEditFocusPoint : null}
-                          onSelect={() => {
-                            selectBlock(sourceBlockId)
-                            const nextInlineEditingBlockId = getInlineEditingBlockAfterCanvasBlockClick({
-                              inlineEditingBlockId,
-                              clickedBlockId: isVirtualFragment ? null : sourceBlockId,
-                            })
-                            setInlineEditingBlockId(nextInlineEditingBlockId)
-                            if (!nextInlineEditingBlockId) setInlineEditFocusPoint(null)
-                            if (interactionBlock.block_type !== 'cover') setCoverTitleEditing(false)
-                          }}
-                          onPrimaryAction={(_editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(interactionBlock as EditorBlock, focusPoint)}
-                          onExitInlineEdit={exitInlineEdit}
-                          onTitleChange={handleCanvasInlineTitleChange}
-                          onContentChange={handleCanvasInlineContentChange}
-                          onAIAction={handleAITextAction}
-                          renderPreview={() => (
-                            <>
-                            <CanvasMaterialPreview
-                              block={block}
-                              coverTitleEditing={coverTitleEditing}
-                              musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
-                              canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
-                              overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
-                              selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
-                              onOverlaySelect={block.block_type === 'cover' ? selectOverlayElement : undefined}
-                              onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
-                              textElements={block.block_type === 'cover' ? textElements : undefined}
-                              selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
-                              editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
-                              onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
-                              onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
-                              onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
-                              onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
-                              onChordGridItemClick={handleCanvasChordGridItemClick}
-                              onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
-                              onCoverPositionChange={handleCanvasCoverPositionChange}
-                              onCoverTitleChange={handleCanvasCoverTitleChange}
-                            />
-                            </>
-                          )}
-                        />
-                      </SortableCanvasBlock>
+                        block={block}
+                        mode={blockMode}
+                        style={bStyle}
+                        blockRef={el => {
+                          canvasRefs.current[block.id] = el
+                          if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
+                            canvasRefs.current[sourceBlockId] = el
+                          }
+                        }}
+                        focusPoint={isInlineEditing ? inlineEditFocusPoint : null}
+                        onSelect={() => {
+                          selectBlock(sourceBlockId)
+                          const nextInlineEditingBlockId = getInlineEditingBlockAfterCanvasBlockClick({
+                            inlineEditingBlockId,
+                            clickedBlockId: isVirtualFragment ? null : sourceBlockId,
+                          })
+                          setInlineEditingBlockId(nextInlineEditingBlockId)
+                          if (!nextInlineEditingBlockId) setInlineEditFocusPoint(null)
+                          if (interactionBlock.block_type !== 'cover') setCoverTitleEditing(false)
+                        }}
+                        onPrimaryAction={(_editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(interactionBlock as EditorBlock, focusPoint)}
+                        onExitInlineEdit={exitInlineEdit}
+                        onTitleChange={handleCanvasInlineTitleChange}
+                        onContentChange={handleCanvasInlineContentChange}
+                        onAIAction={handleAITextAction}
+                        renderPreview={() => (
+                          <>
+                          <CanvasMaterialPreview
+                            block={block}
+                            coverTitleEditing={coverTitleEditing}
+                            musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
+                            canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
+                            overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
+                            selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
+                            onOverlaySelect={block.block_type === 'cover' ? selectOverlayElement : undefined}
+                            onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
+                            textElements={block.block_type === 'cover' ? textElements : undefined}
+                            selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
+                            editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
+                            onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
+                            onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
+                            onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
+                            onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
+                            onChordGridItemClick={handleCanvasChordGridItemClick}
+                            onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
+                            onCoverPositionChange={handleCanvasCoverPositionChange}
+                            onCoverTitleChange={handleCanvasCoverTitleChange}
+                          />
+                          </>
+                        )}
+                      />
                     )
                   })}
 
@@ -5535,8 +5479,6 @@ ${pagesHtml}
               </div>
               )
             })}
-              </SortableContext>
-            </DndContext>
           </div>
           </div>{/* fecha grid réguas+canvas */}
         </EditorCanvas>
@@ -7354,11 +7296,7 @@ ${pagesHtml}
           mode={getCanvasToolbarMode({ selectedBlockId, inlineEditingBlockId }) ?? 'selected'}
           onDuplicate={() => handleDuplicateBlock(selectedBlock.id)}
           onDelete={() => handleDeleteBlock(selectedBlock.id)}
-          onMoveUp={() => handleMoveBlock(selectedBlock.id, 'up')}
-          onMoveDown={() => handleMoveBlock(selectedBlock.id, 'down')}
           onStyleChange={updateBlockStyle}
-          isFirst={blocks.findIndex(b => b.id === selectedBlock.id) === 0}
-          isLast={blocks.findIndex(b => b.id === selectedBlock.id) === blocks.length - 1}
           onEditInline={() => enterInlineEditForBlock(selectedBlock.id)}
           onExitEdit={exitInlineEdit}
           onEditNotation={() => openNotationEditorForBlock(selectedBlock.id)}

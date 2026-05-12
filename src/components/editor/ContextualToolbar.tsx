@@ -4,7 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  BookmarkSimple, Copy, Trash, ArrowUp, ArrowDown, ArrowsOutSimple, PaintBucket, MagicWand,
+  BookmarkSimple, Copy, Trash, ArrowsOutSimple, PaintBucket, MagicWand,
   PencilSimple, MusicNotes, Guitar, PianoKeys, Image as ImageIcon, X, ListNumbers,
 } from '@phosphor-icons/react'
 import type { BlockStyle } from '@/lib/blockStyles'
@@ -52,11 +52,7 @@ interface ContextualToolbarProps {
   mode?: CanvasToolbarMode
   onDuplicate: () => void
   onDelete: () => void
-  onMoveUp: () => void
-  onMoveDown: () => void
   onStyleChange: (style: Partial<BlockStyle>) => void
-  isFirst: boolean
-  isLast: boolean
   onAIRewrite?: () => void
   isAIProcessing?: boolean
   onSaveReusable?: () => void
@@ -71,8 +67,8 @@ interface ContextualToolbarProps {
 }
 
 export function ContextualToolbar({
-  blockType, position, onDuplicate, onDelete, onMoveUp, onMoveDown,
-  onStyleChange, isFirst, isLast, onAIRewrite, isAIProcessing,
+  blockType, position, onDuplicate, onDelete,
+  onStyleChange, onAIRewrite, isAIProcessing,
   onSaveReusable, saveReusableDisabled = false, onEditInline,
   onEditNotation, onEditTablature, onEditChord, onEditKeyboard, onReplaceImage, onExitEdit,
   mode = 'selected',
@@ -146,27 +142,14 @@ export function ContextualToolbar({
       {mode === 'selected' && (
         <>
 
-      {/* Mover ↑ */}
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isFirst} onClick={onMoveUp} data-testid="canvas-toolbar-move-up">
-              <ArrowUp size={14} />
-            </Button>
+            <span className="text-[10px] text-text3 px-1.5 whitespace-nowrap select-none">
+              Alt + ↑↓
+            </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom"><p>Mover acima</p></TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-
-      {/* Mover ↓ */}
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={isLast} onClick={onMoveDown} data-testid="canvas-toolbar-move-down">
-              <ArrowDown size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom"><p>Mover abaixo</p></TooltipContent>
+          <TooltipContent side="bottom"><p>Mover bloco</p></TooltipContent>
         </Tooltip>
       </TooltipProvider>
 
