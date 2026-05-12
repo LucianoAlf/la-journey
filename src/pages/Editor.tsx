@@ -31,12 +31,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
-  type DragEndEvent,
+  DndContext,
 } from "@dnd-kit/core";
 import {
-  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
-  useSortable, arrayMove,
+  SortableContext, verticalListSortingStrategy,
+  useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMaterials, useMaterialWithBlocks } from "@/hooks/useMaterials";
@@ -79,6 +78,7 @@ import { CanvasRuler } from "@/components/editor/CanvasRuler";
 import { BlockListSidebar } from "@/components/editor/BlockListSidebar";
 import { EditorCanvas } from "@/components/editor/EditorCanvas";
 import { EditableBlock, type EditableBlockData } from "@/components/editor/EditableBlock";
+import { SortableCanvasBlock } from "@/components/editor/SortableCanvasBlock";
 import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
@@ -108,6 +108,7 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
 } from "@/lib/floatingElements";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
+import { type CanvasReorderPatch } from "@/lib/canvasBlockReorder";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
 import { canDeleteSelectedBlock, canEnterInlineEdit, getCanvasToolbarMode, getCanvasToolbarPosition, getInlineEditingBlockAfterCanvasBlockClick, isTextInputTarget } from "@/lib/editorCanvasInteraction";
 import {
@@ -122,8 +123,16 @@ import {
   shouldKeepBlocksTogether,
   type BlockPaginationPolicy,
 } from "@/lib/sharedPagination";
+import { useDragAndDrop } from "@/hooks/useDragAndDrop";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
+
+type EditorHistoryEntry = {
+  patches: EditorBlockPatch<EditorBlock>[]
+  beforeOrder: string[]
+  afterOrder: string[]
+  action?: CanvasReorderPatch
+}
 
 // --- Tipos internos ---
 
@@ -1188,20 +1197,12 @@ function useEditorBlocks() {
   const blocksRef = useRef<EditorBlock[]>([])
   blocksRef.current = blocks
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
-  const undoStack = useRef<Array<{
-    patches: EditorBlockPatch<EditorBlock>[]
-    beforeOrder: string[]
-    afterOrder: string[]
-  }>>([])
-  const redoStack = useRef<Array<{
-    patches: EditorBlockPatch<EditorBlock>[]
-    beforeOrder: string[]
-    afterOrder: string[]
-  }>>([])
+  const undoStack = useRef<EditorHistoryEntry[]>([])
+  const redoStack = useRef<EditorHistoryEntry[]>([])
   const pendingBeforeBlocksRef = useRef<EditorBlock[] | null>(null)
   const [, setHistoryVersion] = useState(0)
 
-  const createHistoryEntry = useCallback((before: EditorBlock[], after: EditorBlock[]) => {
+  const createHistoryEntry = useCallback((before: EditorBlock[], after: EditorBlock[], action?: CanvasReorderPatch): EditorHistoryEntry | null => {
     const beforeMap = new Map(before.map(block => [block.id, block]))
     const afterMap = new Map(after.map(block => [block.id, block]))
     const patches: EditorBlockPatch<EditorBlock>[] = []
@@ -1229,7 +1230,7 @@ function useEditorBlocks() {
       beforeOrder.some((id, index) => afterOrder[index] !== id)
 
     if (patches.length === 0 && !orderChanged) return null
-    return { patches, beforeOrder, afterOrder }
+    return { patches, beforeOrder, afterOrder, action }
   }, [])
 
   const pushHistoryEntry = useCallback((entry: ReturnType<typeof createHistoryEntry>) => {
@@ -1251,7 +1252,7 @@ function useEditorBlocks() {
 
   const applyHistoryEntry = useCallback((
     current: EditorBlock[],
-    entry: NonNullable<ReturnType<typeof createHistoryEntry>>,
+    entry: EditorHistoryEntry,
     direction: 'forward' | 'backward',
   ) => {
     const patches = direction === 'forward' ? entry.patches : [...entry.patches].reverse()
@@ -1262,10 +1263,13 @@ function useEditorBlocks() {
     return applyOrder(patched, direction === 'forward' ? entry.afterOrder : entry.beforeOrder)
   }, [applyOrder, createHistoryEntry])
 
-  const setBlocksWithHistory = useCallback((updater: EditorBlock[] | ((prev: EditorBlock[]) => EditorBlock[])) => {
+  const setBlocksWithHistory = useCallback((
+    updater: EditorBlock[] | ((prev: EditorBlock[]) => EditorBlock[]),
+    action?: CanvasReorderPatch,
+  ) => {
     setBlocks(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater
-      pushHistoryEntry(createHistoryEntry(prev, next))
+      pushHistoryEntry(createHistoryEntry(prev, next, action))
       return next
     })
   }, [createHistoryEntry, pushHistoryEntry])
@@ -2026,28 +2030,32 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return () => clearTimeout(timer)
   }, [pageConfig, materialId])
 
-  // DnD
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const persistBlockOrder = useCallback((blockIds: string[]) => (
+    reorderMaterialBlocks(materialId, blockIds)
+  ), [materialId])
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
+  const handleBlockReorderError = useCallback((message: string) => {
+    toast.error('Erro ao reordenar: ' + message)
+  }, [])
 
-    const oldIndex = blocks.findIndex(b => b.id === active.id)
-    const newIndex = blocks.findIndex(b => b.id === over.id)
-    const newBlocks = arrayMove(blocks, oldIndex, newIndex)
-    setBlocksWithHistory(newBlocks)
+  const sidebarDragAndDrop = useDragAndDrop({
+    blocks,
+    persistOrder: persistBlockOrder,
+    refetch,
+    setBlocksWithHistory,
+    setSelectedBlockId,
+    onError: handleBlockReorderError,
+  })
 
-    try {
-      await reorderMaterialBlocks(materialId, newBlocks.map(b => b.id))
-    } catch (e: any) {
-      toast.error('Erro ao reordenar: ' + (e?.message ?? ''))
-      refetch()
-    }
-  }, [blocks, materialId, refetch])
+  const canvasDragAndDrop = useDragAndDrop({
+    blocks,
+    canvasScrollRef,
+    persistOrder: persistBlockOrder,
+    refetch,
+    setBlocksWithHistory,
+    setSelectedBlockId,
+    onError: handleBlockReorderError,
+  })
 
   // Selecionar bloco + scroll no canvas
   const selectBlock = useCallback((id: string) => {
@@ -4945,7 +4953,14 @@ ${pagesHtml}
             <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
           </div>
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sidebarDragAndDrop.sensors}
+            collisionDetection={sidebarDragAndDrop.collisionDetection}
+            onDragStart={sidebarDragAndDrop.handleDragStart}
+            onDragOver={sidebarDragAndDrop.handleDragOver}
+            onDragEnd={sidebarDragAndDrop.handleDragEnd}
+            onDragCancel={sidebarDragAndDrop.handleDragCancel}
+          >
             <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col">
                 {blocks.map(block => (
@@ -5240,6 +5255,17 @@ ${pagesHtml}
               gridColumn: showRulers ? 2 : 1,
             }}
           >
+            <DndContext
+              sensors={canvasDragAndDrop.sensors}
+              collisionDetection={canvasDragAndDrop.collisionDetection}
+              onDragStart={canvasDragAndDrop.handleDragStart}
+              onDragOver={canvasDragAndDrop.handleDragOver}
+              onDragMove={canvasDragAndDrop.handleDragMove}
+              onDragEnd={canvasDragAndDrop.handleDragEnd}
+              onDragCancel={canvasDragAndDrop.handleDragCancel}
+              autoScroll={false}
+            >
+              <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
             {pages.map((pageBlocks, pageIdx) => {
               const isCoverPage = pageBlocks.some(b => b.block_type === 'cover')
               // Extrair dados da capa para contexto dos placeholders
@@ -5389,65 +5415,75 @@ ${pagesHtml}
                       : sourceBlockId === selectedBlockId
                         ? 'selected'
                         : 'idle'
+                    const dropIndicator = !isVirtualFragment
+                      ? canvasDragAndDrop.getDropIndicator(sourceBlockId)
+                      : null
 
                     const bStyle = !['cover', 'page_break', 'separator'].includes(block.block_type)
                       ? blockStyleToCSS(block.render_data?.style as BlockStyle | undefined)
                       : {}
 
                     return (
-                      <EditableBlock
+                      <SortableCanvasBlock
                         key={block.id}
-                        block={block}
-                        mode={blockMode}
-                        style={bStyle}
-                        blockRef={el => {
-                          canvasRefs.current[block.id] = el
-                          if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
-                            canvasRefs.current[sourceBlockId] = el
-                          }
-                        }}
-                        focusPoint={isInlineEditing ? inlineEditFocusPoint : null}
-                        onSelect={() => {
-                          selectBlock(sourceBlockId)
-                          const nextInlineEditingBlockId = getInlineEditingBlockAfterCanvasBlockClick({
-                            inlineEditingBlockId,
-                            clickedBlockId: isVirtualFragment ? null : sourceBlockId,
-                          })
-                          setInlineEditingBlockId(nextInlineEditingBlockId)
-                          if (!nextInlineEditingBlockId) setInlineEditFocusPoint(null)
-                          if (interactionBlock.block_type !== 'cover') setCoverTitleEditing(false)
-                        }}
-                        onPrimaryAction={(_editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(interactionBlock as EditorBlock, focusPoint)}
-                        onExitInlineEdit={exitInlineEdit}
-                        onTitleChange={handleCanvasInlineTitleChange}
-                        onContentChange={handleCanvasInlineContentChange}
-                        onAIAction={handleAITextAction}
-                        renderPreview={() => (
-                          <>
-                          <CanvasMaterialPreview
-                            block={block}
-                            coverTitleEditing={coverTitleEditing}
-                            musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
-                            canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
-                            overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
-                            selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
-                            onOverlaySelect={block.block_type === 'cover' ? selectOverlayElement : undefined}
-                            onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
-                            textElements={block.block_type === 'cover' ? textElements : undefined}
-                            selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
-                            editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
-                            onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
-                            onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
-                            onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
-                            onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
-                            onChordGridItemClick={handleCanvasChordGridItemClick}
-                            onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
-                            onCoverPositionChange={handleCanvasCoverPositionChange}
-                            onCoverTitleChange={handleCanvasCoverTitleChange}
-                          />
-                          </>
-                        )}
-                      />
+                        blockId={isVirtualFragment ? block.id : sourceBlockId}
+                        disabled={isVirtualFragment}
+                        dropIndicator={dropIndicator}
+                        showHandle={blockMode === 'selected' && !isInlineEditing && !isVirtualFragment}
+                      >
+                        <EditableBlock
+                          block={block}
+                          mode={blockMode}
+                          style={bStyle}
+                          blockRef={el => {
+                            canvasRefs.current[block.id] = el
+                            if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
+                              canvasRefs.current[sourceBlockId] = el
+                            }
+                          }}
+                          focusPoint={isInlineEditing ? inlineEditFocusPoint : null}
+                          onSelect={() => {
+                            selectBlock(sourceBlockId)
+                            const nextInlineEditingBlockId = getInlineEditingBlockAfterCanvasBlockClick({
+                              inlineEditingBlockId,
+                              clickedBlockId: isVirtualFragment ? null : sourceBlockId,
+                            })
+                            setInlineEditingBlockId(nextInlineEditingBlockId)
+                            if (!nextInlineEditingBlockId) setInlineEditFocusPoint(null)
+                            if (interactionBlock.block_type !== 'cover') setCoverTitleEditing(false)
+                          }}
+                          onPrimaryAction={(_editableBlock, focusPoint) => openPrimaryCanvasActionForBlock(interactionBlock as EditorBlock, focusPoint)}
+                          onExitInlineEdit={exitInlineEdit}
+                          onTitleChange={handleCanvasInlineTitleChange}
+                          onContentChange={handleCanvasInlineContentChange}
+                          onAIAction={handleAITextAction}
+                          renderPreview={() => (
+                            <>
+                            <CanvasMaterialPreview
+                              block={block}
+                              coverTitleEditing={coverTitleEditing}
+                              musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
+                              canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
+                              overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
+                              selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
+                              onOverlaySelect={block.block_type === 'cover' ? selectOverlayElement : undefined}
+                              onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
+                              textElements={block.block_type === 'cover' ? textElements : undefined}
+                              selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
+                              editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
+                              onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
+                              onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
+                              onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
+                              onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
+                              onChordGridItemClick={handleCanvasChordGridItemClick}
+                              onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
+                              onCoverPositionChange={handleCanvasCoverPositionChange}
+                              onCoverTitleChange={handleCanvasCoverTitleChange}
+                            />
+                            </>
+                          )}
+                        />
+                      </SortableCanvasBlock>
                     )
                   })}
 
@@ -5498,6 +5534,8 @@ ${pagesHtml}
               </div>
               )
             })}
+              </SortableContext>
+            </DndContext>
           </div>
           </div>{/* fecha grid réguas+canvas */}
         </EditorCanvas>
