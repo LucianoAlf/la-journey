@@ -13,9 +13,17 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { reorderBlocksById, type CanvasReorderPatch, type ReorderableBlock } from '@/lib/canvasBlockReorder'
+import {
+  getDropInsertIndexFromDropZone,
+  getDropInsertIndexByPointerY,
+  reorderBlocksById,
+  reorderBlocksByInsertIndex,
+  type CanvasReorderPatch,
+  type ReorderableBlock,
+} from '@/lib/canvasBlockReorder'
 
 type DropIndicatorPlacement = 'before' | 'after'
+type DropIndicatorState = { blockId: string; placement: DropIndicatorPlacement } | null
 
 type UseDragAndDropParams<TBlock extends ReorderableBlock> = {
   blocks: TBlock[]
@@ -30,6 +38,77 @@ type UseDragAndDropParams<TBlock extends ReorderableBlock> = {
   onError: (message: string) => void
 }
 
+function getCanvasDropLayouts(blockIds: string[], canvas: HTMLDivElement | null) {
+  if (!canvas) return []
+  const indexById = new Map(blockIds.map((id, index) => [id, index]))
+
+  return Array.from(canvas.querySelectorAll<HTMLElement>('[data-canvas-sortable-block-id]'))
+    .map(element => {
+      const id = element.dataset.canvasSortableBlockId
+      const index = id ? indexById.get(id) : undefined
+      if (!id || index == null) return null
+      const rect = element.getBoundingClientRect()
+      return { id, index, top: rect.top, bottom: rect.bottom }
+    })
+    .filter((layout): layout is { id: string; index: number; top: number; bottom: number } => Boolean(layout))
+}
+
+function getDropIndicatorForInsertIndex(
+  blockIds: string[],
+  activeId: string,
+  insertIndex: number | null,
+  visibleLayouts: Array<{ id: string; index: number }>,
+): DropIndicatorState {
+  if (insertIndex == null) return null
+
+  const activeIndex = blockIds.indexOf(activeId)
+  if (activeIndex < 0 || insertIndex === activeIndex || insertIndex === activeIndex + 1) {
+    return null
+  }
+
+  const nextVisible = visibleLayouts.find(layout => layout.index >= insertIndex)
+  if (nextVisible) {
+    return { blockId: nextVisible.id, placement: 'before' }
+  }
+
+  const previousVisible = [...visibleLayouts].reverse().find(layout => layout.index < insertIndex)
+  if (previousVisible) {
+    return { blockId: previousVisible.id, placement: 'after' }
+  }
+
+  return null
+}
+
+function getFallbackInsertIndexFromTarget(blockIds: string[], activeId: string, targetId: string | null) {
+  const dropZoneInsertIndex = getDropInsertIndexFromDropZone(blockIds, targetId)
+  if (dropZoneInsertIndex != null) return dropZoneInsertIndex
+
+  if (!targetId) return null
+  const activeIndex = blockIds.indexOf(activeId)
+  const targetIndex = blockIds.indexOf(targetId)
+  if (activeIndex < 0 || targetIndex < 0) return null
+  if (activeIndex === targetIndex) return activeIndex
+  return activeIndex < targetIndex ? targetIndex + 1 : targetIndex
+}
+
+function resolveCanvasDropState(
+  blockIds: string[],
+  canvas: HTMLDivElement | null,
+  activeId: string,
+  fallbackTargetId: string | null,
+  pointerY: number | null,
+) {
+  const layouts = getCanvasDropLayouts(blockIds, canvas)
+  const insertIndex = layouts.length > 0 && pointerY != null
+    ? getDropInsertIndexByPointerY(layouts, pointerY)
+    : getFallbackInsertIndexFromTarget(blockIds, activeId, fallbackTargetId)
+
+  return {
+    insertIndex,
+    indicator: getDropIndicatorForInsertIndex(blockIds, activeId, insertIndex, layouts),
+  }
+}
+
 export function useDragAndDrop<TBlock extends ReorderableBlock>({
   blocks,
   canvasScrollRef,
@@ -40,13 +119,15 @@ export function useDragAndDrop<TBlock extends ReorderableBlock>({
   onError,
 }: UseDragAndDropParams<TBlock>) {
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
-  const [overBlockId, setOverBlockId] = useState<string | null>(null)
+  const [dropIndicator, setDropIndicator] = useState<DropIndicatorState>(null)
   const activeBlockIdRef = useRef<string | null>(null)
   const overBlockIdRef = useRef<string | null>(null)
+  const dropInsertIndexRef = useRef<number | null>(null)
+  const lastPointerYRef = useRef<number | null>(null)
   const autoScrollRafRef = useRef<number | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -55,28 +136,41 @@ export function useDragAndDrop<TBlock extends ReorderableBlock>({
   const resetDragState = useCallback(() => {
     activeBlockIdRef.current = null
     overBlockIdRef.current = null
+    dropInsertIndexRef.current = null
+    lastPointerYRef.current = null
     if (autoScrollRafRef.current != null) {
       window.cancelAnimationFrame(autoScrollRafRef.current)
       autoScrollRafRef.current = null
     }
     setActiveBlockId(null)
-    setOverBlockId(null)
+    setDropIndicator(null)
   }, [])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const blockId = String(event.active.id)
     activeBlockIdRef.current = blockId
     overBlockIdRef.current = blockId
+    dropInsertIndexRef.current = blockIds.indexOf(blockId)
     setActiveBlockId(blockId)
-    setOverBlockId(blockId)
-    setSelectedBlockId(blockId)
-  }, [setSelectedBlockId])
+    setDropIndicator(null)
+  }, [blockIds])
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const blockId = event.over ? String(event.over.id) : null
     overBlockIdRef.current = blockId
-    setOverBlockId(blockId)
-  }, [])
+    const activeId = activeBlockIdRef.current
+    if (!activeId) return
+
+    const insertIndex = getFallbackInsertIndexFromTarget(blockIds, activeId, blockId)
+    const indicator = getDropIndicatorForInsertIndex(
+      blockIds,
+      activeId,
+      insertIndex,
+      getCanvasDropLayouts(blockIds, canvasScrollRef?.current ?? null),
+    )
+    dropInsertIndexRef.current = insertIndex
+    setDropIndicator(indicator)
+  }, [blockIds, canvasScrollRef])
 
   const handleDragMove = useCallback((event: DragMoveEvent) => {
     const pointerEvent = event.activatorEvent
@@ -84,6 +178,12 @@ export function useDragAndDrop<TBlock extends ReorderableBlock>({
       const canvas = canvasScrollRef?.current
       if (!canvas) return
       const pointerY = pointerEvent.clientY + event.delta.y
+      lastPointerYRef.current = pointerY
+
+      const dropState = resolveCanvasDropState(blockIds, canvas, String(event.active.id), event.over ? String(event.over.id) : null, pointerY)
+      dropInsertIndexRef.current = dropState.insertIndex
+      if (dropState.indicator?.blockId) overBlockIdRef.current = dropState.indicator.blockId
+      setDropIndicator(dropState.indicator)
 
       if (autoScrollRafRef.current != null) {
         window.cancelAnimationFrame(autoScrollRafRef.current)
@@ -103,23 +203,37 @@ export function useDragAndDrop<TBlock extends ReorderableBlock>({
         }
       })
     }
-  }, [canvasScrollRef])
+  }, [blockIds, canvasScrollRef])
 
   const handleDragCancel = useCallback((_event?: DragCancelEvent) => {
     resetDragState()
   }, [resetDragState])
 
-  const commitReorder = useCallback(async (activeId: string, targetId: string | null) => {
+  const commitReorder = useCallback(async (activeId: string, targetId: string | null, insertIndex: number | null = null) => {
     resetDragState()
 
-    const result = reorderBlocksById(blocks, activeId, targetId)
+    const result = insertIndex == null
+      ? reorderBlocksById(blocks, activeId, targetId)
+      : reorderBlocksByInsertIndex(blocks, activeId, insertIndex)
     if (!result.changed || !result.patch) return
 
     setBlocksWithHistory(result.blocks, result.patch)
     setSelectedBlockId(activeId)
 
     try {
-      await persistOrder(result.blocks.map(block => block.id))
+      if (import.meta.env.DEV) {
+        console.log('[DnD] calling reorderMaterialBlocks', {
+          fromIndex: result.patch.fromIndex,
+          toIndex: result.patch.toIndex,
+        })
+      }
+      const persistResult = await persistOrder(result.blocks.map(block => block.id))
+      if (import.meta.env.DEV) {
+        console.log('[DnD] reorderMaterialBlocks result', persistResult)
+      }
+      if (persistResult === false) {
+        throw new Error('Banco nao confirmou a reordenacao')
+      }
     } catch (error: any) {
       onError(error?.message ?? 'Erro desconhecido')
       refetch()
@@ -127,21 +241,26 @@ export function useDragAndDrop<TBlock extends ReorderableBlock>({
   }, [blocks, onError, persistOrder, refetch, resetDragState, setBlocksWithHistory, setSelectedBlockId])
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    if (import.meta.env.DEV) {
+      console.log('[DnD] onDragEnd called', { active: event.active, over: event.over })
+    }
     const activeId = String(event.active.id)
-    const targetId = event.over ? String(event.over.id) : overBlockIdRef.current
-    await commitReorder(activeId, targetId)
-  }, [commitReorder])
+    const dndTargetId = event.over ? String(event.over.id) : overBlockIdRef.current
+    if (activeId === dndTargetId && dropInsertIndexRef.current == null) return
+    const dropState = resolveCanvasDropState(
+      blockIds,
+      canvasScrollRef?.current ?? null,
+      activeId,
+      dndTargetId,
+      lastPointerYRef.current,
+    )
+    await commitReorder(activeId, dndTargetId, dropState.insertIndex)
+  }, [blockIds, canvasScrollRef, commitReorder])
 
   const getDropIndicator = useCallback((blockId: string): DropIndicatorPlacement | null => {
-    if (!activeBlockId || !overBlockId || blockId !== overBlockId || activeBlockId === overBlockId) {
-      return null
-    }
-
-    const activeIndex = blockIds.indexOf(activeBlockId)
-    const overIndex = blockIds.indexOf(overBlockId)
-    if (activeIndex < 0 || overIndex < 0) return null
-    return activeIndex < overIndex ? 'after' : 'before'
-  }, [activeBlockId, blockIds, overBlockId])
+    if (!activeBlockId || dropIndicator?.blockId !== blockId) return null
+    return dropIndicator.placement
+  }, [activeBlockId, dropIndicator])
 
   useEffect(() => {
     if (!activeBlockId) return
@@ -150,7 +269,7 @@ export function useDragAndDrop<TBlock extends ReorderableBlock>({
       window.setTimeout(() => {
         const activeId = activeBlockIdRef.current
         if (!activeId) return
-        void commitReorder(activeId, overBlockIdRef.current)
+        void commitReorder(activeId, overBlockIdRef.current, dropInsertIndexRef.current)
       }, 0)
     }
 

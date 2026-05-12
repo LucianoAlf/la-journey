@@ -299,6 +299,9 @@
 .canvas-sortable-block{position:relative}
 .canvas-sortable-block--dragging{z-index:60;opacity:.8}
 .canvas-sortable-block--dragging .canvas-block{box-shadow:0 18px 45px rgba(15,23,42,.18);cursor:grabbing}
+.canvas-drop-zone{position:absolute;left:0;right:0;height:34px;z-index:45;pointer-events:none}
+.canvas-drop-zone--before{top:-17px}
+.canvas-drop-zone--after{bottom:-17px}
 .canvas-drag-handle{position:absolute;left:-34px;top:18px;z-index:55;width:28px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(59,130,246,.28);border-radius:8px;background:#fff;color:#3b82f6;box-shadow:0 8px 22px rgba(15,23,42,.12);cursor:grab;transition:var(--transition)}
 .canvas-drag-handle:hover{border-color:#3b82f6;background:rgba(59,130,246,.08)}
 .canvas-drag-handle:active{cursor:grabbing}

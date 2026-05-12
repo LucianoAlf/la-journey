@@ -3,7 +3,14 @@
  * Executar via: npx tsx src/lib/__tests__/canvasBlockReorder.test.ts
  */
 
-import { reorderBlocksById } from '../canvasBlockReorder'
+import {
+  createCanvasDropZoneId,
+  getDropInsertIndexFromDropZone,
+  getDropInsertIndexByPointerY,
+  parseCanvasDropZoneId,
+  reorderBlocksById,
+  reorderBlocksByInsertIndex,
+} from '../canvasBlockReorder'
 
 type TestBlock = {
   id: string
@@ -59,6 +66,50 @@ assert(!sameTarget.changed && sameTarget.blocks === blocks, 'ignora drop sobre o
 
 const missingTarget = reorderBlocksById(blocks, 'intro', 'missing')
 assert(!missingTarget.changed && missingTarget.blocks === blocks, 'ignora alvo inexistente')
+
+const dropInsertAfterNotation = getDropInsertIndexByPointerY([
+  { id: 'cover', index: 0, top: 0, bottom: 180 },
+  { id: 'intro', index: 1, top: 200, bottom: 320 },
+  { id: 'notation', index: 2, top: 340, bottom: 520 },
+  { id: 'keyboard', index: 3, top: 540, bottom: 700 },
+], 650)
+assert(dropInsertAfterNotation === 4, 'resolve slot depois do bloco cuja metade inferior recebeu o ponteiro')
+
+const noSwapWhenDroppingBelowSelf = reorderBlocksByInsertIndex(blocks, 'notation', 3)
+assert(
+  !noSwapWhenDroppingBelowSelf.changed && noSwapWhenDroppingBelowSelf.blocks === blocks,
+  'soltar logo abaixo do proprio bloco nao troca com o bloco acima',
+)
+
+const moveIntroAfterKeyboard = reorderBlocksByInsertIndex(blocks, 'intro', 4)
+assert(
+  moveIntroAfterKeyboard.blocks.map(block => block.id).join(',') === 'cover,notation,keyboard,intro',
+  'insercao por slot move bloco para depois do alvo visual',
+)
+
+const moveKeyboardBeforeIntro = reorderBlocksByInsertIndex(blocks, 'keyboard', 1)
+assert(
+  moveKeyboardBeforeIntro.blocks.map(block => block.id).join(',') === 'cover,keyboard,intro,notation',
+  'insercao por slot move bloco para antes do alvo visual',
+)
+
+const afterIntroDropZone = createCanvasDropZoneId('intro', 'after')
+assert(
+  afterIntroDropZone === 'canvas-drop-zone:after:intro',
+  'cria id estavel para zona de drop do canvas',
+)
+assert(
+  parseCanvasDropZoneId(afterIntroDropZone)?.blockId === 'intro',
+  'parseia id de zona de drop',
+)
+assert(
+  getDropInsertIndexFromDropZone(blocks.map(block => block.id), afterIntroDropZone) === 2,
+  'zona depois do bloco aponta para o slot seguinte',
+)
+assert(
+  getDropInsertIndexFromDropZone(blocks.map(block => block.id), createCanvasDropZoneId('notation', 'before')) === 2,
+  'zona antes do bloco aponta para o proprio indice do alvo',
+)
 
 if (failed > 0) {
   console.error(`\n${failed} falha(s), ${passed} sucesso(s)`)

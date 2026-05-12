@@ -5427,6 +5427,7 @@ ${pagesHtml}
                       <SortableCanvasBlock
                         key={block.id}
                         blockId={isVirtualFragment ? block.id : sourceBlockId}
+                        activeBlockId={canvasDragAndDrop.activeBlockId}
                         disabled={isVirtualFragment}
                         dropIndicator={dropIndicator}
                         showHandle={blockMode === 'selected' && !isInlineEditing && !isVirtualFragment}
