@@ -106,6 +106,7 @@ import {
   isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
   resetCanvasBlockLayout,
+  shouldApplyCanvasNudgeKey,
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
@@ -137,6 +138,8 @@ type CanvasNudgeSession = {
   latestBlocks: EditorBlock[]
   latestRenderData: Record<string, unknown> | null
   commitTimer: number | null
+  cleanupTimer: number | null
+  lastAppliedAtMs: number | null
 }
 
 // --- Tipos internos ---
@@ -2312,10 +2315,19 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const flushCanvasNudgeSession = useCallback((session = canvasNudgeSessionRef.current) => {
     if (!session) return
     if (session.commitTimer) window.clearTimeout(session.commitTimer)
+    if (session.cleanupTimer) window.clearTimeout(session.cleanupTimer)
     canvasNudgeSessionRef.current = null
 
     setBlocks(session.latestBlocks)
     commitBlocksHistory(session.beforeBlocks, session.latestBlocks)
+
+    const element = canvasRefs.current[session.blockId]
+    if (element) {
+      session.cleanupTimer = window.setTimeout(() => {
+        element.style.transition = ''
+        element.style.willChange = ''
+      }, 120)
+    }
 
     void updateMaterialBlockRpc({
       blockId: session.blockId,
@@ -2329,6 +2341,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   useEffect(() => () => {
     const session = canvasNudgeSessionRef.current
     if (session?.commitTimer) window.clearTimeout(session.commitTimer)
+    if (session?.cleanupTimer) window.clearTimeout(session.cleanupTimer)
   }, [])
 
   const applyCanvasNudgePreview = useCallback((blockId: string, renderData: Record<string, unknown> | null) => {
@@ -2336,13 +2349,24 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!element) return
 
     const layoutStyle = canvasBlockLayoutToCSS(renderData)
+    element.style.transition = 'none'
+    element.style.willChange = 'transform'
     element.style.position = typeof layoutStyle.position === 'string' ? layoutStyle.position : ''
     element.style.transform = typeof layoutStyle.transform === 'string' ? layoutStyle.transform : ''
     element.style.zIndex = layoutStyle.zIndex != null ? String(layoutStyle.zIndex) : ''
   }, [])
 
   // Deslocar bloco em passos pequenos no canvas. Repeats do teclado sao agrupados em um unico historico/save.
-  const handleMoveBlock = useCallback((blockId: string, direction: CanvasNudgeDirection) => {
+  const handleMoveBlock = useCallback((blockId: string, direction: CanvasNudgeDirection, repeated = false) => {
+    const nowMs = performance.now()
+    const currentSession = canvasNudgeSessionRef.current
+    if (
+      currentSession?.blockId === blockId &&
+      !shouldApplyCanvasNudgeKey({ repeat: repeated, nowMs, lastAppliedAtMs: currentSession.lastAppliedAtMs })
+    ) {
+      return
+    }
+
     const currentBlocks = blocksRef.current
     const block = currentBlocks.find(item => item.id === blockId)
     if (!block || ['cover', 'page_break'].includes(block.block_type)) return
@@ -2361,10 +2385,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       latestBlocks: currentBlocks,
       latestRenderData: block.render_data ?? null,
       commitTimer: null,
+      cleanupTimer: null,
+      lastAppliedAtMs: null,
     }
 
     activeSession.latestBlocks = result.blocks
     activeSession.latestRenderData = result.renderData
+    activeSession.lastAppliedAtMs = nowMs
     blocksRef.current = result.blocks
     canvasNudgeSessionRef.current = activeSession
 
@@ -4704,22 +4731,22 @@ ${pagesHtml}
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'up')
+        handleMoveBlock(selectedBlockId, 'up', e.repeat)
         return
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowDown' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'down')
+        handleMoveBlock(selectedBlockId, 'down', e.repeat)
         return
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowLeft' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'left')
+        handleMoveBlock(selectedBlockId, 'left', e.repeat)
         return
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowRight' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'right')
+        handleMoveBlock(selectedBlockId, 'right', e.repeat)
         return
       }
       if (e.key === 'ArrowUp' && selectedBlockId) {

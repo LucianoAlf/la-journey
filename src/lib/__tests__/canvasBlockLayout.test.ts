@@ -10,6 +10,7 @@ import {
   isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
   resetCanvasBlockLayout,
+  shouldApplyCanvasNudgeKey,
 } from '../canvasBlockLayout'
 
 type TestBlock = {
@@ -111,6 +112,16 @@ assert(
   getCanvasBlockLayout(resetMove.renderData).offsetX === 0 &&
   getCanvasBlockLayout(resetMove.renderData).offsetY === 0,
   'reseta deslocamento visual preservando render_data',
+)
+
+assert(
+  shouldApplyCanvasNudgeKey({ repeat: true, nowMs: 1000, lastAppliedAtMs: 900 }),
+  'aceita repeticao dentro da cadencia controlada',
+)
+
+assert(
+  !shouldApplyCanvasNudgeKey({ repeat: true, nowMs: 1000, lastAppliedAtMs: 980 }),
+  'bloqueia repeticao muito proxima para evitar movimento descontrolado',
 )
 
 if (failed > 0) {

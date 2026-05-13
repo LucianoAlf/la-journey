@@ -29,6 +29,13 @@ export type CanvasNudgeKeyLike = {
   repeat?: boolean
 }
 
+export type CanvasNudgeKeyTiming = {
+  repeat?: boolean
+  nowMs: number
+  lastAppliedAtMs: number | null
+  minRepeatIntervalMs?: number
+}
+
 const DEFAULT_LAYOUT: CanvasBlockLayout = {
   offsetX: 0,
   offsetY: 0,
@@ -36,6 +43,7 @@ const DEFAULT_LAYOUT: CanvasBlockLayout = {
 
 const MAX_CANVAS_BLOCK_OFFSET_X = 320
 const MAX_CANVAS_BLOCK_OFFSET_Y = 320
+const DEFAULT_NUDGE_REPEAT_INTERVAL_MS = 48
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -171,4 +179,14 @@ export function isCanvasNudgeKey(event: CanvasNudgeKeyLike): boolean {
     event.key === 'ArrowLeft' ||
     event.key === 'ArrowRight'
   )
+}
+
+export function shouldApplyCanvasNudgeKey({
+  repeat,
+  nowMs,
+  lastAppliedAtMs,
+  minRepeatIntervalMs = DEFAULT_NUDGE_REPEAT_INTERVAL_MS,
+}: CanvasNudgeKeyTiming): boolean {
+  if (!repeat || lastAppliedAtMs == null) return true
+  return nowMs - lastAppliedAtMs >= minRepeatIntervalMs
 }
