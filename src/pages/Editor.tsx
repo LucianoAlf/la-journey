@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type WheelEvent } from "react";
+import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type ReactNode, type WheelEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -91,6 +91,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
 type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
@@ -434,6 +435,45 @@ function scheduleEditorIdleCallback(callback: () => void, timeout = 1200): () =>
 
   const handle = window.setTimeout(callback, 200)
   return () => window.clearTimeout(handle)
+}
+
+function PropertiesCollapsibleSection({
+  title,
+  subtitle,
+  open,
+  onOpenChange,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  children: ReactNode
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange} className="prop-section rounded-lg border border-border/70 bg-surface">
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-bg2/70"
+        >
+          <span>
+            <span className="prop-label mb-0 block">{title}</span>
+            {subtitle ? <span className="mt-0.5 block text-[9px] leading-snug text-text3">{subtitle}</span> : null}
+          </span>
+          <CaretRight
+            size={13}
+            className={`shrink-0 text-text3 transition-transform ${open ? 'rotate-90' : ''}`}
+          />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-3 border-t border-border/70 p-3">
+          {children}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
 }
 
 function isElementComfortablyVisibleInContainer(element: HTMLElement, container: HTMLElement): boolean {
@@ -3509,6 +3549,29 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
   const [showRulers, setShowRulers] = useState(() => {
     try { return localStorage.getItem('editor-show-rulers') === 'true' } catch { return false }
   })
+  const [propertiesSectionOpen, setPropertiesSectionOpenState] = useState<Record<string, boolean>>({})
+
+  const getPropertiesSectionKey = useCallback((blockType: string, sectionId: string) => {
+    return `la-journey:properties-sidebar:${blockType}:${sectionId}`
+  }, [])
+
+  const isPropertiesSectionOpen = useCallback((blockType: string, sectionId: string, defaultOpen: boolean) => {
+    const key = getPropertiesSectionKey(blockType, sectionId)
+    if (Object.prototype.hasOwnProperty.call(propertiesSectionOpen, key)) return propertiesSectionOpen[key]
+    try {
+      const saved = localStorage.getItem(key)
+      if (saved !== null) return saved === 'true'
+    } catch {
+      // localStorage can be unavailable in restricted contexts.
+    }
+    return defaultOpen
+  }, [getPropertiesSectionKey, propertiesSectionOpen])
+
+  const setPropertiesSectionOpen = useCallback((blockType: string, sectionId: string, open: boolean) => {
+    const key = getPropertiesSectionKey(blockType, sectionId)
+    setPropertiesSectionOpenState(prev => ({ ...prev, [key]: open }))
+    try { localStorage.setItem(key, String(open)) } catch {}
+  }, [getPropertiesSectionKey])
 
   // 7.3 — Templates
   const [showTemplatesDialog, setShowTemplatesDialog] = useState(false)
@@ -3567,6 +3630,7 @@ Regras:
         if (b.id !== selectedBlock.id) return b
         return { ...b, content: { ...(b.content ?? {}), html: newContent, text: newContent.replace(/<[^>]+>/g, '') } }
       }))
+      queueBlockAutosave(selectedBlock.id)
 
       const actionLabels: Record<AIRewriteAction, string> = {
         rewrite: 'Conteúdo reescrito', simplify: 'Conteúdo simplificado',
@@ -3579,7 +3643,7 @@ Regras:
     } finally {
       setIsAIProcessing(false)
     }
-  }, [selectedBlock, materialTitle, pushSnapshot])
+  }, [selectedBlock, materialTitle, pushSnapshot, queueBlockAutosave])
 
   // 6.2 — Gerar variações
   const handleGenerateVariations = useCallback(async () => {
@@ -3633,9 +3697,10 @@ Responda no formato JSON EXATO (sem markdown, sem backticks):
       if (b.id !== selectedBlock.id) return b
       return { ...b, content: { ...(b.content ?? {}), html: newContent, text: newContent.replace(/<[^>]+>/g, '') } }
     }))
+    queueBlockAutosave(selectedBlock.id)
     setShowVariationsDialog(false)
     toast.success('Variação aplicada')
-  }, [selectedBlock, variations, pushSnapshot])
+  }, [selectedBlock, variations, pushSnapshot, queueBlockAutosave])
 
   // 6.3 — Traduzir material inteiro
   const handleTranslateAll = useCallback(async () => {
@@ -5991,61 +6056,113 @@ ${pagesHtml}
                     <Badge variant="gold" className="text-[8px] ml-auto">editado</Badge>
                   )}
                 </div>
+                {selectedBlock.block_type === 'notation' && (
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10" onClick={() => openNotationEditorForBlock(selectedBlock.id)}>
+                    <MusicNotes size={14} weight="bold" /> Editar Notação
+                  </Button>
+                )}
+                {selectedBlock.block_type === 'tablature' && (
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-foundation/30 text-foundation hover:bg-foundation/10" onClick={() => openTablatureEditorForBlock(selectedBlock.id)}>
+                    <ListNumbers size={14} weight="bold" /> Editar Tablatura
+                  </Button>
+                )}
+                {selectedBlock.block_type === 'keyboard' && (
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10" onClick={() => openKeyboardEditorForBlock(selectedBlock.id)}>
+                    <PianoKeys size={14} weight="bold" /> Editar Teclado
+                  </Button>
+                )}
+                {selectedBlock.block_type === 'chord_diagram' && (
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordEditorForBlock(selectedBlock.id)}>
+                    <Guitar size={14} weight="bold" /> Editar Acorde
+                  </Button>
+                )}
+                {selectedBlock.block_type === 'chord_grid' && (
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordEditorForGrid(selectedBlock.id)}>
+                    <Guitar size={14} weight="bold" /> Adicionar Acorde
+                  </Button>
+                )}
+                {selectedBlock.block_type === 'keyboard_grid' && (
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10" onClick={() => openKeyboardEditorForGrid(selectedBlock.id)}>
+                    <PianoKeys size={14} weight="bold" /> Adicionar Teclado
+                  </Button>
+                )}
               </div>
 
-              {/* Título (esconde para capa — usa campo próprio nos dados da capa) */}
+              {/* Conteúdo */}
               {selectedBlock.block_type !== 'cover' && (
-              <div className="prop-section">
-                <div className="prop-label">Título</div>
-                <div className="title-editor-compact">
-                  <RichTextEditor
-                    key={`title-${selectedBlock.id}`}
-                    content={
-                      (selectedBlock.content as any)?.title_html
-                      ?? `<p>${selectedBlock.title ?? ''}</p>`
-                    }
-                    onChange={(html) => {
-                      const plainText = html.replace(/<[^>]+>/g, '').trim()
-                      setBlockWithHistory(selectedBlockId, b => ({
-                          ...b,
-                          title: plainText,
-                          content: { ...(b.content ?? {}), title_html: html },
-                      }))
-                      queueBlockAutosave(selectedBlockId)
-                    }}
-                    placeholder="Título do bloco"
-                    variant="title"
-                    className="[&_.tiptap]:font-bold [&_.tiptap_p]:mb-0 [&_.tiptap_h1]:mb-0 [&_.tiptap_h2]:mb-0 [&_.tiptap_h3]:mb-0"
-                  />
-                </div>
-              </div>
-              )}
+                <PropertiesCollapsibleSection
+                  title="Conteúdo"
+                  subtitle={['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type)
+                    ? 'Titulo e texto editavel do bloco.'
+                    : 'Titulo e status principal do bloco.'}
+                  open={isPropertiesSectionOpen(selectedBlock.block_type, 'content', true)}
+                  onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'content', open)}
+                >
+                  <div>
+                    <div className="prop-label">Título</div>
+                    <div className="title-editor-compact">
+                      <RichTextEditor
+                        key={`title-${selectedBlock.id}`}
+                        content={
+                          (selectedBlock.content as any)?.title_html
+                          ?? `<p>${selectedBlock.title ?? ''}</p>`
+                        }
+                        onChange={(html) => {
+                          const plainText = html.replace(/<[^>]+>/g, '').trim()
+                          setBlockWithHistory(selectedBlockId, b => ({
+                              ...b,
+                              title: plainText,
+                              content: { ...(b.content ?? {}), title_html: html },
+                          }))
+                          queueBlockAutosave(selectedBlockId)
+                        }}
+                        placeholder="Título do bloco"
+                        variant="title"
+                        className="[&_.tiptap]:font-bold [&_.tiptap_p]:mb-0 [&_.tiptap_h1]:mb-0 [&_.tiptap_h2]:mb-0 [&_.tiptap_h3]:mb-0"
+                      />
+                    </div>
+                  </div>
 
-              {/* Conteúdo (para text/tip/exercise) */}
-              {['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type) && (
-                <div className="prop-section">
-                  <div className="prop-label">Conteúdo</div>
-                  <RichTextEditor
-                    key={selectedBlock.id}
-                    content={ensureHtml((selectedBlock.content as any)?.html ?? (selectedBlock.content as any)?.text ?? '')}
-                    onChange={(html) => {
-                      setBlockWithHistory(selectedBlockId, b => ({
-                          ...b,
-                          content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
-                      }))
-                      queueBlockAutosave(selectedBlockId)
-                    }}
-                    placeholder="Conteúdo do bloco"
-                    compact
-                    onAIAction={handleAITextAction}
-                  />
-                </div>
+                  {['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type) ? (
+                    <div>
+                      <div className="prop-label">Texto</div>
+                      <RichTextEditor
+                        key={selectedBlock.id}
+                        content={ensureHtml((selectedBlock.content as any)?.html ?? (selectedBlock.content as any)?.text ?? '')}
+                        onChange={(html) => {
+                          setBlockWithHistory(selectedBlockId, b => ({
+                              ...b,
+                              content: { ...(b.content ?? {}), html, text: htmlToMarkdown(html) },
+                          }))
+                          queueBlockAutosave(selectedBlockId)
+                        }}
+                        placeholder="Conteúdo do bloco"
+                        compact
+                        onAIAction={handleAITextAction}
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-bg2 px-2.5 py-2 text-[10px] leading-snug text-text3">
+                      {selectedBlock.block_type === 'notation' && `${(selectedBlock.render_data as any)?.notation?.staves?.[0]?.notes?.length ?? 0} notas cadastradas.`}
+                      {selectedBlock.block_type === 'tablature' && 'Tablatura editavel no editor visual.'}
+                      {selectedBlock.block_type === 'keyboard' && `${((selectedBlock.render_data as any)?.keys as string[])?.length ?? 0} teclas destacadas.`}
+                      {selectedBlock.block_type === 'chord_diagram' && `Acorde: ${(selectedBlock.render_data as any)?.chord_name ?? 'nao definido'}.`}
+                      {selectedBlock.block_type === 'chord_grid' && `${((selectedBlock.render_data as any)?.chords as any[])?.length ?? 0} acordes na grade.`}
+                      {selectedBlock.block_type === 'keyboard_grid' && `${((selectedBlock.render_data as any)?.keyboards as any[])?.length ?? 0} teclados na grade.`}
+                      {!['notation', 'tablature', 'keyboard', 'chord_diagram', 'chord_grid', 'keyboard_grid'].includes(selectedBlock.block_type) && 'Configure os controles especificos abaixo.'}
+                    </div>
+                  )}
+                </PropertiesCollapsibleSection>
               )}
 
               {/* Tablatura — botão para abrir editor visual */}
               {selectedPaginationPolicy && !['cover', 'page_break'].includes(selectedBlock.block_type) && (
-                <div className="prop-section">
-                  <div className="prop-label">Paginação</div>
+                <PropertiesCollapsibleSection
+                  title="Paginação"
+                  subtitle="Quebras, acoplamento e espacos no PDF."
+                  open={isPropertiesSectionOpen(selectedBlock.block_type, 'pagination', false)}
+                  onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'pagination', open)}
+                >
                   <div className="space-y-2 rounded-lg border border-border bg-bg/70 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -6141,7 +6258,7 @@ ${pagesHtml}
                       </div>
                     </div>
                   </div>
-                </div>
+                </PropertiesCollapsibleSection>
               )}
 
               {selectedBlock.block_type === 'tablature' && (
@@ -7376,30 +7493,43 @@ ${pagesHtml}
 
               {/* Estilo do Bloco — para qualquer bloco exceto cover e page_break */}
               {!['cover', 'page_break'].includes(selectedBlock.block_type) && selectedBlock.block_type !== 'separator' && (
-                <BlockStylePanel
-                  style={(selectedBlock.render_data?.style as BlockStyle) ?? DEFAULT_BLOCK_STYLE}
-                  onChange={updateBlockStyle}
-                />
+                <PropertiesCollapsibleSection
+                  title="Estilo"
+                  subtitle="Fundo, espacamento, bordas e margens."
+                  open={isPropertiesSectionOpen(selectedBlock.block_type, 'style', false)}
+                  onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'style', open)}
+                >
+                  <BlockStylePanel
+                    style={(selectedBlock.render_data?.style as BlockStyle) ?? DEFAULT_BLOCK_STYLE}
+                    onChange={updateBlockStyle}
+                  />
+                </PropertiesCollapsibleSection>
               )}
 
               {/* Separador customizável */}
               {selectedBlock.block_type === 'separator' && (
-                <SeparatorStylePanel
-                  style={(selectedBlock.render_data?.separatorStyle as SeparatorStyle) ?? DEFAULT_SEPARATOR_STYLE}
-                  onChange={updateSeparatorStyle}
-                  pageBackgroundColor={pageConfig.background?.color ?? '#ffffff'}
-                />
+                <PropertiesCollapsibleSection
+                  title="Estilo"
+                  subtitle="Aparencia visual do separador."
+                  open={isPropertiesSectionOpen(selectedBlock.block_type, 'style', false)}
+                  onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'style', open)}
+                >
+                  <SeparatorStylePanel
+                    style={(selectedBlock.render_data?.separatorStyle as SeparatorStyle) ?? DEFAULT_SEPARATOR_STYLE}
+                    onChange={updateSeparatorStyle}
+                    pageBackgroundColor={pageConfig.background?.color ?? '#ffffff'}
+                  />
+                </PropertiesCollapsibleSection>
               )}
 
               {/* 6.1 — Assistente IA (só para blocos de texto) */}
               {selectedBlock && ['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type) && (
-                <>
-                  <hr className="border-border my-4" />
-                  <div className="prop-section">
-                    <Label className="text-[11px] text-text3 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                      <Brain size={14} /> Assistente IA
-                    </Label>
-
+                <PropertiesCollapsibleSection
+                  title="Assistente IA"
+                  subtitle="Reescrever, simplificar, expandir e gerar variacoes."
+                  open={isPropertiesSectionOpen(selectedBlock.block_type, 'ai', false)}
+                  onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'ai', open)}
+                >
                     <div className="grid grid-cols-2 gap-1.5">
                       <Button
                         variant="outline" size="sm"
@@ -7465,8 +7595,7 @@ ${pagesHtml}
                     >
                       <Sparkle size={12} /> Gerar 3 variações
                     </Button>
-                  </div>
-                </>
+                </PropertiesCollapsibleSection>
               )}
 
               <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-4 border-t border-border bg-surface/95 p-3 shadow-[0_-10px_24px_rgba(15,23,42,0.10)] backdrop-blur">
