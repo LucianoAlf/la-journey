@@ -33,7 +33,7 @@ import {
 import { useMaterials, useMaterialWithBlocks } from "@/hooks/useMaterials";
 import { useSchool } from "@/hooks/useSchool";
 import {
-  updateMaterialBlockRpc, reorderMaterialBlocks, addMaterialBlock,
+  updateMaterialBlockRpc, addMaterialBlock,
   deleteMaterialBlock, updateMaterial,
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
@@ -99,7 +99,11 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
 } from "@/lib/floatingElements";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
-import { reorderBlocksByDirection, type CanvasReorderPatch } from "@/lib/canvasBlockReorder";
+import {
+  canvasBlockLayoutToCSS,
+  nudgeCanvasBlockLayout,
+  type CanvasNudgeDirection,
+} from "@/lib/canvasBlockLayout";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
 import { canDeleteSelectedBlock, canEnterInlineEdit, getCanvasToolbarMode, getCanvasToolbarPosition, getInlineEditingBlockAfterCanvasBlockClick, isTextInputTarget } from "@/lib/editorCanvasInteraction";
 import {
@@ -121,7 +125,6 @@ type EditorHistoryEntry = {
   patches: EditorBlockPatch<EditorBlock>[]
   beforeOrder: string[]
   afterOrder: string[]
-  action?: CanvasReorderPatch
 }
 
 // --- Tipos internos ---
@@ -1185,7 +1188,7 @@ function useEditorBlocks() {
   const pendingBeforeBlocksRef = useRef<EditorBlock[] | null>(null)
   const [, setHistoryVersion] = useState(0)
 
-  const createHistoryEntry = useCallback((before: EditorBlock[], after: EditorBlock[], action?: CanvasReorderPatch): EditorHistoryEntry | null => {
+  const createHistoryEntry = useCallback((before: EditorBlock[], after: EditorBlock[]): EditorHistoryEntry | null => {
     const beforeMap = new Map(before.map(block => [block.id, block]))
     const afterMap = new Map(after.map(block => [block.id, block]))
     const patches: EditorBlockPatch<EditorBlock>[] = []
@@ -1213,7 +1216,7 @@ function useEditorBlocks() {
       beforeOrder.some((id, index) => afterOrder[index] !== id)
 
     if (patches.length === 0 && !orderChanged) return null
-    return { patches, beforeOrder, afterOrder, action }
+    return { patches, beforeOrder, afterOrder }
   }, [])
 
   const pushHistoryEntry = useCallback((entry: ReturnType<typeof createHistoryEntry>) => {
@@ -1248,11 +1251,10 @@ function useEditorBlocks() {
 
   const setBlocksWithHistory = useCallback((
     updater: EditorBlock[] | ((prev: EditorBlock[]) => EditorBlock[]),
-    action?: CanvasReorderPatch,
   ) => {
     setBlocks(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater
-      pushHistoryEntry(createHistoryEntry(prev, next, action))
+      pushHistoryEntry(createHistoryEntry(prev, next))
       return next
     })
   }, [createHistoryEntry, pushHistoryEntry])
@@ -2013,14 +2015,6 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return () => clearTimeout(timer)
   }, [pageConfig, materialId])
 
-  const persistBlockOrder = useCallback((blockIds: string[]) => (
-    reorderMaterialBlocks(materialId, blockIds)
-  ), [materialId])
-
-  const handleBlockReorderError = useCallback((message: string) => {
-    toast.error('Erro ao reordenar: ' + message)
-  }, [])
-
   // Selecionar bloco + scroll no canvas
   const selectBlock = useCallback((id: string) => {
     if (import.meta.env.DEV) {
@@ -2296,24 +2290,27 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     }
   }, [blocks, blocksRef, materialId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
 
-  // Mover bloco acima/abaixo
-  const handleMoveBlock = useCallback(async (blockId: string, direction: 'up' | 'down') => {
-    const result = reorderBlocksByDirection(blocks, blockId, direction)
-    if (!result.changed || !result.patch) return
+  // Deslocar bloco em passos pequenos no canvas
+  const handleMoveBlock = useCallback(async (blockId: string, direction: CanvasNudgeDirection) => {
+    const block = blocks.find(item => item.id === blockId)
+    if (!block || ['cover', 'page_break'].includes(block.block_type)) return
 
-    setBlocksWithHistory(result.blocks, result.patch)
+    const result = nudgeCanvasBlockLayout(blocks, blockId, direction)
+    if (!result.changed) return
+
+    setBlocksWithHistory(result.blocks)
     setSelectedBlockId(blockId)
 
     try {
-      const persisted = await persistBlockOrder(result.blocks.map(block => block.id))
-      if (persisted === false) {
-        throw new Error('Banco nao confirmou a reordenacao')
-      }
+      await updateMaterialBlockRpc({
+        blockId,
+        renderData: result.renderData,
+      })
     } catch (error: any) {
-      handleBlockReorderError(error?.message ?? 'Erro desconhecido')
+      toast.error('Erro ao mover bloco: ' + (error?.message ?? 'Erro desconhecido'))
       refetch()
     }
-  }, [blocks, handleBlockReorderError, persistBlockOrder, refetch, setBlocksWithHistory, setSelectedBlockId])
+  }, [blocks, refetch, setBlocksWithHistory, setSelectedBlockId])
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
@@ -4621,6 +4618,16 @@ ${pagesHtml}
         void handleMoveBlock(selectedBlockId, 'down')
         return
       }
+      if (e.altKey && e.key === 'ArrowLeft' && selectedBlockId) {
+        e.preventDefault()
+        void handleMoveBlock(selectedBlockId, 'left')
+        return
+      }
+      if (e.altKey && e.key === 'ArrowRight' && selectedBlockId) {
+        e.preventDefault()
+        void handleMoveBlock(selectedBlockId, 'right')
+        return
+      }
       if (e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
         const idx = blocks.findIndex(b => b.id === selectedBlockId)
@@ -5374,7 +5381,10 @@ ${pagesHtml}
                         : 'idle'
 
                     const bStyle = !['cover', 'page_break', 'separator'].includes(block.block_type)
-                      ? blockStyleToCSS(block.render_data?.style as BlockStyle | undefined)
+                      ? {
+                          ...blockStyleToCSS(block.render_data?.style as BlockStyle | undefined),
+                          ...canvasBlockLayoutToCSS(block.render_data),
+                        }
                       : {}
 
                     return (

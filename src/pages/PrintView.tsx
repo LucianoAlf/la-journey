@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { MaterialPreview } from '@/components/material/MaterialPreview'
+import { canvasBlockLayoutToCSS } from '@/lib/canvasBlockLayout'
 import {
   paginatePrintBlocks,
   parsePrintMaterialRows,
@@ -33,9 +34,11 @@ function blockPrintStyle(block: PrintBlock): CSSProperties {
     margin?: { top?: number; right?: number; bottom?: number; left?: number }
   } | undefined
 
-  if (!style?.margin) return {}
+  const layoutStyle = canvasBlockLayoutToCSS(block.render_data)
+  if (!style?.margin) return layoutStyle
 
   return {
+    ...layoutStyle,
     marginTop: style.margin.top,
     marginRight: style.margin.right,
     marginBottom: style.margin.bottom,
