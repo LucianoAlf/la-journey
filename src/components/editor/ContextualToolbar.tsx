@@ -120,24 +120,25 @@ export function ContextualToolbar({
 
       {showLayoutControls && (
         <>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            title="Layout e paginacao"
-            data-testid="canvas-toolbar-layout-controls"
-            onClick={() => setShowLayoutPanel((value) => !value)}
-          >
-            <ListNumbers size={14} />
-          </Button>
-
-          {showLayoutPanel && (
-            <div
-              className={`absolute left-1/2 z-[60] w-72 -translate-x-1/2 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md ${layoutPanelPosition}`}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              data-testid="canvas-toolbar-layout-panel"
+          <div className="relative flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              title="Layout e paginacao"
+              data-testid="canvas-toolbar-layout-controls"
+              onClick={() => setShowLayoutPanel((value) => !value)}
             >
+              <ListNumbers size={14} />
+            </Button>
+
+            {showLayoutPanel && (
+              <div
+                className={`absolute left-0 z-[60] w-72 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md ${layoutPanelPosition}`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                data-testid="canvas-toolbar-layout-panel"
+              >
               <div className="space-y-3">
                 <div>
                   <p className="text-[11px] font-semibold text-text">Layout do bloco</p>
@@ -219,8 +220,9 @@ export function ContextualToolbar({
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
           <Separator orientation="vertical" className="h-5" />
         </>
       )}
