@@ -101,6 +101,8 @@ import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
 import {
   canvasBlockLayoutToCSS,
+  canvasPageLayerToCSS,
+  hasCanvasBlockLayoutOffset,
   nudgeCanvasBlockLayout,
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
@@ -5281,6 +5283,15 @@ ${pagesHtml}
                 )
               }
 
+              const pageHasSelectedBlock = selectedBlockId
+                ? pageBlocks.some(block => getPaginationSourceBlockId(block) === selectedBlockId)
+                : false
+              const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
+              const pageLayerStyle = canvasPageLayerToCSS({
+                hasSelectedBlock: pageHasSelectedBlock,
+                hasShiftedBlock: pageHasShiftedBlock,
+              })
+
               return (
               <div
                 key={pageIdx}
@@ -5288,7 +5299,7 @@ ${pagesHtml}
                 className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
                 data-page-index={pageIdx}
                 data-editor-page-active="true"
-                style={{ position: 'relative', ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
+                style={{ position: 'relative', ...pageLayerStyle, ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
               >
                 {/* Guias visuais */}
                 {showRulers && pageConfig.guides && pageConfig.guides.length > 0 && (
@@ -5361,11 +5372,12 @@ ${pagesHtml}
                 <div 
                   className="a4-page-content"
                   style={!isCoverPage && pageConfig.margins ? {
+                    ...(pageHasShiftedBlock || pageHasSelectedBlock ? { overflow: 'visible' } : {}),
                     paddingLeft: `${pageConfig.margins.left}px`,
                     paddingRight: `${pageConfig.margins.right}px`,
                     paddingTop: `${pageConfig.margins.top / 4}px`,
                     paddingBottom: `${pageConfig.margins.bottom / 4}px`,
-                  } : undefined}
+                  } : (pageHasShiftedBlock || pageHasSelectedBlock ? { overflow: 'visible' } : undefined)}
                 >
                   {pageBlocks.map(block => {
                     const fragment = getPaginationFragmentData(block)

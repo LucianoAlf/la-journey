@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { MaterialPreview } from '@/components/material/MaterialPreview'
-import { canvasBlockLayoutToCSS } from '@/lib/canvasBlockLayout'
+import {
+  canvasBlockLayoutToCSS,
+  canvasPageLayerToCSS,
+  hasCanvasBlockLayoutOffset,
+} from '@/lib/canvasBlockLayout'
 import {
   paginatePrintBlocks,
   parsePrintMaterialRows,
@@ -230,18 +234,27 @@ export function PrintView() {
     <main className="print-view" data-print-root>
       {pages.map((pageBlocks, pageIndex) => {
         const isCoverPage = pageBlocks.some(block => block.block_type === 'cover')
+        const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
+        const pageLayerStyle = canvasPageLayerToCSS({
+          hasSelectedBlock: false,
+          hasShiftedBlock: pageHasShiftedBlock,
+        })
 
         return (
           <section
             key={pageIndex}
             className={`a4-page print-page ${isCoverPage ? 'a4-page--cover print-page--cover' : ''}`}
             data-print-page={pageIndex + 1}
+            style={pageLayerStyle}
           >
             {!isCoverPage && (
               <Header schoolName={schoolName} materialTitle={material.title} />
             )}
 
-            <div className="a4-page-content print-page-content">
+            <div
+              className="a4-page-content print-page-content"
+              style={pageHasShiftedBlock ? { overflow: 'visible' } : undefined}
+            >
               {pageBlocks.map(block => {
                 if (block.block_type === 'page_break') return null
                 const printBlockTypeClass = `print-block--${block.block_type.replace(/_/g, '-')}`

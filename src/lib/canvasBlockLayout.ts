@@ -18,6 +18,11 @@ export type CanvasLayoutNudgeResult<TBlock extends LayoutEditableBlock> = {
   renderData: Record<string, unknown> | null
 }
 
+export type CanvasPageLayerState = {
+  hasShiftedBlock: boolean
+  hasSelectedBlock: boolean
+}
+
 const DEFAULT_LAYOUT: CanvasBlockLayout = {
   offsetX: 0,
   offsetY: 0,
@@ -84,5 +89,19 @@ export function canvasBlockLayoutToCSS(renderData: Record<string, unknown> | nul
     position: 'relative',
     transform: `translate(${layout.offsetX}px, ${layout.offsetY}px)`,
     zIndex: 1,
+  }
+}
+
+export function hasCanvasBlockLayoutOffset(renderData: Record<string, unknown> | null | undefined): boolean {
+  const layout = getCanvasBlockLayout(renderData)
+  return layout.offsetX !== 0 || layout.offsetY !== 0
+}
+
+export function canvasPageLayerToCSS(state: CanvasPageLayerState): CSSProperties {
+  if (!state.hasShiftedBlock && !state.hasSelectedBlock) return {}
+
+  return {
+    overflow: 'visible',
+    zIndex: state.hasSelectedBlock ? 30 : 10,
   }
 }

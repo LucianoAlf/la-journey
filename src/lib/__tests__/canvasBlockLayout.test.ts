@@ -4,6 +4,7 @@
  */
 
 import {
+  canvasPageLayerToCSS,
   canvasBlockLayoutToCSS,
   getCanvasBlockLayout,
   nudgeCanvasBlockLayout,
@@ -66,6 +67,18 @@ const css = canvasBlockLayoutToCSS({ layout: { offsetX: 4, offsetY: -8 } })
 assert(
   css.transform === 'translate(4px, -8px)' && css.position === 'relative',
   'gera CSS de deslocamento visual',
+)
+
+const activePageCss = canvasPageLayerToCSS({ hasShiftedBlock: true, hasSelectedBlock: true })
+assert(
+  activePageCss.overflow === 'visible' && activePageCss.zIndex === 30,
+  'eleva pagina ativa com bloco deslocado para evitar recorte entre paginas',
+)
+
+const idlePageCss = canvasPageLayerToCSS({ hasShiftedBlock: false, hasSelectedBlock: false })
+assert(
+  Object.keys(idlePageCss).length === 0,
+  'mantem paginas sem deslocamento no fluxo normal',
 )
 
 if (failed > 0) {
