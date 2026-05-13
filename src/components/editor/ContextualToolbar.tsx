@@ -90,6 +90,7 @@ export function ContextualToolbar({
   const [showLayoutPanel, setShowLayoutPanel] = useState(false)
   const actions = getCanvasToolbarActions(blockType)
   const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
+  const layoutPanelPosition = position.placement === 'below' ? 'bottom-full mb-2' : 'top-full mt-2'
 
   // Não mostrar para cover e page_break
   if (['cover', 'page_break'].includes(blockType)) return null
@@ -132,12 +133,7 @@ export function ContextualToolbar({
 
           {showLayoutPanel && (
             <div
-              className="fixed z-[60] w-72 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md"
-              style={{
-                top: `${adjustedTop + 38}px`,
-                left: `${position.left}px`,
-                transform: 'translateX(-50%)',
-              }}
+              className={`absolute left-1/2 z-[60] w-72 -translate-x-1/2 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md ${layoutPanelPosition}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               data-testid="canvas-toolbar-layout-panel"
