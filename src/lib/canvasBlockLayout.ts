@@ -230,6 +230,25 @@ export function getCanvasPageBoundaryDelta(
   return 0
 }
 
+export function shouldSettleCanvasBlockOnPageAnchor(
+  direction: CanvasNudgeDirection,
+  previousOffsetY: number,
+  bounds: CanvasPageBoundary,
+): boolean {
+  const safeInset = bounds.safeInset ?? DEFAULT_PAGE_BOUNDARY_SAFE_INSET
+  if (direction === 'down') {
+    return previousOffsetY < 0 &&
+      bounds.blockTop < bounds.pageTop &&
+      bounds.blockBottom > bounds.pageTop + safeInset
+  }
+  if (direction === 'up') {
+    return previousOffsetY > 0 &&
+      bounds.blockBottom > bounds.pageBottom &&
+      bounds.blockTop < bounds.pageBottom - safeInset
+  }
+  return false
+}
+
 export function resetCanvasBlockLayout<TBlock extends LayoutEditableBlock>(
   blocks: TBlock[],
   blockId: string,

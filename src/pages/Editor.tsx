@@ -112,6 +112,7 @@ import {
   resetCanvasBlockLayout,
   settleCanvasBlockOnPageAnchor,
   shouldApplyCanvasNudgeKey,
+  shouldSettleCanvasBlockOnPageAnchor,
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
@@ -2388,22 +2389,20 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       const blockRect = element.getBoundingClientRect()
       const pageRect = pageElement.getBoundingClientRect()
       const nextLocalDeltaY = nextLayout.offsetY - previousLayout.offsetY
-      const pageDelta = getCanvasPageBoundaryDelta(direction, {
+      const nextBoundary = {
         blockTop: blockRect.top + nextLocalDeltaY,
         blockBottom: blockRect.bottom + nextLocalDeltaY,
         pageTop: pageRect.top,
         pageBottom: pageRect.bottom,
-      })
+      }
+      const pageDelta = getCanvasPageBoundaryDelta(direction, nextBoundary)
       if (pageDelta !== 0) {
         const anchoredResult = anchorCanvasBlockToPageOffset(result.blocks, blockId, pageDelta)
         if (anchoredResult.changed) {
           result = anchoredResult
           nextLayout = getCanvasBlockLayout(result.renderData)
         }
-      } else if (
-        (direction === 'down' && previousLayout.offsetY < 0 && blockRect.bottom + nextLocalDeltaY > pageRect.top + 24) ||
-        (direction === 'up' && previousLayout.offsetY > 0 && blockRect.top + nextLocalDeltaY < pageRect.bottom - 24)
-      ) {
+      } else if (shouldSettleCanvasBlockOnPageAnchor(direction, previousLayout.offsetY, nextBoundary)) {
         const settledResult = settleCanvasBlockOnPageAnchor(result.blocks, blockId)
         if (settledResult.changed) {
           result = settledResult

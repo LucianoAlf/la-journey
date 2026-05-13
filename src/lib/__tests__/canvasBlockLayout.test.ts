@@ -14,6 +14,7 @@ import {
   nudgeCanvasBlockLayout,
   resetCanvasBlockLayout,
   settleCanvasBlockOnPageAnchor,
+  shouldSettleCanvasBlockOnPageAnchor,
   shouldApplyCanvasNudgeKey,
 } from '../canvasBlockLayout'
 
@@ -108,6 +109,26 @@ assert(
   settledOnPage.changed &&
   getCanvasBlockLayout(settledOnPage.renderData).offsetY === 0,
   'zera deslocamento vertical quando bloco atravessado entra na pagina ancorada',
+)
+
+assert(
+  !shouldSettleCanvasBlockOnPageAnchor('up', 200, {
+    blockTop: 300,
+    blockBottom: 500,
+    pageTop: 0,
+    pageBottom: 660,
+  }),
+  'nao zera deslocamento positivo ao inverter direcao dentro da pagina',
+)
+
+assert(
+  shouldSettleCanvasBlockOnPageAnchor('up', 200, {
+    blockTop: 620,
+    blockBottom: 780,
+    pageTop: 0,
+    pageBottom: 660,
+  }),
+  'zera deslocamento positivo apenas quando bloco ainda esta abaixo da pagina ancorada',
 )
 
 const missingBlock = nudgeCanvasBlockLayout(blocks, 'missing', 'down')
