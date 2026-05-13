@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -8,6 +10,12 @@ import {
   PencilSimple, MusicNotes, Guitar, PianoKeys, Image as ImageIcon, X, ListNumbers,
 } from '@phosphor-icons/react'
 import type { BlockStyle } from '@/lib/blockStyles'
+import type { BlockPaginationPolicy } from '@/lib/sharedPagination'
+import {
+  CANVAS_BLOCK_SPACING_MAX,
+  CANVAS_BLOCK_SPACING_MIN,
+  createCanvasBlockMarginUpdate,
+} from '@/lib/canvasSpacingControls'
 import { getCanvasToolbarActions, type CanvasToolbarMode, type CanvasToolbarPlacement } from '@/lib/editorCanvasInteraction'
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
@@ -53,6 +61,10 @@ interface ContextualToolbarProps {
   onDuplicate: () => void
   onDelete: () => void
   onStyleChange: (style: Partial<BlockStyle>) => void
+  blockStyle?: BlockStyle
+  paginationPolicy?: BlockPaginationPolicy | null
+  canSplitBlock?: boolean
+  onPaginationChange?: (updates: Partial<BlockPaginationPolicy>) => void
   onAIRewrite?: () => void
   isAIProcessing?: boolean
   onSaveReusable?: () => void
@@ -68,13 +80,15 @@ interface ContextualToolbarProps {
 
 export function ContextualToolbar({
   blockType, position, onDuplicate, onDelete,
-  onStyleChange, onAIRewrite, isAIProcessing,
+  onStyleChange, blockStyle, paginationPolicy, canSplitBlock = false, onPaginationChange,
+  onAIRewrite, isAIProcessing,
   onSaveReusable, saveReusableDisabled = false, onEditInline,
   onEditNotation, onEditTablature, onEditChord, onEditKeyboard, onReplaceImage, onExitEdit,
   mode = 'selected',
 }: ContextualToolbarProps) {
   const [showBgPicker, setShowBgPicker] = useState(false)
   const actions = getCanvasToolbarActions(blockType)
+  const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
 
   // Não mostrar para cover e page_break
   if (['cover', 'page_break'].includes(blockType)) return null
@@ -101,6 +115,110 @@ export function ContextualToolbar({
       </span>
 
       <Separator orientation="vertical" className="h-5" />
+
+      {showLayoutControls && (
+        <>
+          <Popover>
+            <PopoverTrigger asChild>
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" data-testid="canvas-toolbar-layout-controls">
+                      <ListNumbers size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Layout e paginacao</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-3" side="bottom">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-semibold text-text">Layout do bloco</p>
+                  <p className="mt-0.5 text-[9px] leading-snug text-text3">Espaco e paginacao aparecem no PDF.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
+                    <Label className="text-[10px] text-text3">Antes</Label>
+                    <input
+                      type="range"
+                      min={CANVAS_BLOCK_SPACING_MIN}
+                      max={CANVAS_BLOCK_SPACING_MAX}
+                      step={4}
+                      value={blockStyle.margin.top}
+                      onChange={(event) => onStyleChange(
+                        createCanvasBlockMarginUpdate(blockStyle, 'top', Number(event.target.value)),
+                      )}
+                      className="h-1 accent-accent"
+                    />
+                    <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.top}px</span>
+                  </div>
+                  <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
+                    <Label className="text-[10px] text-text3">Depois</Label>
+                    <input
+                      type="range"
+                      min={CANVAS_BLOCK_SPACING_MIN}
+                      max={CANVAS_BLOCK_SPACING_MAX}
+                      step={4}
+                      value={blockStyle.margin.bottom}
+                      onChange={(event) => onStyleChange(
+                        createCanvasBlockMarginUpdate(blockStyle, 'bottom', Number(event.target.value)),
+                      )}
+                      className="h-1 accent-accent"
+                    />
+                    <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.bottom}px</span>
+                  </div>
+                </div>
+
+                <Separator className="bg-border/70" />
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-[10px] font-semibold text-text">Nova pagina</Label>
+                      <p className="mt-0.5 text-[9px] text-text3">Forca topo da proxima A4.</p>
+                    </div>
+                    <Switch
+                      size="sm"
+                      checked={paginationPolicy.startOnNewPage}
+                      onCheckedChange={(checked) => onPaginationChange({ startOnNewPage: checked })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-[10px] font-semibold text-text">Manter junto</Label>
+                      <p className="mt-0.5 text-[9px] text-text3">Evita separar do proximo bloco.</p>
+                    </div>
+                    <Switch
+                      size="sm"
+                      checked={paginationPolicy.keepWithNext}
+                      onCheckedChange={(checked) => onPaginationChange({ keepWithNext: checked })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-[10px] font-semibold text-text">Permitir quebra</Label>
+                      <p className="mt-0.5 text-[9px] text-text3">Divide textos longos quando seguro.</p>
+                    </div>
+                    <Switch
+                      size="sm"
+                      checked={paginationPolicy.allowSplit}
+                      disabled={!canSplitBlock}
+                      onCheckedChange={(checked) => onPaginationChange({
+                        allowSplit: checked,
+                        behavior: checked ? 'breakable' : 'unbreakable',
+                      })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Separator orientation="vertical" className="h-5" />
+        </>
+      )}
 
       {mode === 'editing' && (
         <>

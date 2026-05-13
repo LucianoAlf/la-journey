@@ -7505,6 +7505,10 @@ ${pagesHtml}
           onDuplicate={() => handleDuplicateBlock(selectedBlock.id)}
           onDelete={() => handleDeleteBlock(selectedBlock.id)}
           onStyleChange={updateBlockStyle}
+          blockStyle={selectedBlockStyle}
+          paginationPolicy={selectedPaginationPolicy}
+          canSplitBlock={['text', 'tip', 'exercise', 'columns'].includes(selectedBlock.block_type)}
+          onPaginationChange={updateBlockPaginationPolicy}
           onEditInline={() => enterInlineEditForBlock(selectedBlock.id)}
           onExitEdit={exitInlineEdit}
           onEditNotation={() => openNotationEditorForBlock(selectedBlock.id)}
