@@ -2265,21 +2265,51 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Deletar bloco
   const handleDeleteBlock = useCallback(async (blockId: string) => {
+    const beforeBlocks = blocksRef.current
+    const blockExists = beforeBlocks.some(block => block.id === blockId)
+    if (!blockExists) return
+
+    const afterBlocks = beforeBlocks.filter(block => block.id !== blockId)
+    setBlocks(afterBlocks)
+    if (selectedBlockIdRef.current === blockId) setSelectedBlockId(null)
+
+    if (blockId.startsWith('temp_')) {
+      commitBlocksHistory(beforeBlocks, afterBlocks)
+      toast.success('Bloco removido')
+      return
+    }
+
     try {
       await deleteMaterialBlock(blockId)
-      setBlocksWithHistory(prev => prev.filter(b => b.id !== blockId))
-      if (selectedBlockIdRef.current === blockId) setSelectedBlockId(null)
+      commitBlocksHistory(beforeBlocks, afterBlocks)
       toast.success('Bloco removido')
     } catch (e: any) {
+      setBlocks(beforeBlocks)
+      if (selectedBlockIdRef.current === null) setSelectedBlockId(blockId)
       toast.error('Erro ao remover bloco: ' + (e?.message ?? ''))
     }
-  }, [setBlocksWithHistory, setSelectedBlockId])
+  }, [blocksRef, commitBlocksHistory, setBlocks, setSelectedBlockId])
 
   // Duplicar bloco
   const handleDuplicateBlock = useCallback(async (blockId: string) => {
-    const block = blocks.find(b => b.id === blockId)
+    const beforeBlocks = blocksRef.current
+    const block = beforeBlocks.find(b => b.id === blockId)
     if (!block) return
-    pushSnapshot(blocksRef.current)
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const optimisticBlock: EditorBlock = {
+      id: tempId,
+      block_type: block.block_type,
+      title: block.title ? `${block.title} (cópia)` : null,
+      content: block.content ? { ...block.content } : null,
+      render_data: block.render_data ? { ...block.render_data } : null,
+      sort_order: block.sort_order + 1,
+      is_edited: false,
+      original_content: null,
+    }
+    const optimisticBlocks = insertBlocksAfterOrder(beforeBlocks, [optimisticBlock], block.sort_order)
+    setBlocks(optimisticBlocks)
+    setSelectedBlockId(tempId)
+
     try {
       const insertedId = await addMaterialBlock({
         materialId,
@@ -2299,27 +2329,16 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         is_edited: false,
         original_content: null,
       }
-      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], block.sort_order))
+      const finalBlocks = optimisticBlocks.map(next => next.id === tempId ? newBlock : next)
+      setBlocks(finalBlocks)
       setSelectedBlockId(insertedId)
+      commitBlocksHistory(beforeBlocks, finalBlocks)
       toast.success('Bloco duplicado')
     } catch (e: any) {
-      // Fallback local
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      const newBlock: EditorBlock = {
-        id: tempId,
-        block_type: block.block_type,
-        title: block.title ? `${block.title} (cópia)` : null,
-        content: block.content ? { ...block.content } : null,
-        render_data: block.render_data ? { ...block.render_data } : null,
-        sort_order: block.sort_order + 1,
-        is_edited: false,
-        original_content: null,
-      }
-      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], block.sort_order))
-      setSelectedBlockId(tempId)
+      commitBlocksHistory(beforeBlocks, optimisticBlocks)
       toast.info('Bloco duplicado localmente')
     }
-  }, [blocks, blocksRef, materialId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
+  }, [blocksRef, commitBlocksHistory, materialId, setBlocks, setSelectedBlockId])
 
   const flushCanvasNudgeSession = useCallback((session = canvasNudgeSessionRef.current) => {
     if (!session) return

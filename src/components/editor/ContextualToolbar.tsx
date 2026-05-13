@@ -43,9 +43,20 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
 }
 
 const QUICK_BG_COLORS = [
-  'transparent', '#ffffff', '#f8fafc', '#fef9c3', '#dcfce7',
-  '#dbeafe', '#fce7f3', '#f3e8ff', '#fff7ed', '#fef2f2',
-  '#ecfdf5', '#eff6ff', '#fdf4ff', '#f5f5f4',
+  { label: 'Sem fundo', color: 'transparent' },
+  { label: 'Branco', color: '#ffffff' },
+  { label: 'Neve', color: '#f8fafc' },
+  { label: 'Pauta', color: '#fef9c3' },
+  { label: 'Estudo', color: '#dcfce7' },
+  { label: 'Teoria', color: '#dbeafe' },
+  { label: 'Destaque', color: '#fce7f3' },
+  { label: 'Criativo', color: '#f3e8ff' },
+  { label: 'Aquecido', color: '#fff7ed' },
+  { label: 'Alerta', color: '#fef2f2' },
+  { label: 'Verde', color: '#ecfdf5' },
+  { label: 'Azul', color: '#eff6ff' },
+  { label: 'Roxo', color: '#fdf4ff' },
+  { label: 'Cinza', color: '#f5f5f4' },
 ]
 
 const PADDING_OPTIONS = [
@@ -55,6 +66,8 @@ const PADDING_OPTIONS = [
   { label: 'G', value: 24 },
   { label: 'GG', value: 32 },
 ]
+
+const toolbarIconButtonClass = 'h-7 w-7 p-0 transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0 active:scale-95'
 
 interface ContextualToolbarProps {
   blockType: string
@@ -411,17 +424,21 @@ export function ContextualToolbar({
         </Button>
         {showBgPicker && (
           <div
-            className="absolute left-0 top-full z-[60] mt-2 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+            className="absolute left-1/2 top-full z-[60] mt-2 w-[260px] -translate-x-1/2 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             data-testid="canvas-toolbar-background-panel"
           >
-            <div className="grid grid-cols-7 gap-1">
-              {QUICK_BG_COLORS.map((color) => (
+            <div className="mb-2">
+              <div className="text-[11px] font-semibold text-text1">Cor de fundo</div>
+              <div className="text-[10px] text-text3">Aparece no canvas e no PDF.</div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {QUICK_BG_COLORS.map(({ label, color }) => (
                 <button
                   key={color}
                   type="button"
-                  aria-label={color === 'transparent' ? 'Sem fundo' : `Fundo ${color}`}
+                  aria-label={color === 'transparent' ? 'Sem fundo' : `Fundo ${label}`}
                   onClick={() => {
                     onStyleChange({
                       background: {
@@ -434,15 +451,21 @@ export function ContextualToolbar({
                     })
                     setShowBgPicker(false)
                   }}
-                  className="h-6 w-6 rounded border border-border/50 transition-transform hover:scale-110 hover:ring-2 hover:ring-accent/30"
-                  style={{
-                    backgroundColor: color === 'transparent' ? 'white' : color,
-                    backgroundImage: color === 'transparent'
-                      ? 'repeating-conic-gradient(#ddd 0% 25%, transparent 0% 50%)'
-                      : 'none',
-                    backgroundSize: '8px 8px',
-                  }}
-                />
+                  className="flex h-8 items-center gap-2 rounded-md border border-transparent px-2 text-left text-[10px] text-text2 transition-colors hover:border-accent/30 hover:bg-accent/5 hover:text-text1"
+                >
+                  <span
+                    className="h-4 w-4 shrink-0 rounded border border-border/60 shadow-sm"
+                    style={{
+                      backgroundColor: color === 'transparent' ? 'white' : color,
+                      backgroundImage: color === 'transparent'
+                        ? 'linear-gradient(45deg, #e2e8f0 25%, transparent 25%), linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e8f0 75%), linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)'
+                        : 'none',
+                      backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
+                      backgroundSize: '12px 12px',
+                    }}
+                  />
+                  <span className="truncate">{label}</span>
+                </button>
               ))}
             </div>
           </div>
@@ -546,7 +569,7 @@ export function ContextualToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onDuplicate} data-testid="canvas-toolbar-duplicate">
+            <Button variant="ghost" size="sm" className={toolbarIconButtonClass} onClick={onDuplicate} data-testid="canvas-toolbar-duplicate">
               <Copy size={14} />
             </Button>
           </TooltipTrigger>
@@ -558,7 +581,7 @@ export function ContextualToolbar({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-text3 hover:text-[var(--vermelho)]" onClick={onDelete} data-testid="canvas-toolbar-delete">
+            <Button variant="ghost" size="sm" className={cn(toolbarIconButtonClass, 'text-text3 hover:text-[var(--vermelho)]')} onClick={onDelete} data-testid="canvas-toolbar-delete">
               <Trash size={14} />
             </Button>
           </TooltipTrigger>
