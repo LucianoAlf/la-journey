@@ -100,12 +100,17 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
 import {
+  anchorCanvasBlockToPageOffset,
+  applyCanvasLayoutPageOffsets,
   canvasBlockLayoutToCSS,
   canvasPageLayerToCSS,
+  getCanvasBlockLayout,
+  getCanvasPageBoundaryDelta,
   hasCanvasBlockLayoutOffset,
   isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
   resetCanvasBlockLayout,
+  settleCanvasBlockOnPageAnchor,
   shouldApplyCanvasNudgeKey,
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
@@ -678,10 +683,11 @@ function useEditorPagination({
   ), [blocks, blockHeights])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
+  const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
 
   const pageIndexByBlockId = useMemo(() => {
     const indexById: Record<string, number> = {}
-    pages.forEach((pageBlocks, pageIdx) => {
+    canvasPages.forEach((pageBlocks, pageIdx) => {
       pageBlocks.forEach(block => {
         indexById[block.id] = pageIdx
         const sourceBlockId = getPaginationSourceBlockId(block)
@@ -691,38 +697,38 @@ function useEditorPagination({
       })
     })
     return indexById
-  }, [pages])
+  }, [canvasPages])
 
   const pageBlockById = useMemo(() => {
     const byId = new Map<string, EditorBlock>()
-    pages.forEach(pageBlocks => {
+    canvasPages.forEach(pageBlocks => {
       pageBlocks.forEach(block => byId.set(block.id, block))
     })
     return byId
-  }, [pages])
+  }, [canvasPages])
 
   const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
   const activePageIndexes = useMemo(() => {
     if (forceAllPagesActive) {
-      return new Set(pages.map((_, idx) => idx))
+      return new Set(canvasPages.map((_, idx) => idx))
     }
 
     const active = new Set<number>()
     const addWindow = (center: number | undefined) => {
       if (typeof center !== 'number' || Number.isNaN(center)) return
       for (let idx = center - ACTIVE_PAGE_RADIUS; idx <= center + ACTIVE_PAGE_RADIUS; idx += 1) {
-        if (idx >= 0 && idx < pages.length) active.add(idx)
+        if (idx >= 0 && idx < canvasPages.length) active.add(idx)
       }
     }
 
     addWindow(currentVisiblePage)
-    if (typeof selectedPageIndex === 'number' && selectedPageIndex >= 0 && selectedPageIndex < pages.length) {
+    if (typeof selectedPageIndex === 'number' && selectedPageIndex >= 0 && selectedPageIndex < canvasPages.length) {
       active.add(selectedPageIndex)
     }
 
-    if (active.size === 0 && pages.length > 0) addWindow(0)
+    if (active.size === 0 && canvasPages.length > 0) addWindow(0)
     return active
-  }, [currentVisiblePage, forceAllPagesActive, pages, selectedPageIndex])
+  }, [canvasPages, currentVisiblePage, forceAllPagesActive, selectedPageIndex])
 
   useEffect(() => {
     const canvas = canvasScrollRef.current
@@ -1652,6 +1658,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   ), [blocks, blockHeights])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
+  const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
 
   /* const pages = useMemo(() => {
     const result: EditorBlock[][] = [[]]
@@ -1688,7 +1695,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   const pageIndexByBlockId = useMemo(() => {
     const indexById: Record<string, number> = {}
-    pages.forEach((pageBlocks, pageIdx) => {
+    canvasPages.forEach((pageBlocks, pageIdx) => {
       pageBlocks.forEach(block => {
         indexById[block.id] = pageIdx
         const sourceBlockId = getPaginationSourceBlockId(block)
@@ -1698,15 +1705,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       })
     })
     return indexById
-  }, [pages])
+  }, [canvasPages])
 
   const pageBlockById = useMemo(() => {
     const byId = new Map<string, EditorBlock>()
-    pages.forEach(pageBlocks => {
+    canvasPages.forEach(pageBlocks => {
       pageBlocks.forEach(block => byId.set(block.id, block))
     })
     return byId
-  }, [pages])
+  }, [canvasPages])
 
   const [showPaginationDebug, setShowPaginationDebug] = useState(false)
   const paginationDebugPages = useMemo<PaginationDebugPage[]>(() => {
@@ -1843,25 +1850,25 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
   const activePageIndexes = useMemo(() => {
     if (forceAllPagesActive) {
-      return new Set(pages.map((_, idx) => idx))
+      return new Set(canvasPages.map((_, idx) => idx))
     }
 
     const active = new Set<number>()
     const addWindow = (center: number | undefined) => {
       if (typeof center !== 'number' || Number.isNaN(center)) return
       for (let idx = center - ACTIVE_PAGE_RADIUS; idx <= center + ACTIVE_PAGE_RADIUS; idx += 1) {
-        if (idx >= 0 && idx < pages.length) active.add(idx)
+        if (idx >= 0 && idx < canvasPages.length) active.add(idx)
       }
     }
 
     addWindow(currentVisiblePage)
-    if (typeof selectedPageIndex === 'number' && selectedPageIndex >= 0 && selectedPageIndex < pages.length) {
+    if (typeof selectedPageIndex === 'number' && selectedPageIndex >= 0 && selectedPageIndex < canvasPages.length) {
       active.add(selectedPageIndex)
     }
 
-    if (active.size === 0 && pages.length > 0) addWindow(0)
+    if (active.size === 0 && canvasPages.length > 0) addWindow(0)
     return active
-  }, [currentVisiblePage, forceAllPagesActive, pages, pages.length, selectedPageIndex])
+  }, [canvasPages, currentVisiblePage, forceAllPagesActive, selectedPageIndex])
 
   const [hydratingAlphaTabBlockIds, setHydratingAlphaTabBlockIds] = useState<Set<string>>(() => new Set())
   useEffect(() => {
@@ -1873,7 +1880,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       cancelIdle = scheduleEditorIdleCallback(() => {
         if (cancelled) return
         const plan = buildMusicHydrationPlan({
-          pages,
+          pages: canvasPages,
           activePageIndexes,
           selectedBlockId,
           maxPerPage: 2,
@@ -1897,7 +1904,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       window.clearTimeout(timeoutHandle)
       cancelIdle?.()
     }
-  }, [activePageIndexes, pages, selectedBlockId])
+  }, [activePageIndexes, canvasPages, selectedBlockId])
 
   useEffect(() => {
     if (blocks.length === 0 || pages.length === 0) return
@@ -2371,8 +2378,39 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const block = currentBlocks.find(item => item.id === blockId)
     if (!block || ['cover', 'page_break'].includes(block.block_type)) return
 
-    const result = nudgeCanvasBlockLayout(currentBlocks, blockId, direction)
+    const previousLayout = getCanvasBlockLayout(block.render_data)
+    let result = nudgeCanvasBlockLayout(currentBlocks, blockId, direction)
     if (!result.changed) return
+    let nextLayout = getCanvasBlockLayout(result.renderData)
+    const element = canvasRefs.current[blockId]
+    const pageElement = element?.closest('.a4-page') as HTMLElement | null
+    if (element && pageElement && (direction === 'up' || direction === 'down')) {
+      const blockRect = element.getBoundingClientRect()
+      const pageRect = pageElement.getBoundingClientRect()
+      const nextLocalDeltaY = nextLayout.offsetY - previousLayout.offsetY
+      const pageDelta = getCanvasPageBoundaryDelta(direction, {
+        blockTop: blockRect.top + nextLocalDeltaY,
+        blockBottom: blockRect.bottom + nextLocalDeltaY,
+        pageTop: pageRect.top,
+        pageBottom: pageRect.bottom,
+      })
+      if (pageDelta !== 0) {
+        const anchoredResult = anchorCanvasBlockToPageOffset(result.blocks, blockId, pageDelta)
+        if (anchoredResult.changed) {
+          result = anchoredResult
+          nextLayout = getCanvasBlockLayout(result.renderData)
+        }
+      } else if (
+        (direction === 'down' && previousLayout.offsetY < 0 && blockRect.bottom + nextLocalDeltaY > pageRect.top + 24) ||
+        (direction === 'up' && previousLayout.offsetY > 0 && blockRect.top + nextLocalDeltaY < pageRect.bottom - 24)
+      ) {
+        const settledResult = settleCanvasBlockOnPageAnchor(result.blocks, blockId)
+        if (settledResult.changed) {
+          result = settledResult
+          nextLayout = getCanvasBlockLayout(result.renderData)
+        }
+      }
+    }
 
     const existingSession = canvasNudgeSessionRef.current
     if (existingSession && existingSession.blockId !== blockId) {
@@ -2395,8 +2433,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     blocksRef.current = result.blocks
     canvasNudgeSessionRef.current = activeSession
 
-    applyCanvasNudgePreview(blockId, result.renderData)
     setSelectedBlockId(blockId)
+    if (previousLayout.pageOffset !== nextLayout.pageOffset) {
+      flushCanvasNudgeSession(activeSession)
+      return
+    }
+
+    applyCanvasNudgePreview(blockId, result.renderData)
 
     if (activeSession.commitTimer) window.clearTimeout(activeSession.commitTimer)
     activeSession.commitTimer = window.setTimeout(() => {
@@ -5373,7 +5416,7 @@ ${pagesHtml}
               gridColumn: showRulers ? 2 : 1,
             }}
           >
-            {pages.map((pageBlocks, pageIdx) => {
+            {canvasPages.map((pageBlocks, pageIdx) => {
               const isCoverPage = pageBlocks.some(b => b.block_type === 'cover')
               // Extrair dados da capa para contexto dos placeholders
               const coverBlock = blocks.find(b => b.block_type === 'cover')

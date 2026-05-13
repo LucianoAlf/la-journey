@@ -3,6 +3,7 @@ import { useLocation, useParams } from 'react-router-dom'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { MaterialPreview } from '@/components/material/MaterialPreview'
 import {
+  applyCanvasLayoutPageOffsets,
   canvasBlockLayoutToCSS,
   canvasPageLayerToCSS,
   hasCanvasBlockLayoutOffset,
@@ -154,6 +155,7 @@ export function PrintView() {
       pages: paginatePrintBlocks(parsed.blocks),
     }
   }, [data])
+  const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
 
   useEffect(() => {
     const win = window as WindowWithPrintStatus
@@ -161,7 +163,7 @@ export function PrintView() {
   }, [id])
 
   useEffect(() => {
-    if (loading || error || !material || pages.length === 0) return
+    if (loading || error || !material || canvasPages.length === 0) return
 
     const win = window as WindowWithPrintStatus
     win.status = 'rendering-print'
@@ -201,7 +203,7 @@ export function PrintView() {
       window.clearTimeout(readyTimer)
       window.clearTimeout(maxTimer)
     }
-  }, [error, loading, material, pages.length])
+  }, [canvasPages.length, error, loading, material])
 
   if (loading) {
     return (
@@ -232,7 +234,7 @@ export function PrintView() {
 
   return (
     <main className="print-view" data-print-root>
-      {pages.map((pageBlocks, pageIndex) => {
+      {canvasPages.map((pageBlocks, pageIndex) => {
         const isCoverPage = pageBlocks.some(block => block.block_type === 'cover')
         const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
         const pageLayerStyle = canvasPageLayerToCSS({
@@ -273,7 +275,7 @@ export function PrintView() {
             </div>
 
             {!isCoverPage && (
-              <Footer pageIndex={pageIndex} totalPages={pages.length} schoolName={schoolName} />
+              <Footer pageIndex={pageIndex} totalPages={canvasPages.length} schoolName={schoolName} />
             )}
           </section>
         )
