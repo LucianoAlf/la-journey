@@ -8,6 +8,7 @@ import {
   applyCanvasLayoutPageOffsets,
   canvasPageLayerToCSS,
   canvasBlockLayoutToCSS,
+  getCanvasNudgeStep,
   getCanvasPageBoundaryDelta,
   getCanvasBlockLayout,
   isCanvasNudgeKey,
@@ -163,6 +164,22 @@ assert(
 assert(
   !isCanvasNudgeKey({ altKey: false, key: 'ArrowDown', repeat: true }),
   'nao trata seta repetida sem Alt como nudge do canvas',
+)
+
+assert(
+  getCanvasNudgeStep({ altKey: true, shiftKey: false, key: 'ArrowDown' }) === 8,
+  'usa passo fino de 8px com Alt',
+)
+
+assert(
+  getCanvasNudgeStep({ altKey: true, shiftKey: true, key: 'ArrowDown' }) === 40,
+  'usa passo maior de 40px com Shift+Alt',
+)
+
+const fastMove = nudgeCanvasBlockLayout(blocks, 'intro', 'down', getCanvasNudgeStep({ altKey: true, shiftKey: true, key: 'ArrowDown' }))
+assert(
+  getCanvasBlockLayout(fastMove.renderData).offsetY === 40,
+  'move bloco com passo maior quando Shift acompanha Alt',
 )
 
 const clampedMove = nudgeCanvasBlockLayout(

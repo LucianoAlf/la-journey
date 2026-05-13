@@ -105,6 +105,7 @@ import {
   canvasBlockLayoutToCSS,
   canvasPageLayerToCSS,
   getCanvasBlockLayout,
+  getCanvasNudgeStep,
   getCanvasPageBoundaryDelta,
   hasCanvasBlockLayoutOffset,
   isCanvasNudgeKey,
@@ -2365,7 +2366,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [])
 
   // Deslocar bloco em passos pequenos no canvas. Repeats do teclado sao agrupados em um unico historico/save.
-  const handleMoveBlock = useCallback((blockId: string, direction: CanvasNudgeDirection, repeated = false) => {
+  const handleMoveBlock = useCallback((blockId: string, direction: CanvasNudgeDirection, repeated = false, step = 8) => {
     const nowMs = performance.now()
     const currentSession = canvasNudgeSessionRef.current
     if (
@@ -2380,7 +2381,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!block || ['cover', 'page_break'].includes(block.block_type)) return
 
     const previousLayout = getCanvasBlockLayout(block.render_data)
-    let result = nudgeCanvasBlockLayout(currentBlocks, blockId, direction)
+    let result = nudgeCanvasBlockLayout(currentBlocks, blockId, direction, step)
     if (!result.changed) return
     let nextLayout = getCanvasBlockLayout(result.renderData)
     const element = canvasRefs.current[blockId]
@@ -4773,22 +4774,22 @@ ${pagesHtml}
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'up', e.repeat)
+        handleMoveBlock(selectedBlockId, 'up', e.repeat, getCanvasNudgeStep(e))
         return
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowDown' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'down', e.repeat)
+        handleMoveBlock(selectedBlockId, 'down', e.repeat, getCanvasNudgeStep(e))
         return
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowLeft' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'left', e.repeat)
+        handleMoveBlock(selectedBlockId, 'left', e.repeat, getCanvasNudgeStep(e))
         return
       }
       if (isCanvasNudgeShortcut && e.key === 'ArrowRight' && selectedBlockId) {
         e.preventDefault()
-        handleMoveBlock(selectedBlockId, 'right', e.repeat)
+        handleMoveBlock(selectedBlockId, 'right', e.repeat, getCanvasNudgeStep(e))
         return
       }
       if (e.key === 'ArrowUp' && selectedBlockId) {

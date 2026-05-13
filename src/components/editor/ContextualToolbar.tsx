@@ -146,10 +146,10 @@ export function ContextualToolbar({
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="text-[10px] text-text3 px-1.5 whitespace-nowrap select-none">
-              Alt + ↑↓←→ · Alt+0
+              Alt + ↑↓←→ · Shift+Alt = 40px · Alt+0
             </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom"><p>Mover bloco</p></TooltipContent>
+          <TooltipContent side="bottom"><p>Mover bloco: 8px ou 40px com Shift</p></TooltipContent>
         </Tooltip>
       </TooltipProvider>
 

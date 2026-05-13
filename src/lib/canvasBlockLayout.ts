@@ -26,6 +26,7 @@ export type CanvasPageLayerState = {
 
 export type CanvasNudgeKeyLike = {
   altKey: boolean
+  shiftKey?: boolean
   key: string
   repeat?: boolean
 }
@@ -54,6 +55,8 @@ const DEFAULT_LAYOUT: CanvasBlockLayout = {
 const MAX_CANVAS_BLOCK_OFFSET_X = 320
 const MAX_CANVAS_BLOCK_OFFSET_Y = 320
 const MAX_CANVAS_BLOCK_PAGE_OFFSET = 8
+const DEFAULT_CANVAS_NUDGE_STEP = 8
+const FAST_CANVAS_NUDGE_STEP = 40
 const DEFAULT_NUDGE_REPEAT_INTERVAL_MS = 48
 const DEFAULT_PAGE_BOUNDARY_SAFE_INSET = 24
 
@@ -317,6 +320,10 @@ export function isCanvasNudgeKey(event: CanvasNudgeKeyLike): boolean {
     event.key === 'ArrowLeft' ||
     event.key === 'ArrowRight'
   )
+}
+
+export function getCanvasNudgeStep(event: CanvasNudgeKeyLike): number {
+  return event.shiftKey ? FAST_CANVAS_NUDGE_STEP : DEFAULT_CANVAS_NUDGE_STEP
 }
 
 export function shouldApplyCanvasNudgeKey({
