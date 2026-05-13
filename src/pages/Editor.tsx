@@ -4916,6 +4916,12 @@ ${pagesHtml}
     : typeof activeTablatureRenderData.tab === 'string' && activeTablatureRenderData.tab.trim()
       ? activeTablatureRenderData.tab.split('\n')
       : []
+  const canvasRulerGutter = showRulers ? 28 : 0
+  const canvasBaseWidth = 794 + canvasRulerGutter
+  const canvasBaseHeight = (canvasPages.length * 1123)
+    + (Math.max(canvasPages.length - 1, 0) * 32)
+    + canvasRulerGutter
+    + 48
 
   return (
     <div className="h-screen flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -5390,18 +5396,25 @@ ${pagesHtml}
             </TooltipProvider>
           </div>
 
-          {/* 7.1 — Grid réguas + canvas (tudo dentro do mesmo scale) */}
+          {/* 7.1 — Grid réguas + canvas (layout já considera o zoom visual) */}
+          <div
+            style={{
+              width: `${canvasBaseWidth * zoom}px`,
+              height: `${canvasBaseHeight * zoom}px`,
+              marginLeft: 'auto',
+              marginRight: 'auto',
+              position: 'relative',
+            }}
+          >
           <div style={{
             display: 'grid',
             gridTemplateColumns: showRulers ? '24px 1fr' : '1fr',
             gridTemplateRows: showRulers ? '24px 1fr' : '1fr',
             columnGap: showRulers ? '4px' : 0,
             rowGap: showRulers ? '4px' : 0,
-            width: 'fit-content',
-            marginLeft: 'auto',
-            marginRight: 'auto',
+            width: `${canvasBaseWidth}px`,
             transform: `scale(${zoom})`,
-            transformOrigin: 'top center',
+            transformOrigin: 'top left',
           }}>
             {/* Régua horizontal */}
             {showRulers && (
@@ -5711,6 +5724,7 @@ ${pagesHtml}
             })}
           </div>
           </div>{/* fecha grid réguas+canvas */}
+          </div>
         </EditorCanvas>
         <MusicSnapshotPreheater
           blocks={blocks}
