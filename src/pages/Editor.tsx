@@ -2314,6 +2314,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (session.commitTimer) window.clearTimeout(session.commitTimer)
     canvasNudgeSessionRef.current = null
 
+    setBlocks(session.latestBlocks)
     commitBlocksHistory(session.beforeBlocks, session.latestBlocks)
 
     void updateMaterialBlockRpc({
@@ -2323,11 +2324,21 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       toast.error('Erro ao mover bloco: ' + (error?.message ?? 'Erro desconhecido'))
       refetch()
     })
-  }, [commitBlocksHistory, refetch])
+  }, [commitBlocksHistory, refetch, setBlocks])
 
   useEffect(() => () => {
     const session = canvasNudgeSessionRef.current
     if (session?.commitTimer) window.clearTimeout(session.commitTimer)
+  }, [])
+
+  const applyCanvasNudgePreview = useCallback((blockId: string, renderData: Record<string, unknown> | null) => {
+    const element = canvasRefs.current[blockId]
+    if (!element) return
+
+    const layoutStyle = canvasBlockLayoutToCSS(renderData)
+    element.style.position = typeof layoutStyle.position === 'string' ? layoutStyle.position : ''
+    element.style.transform = typeof layoutStyle.transform === 'string' ? layoutStyle.transform : ''
+    element.style.zIndex = layoutStyle.zIndex != null ? String(layoutStyle.zIndex) : ''
   }, [])
 
   // Deslocar bloco em passos pequenos no canvas. Repeats do teclado sao agrupados em um unico historico/save.
@@ -2357,14 +2368,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     blocksRef.current = result.blocks
     canvasNudgeSessionRef.current = activeSession
 
-    setBlocks(result.blocks)
+    applyCanvasNudgePreview(blockId, result.renderData)
     setSelectedBlockId(blockId)
 
     if (activeSession.commitTimer) window.clearTimeout(activeSession.commitTimer)
     activeSession.commitTimer = window.setTimeout(() => {
       flushCanvasNudgeSession(activeSession)
     }, 350)
-  }, [blocksRef, flushCanvasNudgeSession, setBlocks, setSelectedBlockId])
+  }, [applyCanvasNudgePreview, blocksRef, flushCanvasNudgeSession, setSelectedBlockId])
 
   const handleResetBlockPosition = useCallback(async (blockId: string) => {
     flushCanvasNudgeSession()
