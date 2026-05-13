@@ -105,6 +105,7 @@ import {
   hasCanvasBlockLayoutOffset,
   isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
+  resetCanvasBlockLayout,
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
@@ -2364,6 +2365,27 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       flushCanvasNudgeSession(activeSession)
     }, 350)
   }, [blocksRef, flushCanvasNudgeSession, setBlocks, setSelectedBlockId])
+
+  const handleResetBlockPosition = useCallback(async (blockId: string) => {
+    flushCanvasNudgeSession()
+
+    const currentBlocks = blocksRef.current
+    const result = resetCanvasBlockLayout(currentBlocks, blockId)
+    if (!result.changed) return
+
+    setBlocksWithHistory(result.blocks)
+    setSelectedBlockId(blockId)
+
+    try {
+      await updateMaterialBlockRpc({
+        blockId,
+        renderData: result.renderData,
+      })
+    } catch (error: any) {
+      toast.error('Erro ao resetar posicao: ' + (error?.message ?? 'Erro desconhecido'))
+      refetch()
+    }
+  }, [blocksRef, flushCanvasNudgeSession, refetch, setBlocksWithHistory, setSelectedBlockId])
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
@@ -4664,6 +4686,11 @@ ${pagesHtml}
         return
       }
       if (inlineEditingBlockId) return
+      if (e.altKey && e.key === '0' && selectedBlockId) {
+        e.preventDefault()
+        void handleResetBlockPosition(selectedBlockId)
+        return
+      }
       if (isCanvasNudgeShortcut && e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
         handleMoveBlock(selectedBlockId, 'up')
@@ -4700,7 +4727,7 @@ ${pagesHtml}
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {

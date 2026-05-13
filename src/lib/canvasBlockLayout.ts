@@ -34,16 +34,30 @@ const DEFAULT_LAYOUT: CanvasBlockLayout = {
   offsetY: 0,
 }
 
+const MAX_CANVAS_BLOCK_OFFSET_X = 320
+const MAX_CANVAS_BLOCK_OFFSET_Y = 320
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function clampCanvasBlockLayout(layout: CanvasBlockLayout): CanvasBlockLayout {
+  return {
+    offsetX: clampNumber(layout.offsetX, -MAX_CANVAS_BLOCK_OFFSET_X, MAX_CANVAS_BLOCK_OFFSET_X),
+    offsetY: clampNumber(layout.offsetY, -MAX_CANVAS_BLOCK_OFFSET_Y, MAX_CANVAS_BLOCK_OFFSET_Y),
+  }
+}
+
 export function getCanvasBlockLayout(renderData: Record<string, unknown> | null | undefined): CanvasBlockLayout {
   const rawLayout = renderData?.layout
   const layout = rawLayout && typeof rawLayout === 'object' && !Array.isArray(rawLayout)
     ? rawLayout as Partial<CanvasBlockLayout>
     : {}
 
-  return {
+  return clampCanvasBlockLayout({
     offsetX: Number.isFinite(layout.offsetX) ? Number(layout.offsetX) : DEFAULT_LAYOUT.offsetX,
     offsetY: Number.isFinite(layout.offsetY) ? Number(layout.offsetY) : DEFAULT_LAYOUT.offsetY,
-  }
+  })
 }
 
 export function nudgeCanvasBlockLayout<TBlock extends LayoutEditableBlock>(
@@ -67,9 +81,47 @@ export function nudgeCanvasBlockLayout<TBlock extends LayoutEditableBlock>(
   if (direction === 'left') nextLayout.offsetX -= step
   if (direction === 'right') nextLayout.offsetX += step
 
+  const clampedLayout = clampCanvasBlockLayout(nextLayout)
+
   const nextRenderData = {
     ...currentRenderData,
-    layout: nextLayout,
+    layout: clampedLayout,
+  }
+
+  const nextBlock = {
+    ...block,
+    render_data: nextRenderData,
+  }
+
+  const nextBlocks = [...blocks]
+  nextBlocks[blockIndex] = nextBlock
+
+  return {
+    blocks: nextBlocks,
+    changed: true,
+    renderData: nextRenderData,
+  }
+}
+
+export function resetCanvasBlockLayout<TBlock extends LayoutEditableBlock>(
+  blocks: TBlock[],
+  blockId: string,
+): CanvasLayoutNudgeResult<TBlock> {
+  const blockIndex = blocks.findIndex(block => block.id === blockId)
+  if (blockIndex < 0) {
+    return { blocks, changed: false, renderData: null }
+  }
+
+  const block = blocks[blockIndex]
+  const currentRenderData = block.render_data ?? {}
+  const currentLayout = getCanvasBlockLayout(currentRenderData)
+  if (currentLayout.offsetX === 0 && currentLayout.offsetY === 0) {
+    return { blocks, changed: false, renderData: currentRenderData }
+  }
+
+  const nextRenderData = {
+    ...currentRenderData,
+    layout: { ...currentLayout, offsetX: 0, offsetY: 0 },
   }
 
   const nextBlock = {

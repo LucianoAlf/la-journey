@@ -9,6 +9,7 @@ import {
   getCanvasBlockLayout,
   isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
+  resetCanvasBlockLayout,
 } from '../canvasBlockLayout'
 
 type TestBlock = {
@@ -90,6 +91,26 @@ assert(
 assert(
   !isCanvasNudgeKey({ altKey: false, key: 'ArrowDown', repeat: true }),
   'nao trata seta repetida sem Alt como nudge do canvas',
+)
+
+const clampedMove = nudgeCanvasBlockLayout(
+  [{ id: 'far', render_data: { layout: { offsetX: 0, offsetY: -320 } } }],
+  'far',
+  'up',
+)
+assert(
+  getCanvasBlockLayout(clampedMove.renderData).offsetY === -320,
+  'limita deslocamento vertical para o bloco nao sumir do canvas',
+)
+
+const resetMove = resetCanvasBlockLayout([
+  { id: 'far', render_data: { layout: { offsetX: 24, offsetY: -320 }, style: { color: 'red' } } },
+], 'far')
+assert(
+  resetMove.changed &&
+  getCanvasBlockLayout(resetMove.renderData).offsetX === 0 &&
+  getCanvasBlockLayout(resetMove.renderData).offsetY === 0,
+  'reseta deslocamento visual preservando render_data',
 )
 
 if (failed > 0) {
