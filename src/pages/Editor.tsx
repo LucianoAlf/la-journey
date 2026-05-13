@@ -2,7 +2,7 @@ import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMem
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ArrowLeft, FloppyDisk, FilePdf, TextAa, Article,
+  ArrowLeft, FloppyDisk, TextAa, Article,
   Guitar, MusicNotes, Lightbulb, PencilCircle, ListNumbers,
   TextHOne, LineSegment, Image as ImageIcon, Plus, Trash,
   SpinnerGap, PencilSimple, ArrowCounterClockwise,
@@ -5120,6 +5120,9 @@ ${pagesHtml}
             }
           </Button>
 
+          <Button variant="ghost" size="sm" onClick={handleDownloadPDF} title="Baixar PDF">
+            <DownloadSimple size={16} />
+          </Button>
           <Button variant="ghost" size="sm" onClick={handlePrint} title="Imprimir / PDF">
             <Printer size={16} />
           </Button>
@@ -7452,15 +7455,21 @@ ${pagesHtml}
                 </>
               )}
 
-              <hr className="border-border my-4" />
-
-              {/* Ações */}
-              <div className="prop-section">
-                <div className="prop-label">Ações</div>
-                <div className="flex flex-col gap-1.5">
+              <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-4 border-t border-border bg-surface/95 p-3 shadow-[0_-10px_24px_rgba(15,23,42,0.10)] backdrop-blur">
+                {selectedBlock.original_content && selectedBlock.is_edited && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mb-2 h-8 w-full justify-center text-[11px]"
+                    onClick={handleRevertBlock}
+                  >
+                    <ArrowCounterClockwise size={14} /> Reverter original
+                  </Button>
+                )}
+                <div className="grid grid-cols-[1fr_auto_auto] gap-2">
                   <Button
                     size="sm"
-                    className="w-full justify-center bg-azul-escuro hover:bg-azul"
+                    className="h-9 justify-center bg-azul-escuro text-[11px] hover:bg-azul"
                     onClick={handleSaveBlock}
                     disabled={saving}
                   >
@@ -7468,43 +7477,45 @@ ${pagesHtml}
                     Salvar Alterações
                   </Button>
 
-                  {selectedBlock.original_content && selectedBlock.is_edited && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full justify-center"
-                      onClick={handleRevertBlock}
-                    >
-                      <ArrowCounterClockwise size={14} /> Reverter Original
-                    </Button>
-                  )}
-
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-center gap-1.5"
+                    className="h-9 w-10 justify-center p-0"
                     onClick={() => handleDuplicateBlock(selectedBlock.id)}
+                    title="Duplicar bloco"
                   >
-                    <Copy size={14} /> Duplicar Bloco
+                    <Copy size={15} />
                   </Button>
-                </div>
-              </div>
 
-              <hr className="border-border my-4" />
-
-              {/* Exportar */}
-              <div className="prop-section">
-                <div className="prop-label">Exportar material</div>
-                <div className="flex flex-col gap-1.5">
-                  <Button variant="ghost" size="sm" className="w-full justify-center" onClick={handleDownloadPDF}>
-                    <DownloadSimple size={14} /> Baixar PDF
-                  </Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-center" onClick={handlePrint}>
-                    <FilePdf size={14} /> Imprimir / PDF
-                  </Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-center" onClick={handleExportHTML}>
-                    <Code size={14} /> Ver HTML
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-10 justify-center border-vermelho/30 p-0 text-vermelho hover:bg-vermelho/10"
+                        title="Excluir bloco"
+                      >
+                        <Trash size={15} />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-surface border-border">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir bloco?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta ação remove o bloco selecionado do material. Você ainda pode desfazer pelo histórico enquanto estiver nesta sessão.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-vermelho text-white hover:bg-vermelho/80"
+                          onClick={() => handleDeleteBlock(selectedBlock.id)}
+                        >
+                          Excluir
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </>
