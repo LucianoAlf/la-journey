@@ -118,104 +118,103 @@ export function ContextualToolbar({
 
       {showLayoutControls && (
         <>
-          <Popover>
-            <PopoverTrigger asChild>
-              <TooltipProvider delayDuration={300}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+          <TooltipProvider delayDuration={300}>
+            <Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-7 w-7 p-0" data-testid="canvas-toolbar-layout-controls">
                       <ListNumbers size={14} />
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom"><p>Layout e paginacao</p></TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </PopoverTrigger>
-            <PopoverContent className="w-72 p-3" side="bottom">
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[11px] font-semibold text-text">Layout do bloco</p>
-                  <p className="mt-0.5 text-[9px] leading-snug text-text3">Espaco e paginacao aparecem no PDF.</p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
-                    <Label className="text-[10px] text-text3">Antes</Label>
-                    <input
-                      type="range"
-                      min={CANVAS_BLOCK_SPACING_MIN}
-                      max={CANVAS_BLOCK_SPACING_MAX}
-                      step={4}
-                      value={blockStyle.margin.top}
-                      onChange={(event) => onStyleChange(
-                        createCanvasBlockMarginUpdate(blockStyle, 'top', Number(event.target.value)),
-                      )}
-                      className="h-1 accent-accent"
-                    />
-                    <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.top}px</span>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom"><p>Layout e paginacao</p></TooltipContent>
+              </Tooltip>
+              <PopoverContent className="w-72 p-3" side="bottom">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[11px] font-semibold text-text">Layout do bloco</p>
+                    <p className="mt-0.5 text-[9px] leading-snug text-text3">Espaco e paginacao aparecem no PDF.</p>
                   </div>
-                  <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
-                    <Label className="text-[10px] text-text3">Depois</Label>
-                    <input
-                      type="range"
-                      min={CANVAS_BLOCK_SPACING_MIN}
-                      max={CANVAS_BLOCK_SPACING_MAX}
-                      step={4}
-                      value={blockStyle.margin.bottom}
-                      onChange={(event) => onStyleChange(
-                        createCanvasBlockMarginUpdate(blockStyle, 'bottom', Number(event.target.value)),
-                      )}
-                      className="h-1 accent-accent"
-                    />
-                    <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.bottom}px</span>
-                  </div>
-                </div>
 
-                <Separator className="bg-border/70" />
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Label className="text-[10px] font-semibold text-text">Nova pagina</Label>
-                      <p className="mt-0.5 text-[9px] text-text3">Forca topo da proxima A4.</p>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
+                      <Label className="text-[10px] text-text3">Antes</Label>
+                      <input
+                        type="range"
+                        min={CANVAS_BLOCK_SPACING_MIN}
+                        max={CANVAS_BLOCK_SPACING_MAX}
+                        step={4}
+                        value={blockStyle.margin.top}
+                        onChange={(event) => onStyleChange(
+                          createCanvasBlockMarginUpdate(blockStyle, 'top', Number(event.target.value)),
+                        )}
+                        className="h-1 accent-accent"
+                      />
+                      <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.top}px</span>
                     </div>
-                    <Switch
-                      size="sm"
-                      checked={paginationPolicy.startOnNewPage}
-                      onCheckedChange={(checked) => onPaginationChange({ startOnNewPage: checked })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Label className="text-[10px] font-semibold text-text">Manter junto</Label>
-                      <p className="mt-0.5 text-[9px] text-text3">Evita separar do proximo bloco.</p>
+                    <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
+                      <Label className="text-[10px] text-text3">Depois</Label>
+                      <input
+                        type="range"
+                        min={CANVAS_BLOCK_SPACING_MIN}
+                        max={CANVAS_BLOCK_SPACING_MAX}
+                        step={4}
+                        value={blockStyle.margin.bottom}
+                        onChange={(event) => onStyleChange(
+                          createCanvasBlockMarginUpdate(blockStyle, 'bottom', Number(event.target.value)),
+                        )}
+                        className="h-1 accent-accent"
+                      />
+                      <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.bottom}px</span>
                     </div>
-                    <Switch
-                      size="sm"
-                      checked={paginationPolicy.keepWithNext}
-                      onCheckedChange={(checked) => onPaginationChange({ keepWithNext: checked })}
-                    />
                   </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Label className="text-[10px] font-semibold text-text">Permitir quebra</Label>
-                      <p className="mt-0.5 text-[9px] text-text3">Divide textos longos quando seguro.</p>
+
+                  <Separator className="bg-border/70" />
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="text-[10px] font-semibold text-text">Nova pagina</Label>
+                        <p className="mt-0.5 text-[9px] text-text3">Forca topo da proxima A4.</p>
+                      </div>
+                      <Switch
+                        size="sm"
+                        checked={paginationPolicy.startOnNewPage}
+                        onCheckedChange={(checked) => onPaginationChange({ startOnNewPage: checked })}
+                      />
                     </div>
-                    <Switch
-                      size="sm"
-                      checked={paginationPolicy.allowSplit}
-                      disabled={!canSplitBlock}
-                      onCheckedChange={(checked) => onPaginationChange({
-                        allowSplit: checked,
-                        behavior: checked ? 'breakable' : 'unbreakable',
-                      })}
-                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="text-[10px] font-semibold text-text">Manter junto</Label>
+                        <p className="mt-0.5 text-[9px] text-text3">Evita separar do proximo bloco.</p>
+                      </div>
+                      <Switch
+                        size="sm"
+                        checked={paginationPolicy.keepWithNext}
+                        onCheckedChange={(checked) => onPaginationChange({ keepWithNext: checked })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="text-[10px] font-semibold text-text">Permitir quebra</Label>
+                        <p className="mt-0.5 text-[9px] text-text3">Divide textos longos quando seguro.</p>
+                      </div>
+                      <Switch
+                        size="sm"
+                        checked={paginationPolicy.allowSplit}
+                        disabled={!canSplitBlock}
+                        onCheckedChange={(checked) => onPaginationChange({
+                          allowSplit: checked,
+                          behavior: checked ? 'breakable' : 'unbreakable',
+                        })}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-
+              </PopoverContent>
+            </Popover>
+          </TooltipProvider>
           <Separator orientation="vertical" className="h-5" />
         </>
       )}
