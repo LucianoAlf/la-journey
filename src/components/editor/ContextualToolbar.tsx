@@ -4,7 +4,6 @@ import { Separator } from '@/components/ui/separator'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   BookmarkSimple, Copy, Trash, ArrowsOutSimple, PaintBucket, MagicWand,
   PencilSimple, MusicNotes, Guitar, PianoKeys, Image as ImageIcon, X, ListNumbers, ArrowCounterClockwise,
@@ -90,6 +89,7 @@ export function ContextualToolbar({
   mode = 'selected',
 }: ContextualToolbarProps) {
   const [showBgPicker, setShowBgPicker] = useState(false)
+  const [showPaddingPicker, setShowPaddingPicker] = useState(false)
   const [showLayoutPanel, setShowLayoutPanel] = useState(false)
   const actions = getCanvasToolbarActions(blockType)
   const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
@@ -397,86 +397,104 @@ export function ContextualToolbar({
         <Separator orientation="vertical" className="h-5" />
       )}
 
-      <Popover open={showBgPicker} onOpenChange={setShowBgPicker}>
-        <PopoverTrigger asChild>
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <PaintBucket size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom"><p>Cor de fundo</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-2" side="bottom">
-          <div className="grid grid-cols-7 gap-1">
-            {QUICK_BG_COLORS.map((color) => (
-              <button
-                key={color}
-                onClick={() => {
-                  onStyleChange({
-                    background: {
-                      type: color === 'transparent' ? 'none' : 'solid',
-                      color,
-                      gradientFrom: '#ffffff',
-                      gradientTo: '#f0f0f0',
-                      gradientDirection: 'to bottom',
-                    },
-                  })
-                  setShowBgPicker(false)
-                }}
-                className="w-6 h-6 rounded border border-border/50 hover:scale-110
-                           transition-transform hover:ring-2 hover:ring-accent/30"
-                style={{
-                  backgroundColor: color === 'transparent' ? 'white' : color,
-                  backgroundImage: color === 'transparent'
-                    ? 'repeating-conic-gradient(#ddd 0% 25%, transparent 0% 50%)'
-                    : 'none',
-                  backgroundSize: '8px 8px',
-                }}
-              />
-            ))}
+      <div className="relative flex items-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Cor de fundo"
+          data-testid="canvas-toolbar-background"
+          onClick={() => setShowBgPicker((value) => !value)}
+        >
+          <PaintBucket size={14} />
+        </Button>
+        {showBgPicker && (
+          <div
+            className="absolute left-0 top-full z-[60] mt-2 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            data-testid="canvas-toolbar-background-panel"
+          >
+            <div className="grid grid-cols-7 gap-1">
+              {QUICK_BG_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={color === 'transparent' ? 'Sem fundo' : `Fundo ${color}`}
+                  onClick={() => {
+                    onStyleChange({
+                      background: {
+                        type: color === 'transparent' ? 'none' : 'solid',
+                        color,
+                        gradientFrom: '#ffffff',
+                        gradientTo: '#f0f0f0',
+                        gradientDirection: 'to bottom',
+                      },
+                    })
+                    setShowBgPicker(false)
+                  }}
+                  className="h-6 w-6 rounded border border-border/50 transition-transform hover:scale-110 hover:ring-2 hover:ring-accent/30"
+                  style={{
+                    backgroundColor: color === 'transparent' ? 'white' : color,
+                    backgroundImage: color === 'transparent'
+                      ? 'repeating-conic-gradient(#ddd 0% 25%, transparent 0% 50%)'
+                      : 'none',
+                    backgroundSize: '8px 8px',
+                  }}
+                />
+              ))}
+            </div>
           </div>
-        </PopoverContent>
-      </Popover>
+        )}
+      </div>
 
       {/* Padding rápido */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <ArrowsOutSimple size={14} />
+      <div className="relative flex items-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Espacamento interno"
+          data-testid="canvas-toolbar-padding"
+          onClick={() => setShowPaddingPicker((value) => !value)}
+        >
+          <ArrowsOutSimple size={14} />
+        </Button>
+        {showPaddingPicker && (
+          <div
+            className="absolute left-0 top-full z-[60] mt-2 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            data-testid="canvas-toolbar-padding-panel"
+          >
+            <div className="flex gap-1">
+              {PADDING_OPTIONS.map((opt) => (
+                <Button
+                  key={opt.label}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[10px]"
+                  onClick={() => {
+                    onStyleChange({
+                      padding: {
+                        top: opt.value, right: opt.value,
+                        bottom: opt.value, left: opt.value,
+                        linked: true,
+                      },
+                    })
+                    setShowPaddingPicker(false)
+                  }}
+                >
+                  {opt.label}
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom"><p>Espaçamento</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-2" side="bottom">
-          <div className="flex gap-1">
-            {PADDING_OPTIONS.map((opt) => (
-              <Button
-                key={opt.label}
-                variant="ghost" size="sm"
-                className="h-7 px-2 text-[10px]"
-                onClick={() => onStyleChange({
-                  padding: {
-                    top: opt.value, right: opt.value,
-                    bottom: opt.value, left: opt.value,
-                    linked: true,
-                  },
-                })}
-              >
-                {opt.label}
-              </Button>
-            ))}
+              ))}
+            </div>
           </div>
-        </PopoverContent>
-      </Popover>
+        )}
+      </div>
 
       {/* IA Reescrever — só para blocos de texto */}
       {['text', 'tip', 'exercise', 'title'].includes(blockType) && onAIRewrite && (
