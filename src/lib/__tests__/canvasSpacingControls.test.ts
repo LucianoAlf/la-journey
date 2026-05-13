@@ -6,7 +6,9 @@
 import {
   CANVAS_BLOCK_SPACING_MAX,
   CANVAS_BLOCK_SPACING_MIN,
+  createCanvasBlockLayoutReset,
   createCanvasBlockMarginUpdate,
+  hasCanvasBlockLayoutAdjustments,
 } from '../canvasSpacingControls'
 
 let passed = 0
@@ -54,6 +56,47 @@ const maxUpdate = createCanvasBlockMarginUpdate(null, 'bottom', 200)
 assert(
   maxUpdate.margin?.bottom === CANVAS_BLOCK_SPACING_MAX,
   'limita espacamento maximo',
+)
+
+assert(
+  !hasCanvasBlockLayoutAdjustments(
+    { margin: { top: 0, bottom: 8 } },
+    { behavior: 'breakable', keepWithNext: false, startOnNewPage: false, allowSplit: true, source: 'default' },
+  ),
+  'nao marca layout padrao como ajuste manual',
+)
+
+assert(
+  hasCanvasBlockLayoutAdjustments(
+    { margin: { top: 12, bottom: 8 } },
+    { behavior: 'breakable', keepWithNext: false, startOnNewPage: false, allowSplit: true, source: 'default' },
+  ),
+  'marca espacamento alterado como ajuste manual',
+)
+
+assert(
+  hasCanvasBlockLayoutAdjustments(
+    { margin: { top: 0, bottom: 8 } },
+    { behavior: 'breakable', keepWithNext: false, startOnNewPage: true, allowSplit: true, source: 'block' },
+  ),
+  'marca politica de paginacao alterada como ajuste manual',
+)
+
+const textReset = createCanvasBlockLayoutReset('text')
+assert(
+  textReset.style.margin?.top === 0 &&
+    textReset.style.margin?.bottom === 8 &&
+    textReset.pagination.behavior === 'breakable' &&
+    textReset.pagination.keepWithNext === false &&
+    textReset.pagination.startOnNewPage === false &&
+    textReset.pagination.allowSplit === true,
+  'gera reset padrao para bloco de texto',
+)
+
+const titleReset = createCanvasBlockLayoutReset('title')
+assert(
+  titleReset.pagination.keepWithNext === true && titleReset.pagination.allowSplit === false,
+  'gera reset padrao para titulo',
 )
 
 if (failed > 0) {

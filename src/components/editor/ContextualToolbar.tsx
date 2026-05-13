@@ -7,16 +7,19 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   BookmarkSimple, Copy, Trash, ArrowsOutSimple, PaintBucket, MagicWand,
-  PencilSimple, MusicNotes, Guitar, PianoKeys, Image as ImageIcon, X, ListNumbers,
+  PencilSimple, MusicNotes, Guitar, PianoKeys, Image as ImageIcon, X, ListNumbers, ArrowCounterClockwise,
 } from '@phosphor-icons/react'
 import type { BlockStyle } from '@/lib/blockStyles'
 import type { BlockPaginationPolicy } from '@/lib/sharedPagination'
 import {
   CANVAS_BLOCK_SPACING_MAX,
   CANVAS_BLOCK_SPACING_MIN,
+  createCanvasBlockLayoutReset,
   createCanvasBlockMarginUpdate,
+  hasCanvasBlockLayoutAdjustments,
 } from '@/lib/canvasSpacingControls'
 import { getCanvasToolbarActions, type CanvasToolbarMode, type CanvasToolbarPlacement } from '@/lib/editorCanvasInteraction'
+import { cn } from '@/lib/utils'
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   text: 'Texto',
@@ -91,6 +94,7 @@ export function ContextualToolbar({
   const actions = getCanvasToolbarActions(blockType)
   const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
   const layoutPanelPosition = position.placement === 'below' ? 'bottom-full mb-2' : 'top-full mt-2'
+  const hasLayoutAdjustments = hasCanvasBlockLayoutAdjustments(blockStyle, paginationPolicy)
 
   // Não mostrar para cover e page_break
   if (['cover', 'page_break'].includes(blockType)) return null
@@ -122,14 +126,21 @@ export function ContextualToolbar({
         <>
           <div className="relative flex items-center">
             <Button
+              type="button"
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0"
+              className={cn(
+                'relative h-7 w-7 p-0',
+                hasLayoutAdjustments && 'bg-accent/10 text-accent hover:bg-accent/15',
+              )}
               title="Layout e paginacao"
               data-testid="canvas-toolbar-layout-controls"
               onClick={() => setShowLayoutPanel((value) => !value)}
             >
               <ListNumbers size={14} />
+              {hasLayoutAdjustments && (
+                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" />
+              )}
             </Button>
 
             {showLayoutPanel && (
@@ -142,12 +153,12 @@ export function ContextualToolbar({
               <div className="space-y-3">
                 <div>
                   <p className="text-[11px] font-semibold text-text">Layout do bloco</p>
-                  <p className="mt-0.5 text-[9px] leading-snug text-text3">Espaco e paginacao aparecem no PDF.</p>
+                  <p className="mt-0.5 text-[9px] leading-snug text-text3">Ajustes deste bloco aparecem no PDF.</p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
-                    <Label className="text-[10px] text-text3">Antes</Label>
+                    <Label className="text-[10px] text-text3">Espaco antes</Label>
                     <input
                       type="range"
                       min={CANVAS_BLOCK_SPACING_MIN}
@@ -162,7 +173,7 @@ export function ContextualToolbar({
                     <span className="text-right font-mono text-[10px] text-text3">{blockStyle.margin.top}px</span>
                   </div>
                   <div className="grid grid-cols-[64px_1fr_38px] items-center gap-2">
-                    <Label className="text-[10px] text-text3">Depois</Label>
+                    <Label className="text-[10px] text-text3">Espaco depois</Label>
                     <input
                       type="range"
                       min={CANVAS_BLOCK_SPACING_MIN}
@@ -183,8 +194,8 @@ export function ContextualToolbar({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <Label className="text-[10px] font-semibold text-text">Nova pagina</Label>
-                      <p className="mt-0.5 text-[9px] text-text3">Forca topo da proxima A4.</p>
+                      <Label className="text-[10px] font-semibold text-text">Comecar em nova pagina</Label>
+                      <p className="mt-0.5 text-[9px] text-text3">Abre este bloco no topo da proxima A4.</p>
                     </div>
                     <Switch
                       size="sm"
@@ -195,7 +206,7 @@ export function ContextualToolbar({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <Label className="text-[10px] font-semibold text-text">Manter junto</Label>
-                      <p className="mt-0.5 text-[9px] text-text3">Evita separar do proximo bloco.</p>
+                      <p className="mt-0.5 text-[9px] text-text3">Evita separar este bloco do proximo.</p>
                     </div>
                     <Switch
                       size="sm"
@@ -206,7 +217,9 @@ export function ContextualToolbar({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <Label className="text-[10px] font-semibold text-text">Permitir quebra</Label>
-                      <p className="mt-0.5 text-[9px] text-text3">Divide textos longos quando seguro.</p>
+                      <p className="mt-0.5 text-[9px] text-text3">
+                        {canSplitBlock ? 'Divide textos longos quando seguro.' : 'Blocos visuais ficam inteiros no PDF.'}
+                      </p>
                     </div>
                     <Switch
                       size="sm"
@@ -219,6 +232,22 @@ export function ContextualToolbar({
                     />
                   </div>
                 </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-full justify-center gap-1.5 border border-border/70 text-[10px] text-text3 hover:bg-bg2 hover:text-text"
+                  disabled={!hasLayoutAdjustments}
+                  onClick={() => {
+                    const reset = createCanvasBlockLayoutReset(blockType)
+                    onStyleChange(reset.style)
+                    onPaginationChange(reset.pagination)
+                  }}
+                >
+                  <ArrowCounterClockwise size={12} />
+                  Remover ajustes deste bloco
+                </Button>
               </div>
               </div>
             )}
