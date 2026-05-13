@@ -2401,7 +2401,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (activeSession.commitTimer) window.clearTimeout(activeSession.commitTimer)
     activeSession.commitTimer = window.setTimeout(() => {
       flushCanvasNudgeSession(activeSession)
-    }, 350)
+    }, 1600)
   }, [applyCanvasNudgePreview, blocksRef, flushCanvasNudgeSession, setSelectedBlockId])
 
   const handleResetBlockPosition = useCallback(async (blockId: string) => {
@@ -4763,8 +4763,30 @@ ${pagesHtml}
       }
     }
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (
+        e.key === 'Alt' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight'
+      ) {
+        flushCanvasNudgeSession()
+      }
+    }
+
+    const handleBlur = () => {
+      flushCanvasNudgeSession()
+    }
+
     window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    return () => {
+      window.removeEventListener('keydown', handler)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+    }
   }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
 
   // Persistir estado da sidebar no localStorage
