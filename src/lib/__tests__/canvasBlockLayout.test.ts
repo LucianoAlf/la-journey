@@ -7,6 +7,7 @@ import {
   canvasPageLayerToCSS,
   canvasBlockLayoutToCSS,
   getCanvasBlockLayout,
+  isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
 } from '../canvasBlockLayout'
 
@@ -79,6 +80,16 @@ const idlePageCss = canvasPageLayerToCSS({ hasShiftedBlock: false, hasSelectedBl
 assert(
   Object.keys(idlePageCss).length === 0,
   'mantem paginas sem deslocamento no fluxo normal',
+)
+
+assert(
+  isCanvasNudgeKey({ altKey: true, key: 'ArrowDown', repeat: true }),
+  'permite repeticao de tecla para nudge continuo com Alt',
+)
+
+assert(
+  !isCanvasNudgeKey({ altKey: false, key: 'ArrowDown', repeat: true }),
+  'nao trata seta repetida sem Alt como nudge do canvas',
 )
 
 if (failed > 0) {

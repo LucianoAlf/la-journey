@@ -23,6 +23,12 @@ export type CanvasPageLayerState = {
   hasSelectedBlock: boolean
 }
 
+export type CanvasNudgeKeyLike = {
+  altKey: boolean
+  key: string
+  repeat?: boolean
+}
+
 const DEFAULT_LAYOUT: CanvasBlockLayout = {
   offsetX: 0,
   offsetY: 0,
@@ -104,4 +110,13 @@ export function canvasPageLayerToCSS(state: CanvasPageLayerState): CSSProperties
     overflow: 'visible',
     zIndex: state.hasSelectedBlock ? 30 : 10,
   }
+}
+
+export function isCanvasNudgeKey(event: CanvasNudgeKeyLike): boolean {
+  return event.altKey && (
+    event.key === 'ArrowUp' ||
+    event.key === 'ArrowDown' ||
+    event.key === 'ArrowLeft' ||
+    event.key === 'ArrowRight'
+  )
 }

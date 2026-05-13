@@ -103,6 +103,7 @@ import {
   canvasBlockLayoutToCSS,
   canvasPageLayerToCSS,
   hasCanvasBlockLayoutOffset,
+  isCanvasNudgeKey,
   nudgeCanvasBlockLayout,
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
@@ -127,6 +128,14 @@ type EditorHistoryEntry = {
   patches: EditorBlockPatch<EditorBlock>[]
   beforeOrder: string[]
   afterOrder: string[]
+}
+
+type CanvasNudgeSession = {
+  blockId: string
+  beforeBlocks: EditorBlock[]
+  latestBlocks: EditorBlock[]
+  latestRenderData: Record<string, unknown> | null
+  commitTimer: number | null
 }
 
 // --- Tipos internos ---
@@ -1261,6 +1270,10 @@ function useEditorBlocks() {
     })
   }, [createHistoryEntry, pushHistoryEntry])
 
+  const commitBlocksHistory = useCallback((before: EditorBlock[], after: EditorBlock[]) => {
+    pushHistoryEntry(createHistoryEntry(before, after))
+  }, [createHistoryEntry, pushHistoryEntry])
+
   const setBlockWithHistory = useCallback((
     blockId: string,
     updater: (block: EditorBlock) => EditorBlock,
@@ -1335,6 +1348,7 @@ function useEditorBlocks() {
     clearHistory,
     canRedo,
     canUndo,
+    commitBlocksHistory,
     handleRedo,
     handleUndo,
     pushSnapshot,
@@ -1461,6 +1475,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     clearHistory,
     canRedo,
     canUndo,
+    commitBlocksHistory,
     handleRedo,
     handleUndo,
     pushSnapshot,
@@ -1485,6 +1500,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const musicRendererSnapshotCacheRef = useRef<Map<string, MusicSnapshotCacheEntry>>(new Map())
   const selectedBlockIdRef = useRef<string | null>(null)
   selectedBlockIdRef.current = selectedBlockId
+  const canvasNudgeSessionRef = useRef<CanvasNudgeSession | null>(null)
 
   // Edição inline no canvas
   const [inlineEditingBlockId, setInlineEditingBlockId] = useState<string | null>(null)
@@ -2292,27 +2308,62 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     }
   }, [blocks, blocksRef, materialId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
 
-  // Deslocar bloco em passos pequenos no canvas
-  const handleMoveBlock = useCallback(async (blockId: string, direction: CanvasNudgeDirection) => {
-    const block = blocks.find(item => item.id === blockId)
-    if (!block || ['cover', 'page_break'].includes(block.block_type)) return
+  const flushCanvasNudgeSession = useCallback((session = canvasNudgeSessionRef.current) => {
+    if (!session) return
+    if (session.commitTimer) window.clearTimeout(session.commitTimer)
+    canvasNudgeSessionRef.current = null
 
-    const result = nudgeCanvasBlockLayout(blocks, blockId, direction)
-    if (!result.changed) return
+    commitBlocksHistory(session.beforeBlocks, session.latestBlocks)
 
-    setBlocksWithHistory(result.blocks)
-    setSelectedBlockId(blockId)
-
-    try {
-      await updateMaterialBlockRpc({
-        blockId,
-        renderData: result.renderData,
-      })
-    } catch (error: any) {
+    void updateMaterialBlockRpc({
+      blockId: session.blockId,
+      renderData: session.latestRenderData,
+    }).catch((error: any) => {
       toast.error('Erro ao mover bloco: ' + (error?.message ?? 'Erro desconhecido'))
       refetch()
+    })
+  }, [commitBlocksHistory, refetch])
+
+  useEffect(() => () => {
+    const session = canvasNudgeSessionRef.current
+    if (session?.commitTimer) window.clearTimeout(session.commitTimer)
+  }, [])
+
+  // Deslocar bloco em passos pequenos no canvas. Repeats do teclado sao agrupados em um unico historico/save.
+  const handleMoveBlock = useCallback((blockId: string, direction: CanvasNudgeDirection) => {
+    const currentBlocks = blocksRef.current
+    const block = currentBlocks.find(item => item.id === blockId)
+    if (!block || ['cover', 'page_break'].includes(block.block_type)) return
+
+    const result = nudgeCanvasBlockLayout(currentBlocks, blockId, direction)
+    if (!result.changed) return
+
+    const existingSession = canvasNudgeSessionRef.current
+    if (existingSession && existingSession.blockId !== blockId) {
+      flushCanvasNudgeSession(existingSession)
     }
-  }, [blocks, refetch, setBlocksWithHistory, setSelectedBlockId])
+
+    const activeSession = canvasNudgeSessionRef.current ?? {
+      blockId,
+      beforeBlocks: currentBlocks,
+      latestBlocks: currentBlocks,
+      latestRenderData: block.render_data ?? null,
+      commitTimer: null,
+    }
+
+    activeSession.latestBlocks = result.blocks
+    activeSession.latestRenderData = result.renderData
+    blocksRef.current = result.blocks
+    canvasNudgeSessionRef.current = activeSession
+
+    setBlocks(result.blocks)
+    setSelectedBlockId(blockId)
+
+    if (activeSession.commitTimer) window.clearTimeout(activeSession.commitTimer)
+    activeSession.commitTimer = window.setTimeout(() => {
+      flushCanvasNudgeSession(activeSession)
+    }, 350)
+  }, [blocksRef, flushCanvasNudgeSession, setBlocks, setSelectedBlockId])
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
@@ -4485,19 +4536,22 @@ ${pagesHtml}
   // --- Atalhos de teclado globais ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.repeat) return
+      const isCanvasNudgeShortcut = isCanvasNudgeKey(e)
+      if (e.repeat && !isCanvasNudgeShortcut) return
 
       const isEditingTarget = isTextInputTarget(e.target)
 
       // Ctrl+Z — Undo (funciona mesmo em inputs, exceto contentEditable)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
+        flushCanvasNudgeSession()
         handleUndo()
         return
       }
       // Ctrl+Y ou Ctrl+Shift+Z — Redo
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
+        flushCanvasNudgeSession()
         handleRedo()
         return
       }
@@ -4610,24 +4664,24 @@ ${pagesHtml}
         return
       }
       if (inlineEditingBlockId) return
-      if (e.altKey && e.key === 'ArrowUp' && selectedBlockId) {
+      if (isCanvasNudgeShortcut && e.key === 'ArrowUp' && selectedBlockId) {
         e.preventDefault()
-        void handleMoveBlock(selectedBlockId, 'up')
+        handleMoveBlock(selectedBlockId, 'up')
         return
       }
-      if (e.altKey && e.key === 'ArrowDown' && selectedBlockId) {
+      if (isCanvasNudgeShortcut && e.key === 'ArrowDown' && selectedBlockId) {
         e.preventDefault()
-        void handleMoveBlock(selectedBlockId, 'down')
+        handleMoveBlock(selectedBlockId, 'down')
         return
       }
-      if (e.altKey && e.key === 'ArrowLeft' && selectedBlockId) {
+      if (isCanvasNudgeShortcut && e.key === 'ArrowLeft' && selectedBlockId) {
         e.preventDefault()
-        void handleMoveBlock(selectedBlockId, 'left')
+        handleMoveBlock(selectedBlockId, 'left')
         return
       }
-      if (e.altKey && e.key === 'ArrowRight' && selectedBlockId) {
+      if (isCanvasNudgeShortcut && e.key === 'ArrowRight' && selectedBlockId) {
         e.preventDefault()
-        void handleMoveBlock(selectedBlockId, 'right')
+        handleMoveBlock(selectedBlockId, 'right')
         return
       }
       if (e.key === 'ArrowUp' && selectedBlockId) {
@@ -4646,7 +4700,7 @@ ${pagesHtml}
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
