@@ -6000,6 +6000,18 @@ ${pagesHtml}
     + (Math.max(canvasPages.length - 1, 0) * 32)
     + canvasRulerGutter
     + 48
+  const headerFooterCoverBlock = blocks.find(b => b.block_type === 'cover')
+  const headerFooterCoverData = (headerFooterCoverBlock?.render_data ?? {}) as Record<string, string>
+  const headerFooterPreviewContext: PlaceholderContext = {
+    title: materialTitle || '',
+    subtitle: headerFooterCoverData.subtitulo || '',
+    pageNumber: 1,
+    totalPages: pages.length,
+    schoolName: headerFooterCoverData.escola || school?.name || 'LA Music',
+    professorName: headerFooterCoverData.professor || '',
+    instrument: headerFooterCoverData.instrumento || '',
+    level: headerFooterCoverData.nivel || '',
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -7066,6 +7078,7 @@ ${pagesHtml}
                     <HeaderFooterEditor
                       config={pageConfig.header}
                       type="header"
+                      placeholderContext={headerFooterPreviewContext}
                       onChange={(config) => setPageConfig(prev => ({ ...prev, header: config }))}
                       onApplyTemplate={(template) => setPageConfig(prev => ({ ...prev, header: template }))}
                     />
@@ -7075,6 +7088,7 @@ ${pagesHtml}
                     <HeaderFooterEditor
                       config={pageConfig.footer}
                       type="footer"
+                      placeholderContext={headerFooterPreviewContext}
                       onChange={(config) => setPageConfig(prev => ({ ...prev, footer: config }))}
                       onApplyTemplate={(template) => setPageConfig(prev => ({ ...prev, footer: template }))}
                     />

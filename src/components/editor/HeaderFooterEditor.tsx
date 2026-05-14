@@ -9,8 +9,10 @@ import { Trash, Upload } from '@phosphor-icons/react'
 import {
   type HeaderFooterConfig,
   type HeaderFooterZone,
+  type PlaceholderContext,
   PLACEHOLDER_OPTIONS,
   HEADER_FOOTER_TEMPLATES,
+  resolvePlaceholder,
 } from '@/lib/headerFooter'
 import {
   buildHeaderFooterLine,
@@ -24,6 +26,7 @@ import { toast } from 'sonner'
 interface HeaderFooterEditorProps {
   config: HeaderFooterConfig
   type: 'header' | 'footer'
+  placeholderContext: PlaceholderContext
   onChange: (config: HeaderFooterConfig) => void
   onApplyTemplate: (template: HeaderFooterConfig) => void
 }
@@ -50,7 +53,7 @@ function zoneSummary(zone: HeaderFooterZone): string {
   return 'Vazio'
 }
 
-export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: HeaderFooterEditorProps) {
+export function HeaderFooterEditor({ config, type, placeholderContext, onChange, onApplyTemplate }: HeaderFooterEditorProps) {
   const [activeZone, setActiveZone] = useState<'left' | 'center' | 'right'>('left')
   const [uploadingZone, setUploadingZone] = useState<'left' | 'center' | 'right' | null>(null)
 
@@ -60,6 +63,27 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
 
   const updateZone = (zone: 'left' | 'center' | 'right', partial: Partial<HeaderFooterZone>) => {
     onChange({ ...config, [zone]: { ...config[zone], ...partial } })
+  }
+
+  const resolveZoneText = (zoneConfig: HeaderFooterZone) => {
+    if (zoneConfig.type === 'placeholder' && zoneConfig.placeholder) {
+      return resolvePlaceholder(zoneConfig.placeholder, placeholderContext)
+    }
+    return zoneConfig.text || ''
+  }
+
+  const updateZoneType = (zone: 'left' | 'center' | 'right', nextType: HeaderFooterZone['type']) => {
+    const currentZone = config[zone]
+
+    if (nextType === 'text') {
+      updateZone(zone, {
+        type: 'text',
+        text: resolveZoneText(currentZone),
+      })
+      return
+    }
+
+    updateZone(zone, { type: nextType })
   }
 
   const handleImageUpload = (zone: 'left' | 'center' | 'right') => {
@@ -117,7 +141,7 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
       <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
         <Select
           value={zoneConfig.type}
-          onValueChange={(value) => updateZone(zone, { type: value as HeaderFooterZone['type'] })}
+          onValueChange={(value) => updateZoneType(zone, value as HeaderFooterZone['type'])}
         >
           <SelectTrigger className="h-8 text-[11px]">
             <SelectValue />
@@ -140,25 +164,44 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
         )}
 
         {zoneConfig.type === 'placeholder' && (
-          <Select
-            value={zoneConfig.placeholder || '{titulo}'}
-            onValueChange={(value) => updateZone(zone, { placeholder: value as HeaderFooterZone['placeholder'] })}
-          >
-            <SelectTrigger className="h-8 text-[11px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PLACEHOLDER_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  <div className="flex items-center gap-2">
-                    <option.icon size={12} className="text-text3" />
-                    <span>{option.label}</span>
-                    <span className="ml-1 text-[9px] text-text3/50">{option.value}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="space-y-2">
+            <Select
+              value={zoneConfig.placeholder || '{titulo}'}
+              onValueChange={(value) => updateZone(zone, { placeholder: value as HeaderFooterZone['placeholder'] })}
+            >
+              <SelectTrigger className="h-8 text-[11px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PLACEHOLDER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center gap-2">
+                      <option.icon size={12} className="text-text3" />
+                      <span>{option.label}</span>
+                      <span className="ml-1 text-[9px] text-text3/50">{option.value}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="rounded-md border border-border bg-white p-2">
+              <div className="mb-1 text-[9px] font-medium uppercase tracking-wide text-text3">
+                Texto gerado agora
+              </div>
+              <div className="truncate text-[11px] font-semibold text-text2">
+                {resolveZoneText(zoneConfig) || 'Vazio'}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 w-full justify-center text-[10px]"
+                onClick={() => updateZoneType(zone, 'text')}
+              >
+                Editar como texto personalizado
+              </Button>
+            </div>
+          </div>
         )}
 
         {zoneConfig.type === 'image' && (
