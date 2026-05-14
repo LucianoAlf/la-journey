@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type ReactNode, type WheelEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft, FloppyDisk, TextAa, Article,
   Guitar, MusicNotes, Lightbulb, PencilCircle, ListNumbers,
@@ -137,6 +138,19 @@ import {
 } from "@/lib/sharedPagination";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
+
+type BrandLogoVariantKey = 'primary' | 'symbol' | 'horizontal' | 'light' | 'dark'
+type BrandLogoVariants = Partial<Record<BrandLogoVariantKey, string>>
+
+const BRAND_LOGO_VARIANT_LABELS: Record<BrandLogoVariantKey, string> = {
+  primary: 'Completa',
+  symbol: 'Solo',
+  horizontal: 'Horizontal',
+  light: 'Light',
+  dark: 'Dark',
+}
+
+const BRAND_LOGO_VARIANT_ORDER: BrandLogoVariantKey[] = ['primary', 'symbol', 'horizontal', 'light', 'dark']
 
 type EditorHistoryEntry = {
   patches: EditorBlockPatch<EditorBlock>[]
@@ -1024,6 +1038,8 @@ interface CanvasMaterialPreviewProps {
   onChordGridItemClick: (blockId: string, chord: any, index: number) => void
   onKeyboardGridItemClick: (blockId: string, keyboard: any, index: number) => void
   onCoverPositionChange: (blockId: string, field: string, pos: { x: number; y: number }) => void
+  onCoverRenderDataChange: (blockId: string, patch: Record<string, any>) => void
+  onCoverLogoDuplicate: (blockId: string) => void
   onCoverTitleChange: (value: string) => void
 }
 
@@ -1053,6 +1069,8 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   onChordGridItemClick,
   onKeyboardGridItemClick,
   onCoverPositionChange,
+  onCoverRenderDataChange,
+  onCoverLogoDuplicate,
   onCoverTitleChange,
 }: CanvasMaterialPreviewProps) {
   const realRendererRef = useRef<HTMLDivElement | null>(null)
@@ -1156,6 +1174,14 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     (field: string, pos: { x: number; y: number }) => onCoverPositionChange(block.id, field, pos),
     [block.id, onCoverPositionChange],
   )
+  const handleCoverRenderDataChange = useCallback(
+    (patch: Record<string, any>) => onCoverRenderDataChange(block.id, patch),
+    [block.id, onCoverRenderDataChange],
+  )
+  const handleCoverLogoDuplicate = useCallback(
+    () => onCoverLogoDuplicate(block.id),
+    [block.id, onCoverLogoDuplicate],
+  )
 
   const preview = (
     <MaterialPreview
@@ -1166,6 +1192,8 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       onKeyboardGridItemClick={handleKeyboardGridItemClick}
       coverEditable={block.block_type === 'cover'}
       onCoverPositionChange={block.block_type === 'cover' ? handleCoverPositionChange : undefined}
+      onCoverRenderDataChange={block.block_type === 'cover' ? handleCoverRenderDataChange : undefined}
+      onCoverLogoDuplicate={block.block_type === 'cover' ? handleCoverLogoDuplicate : undefined}
       coverTitleEditing={block.block_type === 'cover' && coverTitleEditing}
       onCoverTitleChange={block.block_type === 'cover' ? onCoverTitleChange : undefined}
       overlayElements={block.block_type === 'cover' ? overlayElements : undefined}
@@ -3766,6 +3794,39 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [logoUploading, setLogoUploading] = useState(false)
 
+  const brandLogoVariants = useMemo(() => {
+    const rawVariants = school?.logo_variants
+    const variants: BrandLogoVariants =
+      rawVariants && typeof rawVariants === 'object' && !Array.isArray(rawVariants)
+        ? rawVariants as BrandLogoVariants
+        : {}
+    if (school?.logo_url && !variants.primary) {
+      return { ...variants, primary: school.logo_url }
+    }
+    return variants
+  }, [school?.logo_url, school?.logo_variants])
+
+  const availableBrandLogos = useMemo(
+    () => BRAND_LOGO_VARIANT_ORDER
+      .map(key => ({ key, label: BRAND_LOGO_VARIANT_LABELS[key], url: brandLogoVariants[key] }))
+      .filter((item): item is { key: BrandLogoVariantKey; label: string; url: string } => Boolean(item.url)),
+    [brandLogoVariants],
+  )
+
+  const applyBrandLogoToCover = useCallback((url: string, key: BrandLogoVariantKey) => {
+    if (!selectedBlockId) return
+    updateSelectedRenderData('logo_url', url)
+    updateSelectedRenderData('logo_source', 'brand-kit')
+    updateSelectedRenderData('logo_variant', key)
+    if (!(selectedBlock?.render_data as any)?.logo_pos) {
+      updateSelectedRenderData('logo_pos', { x: 50, y: 8 })
+    }
+    if (!(selectedBlock?.render_data as any)?.logo_size) {
+      updateSelectedRenderData('logo_size', 80)
+    }
+    toast.success(`Logo ${BRAND_LOGO_VARIANT_LABELS[key]} aplicada na capa.`)
+  }, [selectedBlockId, selectedBlock, updateSelectedRenderData])
+
   const handleLogoUpload = useCallback(async (file: File) => {
     if (!selectedBlockId) return
     const maxSize = 2 * 1024 * 1024
@@ -4886,6 +4947,45 @@ Regras:
     setBlockWithHistory(blockId, b => ({ ...b, render_data: { ...(b.render_data ?? {}), [field]: pos } }))
     queueBlockAutosave(blockId)
   }, [queueBlockAutosave, setBlockWithHistory])
+
+  const handleCanvasCoverRenderDataChange = useCallback((blockId: string, patch: Record<string, any>) => {
+    setBlockWithHistory(blockId, b => ({ ...b, render_data: { ...(b.render_data ?? {}), ...patch } }))
+    queueBlockAutosave(blockId)
+  }, [queueBlockAutosave, setBlockWithHistory])
+
+  const handleCanvasCoverLogoDuplicate = useCallback((blockId: string) => {
+    const block = blocksRef.current.find(b => b.id === blockId)
+    const rd = block?.render_data as any
+    const logoUrl = rd?.logo_url as string | undefined
+    if (!block || !logoUrl) return
+    const logoPos = (rd.logo_pos as { x: number; y: number } | undefined) ?? { x: 50, y: 8 }
+    const logoSize = (rd.logo_size as number | undefined) ?? 80
+    const current = (Array.isArray(rd.overlay_elements) ? rd.overlay_elements : []) as CoverOverlayElement[]
+    const duplicated: CoverOverlayElement = {
+      id: crypto.randomUUID(),
+      image_url: logoUrl,
+      label: 'Logomarca',
+      x: Math.min(95, logoPos.x + 4),
+      y: Math.min(95, logoPos.y + 4),
+      width: Math.max(8, Math.min(34, Math.round((logoSize / 4) * 10) / 10)),
+      rotation: 0,
+      opacity: 1,
+      shadow: false,
+      zIndex: current.length + 1,
+      flipX: false,
+    }
+    setBlockWithHistory(blockId, b => ({
+      ...b,
+      render_data: {
+        ...(b.render_data ?? {}),
+        overlay_elements: [...current, duplicated],
+      },
+    }))
+    queueBlockAutosave(blockId)
+    setSelectedOverlayId(duplicated.id)
+    setCoverPropertiesTab('elementos')
+    toast.success('Logomarca duplicada como elemento.')
+  }, [blocksRef, queueBlockAutosave, setBlockWithHistory])
 
   const handleCanvasCoverTitleChange = useCallback((value: string) => {
     updateSelectedRenderData('titulo', value)
@@ -6248,6 +6348,8 @@ ${pagesHtml}
                             onChordGridItemClick={handleCanvasChordGridItemClick}
                             onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
                             onCoverPositionChange={handleCanvasCoverPositionChange}
+                            onCoverRenderDataChange={handleCanvasCoverRenderDataChange}
+                            onCoverLogoDuplicate={handleCanvasCoverLogoDuplicate}
                             onCoverTitleChange={handleCanvasCoverTitleChange}
                           />
                           </>
@@ -7064,7 +7166,7 @@ ${pagesHtml}
 
                     <TabsContent value="elementos" className="mt-3 space-y-3">
                   {/* Logomarca */}
-                  <div>
+                  <div className="space-y-2">
                     <label className="text-[10px] text-text3 block mb-1">Logomarca</label>
                     <input
                       ref={logoInputRef}
@@ -7073,6 +7175,42 @@ ${pagesHtml}
                       className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = '' }}
                     />
+                    {availableBrandLogos.length > 0 && (
+                      <div className="rounded-[14px] border border-border bg-paper p-2.5">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-accent font-bold">Do Brand Kit</div>
+                            <div className="text-[9px] text-text3">Clique para aplicar na capa.</div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {availableBrandLogos.map(logo => {
+                            const isActive =
+                              (selectedBlock.render_data as any)?.logo_url === logo.url
+                              && (selectedBlock.render_data as any)?.logo_variant === logo.key
+                            return (
+                              <button
+                                key={logo.key}
+                                type="button"
+                                onClick={() => applyBrandLogoToCover(logo.url, logo.key)}
+                                className={cn(
+                                  "group rounded-[12px] border bg-bg2 p-2 text-left transition hover:border-accent/60 hover:bg-accent/5",
+                                  isActive ? "border-accent ring-2 ring-accent/15" : "border-border",
+                                )}
+                              >
+                                <div className={cn(
+                                  "h-12 rounded-[9px] border border-border flex items-center justify-center overflow-hidden",
+                                  logo.key === 'dark' ? "bg-slate-950" : "bg-white",
+                                )}>
+                                  <img src={logo.url} alt={logo.label} className="max-h-full max-w-full object-contain p-1.5" />
+                                </div>
+                                <div className="mt-1.5 text-[10px] font-semibold text-text truncate">{logo.label}</div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {(selectedBlock.render_data as any)?.logo_url ? (
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2 p-1.5 rounded border border-border bg-bg2">
@@ -7084,6 +7222,11 @@ ${pagesHtml}
                           <div className="flex-1 min-w-0">
                             <div className="text-[9px] text-text3 truncate">Logomarca carregada</div>
                             <div className="text-[9px] text-text3 opacity-60">Arraste na capa para posicionar</div>
+                            {(selectedBlock.render_data as any)?.logo_source === 'brand-kit' && (
+                              <div className="text-[9px] text-accent font-medium">
+                                Brand Kit - {BRAND_LOGO_VARIANT_LABELS[((selectedBlock.render_data as any)?.logo_variant as BrandLogoVariantKey) ?? 'primary'] ?? 'Logo'}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -7105,13 +7248,19 @@ ${pagesHtml}
                             className="flex-1 h-6 text-[9px] gap-1"
                             onClick={() => logoInputRef.current?.click()}
                           >
-                            Trocar
+                            Enviar personalizada
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-6 text-[9px] border-vermelho/30 text-vermelho hover:bg-vermelho/10"
-                            onClick={() => { updateSelectedRenderData('logo_url', null); updateSelectedRenderData('logo_pos', null); updateSelectedRenderData('logo_size', null) }}
+                            onClick={() => {
+                              updateSelectedRenderData('logo_url', null)
+                              updateSelectedRenderData('logo_pos', null)
+                              updateSelectedRenderData('logo_size', null)
+                              updateSelectedRenderData('logo_source', null)
+                              updateSelectedRenderData('logo_variant', null)
+                            }}
                           >
                             <Trash size={10} />
                           </Button>
@@ -7128,7 +7277,7 @@ ${pagesHtml}
                         {logoUploading ? (
                           <><SpinnerGap size={12} className="animate-spin" /> Enviando...</>
                         ) : (
-                          <><ImageIcon size={12} /> Enviar Logomarca</>
+                          <><ImageIcon size={12} /> Enviar logo personalizada</>
                         )}
                       </Button>
                     )}

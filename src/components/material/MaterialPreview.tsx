@@ -127,6 +127,8 @@ interface MaterialPreviewProps {
   onKeyboardGridItemClick?: (block: MaterialBlock, keyboard: any, index: number) => void
   coverEditable?: boolean
   onCoverPositionChange?: (field: string, pos: { x: number; y: number }) => void
+  onCoverRenderDataChange?: (patch: Record<string, any>) => void
+  onCoverLogoDuplicate?: () => void
   coverTitleEditing?: boolean
   onCoverTitleChange?: (value: string) => void
   overlayElements?: CoverOverlayElement[]
@@ -755,10 +757,12 @@ const COVER_TEMPLATES: Record<string, string> = {
   vibrant: 'Vibrante',
 }
 
-function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: {
+function BlockCover({ block, editable, onPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: {
   block: MaterialBlock
   editable?: boolean
   onPositionChange?: (field: string, pos: { x: number; y: number }) => void
+  onCoverRenderDataChange?: (patch: Record<string, any>) => void
+  onCoverLogoDuplicate?: () => void
   titleEditing?: boolean
   onTitleChange?: (value: string) => void
   overlayElements?: CoverOverlayElement[]
@@ -820,6 +824,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     startMouse: { x: number; y: number }
     startPos: { x: number; y: number }
   } | null>(null)
+  const [logoSelected, setLogoSelected] = useState(false)
 
   // Snap-to-grid: guias ativas (estilo Canva)
   const SNAP_POINTS = [25, 33.3, 50, 66.7, 75]
@@ -858,6 +863,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     return Math.max(half, Math.min(100 - half, Math.round(x * 10) / 10))
   }
   const clampCoverTextFontSize = (fontSize: number) => Math.max(12, Math.min(120, Math.round(fontSize)))
+  const clampLogoSize = (size: number) => Math.max(24, Math.min(260, Math.round(size)))
   const getTextElementRect = (id: string) => (
     coverRef.current?.querySelector(`[data-cover-text-id="${id}"]`) as HTMLElement | null
   )?.getBoundingClientRect()
@@ -929,6 +935,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       onMouseDown={e => {
         if (e.target !== e.currentTarget) return
         setActiveGuides({ x: null, y: null })
+        setLogoSelected(false)
         onTextSelect?.(null)
         onOverlaySelect?.(null)
         onTextEditStart?.(null)
@@ -976,7 +983,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       {/* Logomarca — posição absoluta, arrastável */}
       {logoUrl && (
         <div
-          className={`cover-logo ${editable ? 'cover-draggable' : ''}`}
+          className={`cover-logo ${editable ? 'cover-draggable' : ''} ${logoSelected ? 'cover-logo--selected' : ''}`}
           style={{
             position: 'absolute',
             left: `${logoPos.x}%`,
@@ -984,8 +991,208 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             transform: 'translate(-50%, -50%)',
             zIndex: 30,
           }}
-          onMouseDown={e => handleMouseDown(e, 'logo_pos', logoPos)}
+          onMouseDown={e => {
+            setLogoSelected(true)
+            onTextSelect?.(null)
+            onOverlaySelect?.(null)
+            onTextEditStart?.(null)
+            handleMouseDown(e, 'logo_pos', logoPos)
+          }}
+          onClick={e => {
+            e.stopPropagation()
+            setLogoSelected(true)
+            onTextSelect?.(null)
+            onOverlaySelect?.(null)
+            onTextEditStart?.(null)
+          }}
         >
+          {editable && logoSelected && (
+            <>
+              <div
+                className="cover-text-toolbar cover-logo-toolbar"
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}
+              >
+                <button type="button" title="Duplicar como elemento" onClick={() => onCoverLogoDuplicate?.()}>
+                  <Copy size={20} weight="bold" />
+                </button>
+                <button
+                  type="button"
+                  title="Excluir"
+                  onClick={() => {
+                    onCoverRenderDataChange?.({
+                      logo_url: null,
+                      logo_pos: null,
+                      logo_size: null,
+                      logo_source: null,
+                      logo_variant: null,
+                    })
+                    setLogoSelected(false)
+                  }}
+                >
+                  <Trash size={20} weight="bold" />
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" title="Menu de acoes" onMouseDown={event => event.stopPropagation()}>
+                      <DotsThree size={22} weight="bold" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="center"
+                    sideOffset={10}
+                    className="w-64 rounded-2xl border-border/70 bg-card p-2 text-text shadow-xl"
+                    onMouseDown={event => event.stopPropagation()}
+                    onClick={event => event.stopPropagation()}
+                  >
+                    <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onCoverLogoDuplicate?.()}>
+                      <Copy size={18} weight="bold" />
+                      <span>Duplicar</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onCoverRenderDataChange?.({ logo_pos: { x: 50, y: 8 } })}>
+                      <Target size={18} weight="bold" />
+                      <span>Centralizar no topo</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="h-10 rounded-xl px-3 text-[15px]"
+                      variant="destructive"
+                      onSelect={() => {
+                        onCoverRenderDataChange?.({
+                          logo_url: null,
+                          logo_pos: null,
+                          logo_size: null,
+                          logo_source: null,
+                          logo_variant: null,
+                        })
+                        setLogoSelected(false)
+                      }}
+                    >
+                      <Trash size={18} weight="bold" />
+                      <span>Excluir</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              {(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'left', 'right', 'top', 'bottom'] as const).map(corner => (
+                <button
+                  key={corner}
+                  type="button"
+                  aria-label="Redimensionar logomarca"
+                  className={`cover-logo-scale-handle cover-logo-scale-handle--${corner}`}
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setLogoSelected(true)
+                    const targetEl = e.currentTarget.parentElement as HTMLElement | null
+                    const img = targetEl?.querySelector('img') as HTMLImageElement | null
+                    const container = coverRef.current
+                    if (!targetEl || !img || !container) return
+
+                    const rect = container.getBoundingClientRect()
+                    const box = img.getBoundingClientRect()
+                    const isHorizontalSide = corner === 'left' || corner === 'right'
+                    const isVerticalSide = corner === 'top' || corner === 'bottom'
+                    const isRight = corner.endsWith('right') || corner === 'right'
+                    const isBottom = corner.startsWith('bottom') || corner === 'bottom'
+                    const anchor = {
+                      x: isRight ? box.left : box.right,
+                      y: isBottom ? box.top : box.bottom,
+                    }
+                    const startCenter = {
+                      x: box.left + box.width / 2,
+                      y: box.top + box.height / 2,
+                    }
+                    const horizontalSign = isRight ? 1 : -1
+                    const verticalSign = isBottom ? 1 : -1
+                    const startDistance = Math.max(12, Math.hypot(box.width, box.height))
+                    const startCenterDistance = Math.max(12, Math.hypot(e.clientX - startCenter.x, e.clientY - startCenter.y))
+                    const startSize = logoSize
+                    const startWidthPx = Math.max(12, box.width)
+                    const startHeightPx = Math.max(12, box.height)
+                    let pending: { x: number; y: number; logo_size: number } | null = null
+                    let finalPatch = { x: logoPos.x, y: logoPos.y, logo_size: startSize }
+                    let frame: number | null = null
+
+                    const flush = () => {
+                      frame = null
+                      if (!pending) return
+                      finalPatch = pending
+                      targetEl.style.left = `${pending.x}%`
+                      targetEl.style.top = `${pending.y}%`
+                      img.style.height = `${pending.logo_size}px`
+                      pending = null
+                    }
+
+                    const move = (ev: MouseEvent) => {
+                      const pointer = {
+                        x: Math.max(rect.left, Math.min(rect.right, ev.clientX)),
+                        y: Math.max(rect.top, Math.min(rect.bottom, ev.clientY)),
+                      }
+                      const scaleFromCenter = ev.altKey
+                      const currentDistance = scaleFromCenter
+                        ? Math.max(4, Math.hypot(pointer.x - startCenter.x, pointer.y - startCenter.y))
+                        : isHorizontalSide
+                          ? Math.max(4, Math.abs(pointer.x - anchor.x))
+                          : isVerticalSide
+                            ? Math.max(4, Math.abs(pointer.y - anchor.y))
+                            : Math.max(4, Math.hypot(pointer.x - anchor.x, pointer.y - anchor.y))
+                      const baseDistance = scaleFromCenter
+                        ? startCenterDistance
+                        : isHorizontalSide
+                          ? startWidthPx
+                          : isVerticalSide
+                            ? startHeightPx
+                            : startDistance
+                      const scale = Math.max(0.25, Math.min(3, currentDistance / baseDistance))
+                      const scaledWidthPx = startWidthPx * scale
+                      const scaledHeightPx = startHeightPx * scale
+                      const cornerPoint = scaleFromCenter
+                        ? null
+                        : {
+                          x: anchor.x + scaledWidthPx * horizontalSign,
+                          y: anchor.y + scaledHeightPx * verticalSign,
+                        }
+                      const nextLeft = scaleFromCenter ? startCenter.x - scaledWidthPx / 2 : Math.min(anchor.x, cornerPoint!.x)
+                      const nextTop = scaleFromCenter ? startCenter.y - scaledHeightPx / 2 : Math.min(anchor.y, cornerPoint!.y)
+                      const nextCenter = scaleFromCenter
+                        ? startCenter
+                        : {
+                          x: nextLeft + scaledWidthPx / 2,
+                          y: nextTop + scaledHeightPx / 2,
+                        }
+                      pending = {
+                        x: Math.max(0, Math.min(100, Math.round(((nextCenter.x - rect.left) / rect.width) * 1000) / 10)),
+                        y: Math.max(0, Math.min(100, Math.round(((nextCenter.y - rect.top) / rect.height) * 1000) / 10)),
+                        logo_size: clampLogoSize(startSize * scale),
+                      }
+                      if (frame === null) frame = window.requestAnimationFrame(flush)
+                    }
+
+                    const up = () => {
+                      if (frame !== null) {
+                        window.cancelAnimationFrame(frame)
+                        flush()
+                      }
+                      targetEl.style.willChange = ''
+                      img.style.willChange = ''
+                      onCoverRenderDataChange?.({
+                        logo_pos: { x: finalPatch.x, y: finalPatch.y },
+                        logo_size: finalPatch.logo_size,
+                      })
+                      document.removeEventListener('mousemove', move)
+                      document.removeEventListener('mouseup', up)
+                    }
+
+                    targetEl.style.willChange = 'left, top'
+                    img.style.willChange = 'height'
+                    document.addEventListener('mousemove', move)
+                    document.addEventListener('mouseup', up)
+                  }}
+                />
+              ))}
+            </>
+          )}
           <img
             src={logoUrl}
             alt="Logomarca"
@@ -1060,6 +1267,8 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               onTextSelect?.(clone.id)
             }
 
+            setLogoSelected(false)
+
             if (e.altKey) {
               ensureCloneForDrag()
             } else {
@@ -1086,8 +1295,8 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             document.addEventListener('mousemove', move)
             document.addEventListener('mouseup', up)
           }}
-          onClick={e => { e.stopPropagation(); onTextSelect?.(text.id) }}
-          onDoubleClick={e => { e.stopPropagation(); onTextEditStart?.(text.id) }}
+          onClick={e => { e.stopPropagation(); setLogoSelected(false); onTextSelect?.(text.id) }}
+          onDoubleClick={e => { e.stopPropagation(); setLogoSelected(false); onTextEditStart?.(text.id) }}
         >
           {editable && selectedTextId === text.id && editingTextId !== text.id && onTextUpdate && (
             <>
@@ -1536,6 +1745,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               } else {
                 onOverlaySelect?.(el.id)
               }
+              setLogoSelected(false)
 
               const flushPosition = () => {
                 animationFrame = null
@@ -1582,7 +1792,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               document.addEventListener('mousemove', move)
               document.addEventListener('mouseup', up)
             }}
-            onClick={e => { e.stopPropagation(); onOverlaySelect?.(el.id) }}
+            onClick={e => { e.stopPropagation(); setLogoSelected(false); onOverlaySelect?.(el.id) }}
           >
             <img
               src={el.image_url}
@@ -1881,7 +2091,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -1894,7 +2104,7 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMu
     <div className="space-y-1">
       {blocks.map((block, i) => {
         if (block.block_type === 'cover') {
-          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} onOverlayCloneForDrag={onOverlayCloneForDrag} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} onTextCopy={onTextCopy} onTextDuplicate={onTextDuplicate} onTextDelete={onTextDelete} onTextCloneForDrag={onTextCloneForDrag} onTextLayerChange={onTextLayerChange} onLegacyTextActivate={onLegacyTextActivate} />
+          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} onCoverRenderDataChange={onCoverRenderDataChange} onCoverLogoDuplicate={onCoverLogoDuplicate} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} onOverlayCloneForDrag={onOverlayCloneForDrag} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} onTextCopy={onTextCopy} onTextDuplicate={onTextDuplicate} onTextDelete={onTextDelete} onTextCloneForDrag={onTextCloneForDrag} onTextLayerChange={onTextLayerChange} onLegacyTextActivate={onLegacyTextActivate} />
         }
         const Renderer = BLOCK_RENDERERS[block.block_type]
         if (!Renderer) {

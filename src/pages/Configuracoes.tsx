@@ -29,32 +29,98 @@ const ROLE_COLORS: Record<string, string> = {
   staff: "bg-advance",
 };
 
+type LogoVariantKey = "primary" | "symbol" | "horizontal" | "light" | "dark";
+type LogoVariants = Partial<Record<LogoVariantKey, string>>;
+
+interface SettingsForm {
+  name: string;
+  cnpj: string;
+  city: string;
+  state: string;
+  logo_url: string;
+  logo_variants: LogoVariants;
+  primary_color: string;
+  secondary_color: string;
+  default_cover_font: string;
+  default_body_font: string;
+}
+
+const BRAND_LOGO_VARIANTS: Array<{
+  key: LogoVariantKey;
+  label: string;
+  hint: string;
+  previewClassName: string;
+}> = [
+  {
+    key: "primary",
+    label: "Completa",
+    hint: "Versão principal para capa, cabeçalho e PDF.",
+    previewClassName: "bg-white",
+  },
+  {
+    key: "symbol",
+    label: "Solo",
+    hint: "Símbolo ou marca reduzida para espaços pequenos.",
+    previewClassName: "bg-white",
+  },
+  {
+    key: "horizontal",
+    label: "Horizontal",
+    hint: "Assinatura larga para rodapés e banners.",
+    previewClassName: "bg-white",
+  },
+  {
+    key: "light",
+    label: "Light mode",
+    hint: "Logo otimizada para fundos claros.",
+    previewClassName: "bg-white",
+  },
+  {
+    key: "dark",
+    label: "Dark mode",
+    hint: "Logo clara para fundos escuros.",
+    previewClassName: "bg-slate-950",
+  },
+];
+
 export function Configuracoes() {
   const { data: school, loading, error, refetch } = useSchool();
   const { data: users } = useUsers();
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SettingsForm>({
     name: "",
     cnpj: "",
     city: "",
     state: "",
     logo_url: "",
+    logo_variants: {},
     primary_color: "",
     secondary_color: "",
     default_cover_font: "Montserrat",
     default_body_font: "DM Sans",
   });
   const [saving, setSaving] = useState(false);
-  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState<LogoVariantKey | null>(null);
+  const [pendingLogoVariant, setPendingLogoVariant] = useState<LogoVariantKey>("primary");
 
   useEffect(() => {
     if (school) {
+      const storedVariants =
+        school.logo_variants && typeof school.logo_variants === "object" && !Array.isArray(school.logo_variants)
+          ? (school.logo_variants as LogoVariants)
+          : {};
+      const logoVariants: LogoVariants = {
+        ...storedVariants,
+        ...(school.logo_url && !storedVariants.primary ? { primary: school.logo_url } : {}),
+      };
+
       setForm({
         name: school.name ?? "",
         cnpj: school.cnpj ?? "",
         city: school.city ?? "",
         state: school.state ?? "",
-        logo_url: school.logo_url ?? "",
+        logo_url: school.logo_url ?? logoVariants.primary ?? "",
+        logo_variants: logoVariants,
         primary_color: school.primary_color ?? "#1E3A5F",
         secondary_color: school.secondary_color ?? "#FF2D78",
         default_cover_font: school.default_cover_font ?? "Montserrat",
@@ -73,6 +139,7 @@ export function Configuracoes() {
         city: form.city || null,
         state: form.state || null,
         logo_url: form.logo_url || null,
+        logo_variants: form.logo_variants,
         primary_color: form.primary_color || null,
         secondary_color: form.secondary_color || null,
         default_cover_font: form.default_cover_font || null,
@@ -87,7 +154,7 @@ export function Configuracoes() {
     }
   };
 
-  const handleLogoUpload = async (file: File) => {
+  const handleLogoUpload = async (file: File, variantKey: LogoVariantKey) => {
     if (!school) return;
 
     const maxSize = 2 * 1024 * 1024;
@@ -100,7 +167,7 @@ export function Configuracoes() {
       return;
     }
 
-    setLogoUploading(true);
+    setLogoUploading(variantKey);
     try {
       const ext = file.name.split(".").pop() ?? "png";
       const safeName =
@@ -109,7 +176,7 @@ export function Configuracoes() {
           .replace(/[^a-z0-9_-]+/gi, "-")
           .replace(/^-+|-+$/g, "")
           .toLowerCase() || "logo";
-      const filePath = `${school.id}/logos/${safeName}-${Date.now()}.${ext}`;
+      const filePath = `${school.id}/${variantKey}/${safeName}-${Date.now()}.${ext}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("school-logos")
         .upload(filePath, file, { contentType: file.type, upsert: true });
@@ -117,14 +184,47 @@ export function Configuracoes() {
       if (uploadError) throw new Error(uploadError.message);
 
       const { data: urlData } = supabase.storage.from("school-logos").getPublicUrl(uploadData.path);
-      setForm(prev => ({ ...prev, logo_url: urlData.publicUrl }));
-      await updateSchool(school.id, { logo_url: urlData.publicUrl });
-      toast.success("Logomarca da escola atualizada!");
+      const nextVariants = { ...form.logo_variants, [variantKey]: urlData.publicUrl };
+      const nextLogoUrl = variantKey === "primary" ? urlData.publicUrl : form.logo_url || nextVariants.primary || "";
+
+      setForm(prev => ({
+        ...prev,
+        logo_url: nextLogoUrl,
+        logo_variants: { ...prev.logo_variants, [variantKey]: urlData.publicUrl },
+      }));
+      await updateSchool(school.id, {
+        logo_url: nextLogoUrl || null,
+        logo_variants: nextVariants,
+      });
+      toast.success("Logomarca atualizada!");
       refetch();
     } catch (e: any) {
       toast.error("Erro ao enviar logomarca: " + (e?.message?.slice(0, 80) ?? ""));
     } finally {
-      setLogoUploading(false);
+      setLogoUploading(null);
+    }
+  };
+
+  const handleRemoveLogoVariant = async (variantKey: LogoVariantKey) => {
+    if (!school) return;
+    const nextVariants = { ...form.logo_variants };
+    delete nextVariants[variantKey];
+    const nextLogoUrl = variantKey === "primary" ? "" : form.logo_url;
+
+    setForm(prev => ({
+      ...prev,
+      logo_url: nextLogoUrl,
+      logo_variants: nextVariants,
+    }));
+    try {
+      await updateSchool(school.id, {
+        logo_url: nextLogoUrl || null,
+        logo_variants: nextVariants,
+      });
+      toast.success("Variação de logo removida.");
+      refetch();
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao remover logo");
     }
   };
 
@@ -250,50 +350,73 @@ export function Configuracoes() {
               </div>
 
               <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-                <div className="space-y-3">
+                <div className="space-y-3 lg:col-span-2">
                   <Label className="flex items-center gap-2">
-                    <ImageSquare size={15} /> Logo principal
+                    <ImageSquare size={15} /> Variações de logomarca
                   </Label>
-                  <div className="rounded-[18px] border border-border bg-paper p-4">
-                    <div className="h-[116px] rounded-[14px] bg-background2 border border-border flex items-center justify-center overflow-hidden">
-                      {form.logo_url ? (
-                        <img src={form.logo_url} alt="Logo da escola" className="max-h-full max-w-full object-contain p-3" />
-                      ) : (
-                        <div className="text-center text-text3 text-[12px] px-6">
-                          Envie uma marca para reutilizar em capas e PDFs.
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleLogoUpload(file, pendingLogoVariant);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    {BRAND_LOGO_VARIANTS.map(variant => {
+                      const logoUrl = form.logo_variants[variant.key] ?? "";
+                      const isUploading = logoUploading === variant.key;
+                      return (
+                        <div key={variant.key} className="rounded-[18px] border border-border bg-paper p-3">
+                          <div
+                            className={cn(
+                              "h-[104px] rounded-[14px] border border-border flex items-center justify-center overflow-hidden",
+                              variant.previewClassName,
+                            )}
+                          >
+                            {logoUrl ? (
+                              <img src={logoUrl} alt={variant.label} className="max-h-full max-w-full object-contain p-3" />
+                            ) : (
+                              <span className="text-center text-text3 text-[11px] px-4">Sem arquivo</span>
+                            )}
+                          </div>
+                          <div className="mt-3 min-h-[54px]">
+                            <div className="font-bold text-[13px] text-text">{variant.label}</div>
+                            <p className="text-[11px] leading-snug text-text3 mt-1">{variant.hint}</p>
+                          </div>
+                          <div className="grid grid-cols-[1fr_auto] gap-2 mt-3">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => {
+                                setPendingLogoVariant(variant.key);
+                                logoInputRef.current?.click();
+                              }}
+                              disabled={logoUploading !== null}
+                            >
+                              {isUploading ? <SpinnerGap size={16} className="animate-spin" /> : <UploadSimple size={16} />}
+                              {isUploading ? "..." : "Enviar"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              disabled={!logoUrl || logoUploading !== null}
+                              onClick={() => void handleRemoveLogoVariant(variant.key)}
+                              aria-label={`Remover ${variant.label}`}
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <input
-                      ref={logoInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                      className="hidden"
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) void handleLogoUpload(file);
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                    <div className="grid grid-cols-[1fr_auto] gap-2 mt-3">
-                      <Button type="button" variant="secondary" onClick={() => logoInputRef.current?.click()} disabled={logoUploading}>
-                        {logoUploading ? <SpinnerGap size={16} className="animate-spin" /> : <UploadSimple size={16} />}
-                        {logoUploading ? "Enviando..." : "Enviar logo"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        disabled={!form.logo_url || logoUploading}
-                        onClick={() => setForm(p => ({ ...p, logo_url: "" }))}
-                        aria-label="Remover logo"
-                      >
-                        <Trash size={16} />
-                      </Button>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="space-y-5">
+                <div className="space-y-5 lg:col-span-2">
                   <div className="space-y-3">
                     <Label className="flex items-center gap-2">
                       <Palette size={15} /> Paleta principal

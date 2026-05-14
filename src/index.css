@@ -491,6 +491,20 @@
 @keyframes snap-fade-in{from{opacity:0}to{opacity:1}}
 .block-cover .cover-logo{z-index:2;pointer-events:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
 .block-cover .cover-logo.cover-draggable{pointer-events:auto;padding:6px;border-radius:8px}
+.block-cover .cover-logo--selected{outline:2px solid #8B5CF6;outline-offset:3px;box-shadow:0 0 0 3px rgba(139,92,246,.14)}
+.block-cover .cover-logo-toolbar{top:-58px}
+.block-cover .cover-logo-scale-handle{position:absolute;z-index:4;width:12px;height:12px;padding:0;border:2px solid #8B5CF6;border-radius:999px;background:#fff;box-shadow:0 3px 10px rgba(15,23,42,.22);pointer-events:auto}
+.block-cover .cover-logo-scale-handle--top-left{top:-9px;left:-9px;cursor:nwse-resize}
+.block-cover .cover-logo-scale-handle--top-right{top:-9px;right:-9px;cursor:nesw-resize}
+.block-cover .cover-logo-scale-handle--bottom-left{bottom:-9px;left:-9px;cursor:nesw-resize}
+.block-cover .cover-logo-scale-handle--bottom-right{right:-9px;bottom:-9px;cursor:nwse-resize}
+.block-cover .cover-logo-scale-handle--left,.block-cover .cover-logo-scale-handle--right{top:50%;width:7px;height:22px;transform:translateY(-50%);cursor:ew-resize}
+.block-cover .cover-logo-scale-handle--left{left:-7px}
+.block-cover .cover-logo-scale-handle--right{right:-7px}
+.block-cover .cover-logo-scale-handle--top,.block-cover .cover-logo-scale-handle--bottom{left:50%;width:22px;height:7px;transform:translateX(-50%);cursor:ns-resize}
+.block-cover .cover-logo-scale-handle--top{top:-7px}
+.block-cover .cover-logo-scale-handle--bottom{bottom:-7px}
+.block-cover .cover-logo-scale-handle:hover,.block-cover .cover-logo-scale-handle:focus-visible{background:#F5F3FF;outline:none;box-shadow:0 0 0 4px rgba(139,92,246,.18),0 3px 10px rgba(15,23,42,.22)}
 .block-cover .cover-professor{font-weight:600}
 .block-cover .cover-decoration{position:absolute;pointer-events:none;z-index:0}
 
