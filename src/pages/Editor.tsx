@@ -3827,6 +3827,132 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     toast.success(`Logo ${BRAND_LOGO_VARIANT_LABELS[key]} aplicada na capa.`)
   }, [selectedBlockId, selectedBlock, updateSelectedRenderData])
 
+  const applySchoolIdentityToCover = useCallback(() => {
+    if (!activeCoverBlockId || !school) return
+
+    const coverFont = school.default_cover_font || 'Montserrat'
+    const bodyFont = school.default_body_font || 'DM Sans'
+    const primaryColor = school.primary_color || '#1E3A5F'
+    const secondaryColor = school.secondary_color || '#FF2D78'
+    const logoEntry = availableBrandLogos.find(logo => logo.key === 'primary') ?? availableBrandLogos[0] ?? null
+
+    setBlockWithHistory(activeCoverBlockId, block => {
+      const rd = (block.render_data ?? {}) as Record<string, any>
+      const hasCoverImage = Boolean(rd.cover_image_url)
+      const titleColor = hasCoverImage ? '#ffffff' : primaryColor
+      const bodyColor = hasCoverImage ? '#ffffffcc' : secondaryColor
+      const contentPos = rd.content_pos ?? { x: 50, y: 45 }
+      const existingTexts = Array.isArray(rd.text_elements) ? rd.text_elements as CoverTextElement[] : []
+      const titleText = rd.titulo || block.title || materialTitle || 'Material Didático'
+      const subtitleText = rd.subtitulo || ''
+      const instrumentText = rd.instrumento
+        ? `${rd.instrumento}${rd.nivel ? ` · ${rd.nivel}` : ''}`
+        : ''
+
+      const brandedTexts: CoverTextElement[] = existingTexts.length > 0
+        ? existingTexts.map(el => {
+          const isTitle = el.id === 'title'
+          const isBody = el.id === 'subtitle' || el.id === 'instrument'
+          return {
+            ...el,
+            fontFamily: isTitle ? coverFont : isBody ? bodyFont : el.fontFamily,
+            color: isTitle ? titleColor : isBody ? bodyColor : el.color,
+          }
+        })
+        : [
+          ...(instrumentText ? [{
+            id: 'instrument',
+            content: instrumentText,
+            x: contentPos.x,
+            y: contentPos.y - 8,
+            fontFamily: bodyFont,
+            fontSize: 13,
+            fontWeight: 500,
+            color: bodyColor,
+            align: 'center' as const,
+            uppercase: true,
+            letterSpacing: 3,
+            lineHeight: 1.2,
+            shadow: { ...DEFAULT_TEXT_SHADOW },
+            outline: { ...DEFAULT_TEXT_OUTLINE },
+            background: { ...DEFAULT_TEXT_BG },
+            maxWidth: 60,
+            zIndex: 20,
+          }] : []),
+          {
+            id: 'title',
+            content: titleText,
+            x: contentPos.x,
+            y: contentPos.y,
+            fontFamily: coverFont,
+            fontSize: rd.title_font_size ?? 36,
+            fontWeight: 700,
+            color: titleColor,
+            align: (rd.title_align as 'left' | 'center' | 'right') ?? 'center',
+            uppercase: false,
+            letterSpacing: 1,
+            lineHeight: 1.1,
+            shadow: { enabled: true, color: '#000000', blur: 8, offsetX: 2, offsetY: 2 },
+            outline: { ...DEFAULT_TEXT_OUTLINE },
+            background: { ...DEFAULT_TEXT_BG },
+            maxWidth: 80,
+            zIndex: 21,
+          },
+          ...(subtitleText ? [{
+            id: 'subtitle',
+            content: subtitleText,
+            x: contentPos.x,
+            y: contentPos.y + 8,
+            fontFamily: bodyFont,
+            fontSize: 18,
+            fontWeight: 400,
+            color: bodyColor,
+            align: 'center' as const,
+            uppercase: false,
+            letterSpacing: 1,
+            lineHeight: 1.4,
+            shadow: { ...DEFAULT_TEXT_SHADOW },
+            outline: { ...DEFAULT_TEXT_OUTLINE },
+            background: { ...DEFAULT_TEXT_BG },
+            maxWidth: 60,
+            zIndex: 22,
+          }] : []),
+        ]
+
+      return {
+        ...block,
+        render_data: {
+          ...rd,
+          brand_primary_color: primaryColor,
+          brand_secondary_color: secondaryColor,
+          ...(logoEntry ? {
+            logo_url: logoEntry.url,
+            logo_source: 'brand-kit',
+            logo_variant: logoEntry.key,
+            logo_pos: rd.logo_pos ?? { x: 50, y: 8 },
+            logo_size: rd.logo_size ?? 80,
+          } : {}),
+          title_color: titleColor,
+          text_elements: brandedTexts,
+        },
+      }
+    })
+    queueBlockAutosave(activeCoverBlockId)
+    setSelectedBlockId(activeCoverBlockId)
+    setSelectedTextId('title')
+    setSelectedOverlayId(null)
+    setEditingTextId(null)
+    setCoverPropertiesTab('textos')
+    toast.success('Identidade da escola aplicada à capa.')
+  }, [
+    activeCoverBlockId,
+    availableBrandLogos,
+    materialTitle,
+    queueBlockAutosave,
+    school,
+    setBlockWithHistory,
+  ])
+
   const handleLogoUpload = useCallback(async (file: File) => {
     if (!selectedBlockId) return
     const maxSize = 2 * 1024 * 1024
@@ -6968,7 +7094,39 @@ ${pagesHtml}
               {/* Capa — formulário de campos */}
               {selectedBlock.block_type === 'cover' && (
                 <div className="prop-section space-y-3">
-                  <div className="prop-label">Dados da Capa</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="prop-label">Dados da Capa</div>
+                      <p className="cover-helper mt-1">Imagem, textos e identidade visual da capa.</p>
+                    </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 shrink-0 gap-1.5 rounded-xl border-accent/30 px-2.5 text-[10px] font-semibold text-accent hover:bg-accent/10"
+                          disabled={!school}
+                        >
+                          <MagicWand size={13} weight="bold" />
+                          Brand Kit
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Aplicar identidade da escola?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Isso aplica a logo principal, fontes padrão e paleta do Brand Kit nesta capa. A imagem de fundo e a composição atual serão preservadas sempre que possível.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={applySchoolIdentityToCover}>
+                            Aplicar identidade
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                   <Tabs value={coverPropertiesTab} onValueChange={value => setCoverPropertiesTab(value as typeof coverPropertiesTab)} className="cover-properties-tabs w-full">
                     <TabsList className="grid w-full grid-cols-4 h-9">
                       <TabsTrigger value="imagem" className="px-1 text-[11px]">Imagem</TabsTrigger>

@@ -826,6 +826,44 @@ function BlockCover({ block, editable, onPositionChange, onCoverRenderDataChange
   } | null>(null)
   const [logoSelected, setLogoSelected] = useState(false)
 
+  const clearCoverLogo = useCallback(() => {
+    onCoverRenderDataChange?.({
+      logo_url: null,
+      logo_pos: null,
+      logo_size: null,
+      logo_source: null,
+      logo_variant: null,
+    })
+    setLogoSelected(false)
+  }, [onCoverRenderDataChange])
+
+  useEffect(() => {
+    if (!editable || !logoSelected || !logoUrl) return
+
+    const handleLogoKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isTypingTarget =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable
+
+      if (isTypingTarget) return
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault()
+        clearCoverLogo()
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setLogoSelected(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleLogoKeyDown)
+    return () => window.removeEventListener('keydown', handleLogoKeyDown)
+  }, [clearCoverLogo, editable, logoSelected, logoUrl])
+
   // Snap-to-grid: guias ativas (estilo Canva)
   const SNAP_POINTS = [25, 33.3, 50, 66.7, 75]
   const SNAP_THRESHOLD = 2 // % de proximidade para "grudar"
@@ -1019,16 +1057,7 @@ function BlockCover({ block, editable, onPositionChange, onCoverRenderDataChange
                 <button
                   type="button"
                   title="Excluir"
-                  onClick={() => {
-                    onCoverRenderDataChange?.({
-                      logo_url: null,
-                      logo_pos: null,
-                      logo_size: null,
-                      logo_source: null,
-                      logo_variant: null,
-                    })
-                    setLogoSelected(false)
-                  }}
+                  onClick={clearCoverLogo}
                 >
                   <Trash size={20} weight="bold" />
                 </button>
@@ -1057,16 +1086,7 @@ function BlockCover({ block, editable, onPositionChange, onCoverRenderDataChange
                     <DropdownMenuItem
                       className="h-10 rounded-xl px-3 text-[15px]"
                       variant="destructive"
-                      onSelect={() => {
-                        onCoverRenderDataChange?.({
-                          logo_url: null,
-                          logo_pos: null,
-                          logo_size: null,
-                          logo_source: null,
-                          logo_variant: null,
-                        })
-                        setLogoSelected(false)
-                      }}
+                      onSelect={clearCoverLogo}
                     >
                       <Trash size={18} weight="bold" />
                       <span>Excluir</span>
