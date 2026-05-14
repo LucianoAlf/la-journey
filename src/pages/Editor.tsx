@@ -69,6 +69,7 @@ import { FloatingTextProperties } from "@/components/editor/FloatingTextProperti
 import { FloatingImageProperties } from "@/components/editor/FloatingImageProperties";
 import { FloatingShapeProperties } from "@/components/editor/FloatingShapeProperties";
 import { FloatingIconProperties } from "@/components/editor/FloatingIconProperties";
+import { FloatingElementLibraryPanel } from "@/components/editor/FloatingElementLibraryPanel";
 import { LayersPanel } from "@/components/editor/LayersPanel";
 import { ContextualToolbar } from "@/components/editor/ContextualToolbar";
 import { AIVariationsDialog } from "@/components/editor/AIVariationsDialog";
@@ -114,8 +115,6 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
   createFloatingIcon, createFloatingShape, getFloatingShapeLabel,
   snapValue as floatingSnapValue,
 } from "@/lib/floatingElements";
-import { ICONIFY_ELEMENT_OPTIONS, registerIconifyElementIcons } from "@/lib/iconifyElementCatalog";
-import { Icon } from "@iconify/react";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
 import {
@@ -151,8 +150,6 @@ import {
 } from "@/lib/sharedPagination";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
-
-registerIconifyElementIcons()
 
 type BrandLogoVariantKey = 'primary' | 'symbol' | 'horizontal' | 'light' | 'dark'
 type BrandLogoVariants = Partial<Record<BrandLogoVariantKey, string>>
@@ -6276,115 +6273,6 @@ ${pagesHtml}
             <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
           </div>
 
-          <div className="rounded-[var(--radius-sm)] border border-border bg-card/80 p-2.5 mb-3">
-            <div className="flex items-center justify-between px-1 mb-2">
-              <label className="text-[11px] text-text3 uppercase tracking-wider font-medium">
-                Elementos Livres
-              </label>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px]"
-                onClick={() => setShowLayersPanel(!showLayersPanel)}
-              >
-                <Rows size={12} className="mr-1" /> Camadas
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-[10px]"
-                onClick={addFloatingTextElement}
-              >
-                <TextT size={13} className="mr-1" /> Texto
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-[10px]"
-                onClick={() => { setFloatingImagePickerOpen(true); loadLibraryImages() }}
-              >
-                <ImageIcon size={13} className="mr-1" /> Imagem
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-[10px]"
-                onClick={() => addFloatingShapeElement('rectangle')}
-              >
-                <Hash size={13} className="mr-1" /> Forma
-              </Button>
-            </div>
-
-            <div className="mt-3 space-y-3">
-              <div>
-                <div className="mb-1.5 flex items-center justify-between px-1">
-                  <span className="text-[10px] uppercase tracking-wider text-text3">Formas básicas</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([
-                    { shape: 'rectangle' as const, label: 'Retângulo' },
-                    { shape: 'circle' as const, label: 'Círculo' },
-                    { shape: 'line' as const, label: 'Linha' },
-                    { shape: 'arrow' as const, label: 'Seta' },
-                    { shape: 'star' as const, label: 'Estrela' },
-                    { shape: 'callout' as const, label: 'Callout' },
-                  ]).map((item) => (
-                    <Button
-                      key={item.shape}
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-[10px]"
-                      onClick={() => addFloatingShapeElement(item.shape)}
-                    >
-                      {item.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-1.5 flex items-center justify-between px-1">
-                  <span className="text-[10px] uppercase tracking-wider text-text3">Ícones</span>
-                  <span className="text-[9px] text-text3">Iconify</span>
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {ICONIFY_ELEMENT_OPTIONS.map((option) => (
-                    <TooltipProvider key={option.icon}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-1"
-                            onClick={() => addFloatingIconElement(option.icon, option.label)}
-                          >
-                            <Icon icon={option.icon} className="h-4 w-4" aria-hidden="true" />
-                            <span className="sr-only">{option.label}</span>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{option.label} ({option.collection})</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {showLayersPanel && (
-              <LayersPanel
-                elements={floatingElements}
-                currentPageIndex={getCurrentVisiblePageIndex()}
-                selectedId={selectedFloatingId}
-                onSelect={(id) => { setSelectedFloatingId(id); setSelectedBlockId(null) }}
-                onUpdate={updateFloatingElement}
-                onClose={() => setShowLayersPanel(false)}
-              />
-            )}
-          </div>
-
           <div className="flex flex-col">
             {blocks.map(block => (
               <BlockListItem
@@ -7906,6 +7794,24 @@ ${pagesHtml}
                     </TabsContent>
 
                     <TabsContent value="elementos" className="mt-3 space-y-3">
+                  <FloatingElementLibraryPanel
+                    onAddText={addFloatingTextElement}
+                    onOpenImagePicker={() => { setFloatingImagePickerOpen(true); loadLibraryImages() }}
+                    onAddShape={addFloatingShapeElement}
+                    onAddIcon={addFloatingIconElement}
+                    onToggleLayers={() => setShowLayersPanel(!showLayersPanel)}
+                    layersPanel={showLayersPanel ? (
+                      <LayersPanel
+                        elements={floatingElements}
+                        currentPageIndex={getCurrentVisiblePageIndex()}
+                        selectedId={selectedFloatingId}
+                        onSelect={(id) => { setSelectedFloatingId(id); setSelectedBlockId(null) }}
+                        onUpdate={updateFloatingElement}
+                        onClose={() => setShowLayersPanel(false)}
+                      />
+                    ) : undefined}
+                  />
+
                   {/* Logomarca */}
                   <div className="space-y-2">
                     <label className="text-[10px] text-text3 block mb-1">Logomarca</label>
