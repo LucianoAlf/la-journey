@@ -69,6 +69,7 @@ export function HeaderFooterBar({ config, type, context, pageIndex, className }:
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
+        boxSizing: 'border-box',
         flexShrink: 0,
       }}
     >

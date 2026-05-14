@@ -9,7 +9,7 @@ export interface HeaderFooterZone {
   // Para type 'text':
   text?: string
   // Para type 'placeholder':
-  placeholder?: '{titulo}' | '{subtitulo}' | '{pagina}' | '{total}' | '{pagina_de_total}'
+  placeholder?: '{titulo}' | '{subtitulo}' | '{pagina}' | '{total}' | '{pagina_de_total}' | '{pagina_barra_total}' | '{pagina_texto}'
     | '{escola}' | '{professor}' | '{data}' | '{instrumento}' | '{nivel}'
   // Para type 'image':
   imageUrl?: string
@@ -204,7 +204,7 @@ export const HEADER_FOOTER_TEMPLATES: HeaderFooterTemplate[] = [
       paddingX: 24,
       left: { type: 'placeholder', placeholder: '{escola}', fontSize: 9, fontWeight: 600, color: '#64748b', uppercase: true, letterSpacing: 1 },
       center: { type: 'placeholder', placeholder: '{titulo}', fontSize: 10, fontWeight: 600, color: '#1e293b' },
-      right: { type: 'placeholder', placeholder: '{pagina_de_total}', fontSize: 9, fontWeight: 400, color: '#94a3b8' },
+      right: { type: 'placeholder', placeholder: '{instrumento}', fontSize: 9, fontWeight: 400, color: '#94a3b8' },
       showOnFirstPage: false,
       startFromPage: 1,
     },
@@ -221,7 +221,7 @@ export const HEADER_FOOTER_TEMPLATES: HeaderFooterTemplate[] = [
       paddingX: 20,
       left: { type: 'text', text: 'LA Music', fontSize: 10, fontWeight: 700, color: '#ffffff', fontFamily: 'Montserrat', uppercase: true, letterSpacing: 3 },
       center: { type: 'empty' },
-      right: { type: 'placeholder', placeholder: '{pagina_de_total}', fontSize: 9, fontWeight: 400, color: '#94a3b8' },
+      right: { type: 'placeholder', placeholder: '{nivel}', fontSize: 9, fontWeight: 400, color: '#94a3b8' },
       showOnFirstPage: false,
       startFromPage: 1,
     },

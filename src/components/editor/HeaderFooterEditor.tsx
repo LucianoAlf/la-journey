@@ -11,6 +11,12 @@ import {
   PLACEHOLDER_OPTIONS,
   HEADER_FOOTER_TEMPLATES,
 } from '@/lib/headerFooter'
+import {
+  buildHeaderFooterLine,
+  getHeaderFooterLineConfig,
+  type HeaderFooterLineConfig,
+  type HeaderFooterLineStyle,
+} from '@/lib/headerFooterLine'
 import { supabase } from '@/lib/supabase'
 
 interface HeaderFooterEditorProps {
@@ -18,6 +24,22 @@ interface HeaderFooterEditorProps {
   type: 'header' | 'footer'
   onChange: (config: HeaderFooterConfig) => void
   onApplyTemplate: (template: HeaderFooterConfig) => void
+}
+
+const zoneNames = {
+  left: 'Esquerda',
+  center: 'Centro',
+  right: 'Direita',
+} as const
+
+function zoneSummary(zone: HeaderFooterZone): string {
+  if (zone.type === 'image') return 'Logo'
+  if (zone.type === 'text') return zone.text || 'Texto'
+  if (zone.type === 'placeholder') {
+    const option = PLACEHOLDER_OPTIONS.find(item => item.value === zone.placeholder)
+    return option?.label || zone.placeholder || 'Campo dinamico'
+  }
+  return 'Vazio'
 }
 
 export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: HeaderFooterEditorProps) {
@@ -51,6 +73,18 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
   }
 
   const filteredTemplates = HEADER_FOOTER_TEMPLATES.filter((t) => t.type === type)
+  const lineConfig = getHeaderFooterLineConfig(config, type)
+
+  const updateLine = (partial: Partial<HeaderFooterLineConfig>) => {
+    const nextLine = { ...lineConfig, ...partial }
+    const nextBorder = buildHeaderFooterLine(nextLine)
+
+    if (type === 'header') {
+      update({ borderBottom: nextBorder })
+    } else {
+      update({ borderTop: nextBorder })
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -69,58 +103,47 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
 
       {config.enabled && (
         <>
-          {/* ── Templates ── */}
-          <div className="space-y-1.5">
-            <Label className="text-[10px] text-text3">Template</Label>
-            <div className="w-full overflow-x-auto [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
-              <div className="flex gap-2 pb-2">
-                {filteredTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    onClick={() => onApplyTemplate(template.config)}
-                    className="shrink-0 w-[140px] h-[40px] rounded-md border border-border
-                               overflow-hidden hover:ring-2 hover:ring-accent/50 transition-all
-                               relative bg-white"
-                  >
-                    {/* Mini preview do template */}
-                    <div
-                      className="absolute inset-0 flex items-center justify-between px-2"
-                      style={{
-                        borderBottom: type === 'header' ? template.config.borderBottom || 'none' : 'none',
-                        borderTop: type === 'footer' ? template.config.borderTop || 'none' : 'none',
-                        backgroundColor: template.config.backgroundColor || 'transparent',
-                      }}
-                    >
-                      <span className="text-[6px] text-gray-400 truncate max-w-[35px]">
-                        {template.config.left.type === 'text'
-                          ? template.config.left.text
-                          : template.config.left.type === 'placeholder'
-                            ? template.config.left.placeholder
-                            : template.config.left.type === 'image'
-                              ? '🖼'
-                              : ''}
-                      </span>
-                      <span className="text-[6px] text-gray-400 truncate max-w-[35px]">
-                        {template.config.center.type === 'text'
-                          ? template.config.center.text
-                          : template.config.center.type === 'placeholder'
-                            ? template.config.center.placeholder
-                            : ''}
-                      </span>
-                      <span className="text-[6px] text-gray-400 truncate max-w-[35px]">
-                        {template.config.right.type === 'text'
-                          ? template.config.right.text
-                          : template.config.right.type === 'placeholder'
-                            ? template.config.right.placeholder
-                            : ''}
-                      </span>
-                    </div>
-                    <span className="absolute bottom-0 left-0 right-0 text-[7px] text-center bg-white/80 text-gray-500">
-                      {template.name}
+          {/* Templates */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-[10px] text-text3 uppercase tracking-wider">Templates</Label>
+              <span className="text-[9px] text-text3">{filteredTemplates.length} opcoes</span>
+            </div>
+            <div className="grid gap-2">
+              {filteredTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => onApplyTemplate(template.config)}
+                  className="w-full rounded-lg border border-border bg-white p-2 text-left shadow-sm transition-all hover:border-accent/70 hover:bg-accent-soft/40 hover:shadow-md"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-text2">{template.name}</span>
+                    <span className="rounded-full bg-bg2 px-2 py-0.5 text-[9px] font-medium text-text3">
+                      {template.config.height}px
                     </span>
-                  </button>
-                ))}
-              </div>
+                  </div>
+                  <div
+                    className="flex h-14 items-center gap-2 rounded-md border border-border/70 px-2"
+                    style={{
+                      borderBottom: type === 'header' ? template.config.borderBottom || '1px solid transparent' : undefined,
+                      borderTop: type === 'footer' ? template.config.borderTop || '1px solid transparent' : undefined,
+                      backgroundColor: template.config.backgroundColor || 'transparent',
+                    }}
+                  >
+                    {(['left', 'center', 'right'] as const).map((zone) => (
+                      <div key={zone} className="min-w-0 flex-1">
+                        <div className="mb-0.5 text-[8px] font-medium uppercase tracking-wide text-text3">
+                          {zoneNames[zone]}
+                        </div>
+                        <div className="truncate text-[10px] font-semibold text-text2">
+                          {zoneSummary(template.config[zone])}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -280,51 +303,24 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
           <div className="space-y-2">
             <Label className="text-[10px] text-text3 uppercase tracking-wider">Configuração</Label>
 
-            {/* Altura */}
-            <div className="flex items-center gap-2">
-              <Label className="text-[10px] text-text3 w-16">Altura</Label>
-              <input type="range" min={24} max={60} step={2}
+            <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] text-text3">Altura</Label>
+                <span className="text-[10px] font-mono text-text3">{config.height}px</span>
+              </div>
+              <input
+                type="range"
+                min={24}
+                max={60}
+                step={2}
                 value={config.height}
                 onChange={(e) => update({ height: Number(e.target.value) })}
-                className="flex-1 accent-accent h-1.5"
+                className="w-full accent-accent h-1.5"
               />
-              <span className="text-[10px] text-text3 w-7 font-mono">{config.height}px</span>
-            </div>
 
-            {/* Padding horizontal */}
-            <div className="flex items-center gap-2">
-              <Label className="text-[10px] text-text3 w-16">Margem H</Label>
-              <input type="range" min={8} max={40} step={2}
-                value={config.paddingX}
-                onChange={(e) => update({ paddingX: Number(e.target.value) })}
-                className="flex-1 accent-accent h-1.5"
-              />
-              <span className="text-[10px] text-text3 w-7 font-mono">{config.paddingX}px</span>
-            </div>
-
-            {/* Background */}
-            <div className="flex items-center gap-2">
-              <Label className="text-[10px] text-text3 w-16">Fundo</Label>
-              <input
-                type="color"
-                value={config.backgroundColor === 'transparent' ? '#ffffff' : config.backgroundColor}
-                onChange={(e) => update({ backgroundColor: e.target.value })}
-                className="w-6 h-6 rounded border border-border cursor-pointer"
-              />
-              <Button
-                variant={config.backgroundColor === 'transparent' ? 'default' : 'ghost'}
-                size="sm" className="h-6 text-[9px]"
-                onClick={() => update({ backgroundColor: 'transparent' })}
-              >
-                Transparente
-              </Button>
-            </div>
-
-            {/* Padding horizontal (afastar dos cantos) */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pt-1">
                 <Label className="text-[10px] text-text3">Recuo lateral</Label>
-                <span className="text-[10px] text-text3">{config.paddingX || 24}px</span>
+                <span className="text-[10px] font-mono text-text3">{config.paddingX || 24}px</span>
               </div>
               <input
                 type="range"
@@ -333,25 +329,84 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
                 step={4}
                 value={config.paddingX || 24}
                 onChange={(e) => update({ paddingX: Number(e.target.value) })}
-                className="w-full h-1.5 bg-border rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:rounded-full"
+                className="w-full accent-accent h-1.5"
               />
             </div>
 
-            {/* Linha separadora */}
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={!!(type === 'header' ? config.borderBottom : config.borderTop)}
-                onCheckedChange={(checked) => {
-                  if (type === 'header') {
-                    update({ borderBottom: checked ? '1px solid #e2e8f0' : undefined })
-                  } else {
-                    update({ borderTop: checked ? '1px solid #e2e8f0' : undefined })
-                  }
-                }}
-              />
-              <Label className="text-[11px] text-text2">
-                {type === 'header' ? 'Linha abaixo' : 'Linha acima'}
-              </Label>
+            <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-[10px] text-text3">Fundo</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={config.backgroundColor === 'transparent' ? '#ffffff' : config.backgroundColor}
+                    onChange={(e) => update({ backgroundColor: e.target.value })}
+                    className="h-6 w-8 cursor-pointer rounded border border-border"
+                  />
+                  <Button
+                    variant={config.backgroundColor === 'transparent' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-6 text-[9px]"
+                    onClick={() => update({ backgroundColor: 'transparent' })}
+                  >
+                    Transparente
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="text-[10px] text-text3">
+                    {type === 'header' ? 'Linha abaixo' : 'Linha acima'}
+                  </Label>
+                  <div className="text-[9px] text-text3">Cor, espessura e estilo</div>
+                </div>
+                <Switch
+                  checked={lineConfig.enabled}
+                  onCheckedChange={(checked) => updateLine({ enabled: checked })}
+                />
+              </div>
+
+              <div className={lineConfig.enabled ? 'space-y-2' : 'pointer-events-none space-y-2 opacity-45'}>
+                <div className="flex items-center gap-2">
+                  <Label className="w-16 text-[10px] text-text3">Cor</Label>
+                  <input
+                    type="color"
+                    value={lineConfig.color}
+                    onChange={(e) => updateLine({ color: e.target.value })}
+                    className="h-6 w-8 cursor-pointer rounded border border-border"
+                  />
+                  <Select
+                    value={lineConfig.style}
+                    onValueChange={(value) => updateLine({ style: value as HeaderFooterLineStyle })}
+                  >
+                    <SelectTrigger className="h-7 flex-1 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="solid">Solida</SelectItem>
+                      <SelectItem value="dashed">Tracejada</SelectItem>
+                      <SelectItem value="dotted">Pontilhada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Label className="w-16 text-[10px] text-text3">Espessura</Label>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={4}
+                    step={0.5}
+                    value={lineConfig.width}
+                    onChange={(e) => updateLine({ width: Number(e.target.value) })}
+                    className="flex-1 accent-accent h-1.5"
+                  />
+                  <span className="w-8 text-right text-[10px] font-mono text-text3">{lineConfig.width}px</span>
+                </div>
+              </div>
             </div>
 
             {/* Mostrar na primeira página */}

@@ -789,9 +789,9 @@
   .a4-page--cover { background:transparent !important; height:297mm !important; min-height:297mm !important; page-break-before:auto !important; break-before:auto !important; padding:0 !important; margin:0 !important }
   .a4-page--cover .a4-page-content { padding:0 !important; overflow:hidden !important }
   .a4-page--cover .block-cover { min-height:297mm !important; width:100% !important; height:100% !important }
-  .a4-page-header { padding:20px 40px 8px !important; flex-shrink:0 !important }
+  .a4-page-header { flex-shrink:0 !important; box-sizing:border-box !important }
   .a4-page-content { padding:12px 40px !important; flex:1 !important; overflow:hidden !important }
-  .a4-page-footer { padding:8px 40px 16px !important; flex-shrink:0 !important }
+  .a4-page-footer { flex-shrink:0 !important; box-sizing:border-box !important }
   .print-footer {
     display:flex !important;
     justify-content:space-between !important;
