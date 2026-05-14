@@ -23,6 +23,8 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    display: 'block',
+    maxWidth: '100%',
   }
 
   if (zone.type === 'text') {
@@ -40,6 +42,7 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
         alt="Logo"
         style={{
           height: `${zone.imageHeight || 24}px`,
+          maxWidth: '100%',
           objectFit: 'contain',
         }}
       />
@@ -49,12 +52,44 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
   return <div />
 }
 
+function hasZoneContent(zone: HeaderFooterZone): boolean {
+  if (zone.type === 'image') return Boolean(zone.imageUrl)
+  if (zone.type === 'text') return Boolean(zone.text)
+  if (zone.type === 'placeholder') return Boolean(zone.placeholder)
+  return false
+}
+
+function getZoneShellStyle(
+  position: 'left' | 'center' | 'right',
+  hasContent: boolean,
+): React.CSSProperties {
+  if (position === 'center') {
+    return {
+      flex: '1 1 auto',
+      display: 'flex',
+      justifyContent: 'center',
+      minWidth: 0,
+    }
+  }
+
+  return {
+    flex: hasContent ? '0 1 auto' : '0 0 0px',
+    display: 'flex',
+    justifyContent: position === 'left' ? 'flex-start' : 'flex-end',
+    maxWidth: hasContent ? '28%' : '0px',
+    minWidth: 0,
+    overflow: 'hidden',
+  }
+}
+
 export function HeaderFooterBar({ config, type, context, pageIndex, className }: HeaderFooterBarProps) {
   if (!config.enabled) return null
   // Se showOnFirstPage está ativo, ignora startFromPage para a página 0
   if (pageIndex === 0 && !config.showOnFirstPage) return null
   // Para outras páginas, respeita startFromPage (mas só se não for a primeira com showOnFirstPage)
   if (pageIndex > 0 && pageIndex < config.startFromPage) return null
+  const hasLeftContent = hasZoneContent(config.left)
+  const hasRightContent = hasZoneContent(config.right)
 
   return (
     <div
@@ -73,13 +108,13 @@ export function HeaderFooterBar({ config, type, context, pageIndex, className }:
         flexShrink: 0,
       }}
     >
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start', minWidth: 0 }}>
+      <div style={getZoneShellStyle('left', hasLeftContent)}>
         {renderZone(config.left, context)}
       </div>
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+      <div style={getZoneShellStyle('center', true)}>
         {renderZone(config.center, context)}
       </div>
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
+      <div style={getZoneShellStyle('right', hasRightContent)}>
         {renderZone(config.right, context)}
       </div>
     </div>
