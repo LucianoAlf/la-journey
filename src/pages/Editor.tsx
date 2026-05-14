@@ -99,6 +99,7 @@ import {
   DEFAULT_HEADER, DEFAULT_FOOTER,
   isLegacyFormat, migrateLegacyHeader, migrateLegacyFooter,
 } from "@/lib/headerFooter";
+import { copyHeaderFooterAppearance } from "@/lib/headerFooterAppearance";
 import { createBrandKitHeaderFooterConfig } from "@/lib/headerFooterBrandKit";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
@@ -7081,6 +7082,15 @@ ${pagesHtml}
                       placeholderContext={headerFooterPreviewContext}
                       onChange={(config) => setPageConfig(prev => ({ ...prev, header: config }))}
                       onApplyTemplate={(template) => setPageConfig(prev => ({ ...prev, header: template }))}
+                      onCopyAppearanceFromPair={() => setPageConfig(prev => ({
+                        ...prev,
+                        header: copyHeaderFooterAppearance({
+                          source: prev.footer,
+                          sourceType: 'footer',
+                          target: prev.header,
+                          targetType: 'header',
+                        }),
+                      }))}
                     />
                   </TabsContent>
 
@@ -7091,6 +7101,15 @@ ${pagesHtml}
                       placeholderContext={headerFooterPreviewContext}
                       onChange={(config) => setPageConfig(prev => ({ ...prev, footer: config }))}
                       onApplyTemplate={(template) => setPageConfig(prev => ({ ...prev, footer: template }))}
+                      onCopyAppearanceFromPair={() => setPageConfig(prev => ({
+                        ...prev,
+                        footer: copyHeaderFooterAppearance({
+                          source: prev.header,
+                          sourceType: 'header',
+                          target: prev.footer,
+                          targetType: 'footer',
+                        }),
+                      }))}
                     />
                   </TabsContent>
                 </Tabs>

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Trash, Upload } from '@phosphor-icons/react'
+import { Copy, PaintBrush, Trash, Upload } from '@phosphor-icons/react'
 import {
   type HeaderFooterConfig,
   type HeaderFooterZone,
@@ -29,6 +29,7 @@ interface HeaderFooterEditorProps {
   placeholderContext: PlaceholderContext
   onChange: (config: HeaderFooterConfig) => void
   onApplyTemplate: (template: HeaderFooterConfig) => void
+  onCopyAppearanceFromPair?: () => void
 }
 
 const zoneNames = {
@@ -53,7 +54,14 @@ function zoneSummary(zone: HeaderFooterZone): string {
   return 'Vazio'
 }
 
-export function HeaderFooterEditor({ config, type, placeholderContext, onChange, onApplyTemplate }: HeaderFooterEditorProps) {
+export function HeaderFooterEditor({
+  config,
+  type,
+  placeholderContext,
+  onChange,
+  onApplyTemplate,
+  onCopyAppearanceFromPair,
+}: HeaderFooterEditorProps) {
   const [activeZone, setActiveZone] = useState<'left' | 'center' | 'right'>('left')
   const [uploadingZone, setUploadingZone] = useState<'left' | 'center' | 'right' | null>(null)
 
@@ -131,6 +139,16 @@ export function HeaderFooterEditor({ config, type, placeholderContext, onChange,
     } else {
       update({ borderTop: nextBorder })
     }
+  }
+
+  const copyColor = async (color: string, label: string) => {
+    if (!navigator.clipboard) {
+      toast.error('Não foi possível copiar a cor')
+      return
+    }
+
+    await navigator.clipboard.writeText(color)
+    toast.success(`${label} copiada: ${color}`)
   }
 
   const renderZoneEditor = (zone: 'left' | 'center' | 'right') => {
@@ -404,6 +422,64 @@ export function HeaderFooterEditor({ config, type, placeholderContext, onChange,
 
           <div className="space-y-2">
             <Label className="text-[10px] text-text3 uppercase tracking-wider">Aparência</Label>
+
+            <div className="space-y-2 rounded-lg border border-border bg-white p-2.5">
+              <div>
+                <Label className="text-[10px] text-text3">Ações rápidas</Label>
+                <div className="text-[9px] text-text3">Reaproveite cores sem mexer no conteúdo.</div>
+              </div>
+              {onCopyAppearanceFromPair && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full justify-center gap-2 text-[10px]"
+                  onClick={() => {
+                    onCopyAppearanceFromPair()
+                    toast.success(
+                      type === 'header'
+                        ? 'Aparência do rodapé aplicada ao cabeçalho'
+                        : 'Aparência do cabeçalho aplicada ao rodapé',
+                    )
+                  }}
+                >
+                  <PaintBrush size={12} />
+                  {type === 'header' ? 'Usar aparência do rodapé' : 'Usar aparência do cabeçalho'}
+                </Button>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start gap-2 rounded-md border border-border bg-card/50 px-2 text-[9px]"
+                  onClick={() => copyColor(config.backgroundColor || 'transparent', 'Cor de fundo')}
+                  disabled={!config.backgroundColor || config.backgroundColor === 'transparent'}
+                >
+                  <span
+                    className="h-4 w-4 rounded border border-border"
+                    style={{ backgroundColor: config.backgroundColor === 'transparent' ? '#ffffff' : config.backgroundColor }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-left">{config.backgroundColor || 'transparent'}</span>
+                  <Copy size={11} />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start gap-2 rounded-md border border-border bg-card/50 px-2 text-[9px]"
+                  onClick={() => copyColor(lineConfig.color, 'Cor da linha')}
+                  disabled={!lineConfig.enabled}
+                >
+                  <span
+                    className="h-4 w-4 rounded border border-border"
+                    style={{ backgroundColor: lineConfig.color }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-left">{lineConfig.color}</span>
+                  <Copy size={11} />
+                </Button>
+              </div>
+            </div>
 
             <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
               <div className="flex items-center justify-between">
