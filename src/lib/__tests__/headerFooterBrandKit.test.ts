@@ -46,6 +46,21 @@ test('prefers horizontal logo for header and falls back to primary logo', () => 
   )
 })
 
+test('uses explicitly selected logo variant when applying header footer identity', () => {
+  assertEqual(
+    getBrandKitHeaderLogoUrl({
+      logo_url: 'primary.png',
+      logo_variants: {
+        primary: 'primary-variant.png',
+        horizontal: 'horizontal.png',
+        light: 'light.png',
+      },
+    }, 'light'),
+    'light.png',
+    'selected Brand Kit logo variant should override the automatic preference',
+  )
+})
+
 test('creates branded header and footer without requiring an existing page config', () => {
   const config = createBrandKitHeaderFooterConfig({
     school: {
@@ -58,13 +73,14 @@ test('creates branded header and footer without requiring an existing page confi
       secondary_color: '#ffcc00',
       default_body_font: 'Nunito Sans',
     },
+    logoVariant: 'primary',
   })
 
   assertEqual(config.header.left, {
     type: 'image',
-    imageUrl: 'horizontal.png',
+    imageUrl: 'primary.png',
     imageHeight: 26,
-  }, 'header left zone should use the school logo')
+  }, 'header left zone should use the selected school logo')
 
   assertEqual(config.header.center, {
     type: 'placeholder',

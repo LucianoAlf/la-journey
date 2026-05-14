@@ -1,7 +1,7 @@
 import type { HeaderFooterConfig } from '@/lib/headerFooter'
 
-type BrandLogoVariantKey = 'primary' | 'symbol' | 'horizontal' | 'light' | 'dark'
-type BrandLogoVariants = Partial<Record<BrandLogoVariantKey, string>>
+export type BrandKitHeaderLogoVariant = 'primary' | 'symbol' | 'horizontal' | 'light' | 'dark'
+type BrandLogoVariants = Partial<Record<BrandKitHeaderLogoVariant, string>>
 
 export interface HeaderFooterBrandSchool {
   name?: string | null
@@ -14,6 +14,7 @@ export interface HeaderFooterBrandSchool {
 
 export interface BrandKitHeaderFooterOptions {
   school?: HeaderFooterBrandSchool | null
+  logoVariant?: BrandKitHeaderLogoVariant | null
 }
 
 function getLogoVariants(school?: HeaderFooterBrandSchool | null): BrandLogoVariants {
@@ -29,8 +30,13 @@ function getLogoVariants(school?: HeaderFooterBrandSchool | null): BrandLogoVari
   return variants
 }
 
-export function getBrandKitHeaderLogoUrl(school?: HeaderFooterBrandSchool | null) {
+export function getBrandKitHeaderLogoUrl(
+  school?: HeaderFooterBrandSchool | null,
+  logoVariant?: BrandKitHeaderLogoVariant | null,
+) {
   const variants = getLogoVariants(school)
+  if (logoVariant && variants[logoVariant]) return variants[logoVariant] ?? ''
+
   return variants.horizontal
     ?? variants.dark
     ?? variants.primary
@@ -41,8 +47,9 @@ export function getBrandKitHeaderLogoUrl(school?: HeaderFooterBrandSchool | null
 
 export function createBrandKitHeaderFooterConfig({
   school,
+  logoVariant,
 }: BrandKitHeaderFooterOptions): Pick<Record<'header' | 'footer', HeaderFooterConfig>, 'header' | 'footer'> {
-  const logoUrl = getBrandKitHeaderLogoUrl(school)
+  const logoUrl = getBrandKitHeaderLogoUrl(school, logoVariant)
   const schoolName = school?.name?.trim() || 'LA Music School'
   const primaryColor = school?.primary_color || '#1E3A5F'
   const secondaryColor = school?.secondary_color || '#FF2D78'
