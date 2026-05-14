@@ -3827,6 +3827,49 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     [availableBrandLogos, headerFooterLogoKey],
   )
 
+  const applyLogoToHeaderConfig = useCallback((config: HeaderFooterConfig, logoUrl: string): HeaderFooterConfig => {
+    const zones = ['left', 'center', 'right'] as const
+    const targetZone = zones.find(zone => config[zone].type === 'image') ?? 'left'
+    const currentZone = config[targetZone]
+
+    return {
+      ...config,
+      [targetZone]: {
+        ...currentZone,
+        type: 'image',
+        imageUrl: logoUrl,
+        imageHeight: currentZone.imageHeight ?? 26,
+      },
+    }
+  }, [])
+
+  const replaceExistingFooterLogos = useCallback((config: HeaderFooterConfig, logoUrl: string): HeaderFooterConfig => {
+    const zones = ['left', 'center', 'right'] as const
+    const hasFooterLogo = zones.some(zone => config[zone].type === 'image')
+    if (!hasFooterLogo) return config
+
+    return zones.reduce((nextConfig, zone) => {
+      if (nextConfig[zone].type !== 'image') return nextConfig
+      return {
+        ...nextConfig,
+        [zone]: {
+          ...nextConfig[zone],
+          imageUrl: logoUrl,
+        },
+      }
+    }, config)
+  }, [])
+
+  const handleHeaderFooterLogoSelect = useCallback((logo: { key: BrandLogoVariantKey; label: string; url: string }) => {
+    setHeaderFooterLogoKey(logo.key)
+    setPageConfig(prev => ({
+      ...prev,
+      header: applyLogoToHeaderConfig(prev.header, logo.url),
+      footer: replaceExistingFooterLogos(prev.footer, logo.url),
+    }))
+    toast.success(`Logo ${logo.label} aplicada no cabeçalho.`)
+  }, [applyLogoToHeaderConfig, replaceExistingFooterLogos])
+
   const [coverTemplates, setCoverTemplates] = useState<SchoolCoverTemplate[]>([])
   const [coverTemplatesLoading, setCoverTemplatesLoading] = useState(false)
   const [saveCoverTemplateOpen, setSaveCoverTemplateOpen] = useState(false)
@@ -6981,7 +7024,7 @@ ${pagesHtml}
                             <button
                               key={logo.key}
                               type="button"
-                              onClick={() => setHeaderFooterLogoKey(logo.key)}
+                              onClick={() => handleHeaderFooterLogoSelect(logo)}
                               className={cn(
                                 'min-w-0 rounded-md border p-1.5 text-left transition-all',
                                 'bg-white hover:border-accent/60 hover:bg-accent-soft',
@@ -7010,7 +7053,7 @@ ${pagesHtml}
                   disabled={!school}
                 >
                   <MagicWand size={13} />
-                  Aplicar identidade
+                  Aplicar identidade completa
                 </Button>
 
                 <Tabs defaultValue="header" className="w-full">
