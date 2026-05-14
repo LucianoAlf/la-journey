@@ -464,6 +464,26 @@
 /* Draggable no modo editor */
 .block-cover .cover-draggable{pointer-events:auto;cursor:move;border-radius:8px;padding:12px 20px;transition:outline .15s,box-shadow .15s}
 .block-cover .cover-draggable:hover{outline:2px dashed rgba(255,45,120,.6);box-shadow:0 0 0 4px rgba(255,45,120,.12)}
+/* Caixa de texto redimensionável da capa */
+.block-cover .cover-legacy-text-selectable{outline-color:rgba(139,92,246,.8);outline-style:solid;outline-width:0}
+.block-cover .cover-legacy-text-selectable:hover{outline-width:2px;outline-offset:2px;box-shadow:0 0 0 3px rgba(139,92,246,.12)}
+.block-cover .cover-text-box{box-sizing:border-box;min-width:10%;overflow:visible;outline:2px solid transparent;outline-offset:2px;transition:outline-color .12s,box-shadow .12s}
+.block-cover .cover-text-box:hover{outline-color:rgba(139,92,246,.75);box-shadow:0 0 0 3px rgba(139,92,246,.10)}
+.block-cover .cover-text-box--selected{outline-color:#8B5CF6!important;box-shadow:0 0 0 3px rgba(139,92,246,.14)}
+.block-cover .cover-text-toolbar{position:absolute;left:50%;top:-50px;z-index:20;display:flex;align-items:center;gap:4px;padding:6px;border:1px solid rgba(148,163,184,.35);border-radius:999px;background:#fff;color:#0f172a;box-shadow:0 14px 34px rgba(15,23,42,.22);transform:translateX(-50%);pointer-events:auto}
+.block-cover .cover-text-toolbar button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:999px;background:transparent;color:inherit;cursor:pointer;transition:background .12s,color .12s,transform .12s}
+.block-cover .cover-text-toolbar button:hover,.block-cover .cover-text-toolbar button:focus-visible{background:#f1f5f9;color:#8B5CF6;outline:none}
+.block-cover .cover-text-toolbar button:active{transform:scale(.96)}
+.block-cover .cover-text-resize-handle{position:absolute;top:50%;z-index:3;width:11px;height:11px;padding:0;border:2px solid #8B5CF6;border-radius:999px;background:#fff;box-shadow:0 3px 10px rgba(15,23,42,.22);transform:translateY(-50%);cursor:ew-resize;pointer-events:auto}
+.block-cover .cover-text-resize-handle--left{left:-7px}
+.block-cover .cover-text-resize-handle--right{right:-7px}
+.block-cover .cover-text-resize-handle:hover,.block-cover .cover-text-resize-handle:focus-visible{background:#F5F3FF;outline:none;box-shadow:0 0 0 4px rgba(139,92,246,.18),0 4px 12px rgba(15,23,42,.22)}
+.block-cover .cover-text-scale-handle{position:absolute;z-index:4;width:11px;height:11px;padding:0;border:2px solid #8B5CF6;border-radius:999px;background:#fff;box-shadow:0 3px 10px rgba(15,23,42,.22);pointer-events:auto}
+.block-cover .cover-text-scale-handle--top-left{top:-7px;left:-7px;cursor:nwse-resize}
+.block-cover .cover-text-scale-handle--top-right{top:-7px;right:-7px;cursor:nesw-resize}
+.block-cover .cover-text-scale-handle--bottom-left{bottom:-7px;left:-7px;cursor:nesw-resize}
+.block-cover .cover-text-scale-handle--bottom-right{right:-7px;bottom:-7px;cursor:nwse-resize}
+.block-cover .cover-text-scale-handle:hover,.block-cover .cover-text-scale-handle:focus-visible{background:#F5F3FF;outline:none;box-shadow:0 0 0 4px rgba(139,92,246,.18),0 3px 10px rgba(15,23,42,.22)}
 /* Guias de snap (estilo Canva) */
 .cover-snap-guide{position:absolute;z-index:10;pointer-events:none;animation:snap-fade-in .1s ease-out}
 .cover-snap-guide--v{top:0;bottom:0;width:1px;background:rgba(255,45,120,.7);box-shadow:0 0 4px rgba(255,45,120,.4)}

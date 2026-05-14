@@ -973,12 +973,17 @@ interface CanvasMaterialPreviewProps {
   selectedOverlayId?: string | null
   onOverlaySelect?: (id: string | null) => void
   onOverlayUpdate?: (id: string, patch: Partial<CoverOverlayElement>) => void
+  onOverlayCloneForDrag?: (id: string) => CoverOverlayElement | null
   textElements?: CoverTextElement[]
   selectedTextId?: string | null
   editingTextId?: string | null
   onTextSelect?: (id: string | null) => void
   onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
   onTextEditStart?: (id: string | null) => void
+  onTextDuplicate?: (id: string) => void
+  onTextDelete?: (id: string) => void
+  onTextCloneForDrag?: (id: string) => CoverTextElement | null
+  onLegacyCoverTextActivate?: () => void
   onLegacyNotationStavePointerDown: (blockId: string, staveIndex: number) => void
   onChordGridItemClick: (blockId: string, chord: any, index: number) => void
   onKeyboardGridItemClick: (blockId: string, keyboard: any, index: number) => void
@@ -995,12 +1000,17 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   selectedOverlayId,
   onOverlaySelect,
   onOverlayUpdate,
+  onOverlayCloneForDrag,
   textElements,
   selectedTextId,
   editingTextId,
   onTextSelect,
   onTextUpdate,
   onTextEditStart,
+  onTextDuplicate,
+  onTextDelete,
+  onTextCloneForDrag,
+  onLegacyCoverTextActivate,
   onLegacyNotationStavePointerDown,
   onChordGridItemClick,
   onKeyboardGridItemClick,
@@ -1124,12 +1134,17 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
       onOverlaySelect={block.block_type === 'cover' ? onOverlaySelect : undefined}
       onOverlayUpdate={block.block_type === 'cover' ? onOverlayUpdate : undefined}
+      onOverlayCloneForDrag={block.block_type === 'cover' ? onOverlayCloneForDrag : undefined}
       textElements={block.block_type === 'cover' ? textElements : undefined}
       selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
       editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
       onTextSelect={block.block_type === 'cover' ? onTextSelect : undefined}
       onTextUpdate={block.block_type === 'cover' ? onTextUpdate : undefined}
       onTextEditStart={block.block_type === 'cover' ? onTextEditStart : undefined}
+      onTextDuplicate={block.block_type === 'cover' ? onTextDuplicate : undefined}
+      onTextDelete={block.block_type === 'cover' ? onTextDelete : undefined}
+      onTextCloneForDrag={block.block_type === 'cover' ? onTextCloneForDrag : undefined}
+      onLegacyTextActivate={block.block_type === 'cover' ? onLegacyCoverTextActivate : undefined}
     />
   )
 
@@ -1187,12 +1202,17 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     prev.selectedOverlayId === next.selectedOverlayId &&
     prev.onOverlaySelect === next.onOverlaySelect &&
     prev.onOverlayUpdate === next.onOverlayUpdate &&
+    prev.onOverlayCloneForDrag === next.onOverlayCloneForDrag &&
     prev.textElements === next.textElements &&
     prev.selectedTextId === next.selectedTextId &&
     prev.editingTextId === next.editingTextId &&
     prev.onTextSelect === next.onTextSelect &&
     prev.onTextUpdate === next.onTextUpdate &&
     prev.onTextEditStart === next.onTextEditStart &&
+    prev.onTextDuplicate === next.onTextDuplicate &&
+    prev.onTextDelete === next.onTextDelete &&
+    prev.onTextCloneForDrag === next.onTextCloneForDrag &&
+    prev.onLegacyCoverTextActivate === next.onLegacyCoverTextActivate &&
     prev.onLegacyNotationStavePointerDown === next.onLegacyNotationStavePointerDown &&
     prev.onChordGridItemClick === next.onChordGridItemClick &&
     prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
@@ -2264,6 +2284,9 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setSelectedBlockId(null)
     setSelectedFloatingId(null)
     setEditingFloatingId(null)
+    setSelectedTextId(null)
+    setEditingTextId(null)
+    setSelectedOverlayId(null)
     if (inlineEditingBlockId) setInlineEditingBlockId(null)
     setInlineEditFocusPoint(null)
   }, [inlineEditingBlockId, setSelectedBlockId])
@@ -2971,13 +2994,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     ].filter(Boolean).join(' ')
 
     setCoverImageLoading(true)
-    setCoverImageStatus('Conectando ao Gemini...')
+    setCoverImageStatus('Preparando a geração da imagem...')
     const startTime = performance.now()
     const toastId = toast.loading('Gerando capa com IA...')
     const statusTimers = [
-      window.setTimeout(() => setCoverImageStatus('Gerando imagem no Gemini...'), 8_000),
+      window.setTimeout(() => setCoverImageStatus('Criando imagem da capa...'), 8_000),
       window.setTimeout(() => setCoverImageStatus('Ainda gerando. Se passar de 75s, vamos cancelar automaticamente.'), 25_000),
-      window.setTimeout(() => setCoverImageStatus('Finalizando ou aguardando resposta do Gemini...'), 50_000),
+      window.setTimeout(() => setCoverImageStatus('Finalizando a imagem...'), 50_000),
     ]
     try {
       // Gerar via Gemini (Nano Banana 2) com style enhancer + referências opcionais
@@ -3140,9 +3163,20 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [activeCoverBlockId, overlayElements, updateCoverOverlayElements])
 
   const updateOverlayElement = useCallback((id: string, patch: Partial<CoverOverlayElement>) => {
-    const updated = overlayElements.map(el => el.id === id ? { ...el, ...patch } : el)
-    updateCoverOverlayElements(updated)
-  }, [overlayElements, updateCoverOverlayElements])
+    if (!activeCoverBlockId) return
+    setBlockWithHistory(activeCoverBlockId, block => {
+      const rd = block.render_data as any ?? {}
+      const current = (Array.isArray(rd.overlay_elements) ? rd.overlay_elements : []) as CoverOverlayElement[]
+      return {
+        ...block,
+        render_data: {
+          ...rd,
+          overlay_elements: current.map(el => el.id === id ? { ...el, ...patch } : el),
+        },
+      }
+    })
+    queueBlockAutosave(activeCoverBlockId)
+  }, [activeCoverBlockId, queueBlockAutosave, setBlockWithHistory])
 
   const removeOverlayElement = useCallback((id: string) => {
     updateCoverOverlayElements(overlayElements.filter(el => el.id !== id))
@@ -3170,21 +3204,30 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
 
   const textElements: CoverTextElement[] = useMemo(() => {
-    if (!selectedBlock || selectedBlock.block_type !== 'cover') return []
-    const rd = selectedBlock.render_data as any ?? {}
+    if (!activeCoverBlock || activeCoverBlock.block_type !== 'cover') return []
+    const rd = activeCoverBlock.render_data as any ?? {}
     // Se já tem text_elements, usa diretamente
     if (Array.isArray(rd.text_elements) && rd.text_elements.length > 0) {
       return rd.text_elements as CoverTextElement[]
     }
     return []
-  }, [selectedBlock])
+  }, [activeCoverBlock])
+
+  const updateCoverTextElements = useCallback((nextTextElements: CoverTextElement[]) => {
+    if (!activeCoverBlockId) return
+    setBlockWithHistory(activeCoverBlockId, block => ({
+      ...block,
+      render_data: { ...(block.render_data ?? {}), text_elements: nextTextElements },
+    }))
+    queueBlockAutosave(activeCoverBlockId)
+  }, [activeCoverBlockId, queueBlockAutosave, setBlockWithHistory])
 
   // Migra campos legados para text_elements (chamado ao ativar tipografia avançada)
   const initTextElements = useCallback(() => {
-    if (!selectedBlock || selectedBlock.block_type !== 'cover') return
-    const rd = selectedBlock.render_data as any ?? {}
+    if (!activeCoverBlock || activeCoverBlock.block_type !== 'cover') return
+    const rd = activeCoverBlock.render_data as any ?? {}
     if (Array.isArray(rd.text_elements) && rd.text_elements.length > 0) return // já migrado
-    const titulo = rd.titulo || selectedBlock.title || materialTitle || 'Material Didático'
+    const titulo = rd.titulo || activeCoverBlock.title || materialTitle || 'Material Didático'
     const subtitulo = rd.subtitulo || ''
     const instrumento = rd.instrumento || ''
     const nivel = rd.nivel || ''
@@ -3231,12 +3274,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         background: { ...DEFAULT_TEXT_BG }, maxWidth: 60, zIndex: 22,
       })
     }
-    updateSelectedRenderData('text_elements', elements)
+    updateCoverTextElements(elements)
     setSelectedTextId('title')
-  }, [selectedBlock, materialTitle, updateSelectedRenderData])
+  }, [activeCoverBlock, materialTitle, updateCoverTextElements])
 
   const addTextElement = useCallback(() => {
-    if (!selectedBlockId) return
+    if (!activeCoverBlockId) return
     const el: CoverTextElement = {
       id: crypto.randomUUID(),
       content: 'Novo texto',
@@ -3248,24 +3291,190 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       background: { ...DEFAULT_TEXT_BG }, maxWidth: 60,
       zIndex: 22 + textElements.length,
     }
-    updateSelectedRenderData('text_elements', [...textElements, el])
+    updateCoverTextElements([...textElements, el])
     setSelectedTextId(el.id)
     setEditingTextId(el.id)
-  }, [selectedBlockId, textElements, updateSelectedRenderData])
+  }, [activeCoverBlockId, textElements, updateCoverTextElements])
 
   const updateTextElement = useCallback((id: string, patch: Partial<CoverTextElement>) => {
-    const updated = textElements.map(el => el.id === id ? { ...el, ...patch } : el)
-    updateSelectedRenderData('text_elements', updated)
-  }, [textElements, updateSelectedRenderData])
+    if (!activeCoverBlockId) return
+    setBlockWithHistory(activeCoverBlockId, block => {
+      const rd = block.render_data as any ?? {}
+      const current = (Array.isArray(rd.text_elements) ? rd.text_elements : []) as CoverTextElement[]
+      return {
+        ...block,
+        render_data: {
+          ...rd,
+          text_elements: current.map(el => el.id === id ? { ...el, ...patch } : el),
+        },
+      }
+    })
+    queueBlockAutosave(activeCoverBlockId)
+  }, [activeCoverBlockId, queueBlockAutosave, setBlockWithHistory])
 
   const removeTextElement = useCallback((id: string) => {
-    updateSelectedRenderData('text_elements', textElements.filter(el => el.id !== id))
+    updateCoverTextElements(textElements.filter(el => el.id !== id))
     if (selectedTextId === id) setSelectedTextId(null)
-  }, [textElements, selectedTextId, updateSelectedRenderData])
+  }, [textElements, selectedTextId, updateCoverTextElements])
 
   const selectedText = useMemo(() =>
     textElements.find(el => el.id === selectedTextId) ?? null
   , [textElements, selectedTextId])
+
+  type CoverCanvasClipboard =
+    | { kind: 'text'; item: CoverTextElement }
+    | { kind: 'overlay'; item: CoverOverlayElement }
+
+  const coverCanvasClipboardRef = useRef<CoverCanvasClipboard | null>(null)
+
+  const selectTextElement = useCallback((id: string | null) => {
+    setSelectedTextId(id)
+    if (id) {
+      if (activeCoverBlockId) setSelectedBlockId(activeCoverBlockId)
+      setSelectedOverlayId(null)
+      setSelectedFloatingId(null)
+      setEditingFloatingId(null)
+      setInlineEditingBlockId(null)
+      setToolbarPosition(null)
+    }
+  }, [activeCoverBlockId])
+
+  const duplicateTextElement = useCallback((id: string) => {
+    const source = textElements.find(el => el.id === id)
+    if (!source) return
+    const maxZ = Math.max(...textElements.map(el => el.zIndex), 22)
+    const copy: CoverTextElement = {
+      ...source,
+      id: crypto.randomUUID(),
+      x: Math.min(96, source.x + 3),
+      y: Math.min(96, source.y + 3),
+      zIndex: maxZ + 1,
+    }
+    updateCoverTextElements([...textElements, copy])
+    setSelectedTextId(copy.id)
+    setEditingTextId(null)
+    toast.success('Texto duplicado')
+  }, [textElements, updateCoverTextElements])
+
+  const cloneTextElementForDrag = useCallback((id: string) => {
+    const source = textElements.find(el => el.id === id)
+    if (!source) return null
+    const maxZ = Math.max(...textElements.map(el => el.zIndex), 22)
+    const copy: CoverTextElement = {
+      ...source,
+      id: crypto.randomUUID(),
+      zIndex: maxZ + 1,
+    }
+    updateCoverTextElements([...textElements, copy])
+    setSelectedTextId(copy.id)
+    setSelectedOverlayId(null)
+    setEditingTextId(null)
+    return copy
+  }, [textElements, updateCoverTextElements])
+
+  const duplicateOverlayElement = useCallback((id: string) => {
+    const source = overlayElements.find(el => el.id === id)
+    if (!source) return
+    const maxZ = Math.max(...overlayElements.map(el => el.zIndex), 0)
+    const copy: CoverOverlayElement = {
+      ...source,
+      id: crypto.randomUUID(),
+      x: Math.min(96, source.x + 3),
+      y: Math.min(96, source.y + 3),
+      zIndex: maxZ + 1,
+    }
+    updateCoverOverlayElements([...overlayElements, copy])
+    setSelectedOverlayId(copy.id)
+    toast.success('Elemento duplicado')
+  }, [overlayElements, updateCoverOverlayElements])
+
+  const cloneOverlayElementForDrag = useCallback((id: string) => {
+    const source = overlayElements.find(el => el.id === id)
+    if (!source) return null
+    const maxZ = Math.max(...overlayElements.map(el => el.zIndex), 0)
+    const copy: CoverOverlayElement = {
+      ...source,
+      id: crypto.randomUUID(),
+      zIndex: maxZ + 1,
+    }
+    updateCoverOverlayElements([...overlayElements, copy])
+    setSelectedOverlayId(copy.id)
+    setSelectedTextId(null)
+    setEditingTextId(null)
+    return copy
+  }, [overlayElements, updateCoverOverlayElements])
+
+  const copySelectedCoverElement = useCallback(() => {
+    if (selectedText) {
+      coverCanvasClipboardRef.current = { kind: 'text', item: { ...selectedText } }
+      toast.success('Texto copiado')
+      return true
+    }
+    if (selectedOverlay) {
+      coverCanvasClipboardRef.current = { kind: 'overlay', item: { ...selectedOverlay } }
+      toast.success('Elemento copiado')
+      return true
+    }
+    return false
+  }, [selectedOverlay, selectedText])
+
+  const pasteCoverElement = useCallback(() => {
+    const clipboard = coverCanvasClipboardRef.current
+    if (!clipboard || !activeCoverBlockId) return false
+
+    if (clipboard.kind === 'text') {
+      const maxZ = Math.max(...textElements.map(el => el.zIndex), 22)
+      const copy: CoverTextElement = {
+        ...clipboard.item,
+        id: crypto.randomUUID(),
+        x: Math.min(96, clipboard.item.x + 4),
+        y: Math.min(96, clipboard.item.y + 4),
+        zIndex: maxZ + 1,
+      }
+      updateCoverTextElements([...textElements, copy])
+      setSelectedTextId(copy.id)
+      setSelectedOverlayId(null)
+      setEditingTextId(null)
+      toast.success('Texto colado')
+      return true
+    }
+
+    const maxZ = Math.max(...overlayElements.map(el => el.zIndex), 0)
+    const copy: CoverOverlayElement = {
+      ...clipboard.item,
+      id: crypto.randomUUID(),
+      x: Math.min(96, clipboard.item.x + 4),
+      y: Math.min(96, clipboard.item.y + 4),
+      zIndex: maxZ + 1,
+    }
+    updateCoverOverlayElements([...overlayElements, copy])
+    setSelectedOverlayId(copy.id)
+    setSelectedTextId(null)
+    toast.success('Elemento colado')
+    return true
+  }, [activeCoverBlockId, overlayElements, textElements, updateCoverOverlayElements, updateCoverTextElements])
+
+  const nudgeSelectedCoverElement = useCallback((key: string, step: number) => {
+    const delta = {
+      x: key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0,
+      y: key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0,
+    }
+    if (selectedText) {
+      updateTextElement(selectedText.id, {
+        x: Math.max(0, Math.min(100, Math.round((selectedText.x + delta.x) * 10) / 10)),
+        y: Math.max(0, Math.min(100, Math.round((selectedText.y + delta.y) * 10) / 10)),
+      })
+      return true
+    }
+    if (selectedOverlay) {
+      updateOverlayElement(selectedOverlay.id, {
+        x: Math.max(0, Math.min(100, Math.round((selectedOverlay.x + delta.x) * 10) / 10)),
+        y: Math.max(0, Math.min(100, Math.round((selectedOverlay.y + delta.y) * 10) / 10)),
+      })
+      return true
+    }
+    return false
+  }, [selectedOverlay, selectedText, updateOverlayElement, updateTextElement])
 
   // ── Floating Elements (Fase 3 — elementos livres) ──
   const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([])
@@ -4897,6 +5106,30 @@ ${pagesHtml}
         return
       }
       // Ctrl+D — Duplicar bloco
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !isEditingTarget && !editingTextId) {
+        if (copySelectedCoverElement()) {
+          e.preventDefault()
+          return
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v' && !isEditingTarget && !editingTextId) {
+        if (pasteCoverElement()) {
+          e.preventDefault()
+          return
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd' && !isEditingTarget && !editingTextId) {
+        if (selectedTextId) {
+          e.preventDefault()
+          duplicateTextElement(selectedTextId)
+          return
+        }
+        if (selectedOverlayId) {
+          e.preventDefault()
+          duplicateOverlayElement(selectedOverlayId)
+          return
+        }
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedBlockId && !isEditingTarget) {
         e.preventDefault()
         handleDuplicateBlock(selectedBlockId)
@@ -4978,8 +5211,14 @@ ${pagesHtml}
       if (e.key === 'Escape') {
         if (editingFloatingId) {
           setEditingFloatingId(null)
+        } else if (editingTextId) {
+          setEditingTextId(null)
         } else if (selectedFloatingId) {
           setSelectedFloatingId(null)
+        } else if (selectedTextId) {
+          setSelectedTextId(null)
+        } else if (selectedOverlayId) {
+          setSelectedOverlayId(null)
         } else if (inlineEditingBlockId) {
           exitInlineEdit()
         } else if (coverTitleEditing) {
@@ -4999,6 +5238,16 @@ ${pagesHtml}
         return
       }
       if (inlineEditingBlockId) return
+      if (
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        (selectedTextId || selectedOverlayId)
+      ) {
+        e.preventDefault()
+        if (nudgeSelectedCoverElement(e.key, e.shiftKey ? 1.5 : 0.3)) return
+      }
       if (e.altKey && e.key === '0' && selectedBlockId) {
         e.preventDefault()
         void handleResetBlockPosition(selectedBlockId)
@@ -5062,7 +5311,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedCoverElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -5837,6 +6086,9 @@ ${pagesHtml}
                         block={block}
                         mode={blockMode}
                         style={bStyle}
+                        previewStateKey={block.block_type === 'cover'
+                          ? `${selectedTextId ?? ''}|${editingTextId ?? ''}|${selectedOverlayId ?? ''}`
+                          : undefined}
                         blockRef={el => {
                           canvasRefs.current[block.id] = el
                           if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
@@ -5870,12 +6122,17 @@ ${pagesHtml}
                             selectedOverlayId={block.block_type === 'cover' ? selectedOverlayId : undefined}
                             onOverlaySelect={block.block_type === 'cover' ? selectOverlayElement : undefined}
                             onOverlayUpdate={block.block_type === 'cover' ? updateOverlayElement : undefined}
+                            onOverlayCloneForDrag={block.block_type === 'cover' ? cloneOverlayElementForDrag : undefined}
                             textElements={block.block_type === 'cover' ? textElements : undefined}
                             selectedTextId={block.block_type === 'cover' ? selectedTextId : undefined}
                             editingTextId={block.block_type === 'cover' ? editingTextId : undefined}
-                            onTextSelect={block.block_type === 'cover' ? setSelectedTextId : undefined}
+                            onTextSelect={block.block_type === 'cover' ? selectTextElement : undefined}
                             onTextUpdate={block.block_type === 'cover' ? updateTextElement : undefined}
                             onTextEditStart={block.block_type === 'cover' ? setEditingTextId : undefined}
+                            onTextDuplicate={block.block_type === 'cover' ? duplicateTextElement : undefined}
+                            onTextDelete={block.block_type === 'cover' ? removeTextElement : undefined}
+                            onTextCloneForDrag={block.block_type === 'cover' ? cloneTextElementForDrag : undefined}
+                            onLegacyCoverTextActivate={block.block_type === 'cover' ? initTextElements : undefined}
                             onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
                             onChordGridItemClick={handleCanvasChordGridItemClick}
                             onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}

@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
-import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
+import { Copy, DotsThree, Lightbulb, MusicNotes, PencilSimple, Target, Trash, Trophy } from '@phosphor-icons/react'
 import QRCodeLib from 'qrcode'
 import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
@@ -111,12 +111,17 @@ interface MaterialPreviewProps {
   selectedOverlayId?: string | null
   onOverlaySelect?: (id: string | null) => void
   onOverlayUpdate?: (id: string, patch: Partial<CoverOverlayElement>) => void
+  onOverlayCloneForDrag?: (id: string) => CoverOverlayElement | null
   textElements?: CoverTextElement[]
   selectedTextId?: string | null
   editingTextId?: string | null
   onTextSelect?: (id: string | null) => void
   onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
   onTextEditStart?: (id: string | null) => void
+  onTextDuplicate?: (id: string) => void
+  onTextDelete?: (id: string) => void
+  onTextCloneForDrag?: (id: string) => CoverTextElement | null
+  onLegacyTextActivate?: () => void
 }
 
 type MusicStableRenderHandler = (block: MaterialBlock, html: string) => void
@@ -726,7 +731,7 @@ const COVER_TEMPLATES: Record<string, string> = {
   vibrant: 'Vibrante',
 }
 
-function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: {
+function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextDuplicate, onTextDelete, onTextCloneForDrag, onLegacyTextActivate }: {
   block: MaterialBlock
   editable?: boolean
   onPositionChange?: (field: string, pos: { x: number; y: number }) => void
@@ -736,12 +741,17 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   selectedOverlayId?: string | null
   onOverlaySelect?: (id: string | null) => void
   onOverlayUpdate?: (id: string, patch: Partial<CoverOverlayElement>) => void
+  onOverlayCloneForDrag?: (id: string) => CoverOverlayElement | null
   textElements?: CoverTextElement[]
   selectedTextId?: string | null
   editingTextId?: string | null
   onTextSelect?: (id: string | null) => void
   onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
   onTextEditStart?: (id: string | null) => void
+  onTextDuplicate?: (id: string) => void
+  onTextDelete?: (id: string) => void
+  onTextCloneForDrag?: (id: string) => CoverTextElement | null
+  onLegacyTextActivate?: () => void
 }) {
   const rd = block.render_data ?? {}
   const template = (rd.template as string) ?? 'minimal'
@@ -812,6 +822,13 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     return { snapped: val, guide: null }
   }
 
+  const clampTextBoxWidth = (width: number) => Math.max(10, Math.min(95, Math.round(width * 10) / 10))
+  const clampTextBoxCenter = (x: number, width: number) => {
+    const half = width / 2
+    return Math.max(half, Math.min(100 - half, Math.round(x * 10) / 10))
+  }
+  const clampCoverTextFontSize = (fontSize: number) => Math.max(12, Math.min(120, Math.round(fontSize)))
+
   const handleMouseDown = useCallback((e: React.MouseEvent, field: string, pos: { x: number; y: number }) => {
     if (!editable) return
     e.preventDefault()
@@ -856,7 +873,19 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   const hasFooter = professor || escola || data
 
   return (
-    <div ref={coverRef} className={classes} style={bgStyle} onClick={() => { setActiveGuides({ x: null, y: null }); onTextSelect?.(null); onOverlaySelect?.(null); onTextEditStart?.(null) }} onMouseLeave={() => setActiveGuides({ x: null, y: null })}>
+    <div
+      ref={coverRef}
+      className={classes}
+      style={bgStyle}
+      onMouseDown={e => {
+        if (e.target !== e.currentTarget) return
+        setActiveGuides({ x: null, y: null })
+        onTextSelect?.(null)
+        onOverlaySelect?.(null)
+        onTextEditStart?.(null)
+      }}
+      onMouseLeave={() => setActiveGuides({ x: null, y: null })}
+    >
       {/* Overlay escuro quando tem imagem de fundo */}
       {hasImage && <div className="cover-overlay" />}
 
@@ -921,14 +950,15 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       {hasTextElements && resolvedTextElements.map((text) => (
         <div
           key={text.id}
-          className={`absolute select-none ${editable ? 'cursor-move' : ''} ${
-            selectedTextId === text.id ? 'ring-2 ring-[#8B5CF6] ring-offset-1' : ''
+          className={`cover-text-box absolute select-none ${editable ? 'cursor-move' : ''} ${
+            selectedTextId === text.id ? 'cover-text-box--selected' : ''
           }`}
           style={{
             left: `${text.x}%`,
             top: `${text.y}%`,
             transform: 'translate(-50%, -50%)',
-            maxWidth: `${text.maxWidth}%`,
+            width: `${text.maxWidth ?? 60}%`,
+            maxWidth: '95%',
             zIndex: text.zIndex,
             fontFamily: `'${text.fontFamily}', sans-serif`,
             fontSize: `${text.fontSize}px`,
@@ -951,24 +981,45 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             borderRadius: text.background.enabled ? `${text.background.borderRadius}px` : '0',
           }}
           onMouseDown={e => {
-            if (!editable || !onTextUpdate) return
+            if (!editable) return
             e.preventDefault()
             e.stopPropagation()
-            onTextSelect?.(text.id)
+            if (!onTextUpdate) return
             const container = coverRef.current
             if (!container) return
             const rect = container.getBoundingClientRect()
             const startX = e.clientX
             const startY = e.clientY
-            const startElX = text.x
-            const startElY = text.y
+            let dragTextId = text.id
+            let startElX = text.x
+            let startElY = text.y
+            let clonedForDrag = false
+
+            const ensureCloneForDrag = () => {
+              if (clonedForDrag) return
+              const clone = onTextCloneForDrag?.(text.id)
+              if (!clone) return
+              clonedForDrag = true
+              dragTextId = clone.id
+              startElX = clone.x
+              startElY = clone.y
+              onTextSelect?.(clone.id)
+            }
+
+            if (e.altKey) {
+              ensureCloneForDrag()
+            } else {
+              onTextSelect?.(text.id)
+            }
+
             const move = (ev: MouseEvent) => {
+              if (ev.altKey) ensureCloneForDrag()
               const dx = ((ev.clientX - startX) / rect.width) * 100
               const dy = ((ev.clientY - startY) / rect.height) * 100
               const sx = snapValue(startElX + dx)
               const sy = snapValue(startElY + dy)
               setActiveGuides({ x: sx.guide, y: sy.guide })
-              onTextUpdate(text.id, {
+              onTextUpdate(dragTextId, {
                 x: Math.max(0, Math.min(100, Math.round(sx.snapped * 10) / 10)),
                 y: Math.max(0, Math.min(100, Math.round(sy.snapped * 10) / 10)),
               })
@@ -984,6 +1035,209 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
           onClick={e => { e.stopPropagation(); onTextSelect?.(text.id) }}
           onDoubleClick={e => { e.stopPropagation(); onTextEditStart?.(text.id) }}
         >
+          {editable && selectedTextId === text.id && editingTextId !== text.id && onTextUpdate && (
+            <>
+              <div
+                className="cover-text-toolbar"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <button type="button" title="Editar texto" onClick={() => onTextEditStart?.(text.id)}>
+                  <PencilSimple size={15} weight="bold" />
+                </button>
+                <button type="button" title="Duplicar" onClick={() => onTextDuplicate?.(text.id)}>
+                  <Copy size={15} weight="bold" />
+                </button>
+                <button type="button" title="Excluir" onClick={() => onTextDelete?.(text.id)}>
+                  <Trash size={15} weight="bold" />
+                </button>
+                <button type="button" title="Mais ações">
+                  <DotsThree size={18} weight="bold" />
+                </button>
+              </div>
+              {(['left', 'right'] as const).map(side => (
+                <button
+                  key={side}
+                  type="button"
+                  aria-label={side === 'left' ? 'Redimensionar pela esquerda' : 'Redimensionar pela direita'}
+                  className={`cover-text-resize-handle cover-text-resize-handle--${side}`}
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onTextSelect?.(text.id)
+                    const container = coverRef.current
+                    const targetEl = e.currentTarget.parentElement as HTMLElement | null
+                    if (!container || !targetEl) return
+
+                    const rect = container.getBoundingClientRect()
+                    const startX = text.x
+                    const startWidth = text.maxWidth ?? 60
+                    const startLeft = startX - startWidth / 2
+                    const startRight = startX + startWidth / 2
+                    let pending: { x: number; maxWidth: number } | null = null
+                    let finalPatch = { x: startX, maxWidth: startWidth }
+                    let frame: number | null = null
+
+                    const flush = () => {
+                      frame = null
+                      if (!pending) return
+                      finalPatch = pending
+                      targetEl.style.left = `${finalPatch.x}%`
+                      targetEl.style.width = `${finalPatch.maxWidth}%`
+                      pending = null
+                    }
+
+                    const move = (ev: MouseEvent) => {
+                      const pointerX = ((ev.clientX - rect.left) / rect.width) * 100
+                      if (side === 'right') {
+                        const nextRight = Math.max(startLeft + 10, Math.min(100, pointerX))
+                        const nextWidth = clampTextBoxWidth(nextRight - startLeft)
+                        pending = {
+                          maxWidth: nextWidth,
+                          x: clampTextBoxCenter(startLeft + nextWidth / 2, nextWidth),
+                        }
+                      } else {
+                        const nextLeft = Math.min(startRight - 10, Math.max(0, pointerX))
+                        const nextWidth = clampTextBoxWidth(startRight - nextLeft)
+                        pending = {
+                          maxWidth: nextWidth,
+                          x: clampTextBoxCenter(startRight - nextWidth / 2, nextWidth),
+                        }
+                      }
+
+                      if (frame === null) {
+                        frame = window.requestAnimationFrame(flush)
+                      }
+                    }
+
+                    const up = () => {
+                      if (frame !== null) {
+                        window.cancelAnimationFrame(frame)
+                        flush()
+                      }
+                      targetEl.style.willChange = ''
+                      onTextUpdate(text.id, finalPatch)
+                      document.removeEventListener('mousemove', move)
+                      document.removeEventListener('mouseup', up)
+                    }
+
+                    targetEl.style.willChange = 'left, width'
+                    document.addEventListener('mousemove', move)
+                    document.addEventListener('mouseup', up)
+                  }}
+                />
+              ))}
+              {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(corner => (
+                <button
+                  key={corner}
+                  type="button"
+                  aria-label="Escalar texto"
+                  className={`cover-text-scale-handle cover-text-scale-handle--${corner}`}
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onTextSelect?.(text.id)
+                    const targetEl = e.currentTarget.parentElement as HTMLElement | null
+                    const container = coverRef.current
+                    if (!targetEl || !container) return
+
+                    const rect = container.getBoundingClientRect()
+                    const box = targetEl.getBoundingClientRect()
+                    const isRight = corner.endsWith('right')
+                    const isBottom = corner.startsWith('bottom')
+                    const anchor = {
+                      x: isRight ? box.left : box.right,
+                      y: isBottom ? box.top : box.bottom,
+                    }
+                    const startCenter = {
+                      x: box.left + box.width / 2,
+                      y: box.top + box.height / 2,
+                    }
+                    const horizontalSign = isRight ? 1 : -1
+                    const verticalSign = isBottom ? 1 : -1
+                    const startDistance = Math.max(12, Math.hypot(box.width, box.height))
+                    const startCenterDistance = Math.max(12, Math.hypot(e.clientX - startCenter.x, e.clientY - startCenter.y))
+                    const startFontSize = text.fontSize
+                    const startWidthPx = Math.max(12, box.width)
+                    const startHeightPx = Math.max(12, box.height)
+                    const startWidthPercent = text.maxWidth ?? 60
+                    let pending: { x: number; y: number; fontSize: number; maxWidth: number } | null = null
+                    let finalPatch = { x: text.x, y: text.y, fontSize: startFontSize, maxWidth: startWidthPercent }
+                    let finalFontSize = startFontSize
+                    let frame: number | null = null
+
+                    const flush = () => {
+                      frame = null
+                      if (!pending) return
+                      finalPatch = pending
+                      finalFontSize = pending.fontSize
+                      targetEl.style.left = `${pending.x}%`
+                      targetEl.style.top = `${pending.y}%`
+                      targetEl.style.fontSize = `${finalFontSize}px`
+                      targetEl.style.width = `${pending.maxWidth}%`
+                      pending = null
+                    }
+
+                    const move = (ev: MouseEvent) => {
+                      const pointer = {
+                        x: Math.max(rect.left, Math.min(rect.right, ev.clientX)),
+                        y: Math.max(rect.top, Math.min(rect.bottom, ev.clientY)),
+                      }
+                      const scaleFromCenter = ev.altKey
+                      const currentDistance = scaleFromCenter
+                        ? Math.max(4, Math.hypot(pointer.x - startCenter.x, pointer.y - startCenter.y))
+                        : Math.max(4, Math.hypot(pointer.x - anchor.x, pointer.y - anchor.y))
+                      const baseDistance = scaleFromCenter ? startCenterDistance : startDistance
+                      const scale = Math.max(0.35, Math.min(3, currentDistance / baseDistance))
+                      const scaledWidthPx = startWidthPx * scale
+                      const scaledHeightPx = startHeightPx * scale
+                      const cornerPoint = scaleFromCenter
+                        ? null
+                        : {
+                          x: anchor.x + scaledWidthPx * horizontalSign,
+                          y: anchor.y + scaledHeightPx * verticalSign,
+                        }
+                      const nextLeft = scaleFromCenter ? startCenter.x - scaledWidthPx / 2 : Math.min(anchor.x, cornerPoint!.x)
+                      const nextTop = scaleFromCenter ? startCenter.y - scaledHeightPx / 2 : Math.min(anchor.y, cornerPoint!.y)
+                      const nextCenter = scaleFromCenter
+                        ? startCenter
+                        : {
+                          x: nextLeft + scaledWidthPx / 2,
+                          y: nextTop + scaledHeightPx / 2,
+                        }
+                      pending = {
+                        x: Math.max(0, Math.min(100, Math.round(((nextCenter.x - rect.left) / rect.width) * 1000) / 10)),
+                        y: Math.max(0, Math.min(100, Math.round(((nextCenter.y - rect.top) / rect.height) * 1000) / 10)),
+                        fontSize: clampCoverTextFontSize(startFontSize * scale),
+                        maxWidth: clampTextBoxWidth((scaledWidthPx / rect.width) * 100),
+                      }
+                      if (frame === null) {
+                        frame = window.requestAnimationFrame(flush)
+                      }
+                    }
+
+                    const up = () => {
+                      if (frame !== null) {
+                        window.cancelAnimationFrame(frame)
+                        flush()
+                      }
+                      targetEl.style.willChange = ''
+                      onTextUpdate(text.id, finalPatch)
+                      document.removeEventListener('mousemove', move)
+                      document.removeEventListener('mouseup', up)
+                    }
+
+                    targetEl.style.willChange = 'left, top, font-size, width'
+                    document.addEventListener('mousemove', move)
+                    document.addEventListener('mouseup', up)
+                  }}
+                />
+              ))}
+            </>
+          )}
           {editingTextId === text.id ? (
             <input
               type="text"
@@ -998,7 +1252,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               onMouseDown={e => e.stopPropagation()}
             />
           ) : (
-            <span className="pointer-events-none">{text.content}</span>
+            <span className="pointer-events-none block w-full">{text.content}</span>
           )}
         </div>
       ))}
@@ -1006,14 +1260,23 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       {/* ── Conteúdo legado (se não tem text_elements) ── */}
       {!hasTextElements && hasLegacyContent && (
         <div
-          className={`cover-content ${editable ? 'cover-draggable' : ''}`}
+          className={`cover-content ${editable ? 'cover-draggable cover-legacy-text-selectable' : ''}`}
           style={{
             position: 'absolute',
             left: `${contentPos.x}%`,
             top: `${contentPos.y}%`,
             transform: 'translate(-50%, -50%)',
           }}
-          onMouseDown={e => handleMouseDown(e, 'content_pos', contentPos)}
+          onMouseDown={e => {
+            if (editable && onLegacyTextActivate) {
+              e.preventDefault()
+              e.stopPropagation()
+              onLegacyTextActivate()
+              return
+            }
+            handleMouseDown(e, 'content_pos', contentPos)
+          }}
+          onClick={e => e.stopPropagation()}
         >
           {instrumento && (
             <div className="cover-instrument">{instrumento}{nivel ? ` · ${nivel}` : ''}</div>
@@ -1070,29 +1333,53 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               if (!editable || !onOverlayUpdate) return
               e.preventDefault()
               e.stopPropagation()
-              onOverlaySelect?.(el.id)
               const container = coverRef.current
               if (!container) return
               const rect = container.getBoundingClientRect()
               const targetEl = e.currentTarget
               const startX = e.clientX
               const startY = e.clientY
-              const startElX = el.x
-              const startElY = el.y
+              let dragOverlayId = el.id
+              let startElX = el.x
+              let startElY = el.y
+              let isCloneDrag = false
               let pendingPosition: { x: number; y: number } | null = null
               let finalPosition = { x: startElX, y: startElY }
               let animationFrame: number | null = null
+
+              const ensureCloneForDrag = () => {
+                if (isCloneDrag) return
+                const clone = onOverlayCloneForDrag?.(el.id)
+                if (!clone) return
+                isCloneDrag = true
+                dragOverlayId = clone.id
+                startElX = clone.x
+                startElY = clone.y
+                finalPosition = { x: startElX, y: startElY }
+                onOverlaySelect?.(clone.id)
+              }
+
+              if (e.altKey) {
+                ensureCloneForDrag()
+              } else {
+                onOverlaySelect?.(el.id)
+              }
 
               const flushPosition = () => {
                 animationFrame = null
                 if (!pendingPosition) return
                 finalPosition = pendingPosition
-                targetEl.style.left = `${finalPosition.x}%`
-                targetEl.style.top = `${finalPosition.y}%`
+                if (isCloneDrag) {
+                  onOverlayUpdate(dragOverlayId, finalPosition)
+                } else {
+                  targetEl.style.left = `${finalPosition.x}%`
+                  targetEl.style.top = `${finalPosition.y}%`
+                }
                 pendingPosition = null
               }
 
               const move = (ev: MouseEvent) => {
+                if (ev.altKey) ensureCloneForDrag()
                 const dx = ((ev.clientX - startX) / rect.width) * 100
                 const dy = ((ev.clientY - startY) / rect.height) * 100
                 const rawX = startElX + dx
@@ -1115,11 +1402,11 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
                 }
                 targetEl.style.willChange = ''
                 setActiveGuides({ x: null, y: null })
-                onOverlayUpdate(el.id, finalPosition)
+                onOverlayUpdate(dragOverlayId, finalPosition)
                 document.removeEventListener('mousemove', move)
                 document.removeEventListener('mouseup', up)
               }
-              targetEl.style.willChange = 'left, top'
+              if (!isCloneDrag) targetEl.style.willChange = 'left, top'
               document.addEventListener('mousemove', move)
               document.addEventListener('mouseup', up)
             }}
@@ -1422,7 +1709,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextDuplicate, onTextDelete, onTextCloneForDrag, onLegacyTextActivate }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -1435,7 +1722,7 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMu
     <div className="space-y-1">
       {blocks.map((block, i) => {
         if (block.block_type === 'cover') {
-          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} />
+          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} onOverlayCloneForDrag={onOverlayCloneForDrag} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} onTextDuplicate={onTextDuplicate} onTextDelete={onTextDelete} onTextCloneForDrag={onTextCloneForDrag} onLegacyTextActivate={onLegacyTextActivate} />
         }
         const Renderer = BLOCK_RENDERERS[block.block_type]
         if (!Renderer) {

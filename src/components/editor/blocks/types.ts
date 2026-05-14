@@ -15,6 +15,7 @@ export interface EditableBlockComponentProps {
   block: EditableBlockData
   mode: EditableBlockMode
   style?: CSSProperties
+  previewStateKey?: string | number
   blockRef?: (element: HTMLDivElement | null) => void
   focusPoint?: { x: number; y: number } | null
   renderPreview: () => ReactNode
@@ -59,6 +60,7 @@ export function areEditableBlockComponentPropsEqual(
     prev.block.id === next.block.id &&
     getEditableBlockHash(prev.block) === getEditableBlockHash(next.block) &&
     prev.mode === next.mode &&
+    prev.previewStateKey === next.previewStateKey &&
     prev.focusPoint?.x === next.focusPoint?.x &&
     prev.focusPoint?.y === next.focusPoint?.y
   )
