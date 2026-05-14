@@ -13,6 +13,7 @@ import {
   parsePrintMaterialRows,
   type PrintBlock,
 } from '@/lib/printPagination'
+import { collectUsedGoogleFontFamilies, waitForGoogleFonts } from '@/lib/fontLoader'
 import { getMaterialWithBlocks, type MaterialWithBlocks } from '@/services/materialService'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://rkfszavfqplhorvfpkcq.supabase.co'
@@ -156,6 +157,12 @@ export function PrintView() {
     }
   }, [data])
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
+  const printFontSources = useMemo(
+    () => material ? [...blocks, { render_data: material.pageConfig }] : blocks,
+    [blocks, material],
+  )
+  const usedFontFamilies = useMemo(() => collectUsedGoogleFontFamilies(printFontSources), [printFontSources])
+  const usedFontKey = usedFontFamilies.join('|')
 
   useEffect(() => {
     const win = window as WindowWithPrintStatus
@@ -175,8 +182,9 @@ export function PrintView() {
 
     const markReady = async () => {
       if (cancelled) return
-      await document.fonts.ready
+      await waitForGoogleFonts(usedFontFamilies)
       await waitForImages(root)
+      await new Promise(resolve => window.setTimeout(resolve, 2000))
       if (cancelled) return
       setPrintReadyMarker()
     }
@@ -203,7 +211,7 @@ export function PrintView() {
       window.clearTimeout(readyTimer)
       window.clearTimeout(maxTimer)
     }
-  }, [canvasPages.length, error, loading, material])
+  }, [canvasPages.length, error, loading, material, usedFontFamilies, usedFontKey])
 
   if (loading) {
     return (

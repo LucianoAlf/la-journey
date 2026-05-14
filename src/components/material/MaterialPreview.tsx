@@ -39,6 +39,8 @@ import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
+import { COVER_FONT_OPTIONS } from '@/lib/googleFonts'
+import { loadGoogleFonts } from '@/lib/fontLoader'
 import { keyboardEntryToDisplayData } from '@/lib/keyboardBlockAdapter'
 import { lookupGuitarChord } from '@/services/chordAutoFillService'
 import {
@@ -111,18 +113,7 @@ export interface CoverTextElement {
   zIndex: number
 }
 
-export const COVER_FONTS = [
-  { value: 'Montserrat', label: 'Montserrat', category: 'Sans-serif' },
-  { value: 'Poppins', label: 'Poppins', category: 'Sans-serif' },
-  { value: 'DM Sans', label: 'DM Sans', category: 'Sans-serif' },
-  { value: 'Raleway', label: 'Raleway', category: 'Sans-serif' },
-  { value: 'Oswald', label: 'Oswald', category: 'Sans-serif' },
-  { value: 'Bebas Neue', label: 'Bebas Neue', category: 'Display' },
-  { value: 'Righteous', label: 'Righteous', category: 'Display' },
-  { value: 'Playfair Display', label: 'Playfair Display', category: 'Serif' },
-  { value: 'Lora', label: 'Lora', category: 'Serif' },
-  { value: 'Pacifico', label: 'Pacifico', category: 'Script' },
-] as const
+export const COVER_FONTS = COVER_FONT_OPTIONS
 
 export const DEFAULT_TEXT_SHADOW: CoverTextShadow = { enabled: false, color: '#000000', blur: 4, offsetX: 1, offsetY: 1 }
 export const DEFAULT_TEXT_OUTLINE: CoverTextOutline = { enabled: false, color: '#000000', width: 2 }
@@ -850,6 +841,10 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     if (!editable) setActiveGuides({ x: null, y: null })
   }, [editable])
 
+  useEffect(() => {
+    loadGoogleFonts(resolvedTextElements.map(text => text.fontFamily))
+  }, [resolvedTextElements])
+
   const snapValue = (val: number): { snapped: number; guide: number | null } => {
     for (const sp of SNAP_POINTS) {
       if (Math.abs(val - sp) <= SNAP_THRESHOLD) return { snapped: sp, guide: sp }
@@ -1005,7 +1000,9 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
         <div
           key={text.id}
           data-cover-text-id={text.id}
-          className={`cover-text-box absolute select-none ${editable ? 'cursor-move' : ''} ${
+          className={`cover-text-box absolute ${editingTextId === text.id ? 'select-text cursor-text' : 'select-none'} ${
+            editable && editingTextId !== text.id ? 'cursor-move' : ''
+          } ${
             selectedTextId === text.id ? 'cover-text-box--selected' : ''
           }`}
           style={{
@@ -1034,6 +1031,8 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             backgroundColor: text.background.enabled ? text.background.color : 'transparent',
             padding: text.background.enabled ? `${text.background.padding}px` : '0',
             borderRadius: text.background.enabled ? `${text.background.borderRadius}px` : '0',
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'break-word',
           }}
           onMouseDown={e => {
             if (!editable) return
@@ -1388,20 +1387,44 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
             </>
           )}
           {editingTextId === text.id ? (
-            <input
-              type="text"
+            <textarea
               value={text.content}
               onChange={e => onTextUpdate?.(text.id, { content: e.target.value })}
               onBlur={() => onTextEditStart?.(null)}
-              onKeyDown={e => { if (e.key === 'Enter') onTextEditStart?.(null) }}
+              onFocus={e => {
+                e.currentTarget.style.height = 'auto'
+                e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`
+              }}
+              onInput={e => {
+                e.currentTarget.style.height = 'auto'
+                e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  onTextEditStart?.(null)
+                }
+              }}
               autoFocus
-              className="bg-transparent border-b-2 border-[#8B5CF6] outline-none text-center w-full"
-              style={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit', fontFamily: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit' as any }}
+              rows={1}
+              className="block w-full resize-none overflow-hidden border-0 bg-transparent p-0 outline-none"
+              style={{
+                fontSize: 'inherit',
+                fontWeight: 'inherit',
+                fontStyle: 'inherit',
+                color: 'inherit',
+                fontFamily: 'inherit',
+                letterSpacing: 'inherit',
+                lineHeight: 'inherit',
+                textAlign: 'inherit',
+                textTransform: 'inherit' as any,
+                whiteSpace: 'pre-wrap',
+              }}
               onClick={e => e.stopPropagation()}
               onMouseDown={e => e.stopPropagation()}
             />
           ) : (
-            <span className="pointer-events-none block w-full">{text.content}</span>
+            <span className="pointer-events-none block w-full whitespace-pre-wrap break-words">{text.content}</span>
           )}
         </div>
       ))}

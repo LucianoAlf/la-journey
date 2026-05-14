@@ -38,7 +38,7 @@ import {
   deleteMaterialBlock, updateMaterial,
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
-import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, COVER_FONTS, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
+import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
 import { SaveAsReusableDialog, type SaveAsReusablePayload } from "@/components/content/SaveAsReusableDialog";
 import { ExerciseLibraryBrowser } from "@/components/content/ExerciseLibraryBrowser";
@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LASelect } from "@/components/ui/LASelect";
+import { LAFontPicker } from "@/components/ui/LAFontPicker";
 import { BlockStylePanel } from "@/components/editor/BlockStylePanel";
 import { SeparatorStylePanel } from "@/components/editor/SeparatorStylePanel";
 import { PageBackgroundPanel } from "@/components/editor/PageBackgroundPanel";
@@ -76,6 +77,7 @@ import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
+import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
 import { type MaterialTemplate } from "@/lib/materialTemplates";
@@ -5041,13 +5043,17 @@ Regras:
     }
     const pagesHtml = pagesHtmlParts.join('\n')
 
+    const fontLinks = getGoogleFontLinkTags(collectUsedGoogleFontFamilies([
+      ...blocks,
+      { render_data: pageConfig },
+    ]))
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${materialTitle || 'Material Didático'}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=DM+Mono&family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400;1,700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Oswald:wght@400;500;700&family=Bebas+Neue&family=Righteous&family=Pacifico&display=swap" rel="stylesheet">
+${fontLinks}
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:#f8fafc;color:#1E293B;line-height:1.7}
@@ -5110,7 +5116,7 @@ ${pagesHtml}
     window.open(url, '_blank')
     toast.success('HTML exportado em nova aba')
     setForceAllPagesActive(false)
-  }, [activateAllCanvasPages, materialTitle])
+  }, [activateAllCanvasPages, blocks, materialTitle, pageConfig])
 
   const handleDownloadPDF = useCallback(async () => {
     const toastId = toast.loading('Gerando PDF profissional...')
@@ -7352,18 +7358,10 @@ ${pagesHtml}
                         {/* Fonte */}
                         <div className="space-y-1">
                           <label className="text-[9px] text-text3">Fonte</label>
-                          <LASelect
+                          <LAFontPicker
                             value={selectedText.fontFamily}
                             onValueChange={value => updateTextElement(selectedText.id, { fontFamily: value })}
-                            options={ensureSelectOption(
-                              COVER_FONTS.map(font => ({
-                                value: font.value,
-                                label: `${font.label} (${font.category})`,
-                              })),
-                              selectedText.fontFamily
-                            )}
-                            placeholder="Selecionar fonte"
-                            className="h-8 rounded-lg text-[11px]"
+                            className="h-8 w-full rounded-lg text-[11px]"
                           />
                         </div>
 

@@ -19,6 +19,8 @@ import {
   Sparkle, SpinnerGap,
 } from '@phosphor-icons/react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { loadGoogleFont } from '@/lib/fontLoader'
+import { LAFontPicker } from '@/components/ui/LAFontPicker'
 
 // ─── Cores rápidas ────────────────────────────────────────────────
 const QUICK_COLORS = [
@@ -33,23 +35,6 @@ const QUICK_COLORS = [
   { label: 'Rosa', value: '#db2777' },
   { label: 'Cinza', value: '#6b7280' },
   { label: 'Branco', value: '#ffffff' },
-]
-
-// ─── Fontes disponíveis ──────────────────────────────────────────
-const FONT_FAMILIES = [
-  { label: 'DM Sans (padrão)', value: '' },
-  { label: 'Playfair Display', value: 'Playfair Display' },
-  { label: 'Roboto', value: 'Roboto' },
-  { label: 'Open Sans', value: 'Open Sans' },
-  { label: 'Lato', value: 'Lato' },
-  { label: 'Montserrat', value: 'Montserrat' },
-  { label: 'Poppins', value: 'Poppins' },
-  { label: 'Inter', value: 'Inter' },
-  { label: 'Merriweather', value: 'Merriweather' },
-  { label: 'Lora', value: 'Lora' },
-  { label: 'Raleway', value: 'Raleway' },
-  { label: 'Nunito', value: 'Nunito' },
-  { label: 'DM Mono', value: 'DM Mono' },
 ]
 
 // ─── Props ────────────────────────────────────────────────────────
@@ -229,6 +214,7 @@ export function RichTextEditor({
     if (!font) {
       editor.chain().focus().unsetFontFamily().run()
     } else {
+      loadGoogleFont(font)
       editor.chain().focus().setFontFamily(font).run()
     }
   }, [editor])
@@ -243,19 +229,11 @@ export function RichTextEditor({
 
   // ─── Seletor de fonte (reutilizado nas toolbars) ─────────────────
   const fontSelect = (
-    <select
+    <LAFontPicker
       value={currentFont}
-      onChange={(e) => setFont(e.target.value)}
-      title="Fonte"
-      className="h-7 px-1.5 text-[11px] bg-bg2 border border-border rounded-md text-text2 cursor-pointer outline-none hover:border-accent/50 transition-colors max-w-[130px]"
-      style={{ fontFamily: currentFont || 'var(--font-sans)' }}
-    >
-      {FONT_FAMILIES.map(f => (
-        <option key={f.value || '_default'} value={f.value} style={{ fontFamily: f.value || 'var(--font-sans)' }}>
-          {f.label}
-        </option>
-      ))}
-    </select>
+      onValueChange={setFont}
+      className="h-7 w-[130px] rounded-md px-2 text-[11px]"
+    />
   )
 
   // ─── Toolbar do título (compacta: H1-H3 + B/I/U + alinhamento + fonte) ─
