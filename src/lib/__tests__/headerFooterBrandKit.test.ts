@@ -75,6 +75,10 @@ test('creates branded header and footer without requiring an existing page confi
     fontFamily: 'Nunito Sans',
   }, 'header center should use material title with brand font/color')
 
+  assertEqual(config.header.right, {
+    type: 'empty',
+  }, 'header should not duplicate page numbering from the footer')
+
   assertEqual(config.footer.right, {
     type: 'placeholder',
     placeholder: '{pagina_de_total}',

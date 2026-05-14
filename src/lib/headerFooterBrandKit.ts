@@ -79,12 +79,7 @@ export function createBrandKitHeaderFooterConfig({
       fontFamily: bodyFont,
     },
     right: {
-      type: 'placeholder',
-      placeholder: '{pagina_de_total}',
-      fontSize: 9,
-      fontWeight: 700,
-      color: secondaryColor,
-      fontFamily: bodyFont,
+      type: 'empty',
     },
     showOnFirstPage: false,
     startFromPage: 1,
