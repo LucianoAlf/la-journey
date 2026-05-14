@@ -284,14 +284,13 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
               <Label className="text-[10px] text-text3 uppercase tracking-wider">Layout</Label>
               <span className="text-[9px] text-text3">{filteredTemplates.length} modelos</span>
             </div>
-            <div className="overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
-              <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
                 {filteredTemplates.map((template) => (
                   <button
                     key={template.id}
                     type="button"
                     onClick={() => onApplyTemplate(template.config)}
-                    className="w-[188px] shrink-0 rounded-lg border border-border bg-white p-2 text-left shadow-sm transition-all hover:border-accent/70 hover:bg-accent-soft/40 hover:shadow-md"
+                    className="min-w-0 rounded-lg border border-border bg-white p-2 text-left shadow-sm transition-all hover:border-accent/70 hover:bg-accent-soft/40 hover:shadow-md"
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] font-semibold text-text2">{template.name}</span>
@@ -320,7 +319,6 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
                     </div>
                   </button>
                 ))}
-              </div>
             </div>
           </div>
 

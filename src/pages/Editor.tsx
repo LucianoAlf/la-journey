@@ -6974,8 +6974,7 @@ ${pagesHtml}
                         </span>
                       )}
                     </div>
-                    <div className="overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
-                      <div className="flex gap-1.5">
+                    <div className="grid grid-cols-3 gap-1.5">
                         {availableBrandLogos.map(logo => {
                           const selected = selectedHeaderFooterLogo?.key === logo.key
                           return (
@@ -6984,7 +6983,7 @@ ${pagesHtml}
                               type="button"
                               onClick={() => setHeaderFooterLogoKey(logo.key)}
                               className={cn(
-                                'w-[86px] shrink-0 rounded-md border p-1.5 text-left transition-all',
+                                'min-w-0 rounded-md border p-1.5 text-left transition-all',
                                 'bg-white hover:border-accent/60 hover:bg-accent-soft',
                                 selected ? 'border-accent ring-1 ring-accent/40' : 'border-border',
                               )}
@@ -6998,7 +6997,6 @@ ${pagesHtml}
                             </button>
                           )
                         })}
-                      </div>
                     </div>
                   </div>
                 )}
