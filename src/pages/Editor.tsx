@@ -6965,38 +6965,40 @@ ${pagesHtml}
                 </Label>
 
                 {availableBrandLogos.length > 0 && (
-                  <div className="space-y-2 rounded-md border border-border bg-card/50 p-2">
+                  <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <Label className="text-[10px] text-text3">Logo do cabeçalho</Label>
+                      <Label className="text-[10px] text-text3 uppercase tracking-wider">Identidade</Label>
                       {selectedHeaderFooterLogo && (
-                        <span className="text-[9px] font-medium text-accent">
+                        <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[9px] font-medium text-accent">
                           {selectedHeaderFooterLogo.label}
                         </span>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {availableBrandLogos.map(logo => {
-                        const selected = selectedHeaderFooterLogo?.key === logo.key
-                        return (
-                          <button
-                            key={logo.key}
-                            type="button"
-                            onClick={() => setHeaderFooterLogoKey(logo.key)}
-                            className={cn(
-                              'min-h-[56px] rounded-md border p-1.5 text-left transition-all',
-                              'bg-white hover:border-accent/60 hover:bg-accent-soft',
-                              selected ? 'border-accent ring-1 ring-accent/40' : 'border-border',
-                            )}
-                          >
-                            <div className="flex h-7 items-center justify-center rounded bg-bg2">
-                              <img src={logo.url} alt={`Logo ${logo.label}`} className="max-h-6 max-w-full object-contain" />
-                            </div>
-                            <div className="mt-1 truncate text-[9px] font-semibold text-text2">
-                              {logo.label}
-                            </div>
-                          </button>
-                        )
-                      })}
+                    <div className="overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+                      <div className="flex gap-1.5">
+                        {availableBrandLogos.map(logo => {
+                          const selected = selectedHeaderFooterLogo?.key === logo.key
+                          return (
+                            <button
+                              key={logo.key}
+                              type="button"
+                              onClick={() => setHeaderFooterLogoKey(logo.key)}
+                              className={cn(
+                                'w-[86px] shrink-0 rounded-md border p-1.5 text-left transition-all',
+                                'bg-white hover:border-accent/60 hover:bg-accent-soft',
+                                selected ? 'border-accent ring-1 ring-accent/40' : 'border-border',
+                              )}
+                            >
+                              <div className="flex h-7 items-center justify-center rounded bg-bg2">
+                                <img src={logo.url} alt={`Logo ${logo.label}`} className="max-h-6 max-w-full object-contain" />
+                              </div>
+                              <div className="mt-1 truncate text-[9px] font-semibold text-text2">
+                                {logo.label}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -7005,12 +7007,12 @@ ${pagesHtml}
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="w-full justify-center gap-2 h-8 text-[10px]"
+                  className="h-8 w-full justify-center gap-2 text-[10px]"
                   onClick={applySchoolIdentityToHeaderFooter}
                   disabled={!school}
                 >
                   <MagicWand size={13} />
-                  Aplicar identidade no header/rodapé
+                  Aplicar identidade
                 </Button>
 
                 <Tabs defaultValue="header" className="w-full">

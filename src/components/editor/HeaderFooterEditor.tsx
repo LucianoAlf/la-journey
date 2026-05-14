@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,7 @@ import {
   type HeaderFooterLineStyle,
 } from '@/lib/headerFooterLine'
 import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 
 interface HeaderFooterEditorProps {
   config: HeaderFooterConfig
@@ -32,6 +34,12 @@ const zoneNames = {
   right: 'Direita',
 } as const
 
+const zoneShortNames = {
+  left: 'Esq.',
+  center: 'Centro',
+  right: 'Dir.',
+} as const
+
 function zoneSummary(zone: HeaderFooterZone): string {
   if (zone.type === 'image') return 'Logo'
   if (zone.type === 'text') return zone.text || 'Texto'
@@ -43,6 +51,9 @@ function zoneSummary(zone: HeaderFooterZone): string {
 }
 
 export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: HeaderFooterEditorProps) {
+  const [activeZone, setActiveZone] = useState<'left' | 'center' | 'right'>('left')
+  const [uploadingZone, setUploadingZone] = useState<'left' | 'center' | 'right' | null>(null)
+
   const update = (partial: Partial<HeaderFooterConfig>) => {
     onChange({ ...config, ...partial })
   }
@@ -59,14 +70,25 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
       const fileName = `header-footer/${Date.now()}_${file.name}`
-      const { error } = await supabase.storage
-        .from('content-images')
-        .upload(fileName, file, { contentType: file.type })
-      if (!error) {
+      setUploadingZone(zone)
+
+      try {
+        const { error } = await supabase.storage
+          .from('content-images')
+          .upload(fileName, file, { contentType: file.type })
+
+        if (error) throw error
+
         const { data } = supabase.storage
           .from('content-images')
           .getPublicUrl(fileName)
         updateZone(zone, { imageUrl: data.publicUrl })
+        toast.success('Logo enviada para este cabeçalho/rodapé')
+      } catch (error) {
+        console.error('Erro ao enviar logo do cabeçalho/rodapé:', error)
+        toast.error('Não foi possível enviar a logo')
+      } finally {
+        setUploadingZone(null)
       }
     }
     input.click()
@@ -74,6 +96,7 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
 
   const filteredTemplates = HEADER_FOOTER_TEMPLATES.filter((t) => t.type === type)
   const lineConfig = getHeaderFooterLineConfig(config, type)
+  const activeZoneConfig = config[activeZone]
 
   const updateLine = (partial: Partial<HeaderFooterLineConfig>) => {
     const nextLine = { ...lineConfig, ...partial }
@@ -84,6 +107,159 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
     } else {
       update({ borderTop: nextBorder })
     }
+  }
+
+  const renderZoneEditor = (zone: 'left' | 'center' | 'right') => {
+    const zoneConfig = config[zone]
+    const isUploading = uploadingZone === zone
+
+    return (
+      <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
+        <Select
+          value={zoneConfig.type}
+          onValueChange={(value) => updateZone(zone, { type: value as HeaderFooterZone['type'] })}
+        >
+          <SelectTrigger className="h-8 text-[11px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="empty">Vazio</SelectItem>
+            <SelectItem value="text">Texto</SelectItem>
+            <SelectItem value="placeholder">Campo automático</SelectItem>
+            <SelectItem value="image">Logo / Imagem</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {zoneConfig.type === 'text' && (
+          <Input
+            value={zoneConfig.text || ''}
+            onChange={(event) => updateZone(zone, { text: event.target.value })}
+            placeholder="Ex: LA Music School"
+            className="h-8 text-[11px]"
+          />
+        )}
+
+        {zoneConfig.type === 'placeholder' && (
+          <Select
+            value={zoneConfig.placeholder || '{titulo}'}
+            onValueChange={(value) => updateZone(zone, { placeholder: value as HeaderFooterZone['placeholder'] })}
+          >
+            <SelectTrigger className="h-8 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PLACEHOLDER_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <div className="flex items-center gap-2">
+                    <option.icon size={12} className="text-text3" />
+                    <span>{option.label}</span>
+                    <span className="ml-1 text-[9px] text-text3/50">{option.value}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {zoneConfig.type === 'image' && (
+          <div className="space-y-2">
+            {zoneConfig.imageUrl ? (
+              <>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-white p-2">
+                  <img src={zoneConfig.imageUrl} alt="Logo" className="h-7 max-w-[96px] object-contain" />
+                  <div className="min-w-0 flex-1 text-[10px] text-text3">Logo atual</div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[10px] text-text3"
+                    onClick={() => updateZone(zone, { imageUrl: '', type: 'empty' })}
+                  >
+                    <Trash size={12} />
+                    Remover
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full justify-center gap-2 text-[10px]"
+                  onClick={() => handleImageUpload(zone)}
+                  disabled={isUploading}
+                >
+                  <Upload size={12} />
+                  {isUploading ? 'Enviando...' : 'Trocar logo personalizada'}
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Label className="w-12 text-[9px] text-text3">Altura</Label>
+                  <input
+                    type="range"
+                    min={16}
+                    max={40}
+                    step={2}
+                    value={zoneConfig.imageHeight || 24}
+                    onChange={(event) => updateZone(zone, { imageHeight: Number(event.target.value) })}
+                    className="h-1.5 flex-1 accent-accent"
+                  />
+                  <span className="w-8 text-right text-[9px] font-mono text-text3">{zoneConfig.imageHeight || 24}px</span>
+                </div>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-full justify-center gap-2 text-[10px]"
+                onClick={() => handleImageUpload(zone)}
+                disabled={isUploading}
+              >
+                <Upload size={12} />
+                {isUploading ? 'Enviando...' : 'Enviar logo personalizada'}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {(zoneConfig.type === 'text' || zoneConfig.type === 'placeholder') && (
+          <details className="rounded-md border border-border bg-white px-2 py-1.5">
+            <summary className="cursor-pointer text-[10px] font-medium text-text3">Tipografia</summary>
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                type="range"
+                min={7}
+                max={14}
+                step={1}
+                value={zoneConfig.fontSize || 10}
+                onChange={(event) => updateZone(zone, { fontSize: Number(event.target.value) })}
+                className="w-16 accent-accent h-1.5"
+              />
+              <span className="w-5 text-[8px] text-text3">{zoneConfig.fontSize || 10}</span>
+              <input
+                type="color"
+                value={zoneConfig.color || '#94a3b8'}
+                onChange={(event) => updateZone(zone, { color: event.target.value })}
+                className="h-5 w-5 cursor-pointer rounded border border-border"
+              />
+              <Button
+                variant={(zoneConfig.fontWeight || 400) >= 600 ? 'default' : 'ghost'}
+                size="sm"
+                className="h-6 w-6 p-0 text-[10px] font-bold"
+                onClick={() => updateZone(zone, {
+                  fontWeight: (zoneConfig.fontWeight || 400) >= 600 ? 400 : 700,
+                })}
+              >
+                B
+              </Button>
+              <Button
+                variant={zoneConfig.uppercase ? 'default' : 'ghost'}
+                size="sm"
+                className="h-6 w-6 p-0 text-[9px] font-bold"
+                onClick={() => updateZone(zone, { uppercase: !zoneConfig.uppercase })}
+              >
+                AA
+              </Button>
+            </div>
+          </details>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -103,205 +279,90 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
 
       {config.enabled && (
         <>
-          {/* Templates */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-[10px] text-text3 uppercase tracking-wider">Templates</Label>
-              <span className="text-[9px] text-text3">{filteredTemplates.length} opcoes</span>
+              <Label className="text-[10px] text-text3 uppercase tracking-wider">Layout</Label>
+              <span className="text-[9px] text-text3">{filteredTemplates.length} modelos</span>
             </div>
-            <div className="grid gap-2">
-              {filteredTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => onApplyTemplate(template.config)}
-                  className="w-full rounded-lg border border-border bg-white p-2 text-left shadow-sm transition-all hover:border-accent/70 hover:bg-accent-soft/40 hover:shadow-md"
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-text2">{template.name}</span>
-                    <span className="rounded-full bg-bg2 px-2 py-0.5 text-[9px] font-medium text-text3">
-                      {template.config.height}px
-                    </span>
-                  </div>
-                  <div
-                    className="flex h-14 items-center gap-2 rounded-md border border-border/70 px-2"
-                    style={{
-                      borderBottom: type === 'header' ? template.config.borderBottom || '1px solid transparent' : undefined,
-                      borderTop: type === 'footer' ? template.config.borderTop || '1px solid transparent' : undefined,
-                      backgroundColor: template.config.backgroundColor || 'transparent',
-                    }}
+            <div className="overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+              <div className="flex gap-2">
+                {filteredTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => onApplyTemplate(template.config)}
+                    className="w-[188px] shrink-0 rounded-lg border border-border bg-white p-2 text-left shadow-sm transition-all hover:border-accent/70 hover:bg-accent-soft/40 hover:shadow-md"
                   >
-                    {(['left', 'center', 'right'] as const).map((zone) => (
-                      <div key={zone} className="min-w-0 flex-1">
-                        <div className="mb-0.5 text-[8px] font-medium uppercase tracking-wide text-text3">
-                          {zoneNames[zone]}
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-text2">{template.name}</span>
+                      <span className="rounded-full bg-bg2 px-2 py-0.5 text-[9px] font-medium text-text3">
+                        {template.config.height}px
+                      </span>
+                    </div>
+                    <div
+                      className="flex h-14 items-center gap-2 rounded-md border border-border/70 px-2"
+                      style={{
+                        borderBottom: type === 'header' ? template.config.borderBottom || '1px solid transparent' : undefined,
+                        borderTop: type === 'footer' ? template.config.borderTop || '1px solid transparent' : undefined,
+                        backgroundColor: template.config.backgroundColor || 'transparent',
+                      }}
+                    >
+                      {(['left', 'center', 'right'] as const).map((zone) => (
+                        <div key={zone} className="min-w-0 flex-1">
+                          <div className="mb-0.5 text-[8px] font-medium uppercase tracking-wide text-text3">
+                            {zoneShortNames[zone]}
+                          </div>
+                          <div className="truncate text-[10px] font-semibold text-text2">
+                            {zoneSummary(template.config[zone])}
+                          </div>
                         </div>
-                        <div className="truncate text-[10px] font-semibold text-text2">
-                          {zoneSummary(template.config[zone])}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label className="text-[10px] text-text3 uppercase tracking-wider">Conteúdo</Label>
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-bg2 p-1">
+              {(['left', 'center', 'right'] as const).map((zone) => (
+                <button
+                  key={zone}
+                  type="button"
+                  onClick={() => setActiveZone(zone)}
+                  className={[
+                    'rounded-md px-2 py-1.5 text-[10px] font-medium transition-all',
+                    activeZone === zone
+                      ? 'bg-white text-text shadow-sm'
+                      : 'text-text3 hover:bg-white/60 hover:text-text2',
+                  ].join(' ')}
+                >
+                  {zoneNames[zone]}
                 </button>
               ))}
             </div>
-          </div>
-
-          <Separator />
-
-          {/* ── 3 Zonas ── */}
-          <div className="space-y-3">
-            <Label className="text-[10px] text-text3 uppercase tracking-wider">Zonas</Label>
-
-            {(['left', 'center', 'right'] as const).map((zone) => (
-              <div key={zone} className="space-y-1.5 p-2 bg-card/50 rounded-lg border border-border">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[10px] text-text3 font-medium">
-                    {zone === 'left' ? '◀ Esquerda' : zone === 'center' ? '◆ Centro' : '▶ Direita'}
-                  </Label>
+            <div className="rounded-lg border border-border bg-white p-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[11px] font-semibold text-text2">{zoneNames[activeZone]}</div>
+                  <div className="text-[9px] text-text3">{zoneSummary(activeZoneConfig)}</div>
                 </div>
-
-                {/* Tipo da zona */}
-                <Select
-                  value={config[zone].type}
-                  onValueChange={(v) => updateZone(zone, { type: v as HeaderFooterZone['type'] })}
-                >
-                  <SelectTrigger className="h-7 text-[11px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="empty">Vazio</SelectItem>
-                    <SelectItem value="text">Texto livre</SelectItem>
-                    <SelectItem value="placeholder">Placeholder dinâmico</SelectItem>
-                    <SelectItem value="image">Logo / Imagem</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Conteúdo baseado no tipo */}
-                {config[zone].type === 'text' && (
-                  <Input
-                    value={config[zone].text || ''}
-                    onChange={(e) => updateZone(zone, { text: e.target.value })}
-                    placeholder="Ex: LA Music School"
-                    className="h-7 text-[11px]"
-                  />
-                )}
-
-                {config[zone].type === 'placeholder' && (
-                  <Select
-                    value={config[zone].placeholder || '{titulo}'}
-                    onValueChange={(v) => updateZone(zone, { placeholder: v as HeaderFooterZone['placeholder'] })}
-                  >
-                    <SelectTrigger className="h-7 text-[11px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PLACEHOLDER_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          <div className="flex items-center gap-2">
-                            <opt.icon size={12} className="text-text3" />
-                            <span>{opt.label}</span>
-                            <span className="text-text3/50 text-[9px] ml-1">{opt.value}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {config[zone].type === 'image' && (
-                  <div className="space-y-1.5">
-                    {config[zone].imageUrl ? (
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={config[zone].imageUrl}
-                          alt="Logo"
-                          className="h-6 object-contain rounded"
-                        />
-                        <Button
-                          variant="ghost" size="sm"
-                          className="h-6 text-[10px] text-text3"
-                          onClick={() => updateZone(zone, { imageUrl: '', type: 'empty' })}
-                        >
-                          <Trash size={12} /> Remover
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="outline" size="sm"
-                        className="w-full h-7 text-[10px]"
-                        onClick={() => handleImageUpload(zone)}
-                      >
-                        <Upload size={12} className="mr-1" /> Enviar logo
-                      </Button>
-                    )}
-                    {config[zone].imageUrl && (
-                      <div className="flex items-center gap-2">
-                        <Label className="text-[9px] text-text3 w-10">Altura</Label>
-                        <input type="range" min={16} max={40} step={2}
-                          value={config[zone].imageHeight || 24}
-                          onChange={(e) => updateZone(zone, { imageHeight: Number(e.target.value) })}
-                          className="flex-1 accent-accent h-1.5"
-                        />
-                        <span className="text-[9px] text-text3 w-6 font-mono">
-                          {config[zone].imageHeight || 24}px
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Estilo da zona (texto/placeholder) */}
-                {(config[zone].type === 'text' || config[zone].type === 'placeholder') && (
-                  <div className="flex items-center gap-1.5 pt-1">
-                    {/* Tamanho */}
-                    <input type="range" min={7} max={14} step={1}
-                      value={config[zone].fontSize || 10}
-                      onChange={(e) => updateZone(zone, { fontSize: Number(e.target.value) })}
-                      className="w-16 accent-accent h-1.5"
-                    />
-                    <span className="text-[8px] text-text3 w-5">{config[zone].fontSize || 10}</span>
-
-                    {/* Cor */}
-                    <input
-                      type="color"
-                      value={config[zone].color || '#94a3b8'}
-                      onChange={(e) => updateZone(zone, { color: e.target.value })}
-                      className="w-5 h-5 rounded border border-border cursor-pointer"
-                    />
-
-                    {/* Bold */}
-                    <Button
-                      variant={(config[zone].fontWeight || 400) >= 600 ? 'default' : 'ghost'}
-                      size="sm"
-                      className="h-6 w-6 p-0 text-[10px] font-bold"
-                      onClick={() => updateZone(zone, {
-                        fontWeight: (config[zone].fontWeight || 400) >= 600 ? 400 : 700,
-                      })}
-                    >
-                      B
-                    </Button>
-
-                    {/* Uppercase */}
-                    <Button
-                      variant={config[zone].uppercase ? 'default' : 'ghost'}
-                      size="sm"
-                      className="h-6 w-6 p-0 text-[9px] font-bold"
-                      onClick={() => updateZone(zone, { uppercase: !config[zone].uppercase })}
-                    >
-                      AA
-                    </Button>
-                  </div>
-                )}
+                <span className="rounded-full bg-bg2 px-2 py-0.5 text-[9px] font-medium text-text3">
+                  {activeZoneConfig.type === 'placeholder' ? 'Automático' : activeZoneConfig.type === 'image' ? 'Logo' : activeZoneConfig.type === 'text' ? 'Texto' : 'Vazio'}
+                </span>
               </div>
-            ))}
+              {renderZoneEditor(activeZone)}
+            </div>
           </div>
 
           <Separator />
 
-          {/* ── Configurações gerais ── */}
           <div className="space-y-2">
-            <Label className="text-[10px] text-text3 uppercase tracking-wider">Configuração</Label>
+            <Label className="text-[10px] text-text3 uppercase tracking-wider">Aparência</Label>
 
             <div className="space-y-2 rounded-lg border border-border bg-card/50 p-2.5">
               <div className="flex items-center justify-between">
@@ -386,7 +447,7 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="solid">Solida</SelectItem>
+                      <SelectItem value="solid">Sólida</SelectItem>
                       <SelectItem value="dashed">Tracejada</SelectItem>
                       <SelectItem value="dotted">Pontilhada</SelectItem>
                     </SelectContent>
@@ -409,14 +470,14 @@ export function HeaderFooterEditor({ config, type, onChange, onApplyTemplate }: 
               </div>
             </div>
 
-            {/* Mostrar na primeira página */}
+            {/* Mostrar na primeira pagina interna */}
             <div className="flex items-center gap-2">
               <Switch
                 checked={config.showOnFirstPage}
                 onCheckedChange={(checked) => update({ showOnFirstPage: checked })}
               />
               <Label className="text-[11px] text-text2">
-                Mostrar na 1ª página (capa)
+                Mostrar na 1ª página interna
               </Label>
             </div>
           </div>
