@@ -99,6 +99,7 @@ import {
   DEFAULT_HEADER, DEFAULT_FOOTER,
   isLegacyFormat, migrateLegacyHeader, migrateLegacyFooter,
 } from "@/lib/headerFooter";
+import { createBrandKitHeaderFooterConfig } from "@/lib/headerFooterBrandKit";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -4163,6 +4164,21 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setBlockWithHistory,
   ])
 
+  const applySchoolIdentityToHeaderFooter = useCallback(() => {
+    if (!school) {
+      toast.error('Configure a identidade visual da escola antes de aplicar.')
+      return
+    }
+
+    const { header, footer } = createBrandKitHeaderFooterConfig({ school })
+    setPageConfig(prev => ({
+      ...prev,
+      header,
+      footer,
+    }))
+    toast.success('Identidade aplicada no cabeçalho e rodapé.')
+  }, [school])
+
   const handleLogoUpload = useCallback(async (file: File) => {
     if (!selectedBlockId) return
     const maxSize = 2 * 1024 * 1024
@@ -6935,6 +6951,18 @@ ${pagesHtml}
                 <Label className="text-[11px] text-text3 uppercase tracking-wider">
                   Cabeçalho e Rodapé
                 </Label>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center gap-2 h-8 text-[10px]"
+                  onClick={applySchoolIdentityToHeaderFooter}
+                  disabled={!school}
+                >
+                  <MagicWand size={13} />
+                  Aplicar identidade no header/rodapé
+                </Button>
 
                 <Tabs defaultValue="header" className="w-full">
                   <TabsList className="grid w-full grid-cols-2 h-8">

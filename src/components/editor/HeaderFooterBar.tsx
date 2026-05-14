@@ -6,6 +6,7 @@ interface HeaderFooterBarProps {
   type: 'header' | 'footer'
   context: PlaceholderContext
   pageIndex: number
+  className?: string
 }
 
 function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
@@ -48,7 +49,7 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
   return <div />
 }
 
-export function HeaderFooterBar({ config, type, context, pageIndex }: HeaderFooterBarProps) {
+export function HeaderFooterBar({ config, type, context, pageIndex, className }: HeaderFooterBarProps) {
   if (!config.enabled) return null
   // Se showOnFirstPage está ativo, ignora startFromPage para a página 0
   if (pageIndex === 0 && !config.showOnFirstPage) return null
@@ -57,6 +58,7 @@ export function HeaderFooterBar({ config, type, context, pageIndex }: HeaderFoot
 
   return (
     <div
+      className={className}
       style={{
         height: `${config.height}px`,
         backgroundColor: config.backgroundColor || 'transparent',

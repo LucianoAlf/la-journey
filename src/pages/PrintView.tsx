@@ -15,6 +15,16 @@ import {
 } from '@/lib/printPagination'
 import { collectUsedGoogleFontFamilies, waitForGoogleFonts } from '@/lib/fontLoader'
 import { getMaterialWithBlocks, type MaterialWithBlocks } from '@/services/materialService'
+import { HeaderFooterBar } from '@/components/editor/HeaderFooterBar'
+import {
+  DEFAULT_FOOTER,
+  DEFAULT_HEADER,
+  isLegacyFormat,
+  migrateLegacyFooter,
+  migrateLegacyHeader,
+  type HeaderFooterConfig,
+  type PlaceholderContext,
+} from '@/lib/headerFooter'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://rkfszavfqplhorvfpkcq.supabase.co'
 const GET_PRINT_MATERIAL_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-print-material`
@@ -63,24 +73,24 @@ function waitForImages(root: ParentNode) {
   }))
 }
 
-function Header({ schoolName, materialTitle }: { schoolName: string; materialTitle: string }) {
-  return (
-    <div className="a4-page-header print-page-header">
-      <span>{schoolName}</span>
-      <span>{materialTitle}</span>
-      <span />
-    </div>
-  )
+interface PrintPageConfig {
+  header: HeaderFooterConfig
+  footer: HeaderFooterConfig
 }
 
-function Footer({ pageIndex, totalPages, schoolName }: { pageIndex: number; totalPages: number; schoolName: string }) {
-  return (
-    <div className="a4-page-footer print-page-footer print-footer">
-      <span className="print-footer-left">{schoolName}</span>
-      <span className="print-footer-center" aria-hidden="true" />
-      <span className="print-footer-right">{pageIndex + 1} de {totalPages}</span>
-    </div>
-  )
+function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefined): PrintPageConfig {
+  const pageConfig = (raw ?? {}) as Record<string, unknown>
+  const header = pageConfig.header as Record<string, unknown> | undefined
+  const footer = pageConfig.footer as Record<string, unknown> | undefined
+
+  return {
+    header: header && isLegacyFormat(header)
+      ? migrateLegacyHeader(header as { enabled: boolean; leftText: string; centerText: string; rightText: string; showOnFirstPage: boolean })
+      : (header as unknown as HeaderFooterConfig | undefined) ?? DEFAULT_HEADER,
+    footer: footer && isLegacyFormat(footer)
+      ? migrateLegacyFooter(footer as { enabled: boolean; leftText: string; centerText: string; rightText: string; showPageNumber: boolean; pageNumberPosition: 'left' | 'center' | 'right' })
+      : (footer as unknown as HeaderFooterConfig | undefined) ?? DEFAULT_FOOTER,
+  }
 }
 
 export function PrintView() {
@@ -239,12 +249,20 @@ export function PrintView() {
   }
 
   const schoolName = material.schoolName || 'LA Music School'
+  const pageConfig = normalizePrintPageConfig(material.pageConfig)
 
   return (
     <main className="print-view" data-print-root>
       {canvasPages.map((pageBlocks, pageIndex) => {
         const isCoverPage = pageBlocks.some(block => block.block_type === 'cover')
         const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
+        const hfContext: PlaceholderContext = {
+          title: material.title,
+          pageNumber: pageIndex + 1,
+          totalPages: canvasPages.length,
+          schoolName,
+          professorName: '',
+        }
         const pageLayerStyle = canvasPageLayerToCSS({
           hasSelectedBlock: false,
           hasShiftedBlock: pageHasShiftedBlock,
@@ -258,7 +276,13 @@ export function PrintView() {
             style={pageLayerStyle}
           >
             {!isCoverPage && (
-              <Header schoolName={schoolName} materialTitle={material.title} />
+              <HeaderFooterBar
+                config={pageConfig.header}
+                type="header"
+                context={hfContext}
+                pageIndex={pageIndex}
+                className="a4-page-header"
+              />
             )}
 
             <div
@@ -283,7 +307,13 @@ export function PrintView() {
             </div>
 
             {!isCoverPage && (
-              <Footer pageIndex={pageIndex} totalPages={canvasPages.length} schoolName={schoolName} />
+              <HeaderFooterBar
+                config={pageConfig.footer}
+                type="footer"
+                context={hfContext}
+                pageIndex={pageIndex}
+                className="a4-page-footer"
+              />
             )}
           </section>
         )
