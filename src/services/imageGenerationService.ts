@@ -2,7 +2,10 @@ import { supabase } from '@/lib/supabase'
 
 const GOOGLE_AI_KEY = import.meta.env.VITE_GOOGLE_AI_KEY
 const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview'
+const GEMINI_TEXT_MODEL = 'gemini-2.5-flash'
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`
+const GEMINI_TEXT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TEXT_MODEL}:generateContent`
+const GEMINI_IMAGE_TIMEOUT_MS = 75_000
 
 // ─── Tipos ──────────────────────────────────────────────────────────
 
@@ -166,10 +169,10 @@ Regras:
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_AI_KEY}`,
+      GEMINI_TEXT_API_URL,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GOOGLE_AI_KEY },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemInstruction }] },
           contents: [{ parts: [{ text: userPrompt }] }],
@@ -346,17 +349,35 @@ async function generateImageWithGemini(
     }
   }
 
-  // Chamar API (síncrono — sem polling)
-  const response = await fetch(`${GEMINI_API_URL}?key=${GOOGLE_AI_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-      }
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), GEMINI_IMAGE_TIMEOUT_MS)
+  let response: Response
+
+  try {
+    // Chamar API (síncrono — sem polling)
+    response = await fetch(`${GEMINI_API_URL}?key=${GOOGLE_AI_KEY}`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          responseModalities: ['IMAGE'],
+          imageConfig: {
+            aspectRatio: '3:4',
+            imageSize: '1K',
+          },
+        }
+      })
     })
-  })
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Gemini demorou mais de 75 segundos para gerar a imagem. Tente novamente com uma direção visual mais simples ou sem referências.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const errorText = await response.text()

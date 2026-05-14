@@ -14,8 +14,9 @@ import {
   BookmarkSimple, Copy, ArrowUUpRight, ArrowUDownRight,
   CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
   MagicWand, Translate, Brain, Lightning,
-  Ruler, Layout, ClockCounterClockwise, MapTrifold,
+  Ruler, Layout, ClockCounterClockwise, MapTrifold, QrCode,
 } from "@phosphor-icons/react";
+import QRCodeLib from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,7 +48,7 @@ import { KeyboardEditor, type PianoChordData } from "@/components/music/Keyboard
 import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
 import { raiseTabSlursInSvg, shouldHideAlphaTabSvgGroup } from "@/components/music/AlphaTexInlineRenderer";
 import { generateText } from "@/services/aiService";
-import { generateCoverImageRaw, enhancePromptWithAI, IMAGE_STYLES, fetchImageLibrary, type ImageLibraryItem, type ImageStyle } from "@/services/imageGenerationService";
+import { generateCoverImageRaw, enhancePromptWithAI, fetchImageLibrary, type ImageLibraryItem, type ImageStyle } from "@/services/imageGenerationService";
 import { supabase } from "@/lib/supabase";
 import { editorChordToKeyboardRenderData, keyboardBlockToEditorChord } from "@/lib/keyboardBlockAdapter";
 import {
@@ -216,6 +217,7 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType
   keyboard:       { label: 'Teclado',   icon: PianoKeys,    bg: 'var(--master-soft)',      color: 'var(--master)' },
   keyboard_grid:  { label: 'Grade Teclados', icon: GridFour, bg: 'var(--master-soft)',   color: 'var(--master)' },
   columns:         { label: 'Colunas',  icon: Rows,     bg: 'var(--azul-soft)',       color: 'var(--azul)' },
+  qr_code:         { label: 'QR Code',  icon: QrCode,   bg: 'var(--azul-soft)',       color: 'var(--azul-claro)' },
   audio:           { label: 'Áudio',   icon: SpeakerHigh, bg: 'var(--grow-soft)',    color: 'var(--grow)' },
   video:           { label: 'Vídeo',   icon: VideoCamera,  bg: 'var(--accent-soft)',  color: 'var(--accent)' },
 }
@@ -261,6 +263,84 @@ function cloneJsonValue<T>(value: T): T {
 
 const DEFAULT_TAB_COLUMNS = 24
 
+type CoverVisualDirectionValue =
+  | 'classic_school'
+  | 'modern_premium'
+  | 'playful_kids'
+  | 'minimal_clean'
+  | 'artistic_editorial'
+  | 'realistic_photo'
+
+const COVER_VISUAL_DIRECTIONS: Array<{
+  value: CoverVisualDirectionValue
+  label: string
+  description: string
+  style: ImageStyle
+  prompt: string
+}> = [
+  {
+    value: 'modern_premium',
+    label: 'Moderna / Premium',
+    description: 'Apostila atual, sofisticada e comercial.',
+    style: 'illustration',
+    prompt: 'Modern premium editorial cover background. Refined composition, rich but controlled colors, professional lighting, polished contemporary music school identity.',
+  },
+  {
+    value: 'classic_school',
+    label: 'Clássica / Conservatório',
+    description: 'Mais tradicional, elegante e séria.',
+    style: 'realistic',
+    prompt: 'Traditional conservatory-style workbook cover background. Elegant, timeless, refined, warm neutral tones, premium acoustic instrument textures, serious music education atmosphere.',
+  },
+  {
+    value: 'playful_kids',
+    label: 'Infantil / Lúdica',
+    description: 'Mais leve para crianças e iniciantes.',
+    style: 'cartoon',
+    prompt: 'Playful children-friendly music workbook cover background. Warm, cheerful, approachable, rounded shapes, vibrant but tasteful colors, suitable for young beginner students.',
+  },
+  {
+    value: 'minimal_clean',
+    label: 'Minimalista',
+    description: 'Poucos elementos e bastante respiro.',
+    style: 'flat',
+    prompt: 'Minimal clean music workbook cover background. Simple composition, generous negative space, restrained palette, subtle musical atmosphere, premium educational design.',
+  },
+  {
+    value: 'artistic_editorial',
+    label: 'Artística',
+    description: 'Mais autoral, expressiva e visual.',
+    style: 'watercolor',
+    prompt: 'Artistic editorial music workbook cover background. Expressive painterly atmosphere, elegant textures, dynamic composition, sophisticated colors, crafted for a creative music school.',
+  },
+  {
+    value: 'realistic_photo',
+    label: 'Realista / Fotográfica',
+    description: 'Instrumento com aparência de foto.',
+    style: 'realistic',
+    prompt: 'Photorealistic music workbook cover background. Real instrument close-up or studio scene, natural light, high-end photography, realistic textures, professional educational publication.',
+  },
+]
+
+function resolveCoverVisualDirection(renderData: Record<string, unknown> | null | undefined) {
+  const rd = renderData ?? {}
+  const stored = rd.cover_visual_direction as CoverVisualDirectionValue | undefined
+  const match = COVER_VISUAL_DIRECTIONS.find(direction => direction.value === stored)
+  if (match) return match
+
+  const legacyStyle = rd.cover_style as ImageStyle | undefined
+  if (legacyStyle === 'cartoon') return COVER_VISUAL_DIRECTIONS.find(direction => direction.value === 'playful_kids')!
+  if (legacyStyle === 'realistic' || legacyStyle === '3d') return COVER_VISUAL_DIRECTIONS.find(direction => direction.value === 'realistic_photo')!
+  if (legacyStyle === 'watercolor' || legacyStyle === 'sketch') return COVER_VISUAL_DIRECTIONS.find(direction => direction.value === 'artistic_editorial')!
+
+  const legacyTemplate = rd.template as string | undefined
+  if (legacyTemplate === 'classic' || legacyTemplate === 'elegant') return COVER_VISUAL_DIRECTIONS.find(direction => direction.value === 'classic_school')!
+  if (legacyTemplate === 'minimal') return COVER_VISUAL_DIRECTIONS.find(direction => direction.value === 'minimal_clean')!
+  if (legacyTemplate === 'colorful' || legacyTemplate === 'vibrant') return COVER_VISUAL_DIRECTIONS.find(direction => direction.value === 'playful_kids')!
+
+  return COVER_VISUAL_DIRECTIONS[0]
+}
+
 function createEmptyTablatureData(label = 'Tablatura', instrument: TabInstrument = 'guitar'): TablatureData {
   const stringCount = TAB_INSTRUMENTS[instrument]?.stringCount ?? TAB_INSTRUMENTS.guitar.stringCount
   return {
@@ -282,13 +362,14 @@ function getDefaultBlockPayload(blockType: string, materialTitle: string): {
     return {
       title: materialTitle || 'Capa',
       content: { text: '' },
-      renderData: { template: 'minimal', titulo: materialTitle || '', subtitulo: '', instrumento: '', nivel: '', professor: '', escola: '', data: '' },
+      renderData: { cover_visual_direction: 'modern_premium', titulo: materialTitle || '', subtitulo: '', instrumento: '', nivel: '', professor: '', escola: '', data: '' },
     }
   }
   if (blockType === 'chord_grid') return { title: 'Grade de Acordes', content: { text: '' }, renderData: { chords: [], columns: 3 } }
   if (blockType === 'keyboard') return { title: 'Teclado', content: { text: '' }, renderData: { keys: [], hand: 'rh' } }
   if (blockType === 'keyboard_grid') return { title: 'Grade de Teclados', content: { text: '' }, renderData: { keyboards: [], columns: 3 } }
   if (blockType === 'columns') return { title: null, content: { text: '' }, renderData: { columns: [{ blocks: [] }, { blocks: [] }] } }
+  if (blockType === 'qr_code') return { title: 'QR Code', content: { text: '' }, renderData: { url: '', caption: '' } }
   if (blockType === 'tablature') {
     const notationData = createEmptyTablatureData()
     return {
@@ -340,6 +421,7 @@ function simpleHash(value: string): string {
 
 const ACTIVE_PAGE_RADIUS = 2
 const EDITOR_INTERACTION_PREHEAT_PAUSE_MS = 30000
+const ALPHATAB_RENDERER_SNAPSHOT_VERSION = 'alphatab-snapshot-font-class-v6'
 const TABLATURE_RENDERER_SNAPSHOT_VERSION = 'tablature-free-time-clean-slur-above-v6'
 type BlockHeightSource = 'estimated' | 'calibrated' | 'measured'
 
@@ -351,7 +433,11 @@ function getBlockHeightCacheKey(block: EditorBlock): string {
     title: block.title,
     content: block.content,
     render_data: block.render_data,
-    renderer_snapshot_version: block.block_type === 'tablature' ? TABLATURE_RENDERER_SNAPSHOT_VERSION : undefined,
+    renderer_snapshot_version: blockUsesAlphaTab(block)
+      ? ALPHATAB_RENDERER_SNAPSHOT_VERSION
+      : block.block_type === 'tablature'
+        ? TABLATURE_RENDERER_SNAPSHOT_VERSION
+        : undefined,
   }))}`
 }
 
@@ -416,7 +502,6 @@ function cleanTablatureSnapshotArtifacts(html: string, block: EditorBlock): stri
 
 function sanitizeMusicSnapshotHtml(html: string, block: EditorBlock): string {
   return cleanTablatureSnapshotArtifacts(html, block)
-    .replace(/at-surface/g, 'at-surface-snapshot')
     .replace(/\scontenteditable="[^"]*"/g, '')
     .replace(/\stabindex="[^"]*"/g, '')
 }
@@ -473,6 +558,54 @@ function PropertiesCollapsibleSection({
         </div>
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function QrCodePreview({ value, className = '' }: { value: string; className?: string }) {
+  const [qrSrc, setQrSrc] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    const text = value.trim()
+    if (!text) {
+      setQrSrc('')
+      return
+    }
+
+    void QRCodeLib.toDataURL(text, {
+      width: 168,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#111827', light: '#ffffff' },
+    }).then(src => {
+      if (!cancelled) setQrSrc(src)
+    }).catch(() => {
+      if (!cancelled) setQrSrc('')
+    })
+
+    return () => { cancelled = true }
+  }, [value])
+
+  if (!value.trim()) {
+    return (
+      <div className={`flex h-32 items-center justify-center rounded-lg border border-dashed border-border bg-bg2 text-center text-[10px] leading-snug text-text3 ${className}`}>
+        Cole uma URL para gerar o preview.
+      </div>
+    )
+  }
+
+  if (!qrSrc) {
+    return (
+      <div className={`flex h-32 items-center justify-center rounded-lg border border-border bg-bg2 text-text3 ${className}`}>
+        <SpinnerGap size={16} className="animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className={`rounded-lg border border-border bg-white p-3 shadow-sm ${className}`}>
+      <img src={qrSrc} alt="Preview do QR Code" className="mx-auto h-32 w-32" />
+    </div>
   )
 }
 
@@ -880,13 +1013,14 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   const snapshotKey = useMemo(() => getBlockHeightCacheKey(block), [block])
   const isAlphaTabRendererBlock = blockUsesAlphaTab(block)
   const isMusicRendererBlock = MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) || isAlphaTabRendererBlock
-  const cachedSnapshot = isMusicRendererBlock ? musicRendererSnapshotCacheRef?.current.get(block.id) : undefined
+  const canUseMusicSnapshot = isMusicRendererBlock && !isAlphaTabRendererBlock
+  const cachedSnapshot = canUseMusicSnapshot ? musicRendererSnapshotCacheRef?.current.get(block.id) : undefined
   const validSnapshot = cachedSnapshot?.hash === snapshotKey ? cachedSnapshot : null
   const [mountRealRenderer, setMountRealRenderer] = useState(() => !validSnapshot)
-  const [showSnapshot, setShowSnapshot] = useState(() => Boolean(validSnapshot))
+  const [showSnapshot, setShowSnapshot] = useState(() => canUseMusicSnapshot && Boolean(validSnapshot))
 
   const captureMusicSnapshot = useCallback((htmlOverride?: string) => {
-    if (!isMusicRendererBlock || !musicRendererSnapshotCacheRef) return
+    if (!canUseMusicSnapshot || !musicRendererSnapshotCacheRef) return
     const el = realRendererRef.current
     const rawHtml = htmlOverride ?? el?.innerHTML
     if (!rawHtml || rawHtml.trim().length === 0) return
@@ -906,7 +1040,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
         htmlLength: html.length,
       }))
     }
-  }, [block, block.id, isMusicRendererBlock, musicRendererSnapshotCacheRef, snapshotKey, validSnapshot?.height])
+  }, [block, block.id, canUseMusicSnapshot, musicRendererSnapshotCacheRef, snapshotKey, validSnapshot?.height])
 
   useEffect(() => {
     if (!isMusicRendererBlock) {
@@ -999,7 +1133,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     />
   )
 
-  if (!isMusicRendererBlock) {
+  if (!isMusicRendererBlock || isAlphaTabRendererBlock) {
     return preview
   }
 
@@ -1139,7 +1273,8 @@ function MusicSnapshotPreheater({
     }
 
     queueRef.current = blocks.filter(block => {
-      if (!MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type) && !blockUsesAlphaTab(block)) return false
+      if (blockUsesAlphaTab(block)) return false
+      if (!MUSIC_RENDERER_BLOCK_TYPES.has(block.block_type)) return false
       const key = getBlockHeightCacheKey(block)
       const cached = musicRendererSnapshotCacheRef.current.get(block.id)
       return cached?.hash !== key || cached.html.trim().length === 0
@@ -1159,6 +1294,11 @@ function MusicSnapshotPreheater({
   }, [scheduleNext])
 
   const storePreheatedSnapshot = useCallback((block: EditorBlock, rawHtml: string) => {
+    if (blockUsesAlphaTab(block)) {
+      finishPreheat()
+      return
+    }
+
     const el = containerRef.current
     const snapshotHtml = sanitizeMusicSnapshotHtml(rawHtml, block)
     if (!isUsableMusicSnapshotHtml(snapshotHtml, block)) {
@@ -1925,7 +2065,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
           pages: canvasPages,
           activePageIndexes,
           selectedBlockId,
-          maxPerPage: 2,
+          maxPerPage: Number.MAX_SAFE_INTEGER,
         })
         const next = new Set(plan.allowedBlockIds)
         setHydratingAlphaTabBlockIds(next)
@@ -1938,8 +2078,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
             alphaTabSurfaces: document.querySelectorAll('.at-surface').length,
           }))
         }
-      }, 1200)
-    }, 300)
+      }, 300)
+    }, 80)
 
     return () => {
       cancelled = true
@@ -2773,6 +2913,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Gerar imagem de capa com IA (Nano Banana 2)
   const [coverImageLoading, setCoverImageLoading] = useState(false)
+  const [coverImageStatus, setCoverImageStatus] = useState('')
   const [coverPromptLoading, setCoverPromptLoading] = useState(false)
 
   // Imagens de referência visual para a capa (opcional)
@@ -2789,10 +2930,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       toast.error('Escreva uma descrição antes de melhorar')
       return
     }
-    const coverStyle = (rd.cover_style as ImageStyle) ?? 'illustration'
+    const coverDirection = resolveCoverVisualDirection(rd)
     setCoverPromptLoading(true)
     try {
-      const enhanced = await enhancePromptWithAI(userPrompt.trim(), 'cover', coverStyle)
+      const enhanced = await enhancePromptWithAI(userPrompt.trim(), 'cover', coverDirection.style)
       updateSelectedRenderData('cover_prompt', enhanced)
       toast.success('Prompt melhorado!')
     } catch (e: any) {
@@ -2811,35 +2952,39 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const instrumento = rd.instrumento || ''
     const nivel = rd.nivel || ''
     const escola = rd.escola || ''
-    const template = rd.template || 'minimal'
-    const coverStyle = (rd.cover_style as ImageStyle) ?? 'illustration'
-    const userPrompt = (rd.cover_prompt as string) ?? ''
+    const coverDirection = resolveCoverVisualDirection(rd)
+    const advancedPrompt = ((rd.cover_prompt as string) ?? '').trim()
+    const hasReferences = coverReferenceFiles.length > 0
 
     // Se o usuário escreveu um prompt personalizado, usar ele como base
-    const prompt = userPrompt.trim()
-      ? userPrompt.trim()
-      : [
-        `Artistic background image for a music school workbook cover.`,
-        instrumento && `Theme: ${instrumento} (show the instrument prominently).`,
-        !instrumento && `Theme: music education.`,
-        nivel && `Level: ${nivel}.`,
-        escola && `School: ${escola}.`,
-        `Clean, professional composition. Leave clear space in the upper area for the title.`,
-        template === 'geometric' && 'Geometric shapes and bold angular compositions.',
-        template === 'gradient' && 'Smooth gradient backgrounds with depth and lighting.',
-        template === 'bold' && 'High contrast, dramatic lighting, dark background.',
-        template === 'elegant' && 'Refined, minimal composition with warm tones.',
-        template === 'vibrant' && 'Bright, energetic colors and dynamic shapes.',
-        template === 'colorful' && 'Vibrant gradient with abstract design elements.',
-      ].filter(Boolean).join(' ')
+    const prompt = [
+      'Artistic background image for a music school workbook cover.',
+      `Visual direction: ${coverDirection.label}. ${coverDirection.prompt}`,
+      titulo && `Workbook title context: ${titulo}.`,
+      instrumento && `Main musical theme: ${instrumento}. Show the instrument or its atmosphere clearly.`,
+      !instrumento && 'Main musical theme: music education.',
+      nivel && `Student level: ${nivel}.`,
+      escola && `School identity: ${escola}.`,
+      hasReferences && 'Use the uploaded reference images as visual guidance for composition, colors, mood, and cover style without copying text or logos.',
+      advancedPrompt && `Additional teacher direction: ${advancedPrompt}`,
+      'Clean, professional portrait composition for A4. Leave clear space in the upper third for title overlay. Do not include text, letters, logos, notation, staff lines, notes, clefs, or sheet music.',
+    ].filter(Boolean).join(' ')
 
     setCoverImageLoading(true)
+    setCoverImageStatus('Conectando ao Gemini...')
     const startTime = performance.now()
+    const toastId = toast.loading('Gerando capa com IA...')
+    const statusTimers = [
+      window.setTimeout(() => setCoverImageStatus('Gerando imagem no Gemini...'), 8_000),
+      window.setTimeout(() => setCoverImageStatus('Ainda gerando. Se passar de 75s, vamos cancelar automaticamente.'), 25_000),
+      window.setTimeout(() => setCoverImageStatus('Finalizando ou aguardando resposta do Gemini...'), 50_000),
+    ]
     try {
       // Gerar via Gemini (Nano Banana 2) com style enhancer + referências opcionais
-      const result = await generateCoverImageRaw(prompt, coverStyle, coverReferenceFiles.length > 0 ? coverReferenceFiles : undefined)
+      const result = await generateCoverImageRaw(prompt, coverDirection.style, hasReferences ? coverReferenceFiles : undefined)
 
       // Upload para Supabase Storage (content-images bucket)
+      setCoverImageStatus('Salvando imagem...')
       const ext = result.mimeType === 'image/jpeg' ? 'jpg' : 'png'
       const filePath = `covers/${materialId}/${blockId}_${Date.now()}.${ext}`
       const binaryStr = atob(result.imageBase64)
@@ -2865,15 +3010,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
           ? { ...b, render_data: { ...(b.render_data ?? {}), cover_image_url: publicUrl } }
           : b,
       ))
+      queueBlockAutosave(blockId)
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1)
-      toast.success(`Capa gerada em ${elapsed}s`)
+      toast.success(`Capa gerada em ${elapsed}s`, { id: toastId })
     } catch (e: any) {
       console.error('Erro ao gerar capa:', e)
-      toast.error(e?.message?.slice(0, 100) || 'Erro ao gerar imagem da capa')
+      toast.error(e?.message?.slice(0, 140) || 'Erro ao gerar imagem da capa', { id: toastId })
     } finally {
+      statusTimers.forEach(timer => window.clearTimeout(timer))
       setCoverImageLoading(false)
+      setCoverImageStatus('')
     }
-  }, [materialTitle, materialId, coverReferenceFiles])
+  }, [materialTitle, materialId, coverReferenceFiles, queueBlockAutosave])
 
   const handleCoverRefAdd = useCallback((files: FileList | File[]) => {
     const maxFiles = 5
@@ -5244,7 +5392,7 @@ ${pagesHtml}
                 Da Biblioteca
               </DropdownMenuItem>
               <div className="h-px bg-border my-1" />
-              {['text', 'tip', 'exercise', 'title', 'image', 'audio', 'video', 'cover', 'columns', 'notation', 'chord_diagram', 'chord_grid', 'keyboard', 'keyboard_grid', 'tablature', 'separator', 'page_break'].map(type => {
+              {['text', 'tip', 'exercise', 'title', 'image', 'audio', 'video', 'qr_code', 'cover', 'columns', 'notation', 'chord_diagram', 'chord_grid', 'keyboard', 'keyboard_grid', 'tablature', 'separator', 'page_break'].map(type => {
                 const cfg = getBlockConfig(type)
                 const Icon = cfg.icon
                 return (
@@ -6089,7 +6237,7 @@ ${pagesHtml}
               </div>
 
               {/* Conteúdo */}
-              {selectedBlock.block_type !== 'cover' && (
+              {!['cover', 'page_break', 'separator', 'qr_code'].includes(selectedBlock.block_type) && (
                 <PropertiesCollapsibleSection
                   title="Conteúdo"
                   subtitle={['text', 'tip', 'exercise', 'title'].includes(selectedBlock.block_type)
@@ -6349,55 +6497,47 @@ ${pagesHtml}
 
               {/* Capa — formulário de campos */}
               {selectedBlock.block_type === 'cover' && (
-                <div className="prop-section space-y-2.5">
+                <div className="prop-section space-y-3">
                   <div className="prop-label">Dados da Capa</div>
+                  <Tabs defaultValue="imagem" className="cover-properties-tabs w-full">
+                    <TabsList className="grid w-full grid-cols-4 h-9">
+                      <TabsTrigger value="imagem" className="px-1 text-[11px]">Imagem</TabsTrigger>
+                      <TabsTrigger value="textos" className="px-1 text-[11px]">Textos</TabsTrigger>
+                      <TabsTrigger value="elementos" className="px-1 text-[11px]">Elementos</TabsTrigger>
+                      <TabsTrigger value="metadados" className="px-1 text-[11px]">Dados</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="imagem" className="cover-image-tab mt-3 space-y-4">
                   <div>
-                    <label className="text-[10px] text-text3 block mb-1">Template</label>
-                    <Select
-                      value={(selectedBlock.render_data as any)?.template ?? 'minimal'}
-                      onValueChange={v => updateSelectedRenderData('template', v)}
-                    >
-                      <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="minimal">Minimalista</SelectItem>
-                        <SelectItem value="colorful">Colorido</SelectItem>
-                        <SelectItem value="classic">Clássico</SelectItem>
-                        <SelectItem value="modern">Moderno</SelectItem>
-                        <SelectItem value="geometric">Geométrico</SelectItem>
-                        <SelectItem value="gradient">Gradiente</SelectItem>
-                        <SelectItem value="musical">Musical</SelectItem>
-                        <SelectItem value="bold">Impactante</SelectItem>
-                        <SelectItem value="elegant">Elegante</SelectItem>
-                        <SelectItem value="vibrant">Vibrante</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {/* Estilo IA */}
-                  <div>
-                    <label className="text-[10px] text-text3 block mb-1">Estilo IA</label>
-                    <div className="grid grid-cols-4 gap-1">
-                      {IMAGE_STYLES.map(s => (
-                        <button
-                          key={s.value}
-                          onClick={() => updateSelectedRenderData('cover_style', s.value)}
-                          className={`h-7 text-[9px] rounded-md border transition-all ${
-                            ((selectedBlock.render_data as any)?.cover_style ?? 'illustration') === s.value
-                              ? 'border-accent bg-accent/10 text-accent font-semibold'
-                              : 'border-border text-text3 hover:border-accent/40 hover:bg-bg2'
-                          }`}
-                          title={s.description}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
+                    <label className="cover-field-label block mb-1.5">Direção visual</label>
+                    {(() => {
+                      const currentDirection = resolveCoverVisualDirection(selectedBlock.render_data)
+                      return (
+                        <>
+                          <Select
+                            value={currentDirection.value}
+                            onValueChange={value => updateSelectedRenderData('cover_visual_direction', value)}
+                          >
+                            <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {COVER_VISUAL_DIRECTIONS.map(direction => (
+                                <SelectItem key={direction.value} value={direction.value}>
+                                  {direction.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="cover-helper mt-1.5">{currentDirection.description}</p>
+                        </>
+                      )
+                    })()}
                   </div>
                   {/* Referência visual (opcional) */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-text3 block">
-                      Referência Visual <span className="text-text3/50">(opcional · até 5)</span>
+                  <div className="space-y-2">
+                    <label className="cover-field-label block">
+                      Referência Visual <span className="cover-field-meta">(opcional · até 5)</span>
                     </label>
-                    <p className="text-[9px] text-text3/60 leading-relaxed">
+                    <p className="cover-helper">
                       Envie exemplos de capas que você gosta. A IA vai seguir o estilo visual.
                     </p>
                     <input
@@ -6431,18 +6571,18 @@ ${pagesHtml}
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full h-7 text-[10px] gap-1 border-dashed"
+                        className="w-full h-8 text-[11px] gap-1.5 border-dashed font-semibold"
                         onClick={() => coverRefInputRef.current?.click()}
                       >
-                        <ImageIcon size={12} /> {coverReferenceFiles.length > 0 ? 'Adicionar mais' : 'Enviar referências'}
+                        <ImageIcon size={13} /> {coverReferenceFiles.length > 0 ? 'Adicionar mais' : 'Enviar referências'}
                       </Button>
                     )}
                   </div>
                   {/* Imagem de fundo IA */}
                   <div>
-                    <label className="text-[10px] text-text3 block mb-1">Imagem de Fundo (IA)</label>
+                    <label className="cover-field-label block mb-1.5">Imagem de Fundo (IA)</label>
                     {(selectedBlock.render_data as any)?.cover_image_url ? (
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         <div className="relative rounded overflow-hidden border border-border">
                           <img
                             src={(selectedBlock.render_data as any).cover_image_url}
@@ -6454,36 +6594,41 @@ ${pagesHtml}
                           <Button
                             size="sm"
                             variant="outline"
-                            className="flex-1 h-7 text-[10px] gap-1 border-accent/30 text-accent hover:bg-accent/10"
+                            className="flex-1 h-8 text-[11px] gap-1.5 border-accent/30 text-accent hover:bg-accent/10"
                             onClick={() => handleGenerateCoverImage(selectedBlock.id)}
                             disabled={coverImageLoading}
                           >
-                            {coverImageLoading ? <SpinnerGap size={12} className="animate-spin" /> : <Sparkle size={12} weight="bold" />} Regenerar
+                            {coverImageLoading ? <SpinnerGap size={13} className="animate-spin" /> : <Sparkle size={13} weight="bold" />} Regenerar
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-[10px] border-vermelho/30 text-vermelho hover:bg-vermelho/10"
+                            className="h-8 text-[11px] border-vermelho/30 text-vermelho hover:bg-vermelho/10"
                             onClick={() => updateSelectedRenderData('cover_image_url', null)}
                           >
-                            <Trash size={12} />
+                            <Trash size={13} />
                           </Button>
                         </div>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="w-full justify-center gap-2 h-6 text-[9px]"
+                          className="w-full justify-center gap-2 h-8 text-[11px] font-semibold"
                           onClick={handleOpenCoverLibrary}
                         >
-                          <ImageIcon size={11} /> Trocar por imagem da Biblioteca
+                          <ImageIcon size={13} /> Trocar por imagem da Biblioteca
                         </Button>
+                        {coverImageLoading && coverImageStatus && (
+                          <p className="rounded-md bg-accent/10 px-2 py-1.5 text-center text-[10px] leading-snug text-accent">
+                            {coverImageStatus}
+                          </p>
+                        )}
                       </div>
                     ) : (
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="w-full justify-center gap-2 border-accent/30 text-accent hover:bg-accent/10"
+                          className="w-full h-9 justify-center gap-2 border-accent/30 text-[12px] font-semibold text-accent hover:bg-accent/10"
                           onClick={() => handleGenerateCoverImage(selectedBlock.id)}
                           disabled={coverImageLoading}
                         >
@@ -6496,29 +6641,46 @@ ${pagesHtml}
                         <Button
                           size="sm"
                           variant="outline"
-                          className="w-full justify-center gap-2 h-7 text-[10px]"
+                          className="w-full justify-center gap-2 h-8 text-[11px] font-semibold"
                           onClick={handleOpenCoverLibrary}
                         >
-                          <ImageIcon size={12} /> Importar da Biblioteca
+                          <ImageIcon size={13} /> Importar da Biblioteca
                         </Button>
+                        {coverImageLoading && coverImageStatus && (
+                          <p className="rounded-md bg-accent/10 px-2 py-1.5 text-center text-[10px] leading-snug text-accent">
+                            {coverImageStatus}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
                   {/* Prompt personalizado para IA */}
-                  <div>
-                    <label className="text-[10px] text-text3 block mb-1">Prompt da Capa (IA)</label>
+                  <Collapsible
+                    defaultOpen={Boolean((selectedBlock.render_data as any)?.cover_prompt)}
+                    className="rounded-lg border border-border/70 bg-bg2/35"
+                  >
+                    <CollapsibleTrigger asChild>
+                      <button className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+                        <span>
+                          <span className="cover-field-label block">Prompt avançado</span>
+                          <span className="cover-helper block">Opcional, para instruções específicas.</span>
+                        </span>
+                        <CaretRight size={14} className="text-text3" />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="border-t border-border/60 p-3">
                     <Textarea
                       value={(selectedBlock.render_data as any)?.cover_prompt ?? ''}
                       onChange={e => updateSelectedRenderData('cover_prompt', e.target.value)}
                       placeholder="Ex: Capa minimalista com violão acústico, tons azuis e dourados, estilo profissional..."
-                      className="text-[11px] min-h-[60px] resize-none"
+                      className="min-h-[104px] resize-none text-[13px] leading-relaxed"
                       rows={3}
                     />
                     <div className="flex gap-1 mt-1">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="flex-1 h-7 text-[10px] gap-1 border-azul-claro/30 text-azul-claro hover:bg-azul-claro/10"
+                        className="flex-1 h-8 text-[11px] gap-1.5 border-azul-claro/30 text-azul-claro hover:bg-azul-claro/10"
                         onClick={handleEnhanceCoverPrompt}
                         disabled={coverPromptLoading}
                       >
@@ -6529,10 +6691,14 @@ ${pagesHtml}
                         )}
                       </Button>
                     </div>
-                    <p className="text-[9px] text-text3 mt-1 opacity-60">
-                      Descreva como quer a capa. Se vazio, a IA gera automaticamente com base nos dados.
-                    </p>
-                  </div>
+                      <p className="cover-helper mt-1.5">
+                        Descreva como quer a capa. Se vazio, a IA gera automaticamente com base nos dados.
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+                    </TabsContent>
+
+                    <TabsContent value="elementos" className="mt-3 space-y-3">
                   {/* Logomarca */}
                   <div>
                     <label className="text-[10px] text-text3 block mb-1">Logomarca</label>
@@ -6726,6 +6892,9 @@ ${pagesHtml}
                   </div>
 
                   {/* ── Tipografia Avançada ── */}
+                    </TabsContent>
+
+                    <TabsContent value="textos" className="mt-3 space-y-3">
                   <div className="space-y-2 border-t border-border pt-3">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] text-text3 uppercase tracking-wider font-medium">Textos</label>
@@ -7020,6 +7189,9 @@ ${pagesHtml}
                       </div>
                     )}
                   </div>
+                    </TabsContent>
+
+                    <TabsContent value="metadados" className="mt-3 space-y-3">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] text-text3 block mb-1">Instrumento</label>
@@ -7067,6 +7239,8 @@ ${pagesHtml}
                       className="h-8 text-[12px]"
                     />
                   </div>
+                    </TabsContent>
+                  </Tabs>
                 </div>
               )}
 
@@ -7261,6 +7435,46 @@ ${pagesHtml}
               )}
 
               {/* Bloco Imagem — upload, URL, legenda, tamanho */}
+              {selectedBlock.block_type === 'qr_code' && (
+                <div className="prop-section space-y-3">
+                  <div className="prop-label">QR Code</div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Título</label>
+                    <Input
+                      value={selectedBlock.title ?? ''}
+                      onChange={e => {
+                        setBlockWithHistory(selectedBlockId, b => ({ ...b, title: e.target.value }))
+                        queueBlockAutosave(selectedBlockId)
+                      }}
+                      placeholder="Ex: Aula complementar"
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">URL</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.url ?? ''}
+                      onChange={e => updateSelectedRenderData('url', e.target.value)}
+                      placeholder="https://..."
+                      className="h-7 text-[11px]"
+                    />
+                    <span className="text-[9px] text-text3/60 mt-0.5 block">
+                      O QR Code é gerado automaticamente no canvas e no PDF.
+                    </span>
+                  </div>
+                  <QrCodePreview value={String((selectedBlock.render_data as any)?.url ?? '')} />
+                  <div>
+                    <label className="text-[10px] text-text3 block mb-1">Legenda</label>
+                    <Input
+                      value={(selectedBlock.render_data as any)?.caption ?? ''}
+                      onChange={e => updateSelectedRenderData('caption', e.target.value)}
+                      placeholder="Ex: Escaneie para abrir o vídeo de apoio"
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+                </div>
+              )}
+
               {selectedBlock.block_type === 'image' && (
                 <div className="prop-section space-y-2.5">
                   <div className="prop-label">Imagem</div>
@@ -7508,18 +7722,17 @@ ${pagesHtml}
 
               {/* Separador customizável */}
               {selectedBlock.block_type === 'separator' && (
-                <PropertiesCollapsibleSection
-                  title="Estilo"
-                  subtitle="Aparencia visual do separador."
-                  open={isPropertiesSectionOpen(selectedBlock.block_type, 'style', false)}
-                  onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'style', open)}
-                >
+                <div className="prop-section space-y-3">
+                  <div>
+                    <div className="prop-label">Separador</div>
+                    <p className="mt-0.5 text-[9px] leading-snug text-text3">Linha, espessura, cor e decora&ccedil;&atilde;o visual.</p>
+                  </div>
                   <SeparatorStylePanel
                     style={(selectedBlock.render_data?.separatorStyle as SeparatorStyle) ?? DEFAULT_SEPARATOR_STYLE}
                     onChange={updateSeparatorStyle}
                     pageBackgroundColor={pageConfig.background?.color ?? '#ffffff'}
                   />
-                </PropertiesCollapsibleSection>
+                </div>
               )}
 
               {/* 6.1 — Assistente IA (só para blocos de texto) */}

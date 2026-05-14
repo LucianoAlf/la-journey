@@ -408,9 +408,7 @@ export function AlphaTexInlineRenderer({
       }
     })
 
-    api.renderFinished.on(() => {
-      setLoading(false)
-    })
+    api.renderFinished.on(() => {})
 
     api.postRenderFinished.on(() => {
       window.requestAnimationFrame(() => {
@@ -457,7 +455,7 @@ export function AlphaTexInlineRenderer({
       <div
         ref={containerRef}
         className="w-full"
-        style={{ minHeight, pointerEvents }}
+        style={{ minHeight, pointerEvents, opacity: loading ? 0 : 1 }}
       />
     </div>
   )

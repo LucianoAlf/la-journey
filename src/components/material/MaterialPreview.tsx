@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
 import { Lightbulb, Target, Trophy, MusicNotes } from '@phosphor-icons/react'
+import QRCodeLib from 'qrcode'
 import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
@@ -638,6 +639,49 @@ function BlockVideo({ block }: { block: MaterialBlock }) {
 }
 
 // ─── Bloco Imagem ───────────────────────────────────────────────────
+
+function BlockQrCode({ block }: { block: MaterialBlock }) {
+  const url = (block.render_data?.url ?? block.content?.url ?? '') as string
+  const caption = block.render_data?.caption as string | undefined
+  const [qrSrc, setQrSrc] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    const text = url.trim()
+    if (!text) {
+      setQrSrc('')
+      return
+    }
+
+    void QRCodeLib.toDataURL(text, {
+      width: 192,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#111827', light: '#ffffff' },
+    }).then(src => {
+      if (!cancelled) setQrSrc(src)
+    }).catch(() => {
+      if (!cancelled) setQrSrc('')
+    })
+
+    return () => { cancelled = true }
+  }, [url])
+
+  return (
+    <div className="mb-4 rounded-lg border border-border bg-bg2 p-4 text-center">
+      {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
+      {qrSrc ? (
+        <img src={qrSrc} alt={block.title ?? 'QR Code'} className="mx-auto h-36 w-36 rounded bg-white p-1" />
+      ) : (
+        <div className="mx-auto flex h-36 w-36 items-center justify-center rounded border border-dashed border-border bg-white px-3 text-[11px] text-text3">
+          QR Code
+        </div>
+      )}
+      {caption && <div className="text-[11px] text-text3 mt-2 italic">{caption}</div>}
+      {url && <div className="mt-1 break-all text-[9px] text-text3/70">{url}</div>}
+    </div>
+  )
+}
 
 function BlockImage({ block }: { block: MaterialBlock }) {
   const url = block.render_data?.url ?? block.content?.url
@@ -1350,6 +1394,7 @@ const BLOCK_RENDERERS_INNER: Record<string, React.FC<{ block: MaterialBlock }>> 
   image: BlockImage,
   audio: BlockAudio,
   video: BlockVideo,
+  qr_code: BlockQrCode,
   keyboard: BlockKeyboard,
   keyboard_grid: BlockKeyboardGrid,
   separator: BlockSeparator,
@@ -1370,6 +1415,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   image: BlockImage,
   audio: BlockAudio,
   video: BlockVideo,
+  qr_code: BlockQrCode,
   keyboard: BlockKeyboard,
   keyboard_grid: BlockKeyboardGrid,
   columns: BlockColumns,
