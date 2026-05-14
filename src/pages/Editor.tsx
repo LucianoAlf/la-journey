@@ -3270,6 +3270,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const initTextElements = useCallback(() => {
     if (!activeCoverBlock || activeCoverBlock.block_type !== 'cover') return
     const rd = activeCoverBlock.render_data as any ?? {}
+    const brandCoverFont = school?.default_cover_font || 'Playfair Display'
+    const brandBodyFont = school?.default_body_font || 'DM Sans'
     if (Array.isArray(rd.text_elements) && rd.text_elements.length > 0) return // já migrado
     const titulo = rd.titulo || activeCoverBlock.title || materialTitle || 'Material Didático'
     const subtitulo = rd.subtitulo || ''
@@ -3283,7 +3285,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         id: 'instrument',
         content: instrumento + (nivel ? ` · ${nivel}` : ''),
         x: contentPos.x, y: contentPos.y - 8,
-        fontFamily: 'DM Sans', fontSize: 13, fontWeight: 500,
+        fontFamily: brandBodyFont, fontSize: 13, fontWeight: 500,
         color: '#ffffffcc', align: 'center', uppercase: true,
         letterSpacing: 3, lineHeight: 1.2,
         shadow: { ...DEFAULT_TEXT_SHADOW }, outline: { ...DEFAULT_TEXT_OUTLINE },
@@ -3295,7 +3297,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       id: 'title',
       content: titulo,
       x: contentPos.x, y: contentPos.y,
-      fontFamily: 'Playfair Display',
+      fontFamily: brandCoverFont,
       fontSize: rd.title_font_size ?? 36,
       fontWeight: 700,
       color: rd.title_color || '#ffffff',
@@ -3311,7 +3313,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         id: 'subtitle',
         content: subtitulo,
         x: contentPos.x, y: contentPos.y + 8,
-        fontFamily: 'DM Sans', fontSize: 18, fontWeight: 400,
+        fontFamily: brandBodyFont, fontSize: 18, fontWeight: 400,
         color: '#ffffffcc', align: 'center', uppercase: false,
         letterSpacing: 1, lineHeight: 1.4,
         shadow: { ...DEFAULT_TEXT_SHADOW }, outline: { ...DEFAULT_TEXT_OUTLINE },
@@ -3321,15 +3323,16 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     updateCoverTextElements(elements)
     setSelectedTextId('title')
     setCoverPropertiesTab('textos')
-  }, [activeCoverBlock, materialTitle, updateCoverTextElements])
+  }, [activeCoverBlock, materialTitle, school?.default_body_font, school?.default_cover_font, updateCoverTextElements])
 
   const addTextElement = useCallback(() => {
     if (!activeCoverBlockId) return
+    const brandCoverFont = school?.default_cover_font || 'Montserrat'
     const el: CoverTextElement = {
       id: crypto.randomUUID(),
       content: 'Novo texto',
       x: 50, y: 70,
-      fontFamily: 'Montserrat', fontSize: 20, fontWeight: 400,
+      fontFamily: brandCoverFont, fontSize: 20, fontWeight: 400,
       color: '#ffffff', align: 'center', uppercase: false,
       letterSpacing: 0, lineHeight: 1.3,
       shadow: { ...DEFAULT_TEXT_SHADOW }, outline: { ...DEFAULT_TEXT_OUTLINE },
@@ -3340,7 +3343,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setSelectedTextId(el.id)
     setEditingTextId(el.id)
     setCoverPropertiesTab('textos')
-  }, [activeCoverBlockId, textElements, updateCoverTextElements])
+  }, [activeCoverBlockId, school?.default_cover_font, textElements, updateCoverTextElements])
 
   const updateTextElement = useCallback((id: string, patch: Partial<CoverTextElement>) => {
     if (!activeCoverBlockId) return

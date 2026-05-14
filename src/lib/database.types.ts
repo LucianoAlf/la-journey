@@ -1044,6 +1044,8 @@ export type Database = {
           city: string | null
           cnpj: string | null
           created_at: string | null
+          default_body_font: string | null
+          default_cover_font: string | null
           id: string
           logo_url: string | null
           name: string
@@ -1062,6 +1064,8 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           created_at?: string | null
+          default_body_font?: string | null
+          default_cover_font?: string | null
           id?: string
           logo_url?: string | null
           name: string
@@ -1080,6 +1084,8 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           created_at?: string | null
+          default_body_font?: string | null
+          default_cover_font?: string | null
           id?: string
           logo_url?: string | null
           name?: string
