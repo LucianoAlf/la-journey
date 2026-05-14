@@ -1,6 +1,37 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
-import { Copy, DotsThree, Lightbulb, MusicNotes, PencilSimple, Target, Trash, Trophy } from '@phosphor-icons/react'
+import {
+  AlignBottom,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignLeft,
+  AlignRight,
+  AlignTop,
+  ArrowDown,
+  ArrowLineDown,
+  ArrowLineUp,
+  ArrowUp,
+  Copy,
+  DotsThree,
+  Lightbulb,
+  MusicNotes,
+  PencilSimple,
+  Stack,
+  Target,
+  Trash,
+  Trophy,
+} from '@phosphor-icons/react'
 import QRCodeLib from 'qrcode'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
@@ -118,9 +149,11 @@ interface MaterialPreviewProps {
   onTextSelect?: (id: string | null) => void
   onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
   onTextEditStart?: (id: string | null) => void
+  onTextCopy?: (id: string) => void
   onTextDuplicate?: (id: string) => void
   onTextDelete?: (id: string) => void
   onTextCloneForDrag?: (id: string) => CoverTextElement | null
+  onTextLayerChange?: (id: string, action: 'front' | 'forward' | 'backward' | 'back') => void
   onLegacyTextActivate?: () => void
 }
 
@@ -731,7 +764,7 @@ const COVER_TEMPLATES: Record<string, string> = {
   vibrant: 'Vibrante',
 }
 
-function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextDuplicate, onTextDelete, onTextCloneForDrag, onLegacyTextActivate }: {
+function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: {
   block: MaterialBlock
   editable?: boolean
   onPositionChange?: (field: string, pos: { x: number; y: number }) => void
@@ -748,9 +781,11 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
   onTextSelect?: (id: string | null) => void
   onTextUpdate?: (id: string, patch: Partial<CoverTextElement>) => void
   onTextEditStart?: (id: string | null) => void
+  onTextCopy?: (id: string) => void
   onTextDuplicate?: (id: string) => void
   onTextDelete?: (id: string) => void
   onTextCloneForDrag?: (id: string) => CoverTextElement | null
+  onTextLayerChange?: (id: string, action: 'front' | 'forward' | 'backward' | 'back') => void
   onLegacyTextActivate?: () => void
 }) {
   const rd = block.render_data ?? {}
@@ -828,6 +863,25 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
     return Math.max(half, Math.min(100 - half, Math.round(x * 10) / 10))
   }
   const clampCoverTextFontSize = (fontSize: number) => Math.max(12, Math.min(120, Math.round(fontSize)))
+  const getTextElementRect = (id: string) => (
+    coverRef.current?.querySelector(`[data-cover-text-id="${id}"]`) as HTMLElement | null
+  )?.getBoundingClientRect()
+
+  const alignTextToPage = (text: CoverTextElement, axis: 'x' | 'y', position: 'start' | 'center' | 'end') => {
+    if (!coverRef.current || !onTextUpdate) return
+    const coverRect = coverRef.current.getBoundingClientRect()
+    const textRect = getTextElementRect(text.id)
+    if (!textRect) return
+    const sizePercent = axis === 'x'
+      ? (textRect.width / coverRect.width) * 100
+      : (textRect.height / coverRect.height) * 100
+    const value = position === 'start'
+      ? sizePercent / 2
+      : position === 'center'
+        ? 50
+        : 100 - sizePercent / 2
+    onTextUpdate(text.id, { [axis]: Math.max(0, Math.min(100, Math.round(value * 10) / 10)) })
+  }
 
   const handleMouseDown = useCallback((e: React.MouseEvent, field: string, pos: { x: number; y: number }) => {
     if (!editable) return
@@ -950,6 +1004,7 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
       {hasTextElements && resolvedTextElements.map((text) => (
         <div
           key={text.id}
+          data-cover-text-id={text.id}
           className={`cover-text-box absolute select-none ${editable ? 'cursor-move' : ''} ${
             selectedTextId === text.id ? 'cover-text-box--selected' : ''
           }`}
@@ -1040,23 +1095,117 @@ function BlockCover({ block, editable, onPositionChange, titleEditing, onTitleCh
               <div
                 className="cover-text-toolbar"
                 onMouseDown={e => {
-                  e.preventDefault()
                   e.stopPropagation()
                 }}
                 onClick={e => e.stopPropagation()}
               >
                 <button type="button" title="Editar texto" onClick={() => onTextEditStart?.(text.id)}>
-                  <PencilSimple size={15} weight="bold" />
+                  <PencilSimple size={20} weight="bold" />
                 </button>
                 <button type="button" title="Duplicar" onClick={() => onTextDuplicate?.(text.id)}>
-                  <Copy size={15} weight="bold" />
+                  <Copy size={20} weight="bold" />
                 </button>
                 <button type="button" title="Excluir" onClick={() => onTextDelete?.(text.id)}>
-                  <Trash size={15} weight="bold" />
+                  <Trash size={20} weight="bold" />
                 </button>
-                <button type="button" title="Mais ações">
-                  <DotsThree size={18} weight="bold" />
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      title="Menu de acoes"
+                      onMouseDown={event => {
+                        event.stopPropagation()
+                      }}
+                    >
+                      <DotsThree size={22} weight="bold" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="center"
+                    sideOffset={10}
+                    className="w-72 rounded-2xl border-border/70 bg-card p-2 text-text shadow-xl"
+                    onMouseDown={event => {
+                      event.stopPropagation()
+                    }}
+                    onClick={event => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onTextCopy?.(text.id)}>
+                      <Copy size={18} weight="bold" />
+                      <span>Copiar</span>
+                      <DropdownMenuShortcut>Ctrl+C</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onTextDuplicate?.(text.id)}>
+                      <Copy size={18} weight="bold" />
+                      <span>Duplicar</span>
+                      <DropdownMenuShortcut>Ctrl+D</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" variant="destructive" onSelect={() => onTextDelete?.(text.id)}>
+                      <Trash size={18} weight="bold" />
+                      <span>Excluir</span>
+                      <DropdownMenuShortcut>Delete</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="h-10 rounded-xl px-3 text-[15px]">
+                        <Stack size={18} weight="bold" />
+                        <span>Camada</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-64 rounded-2xl border-border/70 bg-card p-2 text-text shadow-xl">
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onTextLayerChange?.(text.id, 'front')}>
+                          <ArrowLineUp size={18} weight="bold" />
+                          <span>Trazer a frente</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onTextLayerChange?.(text.id, 'forward')}>
+                          <ArrowUp size={18} weight="bold" />
+                          <span>Para frente</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onTextLayerChange?.(text.id, 'backward')}>
+                          <ArrowDown size={18} weight="bold" />
+                          <span>Mover para tras</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => onTextLayerChange?.(text.id, 'back')}>
+                          <ArrowLineDown size={18} weight="bold" />
+                          <span>Enviar para tras</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="h-10 rounded-xl px-3 text-[15px]">
+                        <AlignCenterHorizontal size={18} weight="bold" />
+                        <span>Alinhar a pagina</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-60 rounded-2xl border-border/70 bg-card p-2 text-text shadow-xl">
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => alignTextToPage(text, 'x', 'start')}>
+                          <AlignLeft size={18} weight="bold" />
+                          <span>A esquerda</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => alignTextToPage(text, 'x', 'center')}>
+                          <AlignCenterHorizontal size={18} weight="bold" />
+                          <span>Ao centro</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => alignTextToPage(text, 'x', 'end')}>
+                          <AlignRight size={18} weight="bold" />
+                          <span>A direita</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => alignTextToPage(text, 'y', 'start')}>
+                          <AlignTop size={18} weight="bold" />
+                          <span>Em cima</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => alignTextToPage(text, 'y', 'center')}>
+                          <AlignCenterVertical size={18} weight="bold" />
+                          <span>No meio</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="h-10 rounded-xl px-3 text-[15px]" onSelect={() => alignTextToPage(text, 'y', 'end')}>
+                          <AlignBottom size={18} weight="bold" />
+                          <span>Embaixo</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               {(['left', 'right'] as const).map(side => (
                 <button
@@ -1709,7 +1858,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextDuplicate, onTextDelete, onTextCloneForDrag, onLegacyTextActivate }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -1722,7 +1871,7 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMu
     <div className="space-y-1">
       {blocks.map((block, i) => {
         if (block.block_type === 'cover') {
-          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} onOverlayCloneForDrag={onOverlayCloneForDrag} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} onTextDuplicate={onTextDuplicate} onTextDelete={onTextDelete} onTextCloneForDrag={onTextCloneForDrag} onLegacyTextActivate={onLegacyTextActivate} />
+          return <BlockCover key={i} block={block} editable={coverEditable} onPositionChange={onCoverPositionChange} titleEditing={coverTitleEditing} onTitleChange={onCoverTitleChange} overlayElements={overlayElements} selectedOverlayId={selectedOverlayId} onOverlaySelect={onOverlaySelect} onOverlayUpdate={onOverlayUpdate} onOverlayCloneForDrag={onOverlayCloneForDrag} textElements={textElements} selectedTextId={selectedTextId} editingTextId={editingTextId} onTextSelect={onTextSelect} onTextUpdate={onTextUpdate} onTextEditStart={onTextEditStart} onTextCopy={onTextCopy} onTextDuplicate={onTextDuplicate} onTextDelete={onTextDelete} onTextCloneForDrag={onTextCloneForDrag} onTextLayerChange={onTextLayerChange} onLegacyTextActivate={onLegacyTextActivate} />
         }
         const Renderer = BLOCK_RENDERERS[block.block_type]
         if (!Renderer) {
