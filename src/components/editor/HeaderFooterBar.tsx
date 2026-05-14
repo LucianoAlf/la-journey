@@ -52,31 +52,10 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
   return <div />
 }
 
-function hasZoneContent(zone: HeaderFooterZone): boolean {
-  if (zone.type === 'image') return Boolean(zone.imageUrl)
-  if (zone.type === 'text') return Boolean(zone.text)
-  if (zone.type === 'placeholder') return Boolean(zone.placeholder)
-  return false
-}
-
-function getZoneShellStyle(
-  position: 'left' | 'center' | 'right',
-  hasContent: boolean,
-): React.CSSProperties {
-  if (position === 'center') {
-    return {
-      flex: '1 1 auto',
-      display: 'flex',
-      justifyContent: 'center',
-      minWidth: 0,
-    }
-  }
-
+function getZoneShellStyle(position: 'left' | 'center' | 'right'): React.CSSProperties {
   return {
-    flex: hasContent ? '0 1 auto' : '0 0 0px',
     display: 'flex',
-    justifyContent: position === 'left' ? 'flex-start' : 'flex-end',
-    maxWidth: hasContent ? '28%' : '0px',
+    justifyContent: position === 'left' ? 'flex-start' : position === 'center' ? 'center' : 'flex-end',
     minWidth: 0,
     overflow: 'hidden',
   }
@@ -88,8 +67,6 @@ export function HeaderFooterBar({ config, type, context, pageIndex, className }:
   if (pageIndex === 0 && !config.showOnFirstPage) return null
   // Para outras páginas, respeita startFromPage (mas só se não for a primeira com showOnFirstPage)
   if (pageIndex > 0 && pageIndex < config.startFromPage) return null
-  const hasLeftContent = hasZoneContent(config.left)
-  const hasRightContent = hasZoneContent(config.right)
 
   return (
     <div
@@ -100,21 +77,22 @@ export function HeaderFooterBar({ config, type, context, pageIndex, className }:
         borderBottom: type === 'header' ? config.borderBottom : undefined,
         borderTop: type === 'footer' ? config.borderTop : undefined,
         padding: `0 ${config.paddingX}px`,
-        display: 'flex',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 20%) minmax(0, 60%) minmax(0, 20%)',
+        columnGap: '8px',
         alignItems: 'center',
-        justifyContent: 'space-between',
         width: '100%',
         boxSizing: 'border-box',
         flexShrink: 0,
       }}
     >
-      <div style={getZoneShellStyle('left', hasLeftContent)}>
+      <div style={getZoneShellStyle('left')}>
         {renderZone(config.left, context)}
       </div>
-      <div style={getZoneShellStyle('center', true)}>
+      <div style={getZoneShellStyle('center')}>
         {renderZone(config.center, context)}
       </div>
-      <div style={getZoneShellStyle('right', hasRightContent)}>
+      <div style={getZoneShellStyle('right')}>
         {renderZone(config.right, context)}
       </div>
     </div>
