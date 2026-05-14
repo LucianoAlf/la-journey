@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useMaterials, useMaterialWithBlocks } from "@/hooks/useMaterials";
 import { useSchool } from "@/hooks/useSchool";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   updateMaterialBlockRpc, addMaterialBlock,
   deleteMaterialBlock, updateMaterial,
@@ -83,6 +84,12 @@ import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDi
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
 import { type MaterialTemplate } from "@/lib/materialTemplates";
 import { saveVersion } from "@/services/materialVersionService";
+import {
+  createSchoolCoverTemplate,
+  deleteSchoolCoverTemplate,
+  listSchoolCoverTemplates,
+  type SchoolCoverTemplate,
+} from "@/services/coverTemplateService";
 import { createExercise, getExerciseById, type ExerciseLibraryItem } from "@/services/exerciseLibraryService";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HeaderFooterBar } from "@/components/editor/HeaderFooterBar";
@@ -1749,6 +1756,7 @@ function MaterialList() {
 function MaterialEditor({ materialId }: { materialId: string }) {
   const navigate = useNavigate()
   const { data: school } = useSchool()
+  const { user } = useAuth()
   const { data: rawData, loading, error, refetch } = useMaterialWithBlocks(materialId)
 
   const {
@@ -3812,6 +3820,208 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       .filter((item): item is { key: BrandLogoVariantKey; label: string; url: string } => Boolean(item.url)),
     [brandLogoVariants],
   )
+
+  const [coverTemplates, setCoverTemplates] = useState<SchoolCoverTemplate[]>([])
+  const [coverTemplatesLoading, setCoverTemplatesLoading] = useState(false)
+  const [saveCoverTemplateOpen, setSaveCoverTemplateOpen] = useState(false)
+  const [coverTemplateName, setCoverTemplateName] = useState('')
+  const [coverTemplateDescription, setCoverTemplateDescription] = useState('')
+  const [coverTemplateSaving, setCoverTemplateSaving] = useState(false)
+
+  const loadSavedCoverTemplates = useCallback(async () => {
+    if (!school?.id) return
+    setCoverTemplatesLoading(true)
+    try {
+      const data = await listSchoolCoverTemplates(school.id)
+      setCoverTemplates(data)
+    } catch (err: any) {
+      toast.error('Erro ao carregar capas salvas: ' + (err?.message?.slice(0, 80) ?? ''))
+    } finally {
+      setCoverTemplatesLoading(false)
+    }
+  }, [school?.id])
+
+  useEffect(() => {
+    void loadSavedCoverTemplates()
+  }, [loadSavedCoverTemplates])
+
+  const cloneCoverRenderData = useCallback((renderData: unknown) => (
+    JSON.parse(JSON.stringify(renderData ?? {})) as Record<string, any>
+  ), [])
+
+  const getCoverTemplateThumbnail = useCallback((renderData: Record<string, any>) => (
+    (renderData.cover_image_url as string | undefined)
+    ?? (renderData.logo_url as string | undefined)
+    ?? null
+  ), [])
+
+  const handleSaveCoverTemplate = useCallback(async () => {
+    if (!school?.id || !activeCoverBlock || activeCoverBlock.block_type !== 'cover') return
+    const name = coverTemplateName.trim()
+    if (!name) {
+      toast.error('Dê um nome para a capa salva.')
+      return
+    }
+
+    const renderData = cloneCoverRenderData(activeCoverBlock.render_data)
+    setCoverTemplateSaving(true)
+    try {
+      const saved = await createSchoolCoverTemplate({
+        school_id: school.id,
+        name,
+        description: coverTemplateDescription.trim() || null,
+        render_data: renderData,
+        thumbnail_url: getCoverTemplateThumbnail(renderData),
+        created_by: user?.id ?? null,
+      })
+      setCoverTemplates(prev => [saved, ...prev])
+      setSaveCoverTemplateOpen(false)
+      setCoverTemplateName('')
+      setCoverTemplateDescription('')
+      toast.success('Capa salva como modelo.')
+    } catch (err: any) {
+      toast.error('Erro ao salvar capa: ' + (err?.message?.slice(0, 80) ?? ''))
+    } finally {
+      setCoverTemplateSaving(false)
+    }
+  }, [
+    activeCoverBlock,
+    cloneCoverRenderData,
+    coverTemplateDescription,
+    coverTemplateName,
+    getCoverTemplateThumbnail,
+    school?.id,
+    user?.id,
+  ])
+
+  const getCurrentCoverTextValues = useCallback((block: EditorBlock, renderData: Record<string, any>) => {
+    const currentTexts = Array.isArray(renderData.text_elements)
+      ? renderData.text_elements as CoverTextElement[]
+      : []
+    const byId = new Map(currentTexts.map(text => [text.id, text.content]))
+    return {
+      title: byId.get('title') ?? renderData.titulo ?? block.title ?? materialTitle ?? '',
+      subtitle: byId.get('subtitle') ?? renderData.subtitulo ?? '',
+      instrument: byId.get('instrument') ?? (
+        renderData.instrumento
+          ? `${renderData.instrumento}${renderData.nivel ? ` · ${renderData.nivel}` : ''}`
+          : ''
+      ),
+      titulo: renderData.titulo ?? block.title ?? materialTitle ?? '',
+      subtitulo: renderData.subtitulo ?? '',
+      instrumento: renderData.instrumento ?? '',
+      nivel: renderData.nivel ?? '',
+    }
+  }, [materialTitle])
+
+  const mergeTemplateWithCurrentText = useCallback((
+    templateRenderData: Record<string, any>,
+    currentBlock: EditorBlock,
+    currentRenderData: Record<string, any>,
+  ) => {
+    const currentValues = getCurrentCoverTextValues(currentBlock, currentRenderData)
+    const templateTexts = Array.isArray(templateRenderData.text_elements)
+      ? templateRenderData.text_elements as CoverTextElement[]
+      : []
+
+    const nextTexts = templateTexts.map(text => {
+      if (text.id === 'title') return { ...text, content: currentValues.title }
+      if (text.id === 'subtitle') return { ...text, content: currentValues.subtitle }
+      if (text.id === 'instrument') return { ...text, content: currentValues.instrument }
+      return text
+    }).filter(text => text.content.trim().length > 0)
+
+    return {
+      ...templateRenderData,
+      titulo: currentValues.titulo,
+      subtitulo: currentValues.subtitulo,
+      instrumento: currentValues.instrumento,
+      nivel: currentValues.nivel,
+      text_elements: nextTexts,
+    }
+  }, [getCurrentCoverTextValues])
+
+  const applySavedCoverTemplate = useCallback((
+    template: SchoolCoverTemplate,
+    mode: 'complete' | 'preserve-text' | 'variation',
+  ) => {
+    if (!activeCoverBlockId) return
+
+    setBlockWithHistory(activeCoverBlockId, block => {
+      const currentRenderData = cloneCoverRenderData(block.render_data)
+      const templateRenderData = cloneCoverRenderData(template.render_data)
+      const baseRenderData: Record<string, any> = mode === 'complete'
+        ? templateRenderData
+        : mergeTemplateWithCurrentText(templateRenderData, block, currentRenderData)
+
+      if (mode === 'variation') {
+        const logoEntry = availableBrandLogos.find(logo => logo.key === 'primary') ?? availableBrandLogos[0] ?? null
+        const hasCoverImage = Boolean(baseRenderData.cover_image_url)
+        const primaryColor = school?.primary_color || baseRenderData.brand_primary_color || '#1E3A5F'
+        const secondaryColor = school?.secondary_color || baseRenderData.brand_secondary_color || '#FF2D78'
+
+        baseRenderData.brand_primary_color = primaryColor
+        baseRenderData.brand_secondary_color = secondaryColor
+        baseRenderData.cover_image_url = currentRenderData.cover_image_url ?? baseRenderData.cover_image_url
+        if (logoEntry) {
+          baseRenderData.logo_url = logoEntry.url
+          baseRenderData.logo_source = 'brand-kit'
+          baseRenderData.logo_variant = logoEntry.key
+          baseRenderData.logo_pos = baseRenderData.logo_pos ?? { x: 50, y: 8 }
+          baseRenderData.logo_size = baseRenderData.logo_size ?? 80
+        }
+        if (Array.isArray(baseRenderData.text_elements)) {
+          baseRenderData.text_elements = (baseRenderData.text_elements as CoverTextElement[]).map(text => ({
+            ...text,
+            fontFamily: text.id === 'title'
+              ? school?.default_cover_font || text.fontFamily
+              : school?.default_body_font || text.fontFamily,
+            color: text.id === 'title'
+              ? (hasCoverImage ? '#ffffff' : primaryColor)
+              : (hasCoverImage ? '#ffffffcc' : secondaryColor),
+          }))
+        }
+      }
+
+      return {
+        ...block,
+        render_data: baseRenderData,
+      }
+    })
+    queueBlockAutosave(activeCoverBlockId)
+    setSelectedBlockId(activeCoverBlockId)
+    setSelectedOverlayId(null)
+    setEditingTextId(null)
+    setCoverPropertiesTab(mode === 'complete' ? 'imagem' : 'textos')
+    toast.success(
+      mode === 'complete'
+        ? 'Capa salva aplicada.'
+        : mode === 'preserve-text'
+          ? 'Capa aplicada mantendo os textos atuais.'
+          : 'Variação criada a partir da capa salva.',
+    )
+  }, [
+    activeCoverBlockId,
+    availableBrandLogos,
+    cloneCoverRenderData,
+    mergeTemplateWithCurrentText,
+    queueBlockAutosave,
+    school?.default_body_font,
+    school?.default_cover_font,
+    school?.primary_color,
+    school?.secondary_color,
+    setBlockWithHistory,
+  ])
+
+  const handleDeleteCoverTemplate = useCallback(async (templateId: string) => {
+    try {
+      await deleteSchoolCoverTemplate(templateId)
+      setCoverTemplates(prev => prev.filter(template => template.id !== templateId))
+      toast.success('Capa salva removida.')
+    } catch (err: any) {
+      toast.error('Erro ao remover capa: ' + (err?.message?.slice(0, 80) ?? ''))
+    }
+  }, [])
 
   const applyBrandLogoToCover = useCallback((url: string, key: BrandLogoVariantKey) => {
     if (!selectedBlockId) return
@@ -7155,6 +7365,164 @@ ${pagesHtml}
                         </>
                       )
                     })()}
+                  </div>
+                  <div className="rounded-[16px] border border-border bg-paper p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="cover-field-label">Capas salvas</div>
+                        <p className="cover-helper mt-1">Reutilize composições aprovadas da escola.</p>
+                      </div>
+                      <Dialog open={saveCoverTemplateOpen} onOpenChange={setSaveCoverTemplateOpen}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 shrink-0 gap-1.5 rounded-xl px-2.5 text-[10px] font-semibold"
+                          onClick={() => {
+                            setCoverTemplateName(
+                              ((selectedBlock.render_data as any)?.titulo as string | undefined)
+                              || materialTitle
+                              || 'Nova capa'
+                            )
+                            setCoverTemplateDescription('')
+                            setSaveCoverTemplateOpen(true)
+                          }}
+                        >
+                          <BookmarkSimple size={13} weight="bold" />
+                          Salvar
+                        </Button>
+                        <DialogContent className="sm:max-w-[420px]">
+                          <DialogHeader>
+                            <DialogTitle>Salvar capa como modelo</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-3 py-2">
+                            <div className="space-y-1.5">
+                              <Label>Nome do modelo</Label>
+                              <Input
+                                value={coverTemplateName}
+                                onChange={event => setCoverTemplateName(event.target.value)}
+                                placeholder="Ex: Teoria moderna laranja"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Descrição</Label>
+                              <Textarea
+                                value={coverTemplateDescription}
+                                onChange={event => setCoverTemplateDescription(event.target.value)}
+                                placeholder="Ex: Para apostilas de teoria, com piano geométrico e logo no topo."
+                                className="min-h-[90px] resize-none"
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setSaveCoverTemplateOpen(false)}>
+                              Cancelar
+                            </Button>
+                            <Button onClick={handleSaveCoverTemplate} disabled={coverTemplateSaving}>
+                              {coverTemplateSaving ? <SpinnerGap size={14} className="animate-spin" /> : <FloppyDisk size={14} />}
+                              Salvar modelo
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      {coverTemplatesLoading ? (
+                        <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-bg2 py-4 text-[11px] text-text3">
+                          <SpinnerGap size={14} className="animate-spin" />
+                          Carregando capas...
+                        </div>
+                      ) : coverTemplates.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border bg-bg2/50 px-3 py-4 text-center text-[11px] leading-relaxed text-text3">
+                          Nenhuma capa salva ainda. Salve esta composição para reutilizar em outros materiais.
+                        </div>
+                      ) : (
+                        coverTemplates.map(template => {
+                          const renderData = (template.render_data ?? {}) as Record<string, any>
+                          const thumbUrl = template.thumbnail_url ?? getCoverTemplateThumbnail(renderData)
+                          const logoUrl = renderData.logo_url as string | undefined
+                          return (
+                            <div key={template.id} className="rounded-[14px] border border-border bg-card p-2.5">
+                              <div className="flex gap-2">
+                                <div
+                                  className="relative h-16 w-20 shrink-0 overflow-hidden rounded-[10px] border border-border bg-bg2"
+                                  style={thumbUrl ? { backgroundImage: `url(${thumbUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+                                >
+                                  {!thumbUrl && logoUrl && (
+                                    <img src={logoUrl} alt={template.name} className="h-full w-full object-contain p-2" />
+                                  )}
+                                  {!thumbUrl && !logoUrl && (
+                                    <div className="flex h-full items-center justify-center text-[9px] text-text3">
+                                      Capa
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/45 to-transparent" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-[12px] font-bold text-text">{template.name}</div>
+                                  {template.description && (
+                                    <div className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-text3">
+                                      {template.description}
+                                    </div>
+                                  )}
+                                  <div className="mt-1 text-[9px] text-text3">
+                                    {template.updated_at ? new Date(template.updated_at).toLocaleDateString('pt-BR') : 'Modelo salvo'}
+                                  </div>
+                                </div>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="h-7 w-7 rounded-lg border border-border text-text3 hover:border-vermelho/40 hover:text-vermelho"
+                                      title="Excluir capa salva"
+                                    >
+                                      <Trash size={13} />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Excluir capa salva?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        O modelo "{template.name}" será removido da biblioteca da escola. A capa atual do material não será alterada.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeleteCoverTemplate(template.id)}>
+                                        Excluir modelo
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                              <div className="mt-2 grid grid-cols-3 gap-1">
+                                <button
+                                  type="button"
+                                  className="h-7 rounded-lg border border-border bg-bg2 text-[9px] font-semibold text-text2 hover:border-accent/40 hover:text-accent"
+                                  onClick={() => applySavedCoverTemplate(template, 'complete')}
+                                >
+                                  Completo
+                                </button>
+                                <button
+                                  type="button"
+                                  className="h-7 rounded-lg border border-border bg-bg2 text-[9px] font-semibold text-text2 hover:border-accent/40 hover:text-accent"
+                                  onClick={() => applySavedCoverTemplate(template, 'preserve-text')}
+                                >
+                                  Manter texto
+                                </button>
+                                <button
+                                  type="button"
+                                  className="h-7 rounded-lg border border-accent/25 bg-accent/10 text-[9px] font-bold text-accent hover:bg-accent/15"
+                                  onClick={() => applySavedCoverTemplate(template, 'variation')}
+                                >
+                                  Variação
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
                   </div>
                   {/* Referência visual (opcional) */}
                   <div className="space-y-2">
