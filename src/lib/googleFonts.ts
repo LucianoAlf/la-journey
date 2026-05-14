@@ -1,4 +1,5 @@
 export type GoogleFontCategory = 'serif' | 'sans' | 'display' | 'handwriting' | 'kids' | 'monospace'
+export type FontUsageContext = 'cover' | 'body'
 
 export interface GoogleFontDefinition {
   family: string
@@ -13,6 +14,17 @@ export const GOOGLE_FONT_CATEGORY_LABELS: Record<GoogleFontCategory, string> = {
   handwriting: 'Manuscritas',
   kids: 'Infantis / lúdicas',
   monospace: 'Técnicas / cifras',
+}
+
+export const FONT_CONTEXT_LABELS: Record<FontUsageContext, { title: string; description: string }> = {
+  cover: {
+    title: 'Sugestões para capa',
+    description: 'Fontes fortes para título, módulo e identidade visual.',
+  },
+  body: {
+    title: 'Sugestões para texto',
+    description: 'Fontes confortáveis para leitura em apostilas e exercícios.',
+  },
 }
 
 export const GOOGLE_FONTS: Record<GoogleFontCategory, GoogleFontDefinition[]> = {
@@ -66,6 +78,31 @@ export const GOOGLE_FONT_LIST = Object.entries(GOOGLE_FONTS).flatMap(([category,
   })),
 )
 
+export type GoogleFontListItem = (typeof GOOGLE_FONT_LIST)[number]
+
+export const FONT_RECOMMENDATIONS: Record<FontUsageContext, string[]> = {
+  cover: [
+    'Montserrat',
+    'Bebas Neue',
+    'Playfair Display',
+    'Poppins',
+    'Raleway',
+    'Righteous',
+    'Abril Fatface',
+    'Fredoka',
+  ],
+  body: [
+    'DM Sans',
+    'Lora',
+    'Merriweather',
+    'Nunito',
+    'Open Sans',
+    'Lato',
+    'Crimson Text',
+    'Source Code Pro',
+  ],
+}
+
 export const COVER_FONT_OPTIONS = GOOGLE_FONT_LIST.map(font => ({
   value: font.family,
   label: font.family,
@@ -82,6 +119,12 @@ export const RICH_TEXT_FONT_OPTIONS = [
 export function findGoogleFont(family: string | null | undefined) {
   if (!family) return null
   return GOOGLE_FONT_LIST.find(font => font.family === family) ?? null
+}
+
+export function getRecommendedFonts(context: FontUsageContext) {
+  return FONT_RECOMMENDATIONS[context]
+    .map(family => findGoogleFont(family))
+    .filter(Boolean) as Array<NonNullable<ReturnType<typeof findGoogleFont>>>
 }
 
 export function getGoogleFontWeights(family: string) {

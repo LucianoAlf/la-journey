@@ -232,6 +232,7 @@ export function RichTextEditor({
     <LAFontPicker
       value={currentFont}
       onValueChange={setFont}
+      context="body"
       className="h-7 w-[130px] rounded-md px-2 text-[11px]"
     />
   )

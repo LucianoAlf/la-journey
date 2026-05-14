@@ -7361,6 +7361,7 @@ ${pagesHtml}
                           <LAFontPicker
                             value={selectedText.fontFamily}
                             onValueChange={value => updateTextElement(selectedText.id, { fontFamily: value })}
+                            context="cover"
                             className="h-8 w-full rounded-lg text-[11px]"
                           />
                         </div>
