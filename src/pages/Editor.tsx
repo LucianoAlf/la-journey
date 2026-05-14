@@ -55,6 +55,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LASelect } from "@/components/ui/LASelect";
 import { BlockStylePanel } from "@/components/editor/BlockStylePanel";
 import { SeparatorStylePanel } from "@/components/editor/SeparatorStylePanel";
 import { PageBackgroundPanel } from "@/components/editor/PageBackgroundPanel";
@@ -321,6 +322,37 @@ const COVER_VISUAL_DIRECTIONS: Array<{
     prompt: 'Photorealistic music workbook cover background. Real instrument close-up or studio scene, natural light, high-end photography, realistic textures, professional educational publication.',
   },
 ]
+
+const COVER_INSTRUMENT_OPTIONS = [
+  { value: '', label: 'Selecionar instrumento' },
+  { value: 'Violão', label: 'Violão' },
+  { value: 'Guitarra', label: 'Guitarra' },
+  { value: 'Baixo', label: 'Baixo' },
+  { value: 'Piano', label: 'Piano' },
+  { value: 'Teclado', label: 'Teclado' },
+  { value: 'Canto', label: 'Canto' },
+  { value: 'Bateria', label: 'Bateria' },
+  { value: 'Ukulele', label: 'Ukulele' },
+  { value: 'Teoria Musical', label: 'Teoria Musical' },
+  { value: 'Musicalização Infantil', label: 'Musicalização Infantil' },
+]
+
+const COVER_LEVEL_OPTIONS = [
+  { value: '', label: 'Selecionar nível' },
+  { value: 'Iniciante', label: 'Iniciante' },
+  { value: 'Básico', label: 'Básico' },
+  { value: 'Intermediário', label: 'Intermediário' },
+  { value: 'Avançado', label: 'Avançado' },
+  { value: 'Infantil', label: 'Infantil' },
+  { value: 'Adulto', label: 'Adulto' },
+  { value: 'Livre', label: 'Livre' },
+]
+
+function ensureSelectOption(options: { value: string; label: string }[], currentValue: string | null | undefined) {
+  const value = currentValue ?? ''
+  if (!value || options.some(option => option.value === value)) return options
+  return [...options, { value, label: value }]
+}
 
 function resolveCoverVisualDirection(renderData: Record<string, unknown> | null | undefined) {
   const rd = renderData ?? {}
@@ -6841,19 +6873,15 @@ ${pagesHtml}
                       const currentDirection = resolveCoverVisualDirection(selectedBlock.render_data)
                       return (
                         <>
-                          <Select
+                          <LASelect
                             value={currentDirection.value}
                             onValueChange={value => updateSelectedRenderData('cover_visual_direction', value)}
-                          >
-                            <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {COVER_VISUAL_DIRECTIONS.map(direction => (
-                                <SelectItem key={direction.value} value={direction.value}>
-                                  {direction.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            options={COVER_VISUAL_DIRECTIONS.map(direction => ({
+                              value: direction.value,
+                              label: direction.label,
+                            }))}
+                            placeholder="Selecionar direcao"
+                          />
                           <p className="cover-helper mt-1.5">{currentDirection.description}</p>
                         </>
                       )
@@ -7324,15 +7352,19 @@ ${pagesHtml}
                         {/* Fonte */}
                         <div className="space-y-1">
                           <label className="text-[9px] text-text3">Fonte</label>
-                          <select value={selectedText.fontFamily}
-                            onChange={e => updateTextElement(selectedText.id, { fontFamily: e.target.value })}
-                            className="w-full bg-card border border-border rounded px-2 py-1.5 text-[11px] text-text">
-                            {COVER_FONTS.map(f => (
-                              <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
-                                {f.label} ({f.category})
-                              </option>
-                            ))}
-                          </select>
+                          <LASelect
+                            value={selectedText.fontFamily}
+                            onValueChange={value => updateTextElement(selectedText.id, { fontFamily: value })}
+                            options={ensureSelectOption(
+                              COVER_FONTS.map(font => ({
+                                value: font.value,
+                                label: `${font.label} (${font.category})`,
+                              })),
+                              selectedText.fontFamily
+                            )}
+                            placeholder="Selecionar fonte"
+                            className="h-8 rounded-lg text-[11px]"
+                          />
                         </div>
 
                         {/* Tamanho */}
@@ -7526,20 +7558,22 @@ ${pagesHtml}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] text-text3 block mb-1">Instrumento</label>
-                      <Input
+                      <LASelect
                         value={(selectedBlock.render_data as any)?.instrumento ?? ''}
-                        onChange={e => updateSelectedRenderData('instrumento', e.target.value)}
-                        placeholder="Violão, Piano..."
-                        className="h-8 text-[12px]"
+                        onValueChange={value => updateSelectedRenderData('instrumento', value)}
+                        options={ensureSelectOption(COVER_INSTRUMENT_OPTIONS, (selectedBlock.render_data as any)?.instrumento)}
+                        placeholder="Instrumento"
+                        className="h-8 rounded-lg text-[12px]"
                       />
                     </div>
                     <div>
                       <label className="text-[10px] text-text3 block mb-1">Nível</label>
-                      <Input
+                      <LASelect
                         value={(selectedBlock.render_data as any)?.nivel ?? ''}
-                        onChange={e => updateSelectedRenderData('nivel', e.target.value)}
-                        placeholder="Iniciante..."
-                        className="h-8 text-[12px]"
+                        onValueChange={value => updateSelectedRenderData('nivel', value)}
+                        options={ensureSelectOption(COVER_LEVEL_OPTIONS, (selectedBlock.render_data as any)?.nivel)}
+                        placeholder="Nivel"
+                        className="h-8 rounded-lg text-[12px]"
                       />
                     </div>
                   </div>
