@@ -3,7 +3,7 @@
 // Tipo base para todos os floating elements
 export interface FloatingElementBase {
   id: string
-  type: 'floating_text' | 'floating_image' | 'shape'
+  type: 'floating_text' | 'floating_image' | 'shape' | 'iconify_icon'
   pageIndex: number
   x: number
   y: number
@@ -70,9 +70,11 @@ export interface FloatingImage extends FloatingElementBase {
 }
 
 // Forma geométrica
+export type FloatingShapeKind = 'rectangle' | 'circle' | 'line' | 'arrow' | 'star' | 'callout'
+
 export interface FloatingShape extends FloatingElementBase {
   type: 'shape'
-  shape: 'rectangle' | 'circle' | 'line' | 'arrow'
+  shape: FloatingShapeKind
   fill: {
     type: 'solid' | 'gradient' | 'none'
     color: string
@@ -88,7 +90,14 @@ export interface FloatingShape extends FloatingElementBase {
   borderRadius: number
 }
 
-export type FloatingElement = FloatingText | FloatingImage | FloatingShape
+export interface FloatingIcon extends FloatingElementBase {
+  type: 'iconify_icon'
+  icon: string
+  color: string
+  strokeWidth?: number
+}
+
+export type FloatingElement = FloatingText | FloatingImage | FloatingShape | FloatingIcon
 
 // ── Defaults ──
 
@@ -173,6 +182,80 @@ export const DEFAULT_SHAPE: Omit<FloatingShape, 'id'> = {
   borderRadius: 0,
 }
 
+export const DEFAULT_FLOATING_ICON: Omit<FloatingIcon, 'id' | 'icon'> = {
+  type: 'iconify_icon',
+  pageIndex: 0,
+  x: 50,
+  y: 50,
+  width: 8,
+  height: 8,
+  rotation: 0,
+  opacity: 1,
+  zIndex: 10,
+  locked: false,
+  visible: true,
+  name: 'Ícone',
+  color: '#1e3a5f',
+  strokeWidth: 2,
+}
+
+const SHAPE_LABELS: Record<FloatingShapeKind, string> = {
+  rectangle: 'Retângulo',
+  circle: 'Círculo',
+  line: 'Linha',
+  arrow: 'Seta',
+  star: 'Estrela',
+  callout: 'Callout',
+}
+
+export function getFloatingShapeLabel(shape: FloatingShapeKind): string {
+  return SHAPE_LABELS[shape]
+}
+
+export function createFloatingShape(
+  shape: FloatingShapeKind,
+  options: Partial<Omit<FloatingShape, 'type' | 'shape'>> & { id: string },
+): FloatingShape {
+  const isLinear = shape === 'line' || shape === 'arrow'
+  return {
+    ...DEFAULT_SHAPE,
+    ...options,
+    type: 'shape',
+    shape,
+    name: options.name || getFloatingShapeLabel(shape),
+    width: options.width ?? (isLinear ? 26 : DEFAULT_SHAPE.width),
+    height: options.height ?? (isLinear ? 2 : DEFAULT_SHAPE.height),
+    fill: options.fill ?? (isLinear
+      ? { ...DEFAULT_SHAPE.fill, type: 'none', color: 'transparent' }
+      : { ...DEFAULT_SHAPE.fill }),
+    stroke: options.stroke ?? {
+      ...DEFAULT_SHAPE.stroke,
+      width: isLinear ? 3 : DEFAULT_SHAPE.stroke.width,
+    },
+  }
+}
+
+export function createFloatingIcon({
+  id,
+  icon,
+  label,
+  ...options
+}: Partial<Omit<FloatingIcon, 'type' | 'icon' | 'name'>> & {
+  id: string
+  icon: string
+  label?: string
+  name?: string
+}): FloatingIcon {
+  return {
+    ...DEFAULT_FLOATING_ICON,
+    ...options,
+    id,
+    type: 'iconify_icon',
+    icon,
+    name: label || options.name || 'Ícone',
+  }
+}
+
 // ── Helpers ──
 
 /** CSS base do container de um floating element */
@@ -232,6 +315,15 @@ export function floatingImageCSS(el: FloatingImage): React.CSSProperties {
     ...(el.border.enabled && {
       border: `${el.border.width}px ${el.border.style} ${el.border.color}`,
     }),
+  }
+}
+
+export function floatingIconCSS(el: FloatingIcon): React.CSSProperties {
+  return {
+    width: '100%',
+    height: '100%',
+    color: el.color,
+    display: 'block',
   }
 }
 

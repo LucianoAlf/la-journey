@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   TextT, ImageSquare, Rectangle, Eye, EyeSlash,
-  Lock, LockOpen, X,
+  Lock, LockOpen, X, Sparkle,
 } from '@phosphor-icons/react'
 import type { FloatingElement } from '@/lib/floatingElements'
 
@@ -57,6 +57,7 @@ export function LayersPanel({
               {el.type === 'floating_text' && <TextT size={12} className="text-text3 shrink-0" />}
               {el.type === 'floating_image' && <ImageSquare size={12} className="text-text3 shrink-0" />}
               {el.type === 'shape' && <Rectangle size={12} className="text-text3 shrink-0" />}
+              {el.type === 'iconify_icon' && <Sparkle size={12} className="text-text3 shrink-0" />}
 
               {/* Nome */}
               <span className={`text-[11px] truncate flex-1 ${!el.visible ? 'text-text3/40 line-through' : 'text-text2'}`}>

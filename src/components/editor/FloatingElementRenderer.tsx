@@ -4,15 +4,21 @@ import type {
   FloatingText,
   FloatingImage,
   FloatingShape,
+  FloatingIcon,
 } from '@/lib/floatingElements'
 import {
   floatingBaseCSS,
   floatingTextCSS,
   floatingImageCSS,
+  floatingIconCSS,
   shapeFillCSS,
   shapeStrokeCSS,
 } from '@/lib/floatingElements'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { Icon } from '@iconify/react'
+import { registerIconifyElementIcons } from '@/lib/iconifyElementCatalog'
+
+registerIconifyElementIcons()
 
 // ── Sub-renderers ──
 
@@ -64,6 +70,12 @@ function FloatingImageContent({ element }: { element: FloatingImage }) {
 function FloatingShapeContent({ element }: { element: FloatingShape }) {
   const fill = shapeFillCSS(element)
   const border = shapeStrokeCSS(element)
+  const svgFill = element.fill.type === 'solid' ? element.fill.color : fill
+  const strokeDasharray = element.stroke.style === 'dashed'
+    ? '8 6'
+    : element.stroke.style === 'dotted'
+      ? '2 5'
+      : undefined
 
   if (element.shape === 'circle') {
     return (
@@ -109,6 +121,38 @@ function FloatingShapeContent({ element }: { element: FloatingShape }) {
     )
   }
 
+  if (element.shape === 'star') {
+    return (
+      <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
+        <polygon
+          points="50,6 61,36 94,36 67,56 78,90 50,70 22,90 33,56 6,36 39,36"
+          fill={svgFill}
+          stroke={element.stroke.width > 0 ? element.stroke.color : 'none'}
+          strokeWidth={element.stroke.width}
+          strokeDasharray={strokeDasharray}
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+        />
+      </svg>
+    )
+  }
+
+  if (element.shape === 'callout') {
+    return (
+      <svg viewBox="0 0 100 70" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
+        <path
+          d="M8 4H92C95 4 98 7 98 10V48C98 51 95 54 92 54H58L44 68V54H8C5 54 2 51 2 48V10C2 7 5 4 8 4Z"
+          fill={svgFill}
+          stroke={element.stroke.width > 0 ? element.stroke.color : 'none'}
+          strokeWidth={element.stroke.width}
+          strokeDasharray={strokeDasharray}
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+        />
+      </svg>
+    )
+  }
+
   // rectangle (default)
   return (
     <div
@@ -123,6 +167,17 @@ function FloatingShapeContent({ element }: { element: FloatingShape }) {
   )
 }
 
+function FloatingIconContent({ element }: { element: FloatingIcon }) {
+  return (
+    <Icon
+      icon={element.icon}
+      style={floatingIconCSS(element)}
+      strokeWidth={element.strokeWidth}
+      aria-hidden="true"
+    />
+  )
+}
+
 // ── Renderer principal ──
 
 interface FloatingElementRendererProps {
@@ -133,6 +188,7 @@ interface FloatingElementRendererProps {
   onDoubleClick: () => void
   onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void
   onUpdate: (updates: Partial<FloatingElement>) => void
+  interactive?: boolean
 }
 
 export function FloatingElementRenderer({
@@ -143,10 +199,11 @@ export function FloatingElementRenderer({
   onDoubleClick,
   onDragStart,
   onUpdate,
+  interactive = true,
 }: FloatingElementRendererProps) {
   const baseStyle: React.CSSProperties = {
     ...floatingBaseCSS(element),
-    outline: isSelected ? '2px solid var(--accent, #FF2D78)' : 'none',
+    outline: interactive && isSelected ? '2px solid var(--accent, #FF2D78)' : 'none',
     outlineOffset: '2px',
     // Quando está em edição de texto, não interceptar o mouse
     pointerEvents: element.locked && !isEditing ? 'none' : 'auto',
@@ -157,19 +214,22 @@ export function FloatingElementRenderer({
       data-floating-element-id={element.id}
       data-floating-element-type={element.type}
       data-floating-shape={element.type === 'shape' ? (element as FloatingShape).shape : undefined}
-      role="button"
-      tabIndex={0}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
       aria-label={element.name}
       style={baseStyle}
       onClick={(e) => {
+        if (!interactive) return
         e.stopPropagation()
         onSelect()
       }}
       onDoubleClick={(e) => {
+        if (!interactive) return
         e.stopPropagation()
         onDoubleClick()
       }}
       onMouseDown={(e) => {
+        if (!interactive) return
         e.stopPropagation()
         onSelect()
         if (!element.locked && !isEditing) onDragStart(e)
@@ -187,6 +247,9 @@ export function FloatingElementRenderer({
       )}
       {element.type === 'shape' && (
         <FloatingShapeContent element={element as FloatingShape} />
+      )}
+      {element.type === 'iconify_icon' && (
+        <FloatingIconContent element={element as FloatingIcon} />
       )}
     </div>
   )

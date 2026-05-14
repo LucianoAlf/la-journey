@@ -16,6 +16,7 @@ import {
 import { collectUsedGoogleFontFamilies, waitForGoogleFonts } from '@/lib/fontLoader'
 import { getMaterialWithBlocks, type MaterialWithBlocks } from '@/services/materialService'
 import { HeaderFooterBar } from '@/components/editor/HeaderFooterBar'
+import { FloatingElementRenderer } from '@/components/editor/FloatingElementRenderer'
 import {
   DEFAULT_FOOTER,
   DEFAULT_HEADER,
@@ -25,6 +26,7 @@ import {
   type HeaderFooterConfig,
   type PlaceholderContext,
 } from '@/lib/headerFooter'
+import type { FloatingElement } from '@/lib/floatingElements'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://rkfszavfqplhorvfpkcq.supabase.co'
 const GET_PRINT_MATERIAL_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-print-material`
@@ -76,6 +78,7 @@ function waitForImages(root: ParentNode) {
 interface PrintPageConfig {
   header: HeaderFooterConfig
   footer: HeaderFooterConfig
+  floatingElements: FloatingElement[]
 }
 
 function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefined): PrintPageConfig {
@@ -90,6 +93,9 @@ function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefine
     footer: footer && isLegacyFormat(footer)
       ? migrateLegacyFooter(footer as { enabled: boolean; leftText: string; centerText: string; rightText: string; showPageNumber: boolean; pageNumberPosition: 'left' | 'center' | 'right' })
       : (footer as unknown as HeaderFooterConfig | undefined) ?? DEFAULT_FOOTER,
+    floatingElements: Array.isArray(pageConfig.floating_elements)
+      ? pageConfig.floating_elements as FloatingElement[]
+      : [],
   }
 }
 
@@ -267,6 +273,9 @@ export function PrintView() {
           hasSelectedBlock: false,
           hasShiftedBlock: pageHasShiftedBlock,
         })
+        const pageFloatingElements = pageConfig.floatingElements
+          .filter((element) => element.pageIndex === pageIndex && element.visible !== false)
+          .sort((a, b) => a.zIndex - b.zIndex)
 
         return (
           <section
@@ -315,6 +324,20 @@ export function PrintView() {
                 className="a4-page-footer"
               />
             )}
+
+            {pageFloatingElements.map((element) => (
+              <FloatingElementRenderer
+                key={element.id}
+                element={element}
+                isSelected={false}
+                isEditing={false}
+                interactive={false}
+                onSelect={() => undefined}
+                onDoubleClick={() => undefined}
+                onDragStart={() => undefined}
+                onUpdate={() => undefined}
+              />
+            ))}
           </section>
         )
       })}
