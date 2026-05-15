@@ -115,6 +115,11 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
   createFloatingIcon, createFloatingShape, getFloatingShapeLabel,
   snapValue as floatingSnapValue,
 } from "@/lib/floatingElements";
+import {
+  calculateFloatingElementResize,
+  calculateFloatingElementRotation,
+  type FloatingResizeHandle,
+} from "@/lib/floatingElementTransform";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
 import {
@@ -3745,6 +3750,78 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (editingFloatingId === id) setEditingFloatingId(null)
   }, [selectedFloatingId, editingFloatingId])
 
+  const floatingClipboardRef = useRef<FloatingElement | null>(null)
+
+  const duplicateFloatingElement = useCallback((id: string) => {
+    const source = floatingElements.find(el => el.id === id)
+    if (!source) return
+    const maxZ = Math.max(...floatingElements.map(el => el.zIndex), 0)
+    const copy: FloatingElement = {
+      ...(structuredClone(source) as FloatingElement),
+      id: crypto.randomUUID(),
+      x: Math.min(96, source.x + 3),
+      y: Math.min(96, source.y + 3),
+      zIndex: maxZ + 10,
+      name: `${source.name} cópia`,
+      locked: false,
+    }
+    setFloatingElements(prev => [...prev, copy])
+    setSelectedFloatingId(copy.id)
+    setSelectedBlockId(null)
+    setEditingFloatingId(null)
+    toast.success('Elemento duplicado')
+  }, [floatingElements])
+
+  const copySelectedFloatingElement = useCallback(() => {
+    if (!selectedFloating) return false
+    floatingClipboardRef.current = structuredClone(selectedFloating) as FloatingElement
+    toast.success('Elemento copiado')
+    return true
+  }, [selectedFloating])
+
+  const pasteFloatingElement = useCallback(() => {
+    const source = floatingClipboardRef.current
+    if (!source) return false
+    const maxZ = Math.max(...floatingElements.map(el => el.zIndex), 0)
+    const copy: FloatingElement = {
+      ...(structuredClone(source) as FloatingElement),
+      id: crypto.randomUUID(),
+      x: Math.min(96, source.x + 4),
+      y: Math.min(96, source.y + 4),
+      zIndex: maxZ + 10,
+      locked: false,
+    }
+    setFloatingElements(prev => [...prev, copy])
+    setSelectedFloatingId(copy.id)
+    setSelectedBlockId(null)
+    setEditingFloatingId(null)
+    toast.success('Elemento colado')
+    return true
+  }, [floatingElements])
+
+  const bringFloatingElementForward = useCallback((id: string) => {
+    const maxZ = Math.max(...floatingElements.map(el => el.zIndex), 0)
+    updateFloatingElement(id, { zIndex: maxZ + 10 })
+  }, [floatingElements, updateFloatingElement])
+
+  const sendFloatingElementBackward = useCallback((id: string) => {
+    const minZ = Math.min(...floatingElements.map(el => el.zIndex), 0)
+    updateFloatingElement(id, { zIndex: minZ - 10 })
+  }, [floatingElements, updateFloatingElement])
+
+  const nudgeSelectedFloatingElement = useCallback((key: string, step: number) => {
+    if (!selectedFloating || selectedFloating.locked) return false
+    const delta = {
+      x: key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0,
+      y: key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0,
+    }
+    updateFloatingElement(selectedFloating.id, {
+      x: Math.max(0, Math.min(100, Math.round((selectedFloating.x + delta.x) * 10) / 10)),
+      y: Math.max(0, Math.min(100, Math.round((selectedFloating.y + delta.y) * 10) / 10)),
+    })
+    return true
+  }, [selectedFloating, updateFloatingElement])
+
   const handleFloatingDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>, elementId: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -3800,6 +3877,93 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     }
 
     targetEl.style.willChange = 'left, top'
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }, [floatingElements, updateFloatingElement])
+
+  const handleFloatingResizeStart = useCallback((
+    e: React.MouseEvent<HTMLButtonElement>,
+    elementId: string,
+    handle: FloatingResizeHandle,
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const element = floatingElements.find(el => el.id === elementId)
+    if (!element || element.locked) return
+    const pageEl = document.querySelectorAll('.a4-page')[element.pageIndex] as HTMLElement | undefined
+    if (!pageEl) return
+
+    const rect = pageEl.getBoundingClientRect()
+    const startX = e.clientX
+    const startY = e.clientY
+    let pendingUpdates: Partial<FloatingElement> | null = null
+    let finalUpdates: Partial<FloatingElement> | null = null
+    let animationFrame: number | null = null
+
+    const flushResize = () => {
+      animationFrame = null
+      if (!pendingUpdates) return
+      finalUpdates = pendingUpdates
+      updateFloatingElement(elementId, finalUpdates as Record<string, unknown>)
+      pendingUpdates = null
+    }
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      pendingUpdates = calculateFloatingElementResize({
+        element,
+        handle,
+        deltaXPercent: ((moveEvent.clientX - startX) / rect.width) * 100,
+        deltaYPercent: ((moveEvent.clientY - startY) / rect.height) * 100,
+        fromCenter: moveEvent.altKey,
+        keepAspectRatio: moveEvent.shiftKey,
+      })
+      if (animationFrame === null) {
+        animationFrame = window.requestAnimationFrame(flushResize)
+      }
+    }
+
+    const handleUp = () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame)
+        flushResize()
+      }
+      if (finalUpdates) updateFloatingElement(elementId, finalUpdates as Record<string, unknown>)
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }, [floatingElements, updateFloatingElement])
+
+  const handleFloatingRotateStart = useCallback((e: React.MouseEvent<HTMLButtonElement>, elementId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const element = floatingElements.find(el => el.id === elementId)
+    if (!element || element.locked) return
+    const elementNode = document.querySelector(`[data-floating-element-id="${elementId}"]`) as HTMLElement | null
+    if (!elementNode) return
+
+    const rect = elementNode.getBoundingClientRect()
+    const center = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    }
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      updateFloatingElement(elementId, {
+        rotation: calculateFloatingElementRotation({
+          center,
+          pointer: { x: moveEvent.clientX, y: moveEvent.clientY },
+        }),
+      })
+    }
+
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
   }, [floatingElements, updateFloatingElement])
@@ -5753,18 +5917,31 @@ ${pagesHtml}
       }
       // Ctrl+D — Duplicar bloco
       if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !isEditingTarget && !editingTextId) {
+        if (copySelectedFloatingElement()) {
+          e.preventDefault()
+          return
+        }
         if (copySelectedCoverElement()) {
           e.preventDefault()
           return
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v' && !isEditingTarget && !editingTextId) {
+        if (pasteFloatingElement()) {
+          e.preventDefault()
+          return
+        }
         if (pasteCoverElement()) {
           e.preventDefault()
           return
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'd' && !isEditingTarget && !editingTextId) {
+        if (selectedFloatingId) {
+          e.preventDefault()
+          duplicateFloatingElement(selectedFloatingId)
+          return
+        }
         if (selectedTextId) {
           e.preventDefault()
           duplicateTextElement(selectedTextId)
@@ -5889,9 +6066,10 @@ ${pagesHtml}
         !e.altKey &&
         !e.ctrlKey &&
         !e.metaKey &&
-        (selectedTextId || selectedOverlayId)
+        (selectedFloatingId || selectedTextId || selectedOverlayId)
       ) {
         e.preventDefault()
+        if (nudgeSelectedFloatingElement(e.key, e.shiftKey ? 1.5 : 0.3)) return
         if (nudgeSelectedCoverElement(e.key, e.shiftKey ? 1.5 : 0.3)) return
       }
       if (e.altKey && e.key === '0' && selectedBlockId) {
@@ -5957,7 +6135,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedCoverElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -6762,6 +6940,15 @@ ${pagesHtml}
                         }
                       }}
                       onDragStart={(e) => handleFloatingDragStart(e, el.id)}
+                      onResizeStart={(e, handle) => handleFloatingResizeStart(e, el.id, handle)}
+                      onRotateStart={(e) => handleFloatingRotateStart(e, el.id)}
+                      onDuplicate={() => duplicateFloatingElement(el.id)}
+                      onDelete={() => removeFloatingElement(el.id)}
+                      onToggleLock={() => updateFloatingElement(el.id, { locked: !el.locked })}
+                      onBringForward={() => bringFloatingElementForward(el.id)}
+                      onSendBackward={() => sendFloatingElementBackward(el.id)}
+                      onOpenLayers={() => setShowLayersPanel(true)}
+                      onResetRotation={() => updateFloatingElement(el.id, { rotation: 0 })}
                       onUpdate={(updates) => updateFloatingElement(el.id, updates)}
                     />
                   ))}

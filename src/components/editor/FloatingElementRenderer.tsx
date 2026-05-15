@@ -17,6 +17,8 @@ import {
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
 import { Icon } from '@iconify/react'
 import { registerIconifyElementIcons } from '@/lib/iconifyElementCatalog'
+import { FloatingSelectionControls } from '@/components/editor/FloatingSelectionControls'
+import type { FloatingResizeHandle } from '@/lib/floatingElementTransform'
 
 registerIconifyElementIcons()
 
@@ -187,6 +189,15 @@ interface FloatingElementRendererProps {
   onSelect: () => void
   onDoubleClick: () => void
   onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void
+  onResizeStart?: (e: React.MouseEvent<HTMLButtonElement>, handle: FloatingResizeHandle) => void
+  onRotateStart?: (e: React.MouseEvent<HTMLButtonElement>) => void
+  onDuplicate?: () => void
+  onDelete?: () => void
+  onToggleLock?: () => void
+  onBringForward?: () => void
+  onSendBackward?: () => void
+  onOpenLayers?: () => void
+  onResetRotation?: () => void
   onUpdate: (updates: Partial<FloatingElement>) => void
   interactive?: boolean
 }
@@ -198,6 +209,15 @@ export function FloatingElementRenderer({
   onSelect,
   onDoubleClick,
   onDragStart,
+  onResizeStart,
+  onRotateStart,
+  onDuplicate,
+  onDelete,
+  onToggleLock,
+  onBringForward,
+  onSendBackward,
+  onOpenLayers,
+  onResetRotation,
   onUpdate,
   interactive = true,
 }: FloatingElementRendererProps) {
@@ -250,6 +270,20 @@ export function FloatingElementRenderer({
       )}
       {element.type === 'iconify_icon' && (
         <FloatingIconContent element={element as FloatingIcon} />
+      )}
+      {interactive && isSelected && !isEditing && (
+        <FloatingSelectionControls
+          element={element}
+          onResizeStart={onResizeStart ?? (() => undefined)}
+          onRotateStart={onRotateStart ?? (() => undefined)}
+          onDuplicate={onDuplicate ?? (() => undefined)}
+          onDelete={onDelete ?? (() => undefined)}
+          onToggleLock={onToggleLock ?? (() => undefined)}
+          onBringForward={onBringForward ?? (() => undefined)}
+          onSendBackward={onSendBackward ?? (() => undefined)}
+          onOpenLayers={onOpenLayers ?? (() => undefined)}
+          onResetRotation={onResetRotation ?? (() => undefined)}
+        />
       )}
     </div>
   )
