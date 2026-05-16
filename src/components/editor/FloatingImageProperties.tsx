@@ -6,15 +6,45 @@ import { Button } from '@/components/ui/button'
 import { FlipHorizontal, FlipVertical } from '@phosphor-icons/react'
 import type { FloatingImage } from '@/lib/floatingElements'
 
+const SVG_COLOR_SWATCHES = ['#111827', '#1E3A5F', '#FF2D78', '#0EA5E9', '#22C55E', '#F59E0B']
+
 interface FloatingImagePropertiesProps {
   element: FloatingImage
   onUpdate: (updates: Partial<FloatingImage>) => void
 }
 
 export function FloatingImageProperties({ element, onUpdate }: FloatingImagePropertiesProps) {
+  const isInlineSvg = Boolean(element.svgCode)
+
   return (
     <div className="space-y-3">
       <Label className="text-[10px] text-text3 uppercase tracking-wider">Imagem</Label>
+
+      {isInlineSvg && (
+        <div className="space-y-1.5 rounded-md border border-border bg-bg2/40 p-2">
+          <Label className="text-[9px] text-text3">Cor do SVG</Label>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={element.color || '#111827'}
+              onChange={(e) => onUpdate({ color: e.target.value })}
+              className="h-7 w-8 cursor-pointer rounded border border-border bg-white"
+            />
+            <div className="flex flex-wrap gap-1">
+              {SVG_COLOR_SWATCHES.map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  className="h-5 w-5 rounded-full border border-border transition hover:scale-110"
+                  style={{ backgroundColor: color }}
+                  title={color}
+                  onClick={() => onUpdate({ color })}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fit */}
       <div className="space-y-0.5">

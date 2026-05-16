@@ -1,4 +1,14 @@
 import { supabase } from '@/lib/supabase'
+import {
+  buildCuratedMusicSymbolSvg,
+  buildSvgElementPrompt,
+  convertSvgColorsToCurrentColor,
+  extractSvgFromAiText,
+  mapElementTypeToImageCategory,
+  sanitizeSvg,
+  type ElementLibraryAsset,
+  type GeneratedElementType,
+} from '@/lib/elementPicker'
 
 const GOOGLE_AI_KEY = import.meta.env.VITE_GOOGLE_AI_KEY
 const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview'
@@ -17,7 +27,7 @@ export type ImageStyle =
   | 'illustration' | 'flat' | 'realistic' | '3d' | 'vector'
   | 'cartoon' | 'watercolor' | 'sketch'
 
-export type ImageFormat = 'png' | 'jpeg' | 'webp'
+export type ImageFormat = 'png' | 'jpeg' | 'webp' | 'svg'
 
 export interface GenerateImageRequest {
   prompt: string
@@ -30,6 +40,18 @@ export interface GenerateImageRequest {
   height?: number
   referenceFiles?: File[]  // OPCIONAL — múltiplas imagens de referência
   transparentBackground?: boolean  // Chromakey: gera com fundo verde e remove
+  isElement?: boolean
+  elementType?: GeneratedElementType
+  source?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface GenerateElementRequest {
+  label: string
+  prompt: string
+  format: 'svg' | 'png'
+  elementType: GeneratedElementType
+  tags?: string[]
 }
 
 export interface ImageLibraryItem {
@@ -49,6 +71,10 @@ export interface ImageLibraryItem {
   style?: string
   tags: string[]
   is_favorite: boolean
+  is_element?: boolean
+  element_type?: string | null
+  source?: string | null
+  metadata?: Record<string, unknown> | null
   created_at: string
 }
 
@@ -443,6 +469,72 @@ async function saveBase64ToStorage(
   return { publicUrl: urlData.publicUrl, fileSize: blob.size }
 }
 
+async function saveSvgToStorage(
+  svgCode: string,
+  schoolId: string,
+): Promise<{ publicUrl: string; fileSize: number }> {
+  const blob = new Blob([svgCode], { type: 'image/svg+xml' })
+  const fileName = `elements/${schoolId}/${crypto.randomUUID()}.svg`
+
+  const { error } = await supabase.storage
+    .from('content-images')
+    .upload(fileName, blob, { contentType: 'image/svg+xml', upsert: false })
+
+  if (error) throw new Error(`Storage upload failed: ${error.message}`)
+
+  const { data: urlData } = supabase.storage
+    .from('content-images')
+    .getPublicUrl(fileName)
+
+  return { publicUrl: urlData.publicUrl, fileSize: blob.size }
+}
+
+async function generateSvgCodeWithGemini(prompt: string): Promise<string> {
+  if (!GOOGLE_AI_KEY) {
+    throw new Error('VITE_GOOGLE_AI_KEY nao configurada')
+  }
+
+  const response = await fetch(
+    `${GEMINI_TEXT_API_URL}?key=${GOOGLE_AI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini SVG error (${response.status}): ${errorText.substring(0, 200)}`)
+  }
+
+  const data = await response.json()
+  const text = data.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('\n') ?? ''
+  const finishReason = data.candidates?.[0]?.finishReason
+  if (finishReason === 'MAX_TOKENS') {
+    throw new Error('Gemini gerou um SVG incompleto. Tente uma descricao mais simples ou gere novamente.')
+  }
+
+  const rawSvg = extractSvgFromAiText(text)
+  if (!rawSvg) {
+    throw new Error('Gemini nao retornou SVG valido.')
+  }
+
+  const sanitized = sanitizeSvg(rawSvg)
+  if (!sanitized) {
+    throw new Error('SVG gerado foi rejeitado pela sanitizacao.')
+  }
+
+  return convertSvgColorsToCurrentColor(sanitized)
+}
+
 /**
  * Salvar registro na tabela image_library
  */
@@ -471,6 +563,10 @@ async function saveImageRecord(
       model_used: 'gemini-nano-banana-2',
       style: request.style,
       tags: request.tags || [],
+      is_element: request.isElement ?? false,
+      element_type: request.elementType ?? null,
+      source: request.source ?? 'ai',
+      metadata: request.metadata ?? {},
     })
     .select()
     .single()
@@ -547,6 +643,95 @@ export async function generateAndSaveImage(
  * Aceita imagens de referência opcionais — a IA copia o estilo visual.
  * Retorna base64 bruto — o Editor.tsx faz upload próprio no Storage.
  */
+export async function generateAndSaveElement(
+  schoolId: string,
+  request: GenerateElementRequest,
+  onProgress?: (status: string) => void,
+): Promise<ElementLibraryAsset> {
+  const category = mapElementTypeToImageCategory(request.elementType) as ImageCategory
+  const tags = request.tags ?? []
+
+  if (request.format === 'png') {
+    const image = await generateAndSaveImage(
+      schoolId,
+      {
+        prompt: request.prompt,
+        category,
+        style: 'vector',
+        label: request.label,
+        tags: [...tags, 'elemento', 'fundo-transparente'],
+        width: 512,
+        height: 512,
+        transparentBackground: true,
+        isElement: true,
+        elementType: request.elementType,
+        source: 'ai-png',
+        metadata: { generated_element_format: 'png' },
+      },
+      onProgress,
+    )
+
+    return {
+      id: image.id,
+      image_url: image.image_url ?? null,
+      svg_code: image.svg_code ?? null,
+      label: image.label,
+      category: image.category ?? null,
+      image_format: image.image_format ?? null,
+      element_type: image.element_type ?? request.elementType,
+      tags: image.tags ?? [],
+    }
+  }
+
+  const svgPrompt = buildSvgElementPrompt({
+    label: request.label,
+    description: request.prompt,
+    elementType: request.elementType,
+  })
+
+  const curatedSvg = buildCuratedMusicSymbolSvg({
+    label: request.label,
+    description: request.prompt,
+    elementType: request.elementType,
+  })
+
+  onProgress?.(curatedSvg ? 'Preparando simbolo musical...' : 'Gerando SVG com Gemini...')
+  const svgCode = curatedSvg ?? await generateSvgCodeWithGemini(svgPrompt)
+  const source = curatedSvg ? 'curated-svg' : 'ai-svg'
+
+  onProgress?.('Salvando SVG sanitizado...')
+  const storage = await saveSvgToStorage(svgCode, schoolId)
+
+  onProgress?.('Registrando elemento...')
+  const { data, error } = await supabase
+    .from('image_library' as any)
+    .insert({
+      school_id: schoolId,
+      label: request.label,
+      prompt: request.prompt,
+      system_prompt: svgPrompt,
+      image_url: storage.publicUrl,
+      svg_code: svgCode,
+      image_format: 'svg',
+      width: 100,
+      height: 100,
+      file_size_bytes: storage.fileSize,
+      category,
+      model_used: GEMINI_TEXT_MODEL,
+      style: 'vector',
+      tags,
+      is_element: true,
+      element_type: request.elementType,
+      source,
+      metadata: { generated_element_format: 'svg', curated: Boolean(curatedSvg) },
+    })
+    .select('id, image_url, svg_code, label, category, image_format, element_type, tags')
+    .single()
+
+  if (error) throw new Error(`Save failed: ${error.message}`)
+  return data as unknown as ElementLibraryAsset
+}
+
 export async function generateCoverImageRaw(
   prompt: string,
   style: ImageStyle = 'illustration',

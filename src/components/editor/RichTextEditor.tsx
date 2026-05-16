@@ -324,6 +324,7 @@ export function RichTextEditor({
   return (
     <div className={`rich-text-editor rounded-lg border border-border overflow-hidden ${inline ? 'border-transparent bg-transparent' : 'bg-card'} ${className}`}>
       {!inline && (variant === 'title' ? titleToolbar : toolbar)}
+      {inline && (
       <BubbleMenu editor={editor} options={{ placement: 'top', offset: 8 }}>
         <div className="flex items-center gap-0.5 p-1.5 bg-surface border border-border rounded-lg shadow-lg">
           {/* Formatação básica */}
@@ -440,6 +441,7 @@ export function RichTextEditor({
           )}
         </div>
       </BubbleMenu>
+      )}
       <EditorContent
         editor={editor}
         className={`

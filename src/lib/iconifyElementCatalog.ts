@@ -43,8 +43,16 @@ const ICONIFY_ELEMENT_DATA: Record<string, IconifyIcon> = {
 
 let registered = false
 
+export function normalizeIconifyElementIconData(data: IconifyIcon): IconifyIcon {
+  return {
+    width: 24,
+    height: 24,
+    ...data,
+  }
+}
+
 export function registerIconifyElementIcons() {
   if (registered) return
-  Object.entries(ICONIFY_ELEMENT_DATA).forEach(([name, data]) => addIcon(name, data))
+  Object.entries(ICONIFY_ELEMENT_DATA).forEach(([name, data]) => addIcon(name, normalizeIconifyElementIconData(data)))
   registered = true
 }

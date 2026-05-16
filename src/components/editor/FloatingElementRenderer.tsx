@@ -19,6 +19,7 @@ import { Icon } from '@iconify/react'
 import { registerIconifyElementIcons } from '@/lib/iconifyElementCatalog'
 import { FloatingSelectionControls } from '@/components/editor/FloatingSelectionControls'
 import type { FloatingResizeHandle } from '@/lib/floatingElementTransform'
+import { resolveCuratedMusicSvgCode } from '@/lib/elementPicker'
 
 registerIconifyElementIcons()
 
@@ -58,6 +59,26 @@ function FloatingTextContent({
 
 function FloatingImageContent({ element }: { element: FloatingImage }) {
   const style = floatingImageCSS(element)
+  const svgCode = resolveCuratedMusicSvgCode({
+    label: element.name,
+    description: element.name,
+    elementType: 'musica',
+    svgCode: element.svgCode,
+  })
+
+  if (svgCode) {
+    return (
+      <div
+        className="pointer-events-none flex h-full w-full select-none items-center justify-center [&>svg]:h-full [&>svg]:max-h-full [&>svg]:max-w-full [&>svg]:w-full"
+        style={{
+          ...style,
+          color: element.color || '#111827',
+        }}
+        dangerouslySetInnerHTML={{ __html: svgCode }}
+      />
+    )
+  }
+
   return (
     <img
       src={element.imageUrl}
@@ -84,7 +105,7 @@ function FloatingShapeContent({ element }: { element: FloatingShape }) {
       <div
         style={{
           width: '100%',
-          paddingBottom: '100%',
+          height: '100%',
           borderRadius: '50%',
           background: fill,
           border,
@@ -200,6 +221,9 @@ interface FloatingElementRendererProps {
   onResetRotation?: () => void
   onUpdate: (updates: Partial<FloatingElement>) => void
   interactive?: boolean
+  isTransforming?: boolean
+  isRotating?: boolean
+  rotationPreview?: number | null
 }
 
 export function FloatingElementRenderer({
@@ -220,11 +244,13 @@ export function FloatingElementRenderer({
   onResetRotation,
   onUpdate,
   interactive = true,
+  isTransforming = false,
+  isRotating = false,
+  rotationPreview = null,
 }: FloatingElementRendererProps) {
   const baseStyle: React.CSSProperties = {
-    ...floatingBaseCSS(element),
-    outline: interactive && isSelected ? '2px solid var(--accent, #FF2D78)' : 'none',
-    outlineOffset: '2px',
+    ...floatingBaseCSS(element, { rotate: false }),
+    outline: 'none',
     // Quando está em edição de texto, não interceptar o mouse
     pointerEvents: element.locked && !isEditing ? 'none' : 'auto',
   }
@@ -234,6 +260,7 @@ export function FloatingElementRenderer({
       data-floating-element-id={element.id}
       data-floating-element-type={element.type}
       data-floating-shape={element.type === 'shape' ? (element as FloatingShape).shape : undefined}
+      data-floating-transforming={isTransforming || undefined}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-label={element.name}
@@ -255,25 +282,32 @@ export function FloatingElementRenderer({
         if (!element.locked && !isEditing) onDragStart(e)
       }}
     >
-      {element.type === 'floating_text' && (
-        <FloatingTextContent
-          element={element as FloatingText}
-          isEditing={isEditing}
-          onUpdate={onUpdate as (u: Partial<FloatingText>) => void}
-        />
-      )}
-      {element.type === 'floating_image' && (
-        <FloatingImageContent element={element as FloatingImage} />
-      )}
-      {element.type === 'shape' && (
-        <FloatingShapeContent element={element as FloatingShape} />
-      )}
-      {element.type === 'iconify_icon' && (
-        <FloatingIconContent element={element as FloatingIcon} />
-      )}
+      <div
+        className="absolute inset-0"
+        style={{ transform: `rotate(${element.rotation}deg)` }}
+      >
+        {element.type === 'floating_text' && (
+          <FloatingTextContent
+            element={element as FloatingText}
+            isEditing={isEditing}
+            onUpdate={onUpdate as (u: Partial<FloatingText>) => void}
+          />
+        )}
+        {element.type === 'floating_image' && (
+          <FloatingImageContent element={element as FloatingImage} />
+        )}
+        {element.type === 'shape' && (
+          <FloatingShapeContent element={element as FloatingShape} />
+        )}
+        {element.type === 'iconify_icon' && (
+          <FloatingIconContent element={element as FloatingIcon} />
+        )}
+      </div>
       {interactive && isSelected && !isEditing && (
         <FloatingSelectionControls
           element={element}
+          isRotating={isRotating}
+          rotationPreview={rotationPreview}
           onResizeStart={onResizeStart ?? (() => undefined)}
           onRotateStart={onRotateStart ?? (() => undefined)}
           onDuplicate={onDuplicate ?? (() => undefined)}

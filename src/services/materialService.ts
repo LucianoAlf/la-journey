@@ -42,6 +42,8 @@ export interface MaterialWithBlocks {
   stage_name: string | null
   station_name: string | null
   school_name: string | null
+  school_primary_color?: string | null
+  school_secondary_color?: string | null
   generation_config: Record<string, unknown> | null
   generated_at: string | null
   page_config: Record<string, unknown> | null
@@ -133,7 +135,28 @@ export async function getMaterialWithBlocks(materialId: string): Promise<Materia
   })
 
   if (error) handleError(error)
-  return (data ?? []) as MaterialWithBlocks[]
+  const rows = (data ?? []) as MaterialWithBlocks[]
+
+  const { data: materialMeta } = await supabase
+    .from('generated_materials')
+    .select('school_id')
+    .eq('id', materialId)
+    .maybeSingle()
+
+  const schoolId = materialMeta?.school_id
+  if (!schoolId) return rows
+
+  const { data: schoolBrand } = await supabase
+    .from('schools')
+    .select('primary_color, secondary_color')
+    .eq('id', schoolId)
+    .maybeSingle()
+
+  return rows.map(row => ({
+    ...row,
+    school_primary_color: schoolBrand?.primary_color ?? null,
+    school_secondary_color: schoolBrand?.secondary_color ?? null,
+  }))
 }
 
 // --- RPC 3: Atualizar bloco individual ---

@@ -309,7 +309,13 @@ export function PrintView() {
                     data-print-block-id={block.id}
                     style={blockPrintStyle(block)}
                   >
-                    <MaterialPreview blocks={[block]} />
+                    <MaterialPreview
+                      blocks={[block]}
+                      brandKit={{
+                        primaryColor: material.schoolPrimaryColor,
+                        secondaryColor: material.schoolSecondaryColor,
+                      }}
+                    />
                   </div>
                 )
               })}

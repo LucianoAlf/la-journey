@@ -16,6 +16,7 @@ import {
   CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
   MagicWand, Translate, Brain, Lightning,
   Ruler, Layout, ClockCounterClockwise, MapTrifold, QrCode,
+  Shapes,
 } from "@phosphor-icons/react";
 import QRCodeLib from "qrcode";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ import {
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
+import { TitleTemplateRenderer } from "@/components/material/TitleTemplateRenderer";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
 import { SaveAsReusableDialog, type SaveAsReusablePayload } from "@/components/content/SaveAsReusableDialog";
 import { ExerciseLibraryBrowser } from "@/components/content/ExerciseLibraryBrowser";
@@ -69,7 +71,7 @@ import { FloatingTextProperties } from "@/components/editor/FloatingTextProperti
 import { FloatingImageProperties } from "@/components/editor/FloatingImageProperties";
 import { FloatingShapeProperties } from "@/components/editor/FloatingShapeProperties";
 import { FloatingIconProperties } from "@/components/editor/FloatingIconProperties";
-import { FloatingElementLibraryPanel } from "@/components/editor/FloatingElementLibraryPanel";
+import { ElementsPicker } from "@/components/editor/ElementsPicker";
 import { LayersPanel } from "@/components/editor/LayersPanel";
 import { ContextualToolbar } from "@/components/editor/ContextualToolbar";
 import { AIVariationsDialog } from "@/components/editor/AIVariationsDialog";
@@ -103,6 +105,7 @@ import {
 } from "@/lib/headerFooter";
 import { copyHeaderFooterAppearance } from "@/lib/headerFooterAppearance";
 import { createBrandKitHeaderFooterConfig } from "@/lib/headerFooterBrandKit";
+import { DEFAULT_TITLE_TEMPLATE_ID, TITLE_TEMPLATE_PRESETS, type TitleTemplateId } from "@/lib/titleTemplates";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -117,9 +120,11 @@ type FloatingElement, type FloatingText, type FloatingImage, type FloatingShape,
 } from "@/lib/floatingElements";
 import {
   calculateFloatingElementResize,
-  calculateFloatingElementRotation,
+  calculateFloatingElementRotationFromDrag,
+  formatFloatingRotationForDisplay,
   type FloatingResizeHandle,
 } from "@/lib/floatingElementTransform";
+import { createFloatingImageFromElementAsset, type ElementLibraryAsset } from "@/lib/elementPicker";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
 import {
@@ -1031,6 +1036,10 @@ function useEditorPagination({
 
 interface CanvasMaterialPreviewProps {
   block: EditorBlock
+  brandKit?: {
+    primaryColor?: string | null
+    secondaryColor?: string | null
+  }
   coverTitleEditing: boolean
   musicRendererSnapshotCacheRef?: React.MutableRefObject<Map<string, MusicSnapshotCacheEntry>>
   canHydrateMusicRenderer?: boolean
@@ -1062,6 +1071,7 @@ interface CanvasMaterialPreviewProps {
 
 const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   block,
+  brandKit,
   coverTitleEditing,
   musicRendererSnapshotCacheRef,
   canHydrateMusicRenderer = true,
@@ -1203,6 +1213,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   const preview = (
     <MaterialPreview
       blocks={previewBlocks}
+      brandKit={brandKit}
       onLegacyNotationStavePointerDown={handleLegacyNotationStavePointerDown}
       onMusicStableRender={handleMusicStableRender}
       onChordGridItemClick={handleChordGridItemClick}
@@ -2339,6 +2350,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (import.meta.env.DEV) {
       selectBlockPerfRef.current = { blockId: id, startedAt: performance.now() }
     }
+    setSelectedFloatingId(null)
+    setEditingFloatingId(null)
     const pageIdx = pageIndexByBlockId[id]
     const canvas = canvasScrollRef.current
     const currentEl = canvasRefs.current[id]
@@ -2378,6 +2391,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (inlineEditingBlockId) setInlineEditingBlockId(null)
     setInlineEditFocusPoint(null)
   }, [inlineEditingBlockId, setSelectedBlockId])
+
+  const handleCanvasPageMouseDownCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('[data-floating-element-id]')) return
+    setSelectedFloatingId(null)
+    setEditingFloatingId(null)
+  }, [])
 
   const handleCanvasWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
     if (!e.ctrlKey) return
@@ -2843,6 +2863,27 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     })
     queueBlockAutosave(selectedBlockId)
   }, [queueBlockAutosave, selectedBlockId, setBlockWithHistory])
+
+  const applyTitleTemplate = useCallback((templateId: TitleTemplateId | 'legacy') => {
+    if (!selectedBlockId) return
+    setBlockWithHistory(selectedBlockId, block => {
+      if (block.block_type !== 'title') return block
+      const currentRenderData = (block.render_data ?? {}) as Record<string, any>
+      const nextRenderData = {
+        ...currentRenderData,
+        title_template_id: templateId,
+        title_color_mode: 'brand',
+        brand_primary_color: school?.primary_color ?? currentRenderData.brand_primary_color ?? '#1E3A5F',
+        brand_secondary_color: school?.secondary_color ?? currentRenderData.brand_secondary_color ?? '#FF2D78',
+      }
+      if (templateId === 'legacy') {
+        delete nextRenderData.title_template_id
+      }
+      return { ...block, render_data: nextRenderData }
+    })
+    queueBlockAutosave(selectedBlockId)
+    toast.success(templateId === 'legacy' ? 'Decoração removida do título.' : 'Template aplicado ao título.')
+  }, [queueBlockAutosave, school?.primary_color, school?.secondary_color, selectedBlockId, setBlockWithHistory])
 
   const updateBlockPaginationPolicy = useCallback((updates: Partial<BlockPaginationPolicy>) => {
     if (!selectedBlockId) return
@@ -3631,8 +3672,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([])
   const [selectedFloatingId, setSelectedFloatingId] = useState<string | null>(null)
   const [editingFloatingId, setEditingFloatingId] = useState<string | null>(null)
+  const [floatingTransformState, setFloatingTransformState] = useState<{
+    id: string
+    type: 'resize' | 'rotate'
+    rotation?: number
+  } | null>(null)
   const [showLayersPanel, setShowLayersPanel] = useState(false)
   const [floatingImagePickerOpen, setFloatingImagePickerOpen] = useState(false)
+  const [elementsPickerOpen, setElementsPickerOpen] = useState(false)
   const floatingImageInputRef = useRef<HTMLInputElement>(null)
 
   // Carregar floating elements do pageConfig
@@ -3651,6 +3698,65 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const selectedFloating = useMemo(() =>
     floatingElements.find(el => el.id === selectedFloatingId) ?? null
   , [floatingElements, selectedFloatingId])
+
+  const floatingUndoStack = useRef<Array<{ before: FloatingElement[]; after: FloatingElement[] }>>([])
+  const floatingRedoStack = useRef<Array<{ before: FloatingElement[]; after: FloatingElement[] }>>([])
+  const [, setFloatingHistoryVersion] = useState(0)
+
+  const pushFloatingHistoryEntry = useCallback((before: FloatingElement[], after: FloatingElement[]) => {
+    if (stableSerialize(before) === stableSerialize(after)) return
+    floatingUndoStack.current = [
+      ...floatingUndoStack.current.slice(-29),
+      { before: structuredClone(before) as FloatingElement[], after: structuredClone(after) as FloatingElement[] },
+    ]
+    floatingRedoStack.current = []
+    setFloatingHistoryVersion(v => v + 1)
+  }, [])
+
+  const setFloatingElementsWithHistory = useCallback((
+    updater: FloatingElement[] | ((prev: FloatingElement[]) => FloatingElement[]),
+  ) => {
+    setFloatingElements(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      pushFloatingHistoryEntry(prev, next)
+      return next
+    })
+  }, [pushFloatingHistoryEntry])
+
+  const undoFloatingElementChange = useCallback(() => {
+    const entry = floatingUndoStack.current.pop()
+    if (!entry) return false
+    floatingRedoStack.current.push(entry)
+    setFloatingElements(entry.before)
+    setSelectedFloatingId(currentId => (
+      currentId && entry.before.some(el => el.id === currentId)
+        ? currentId
+        : entry.before.at(-1)?.id ?? null
+    ))
+    setEditingFloatingId(null)
+    setFloatingHistoryVersion(v => v + 1)
+    toast.info('Desfazer elemento', { duration: 1500 })
+    return true
+  }, [])
+
+  const redoFloatingElementChange = useCallback(() => {
+    const entry = floatingRedoStack.current.pop()
+    if (!entry) return false
+    floatingUndoStack.current.push(entry)
+    setFloatingElements(entry.after)
+    setSelectedFloatingId(currentId => (
+      currentId && entry.after.some(el => el.id === currentId)
+        ? currentId
+        : entry.after.at(-1)?.id ?? null
+    ))
+    setEditingFloatingId(null)
+    setFloatingHistoryVersion(v => v + 1)
+    toast.info('Refazer elemento', { duration: 1500 })
+    return true
+  }, [])
+
+  const canUndoFloatingElementChange = useCallback(() => floatingUndoStack.current.length > 0, [])
+  const canRedoFloatingElementChange = useCallback(() => floatingRedoStack.current.length > 0, [])
 
   // Qual página está visível no canvas (baseado no scroll)
   const getCurrentVisiblePageIndex = useCallback((): number => {
@@ -3679,10 +3785,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       zIndex: (floatingElements.length + 1) * 10,
       name: `Texto ${count + 1}`,
     } as FloatingElement
-    setFloatingElements(prev => [...prev, newEl])
+    setFloatingElementsWithHistory(prev => [...prev, newEl])
     setSelectedFloatingId(newEl.id)
     setSelectedBlockId(null) // desselecionar bloco normal
-  }, [floatingElements, getCurrentVisiblePageIndex])
+  }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
   const addFloatingShapeElement = useCallback((shape: FloatingShapeKind = 'rectangle') => {
     const currentPage = getCurrentVisiblePageIndex()
@@ -3693,10 +3799,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       zIndex: (floatingElements.length + 1) * 10,
       name: `${getFloatingShapeLabel(shape)} ${count + 1}`,
     })
-    setFloatingElements(prev => [...prev, newEl])
+    setFloatingElementsWithHistory(prev => [...prev, newEl])
     setSelectedFloatingId(newEl.id)
     setSelectedBlockId(null)
-  }, [floatingElements, getCurrentVisiblePageIndex])
+  }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
   const addFloatingIconElement = useCallback((icon: string, label: string) => {
     const currentPage = getCurrentVisiblePageIndex()
@@ -3708,10 +3814,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       pageIndex: currentPage,
       zIndex: (floatingElements.length + 1) * 10,
     })
-    setFloatingElements(prev => [...prev, newEl])
+    setFloatingElementsWithHistory(prev => [...prev, newEl])
     setSelectedFloatingId(newEl.id)
     setSelectedBlockId(null)
-  }, [floatingElements, getCurrentVisiblePageIndex])
+  }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
   const addFloatingImage = useCallback((imageUrl: string, label: string) => {
     const currentPage = getCurrentVisiblePageIndex()
@@ -3724,14 +3830,34 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       zIndex: (floatingElements.length + 1) * 10,
       name: label || `Imagem ${count + 1}`,
     } as FloatingImage
-    setFloatingElements(prev => [...prev, newEl])
+    setFloatingElementsWithHistory(prev => [...prev, newEl])
     setSelectedFloatingId(newEl.id)
     setSelectedBlockId(null)
     setFloatingImagePickerOpen(false)
-  }, [floatingElements, getCurrentVisiblePageIndex])
+  }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
-  const updateFloatingElement = useCallback((id: string, updates: Record<string, unknown>) => {
-    setFloatingElements(prev => {
+  const addElementAssetFromPicker = useCallback((asset: ElementLibraryAsset) => {
+    try {
+      const maxZ = Math.max(0, ...floatingElements.map(el => el.zIndex))
+      const newEl = createFloatingImageFromElementAsset(asset, {
+        id: crypto.randomUUID(),
+        pageIndex: getCurrentVisiblePageIndex(),
+        zIndex: maxZ + 10,
+      })
+      setFloatingElementsWithHistory(prev => [...prev, newEl])
+      setSelectedFloatingId(newEl.id)
+      setSelectedBlockId(null)
+      setEditingFloatingId(null)
+      setElementsPickerOpen(false)
+      toast.success('Elemento adicionado ao material')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Nao foi possivel adicionar o elemento.')
+    }
+  }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
+
+  const updateFloatingElement = useCallback((id: string, updates: Record<string, unknown>, options: { history?: boolean } = {}) => {
+    const setter = options.history === false ? setFloatingElements : setFloatingElementsWithHistory
+    setter(prev => {
       const next: FloatingElement[] = []
       for (const el of prev) {
         if (el.id === id) {
@@ -3742,13 +3868,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       }
       return next
     })
-  }, [])
+  }, [setFloatingElementsWithHistory])
 
   const removeFloatingElement = useCallback((id: string) => {
-    setFloatingElements(prev => prev.filter(el => el.id !== id))
+    setFloatingElementsWithHistory(prev => prev.filter(el => el.id !== id))
     if (selectedFloatingId === id) setSelectedFloatingId(null)
     if (editingFloatingId === id) setEditingFloatingId(null)
-  }, [selectedFloatingId, editingFloatingId])
+  }, [selectedFloatingId, editingFloatingId, setFloatingElementsWithHistory])
 
   const floatingClipboardRef = useRef<FloatingElement | null>(null)
 
@@ -3765,12 +3891,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       name: `${source.name} cópia`,
       locked: false,
     }
-    setFloatingElements(prev => [...prev, copy])
+    setFloatingElementsWithHistory(prev => [...prev, copy])
     setSelectedFloatingId(copy.id)
     setSelectedBlockId(null)
     setEditingFloatingId(null)
     toast.success('Elemento duplicado')
-  }, [floatingElements])
+  }, [floatingElements, setFloatingElementsWithHistory])
 
   const copySelectedFloatingElement = useCallback(() => {
     if (!selectedFloating) return false
@@ -3791,13 +3917,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       zIndex: maxZ + 10,
       locked: false,
     }
-    setFloatingElements(prev => [...prev, copy])
+    setFloatingElementsWithHistory(prev => [...prev, copy])
     setSelectedFloatingId(copy.id)
     setSelectedBlockId(null)
     setEditingFloatingId(null)
     toast.success('Elemento colado')
     return true
-  }, [floatingElements])
+  }, [floatingElements, setFloatingElementsWithHistory])
 
   const bringFloatingElementForward = useCallback((id: string) => {
     const maxZ = Math.max(...floatingElements.map(el => el.zIndex), 0)
@@ -3896,15 +4022,17 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const rect = pageEl.getBoundingClientRect()
     const startX = e.clientX
     const startY = e.clientY
+    const beforeElements = structuredClone(floatingElements) as FloatingElement[]
     let pendingUpdates: Partial<FloatingElement> | null = null
     let finalUpdates: Partial<FloatingElement> | null = null
     let animationFrame: number | null = null
+    setFloatingTransformState({ id: elementId, type: 'resize' })
 
     const flushResize = () => {
       animationFrame = null
       if (!pendingUpdates) return
       finalUpdates = pendingUpdates
-      updateFloatingElement(elementId, finalUpdates as Record<string, unknown>)
+      updateFloatingElement(elementId, finalUpdates as Record<string, unknown>, { history: false })
       pendingUpdates = null
     }
 
@@ -3927,14 +4055,22 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         window.cancelAnimationFrame(animationFrame)
         flushResize()
       }
-      if (finalUpdates) updateFloatingElement(elementId, finalUpdates as Record<string, unknown>)
+      if (finalUpdates) {
+        const afterElements = beforeElements.map(el => (
+          el.id === elementId
+            ? Object.assign({}, el, finalUpdates) as FloatingElement
+            : el
+        ))
+        pushFloatingHistoryEntry(beforeElements, afterElements)
+      }
+      setFloatingTransformState(null)
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseup', handleUp)
     }
 
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
-  }, [floatingElements, updateFloatingElement])
+  }, [floatingElements, pushFloatingHistoryEntry, updateFloatingElement])
 
   const handleFloatingRotateStart = useCallback((e: React.MouseEvent<HTMLButtonElement>, elementId: string) => {
     e.preventDefault()
@@ -3945,28 +4081,44 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!elementNode) return
 
     const rect = elementNode.getBoundingClientRect()
+    const beforeElements = structuredClone(floatingElements) as FloatingElement[]
     const center = {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     }
+    const startPointer = { x: e.clientX, y: e.clientY }
+    const startRotation = element.rotation
+    let finalRotation = element.rotation
+    setFloatingTransformState({ id: elementId, type: 'rotate', rotation: element.rotation })
 
     const handleMove = (moveEvent: MouseEvent) => {
-      updateFloatingElement(elementId, {
-        rotation: calculateFloatingElementRotation({
-          center,
-          pointer: { x: moveEvent.clientX, y: moveEvent.clientY },
-        }),
+      finalRotation = calculateFloatingElementRotationFromDrag({
+        center,
+        startPointer,
+        currentPointer: { x: moveEvent.clientX, y: moveEvent.clientY },
+        startRotation,
       })
+      setFloatingTransformState({ id: elementId, type: 'rotate', rotation: finalRotation })
+      updateFloatingElement(elementId, {
+        rotation: finalRotation,
+      }, { history: false })
     }
 
     const handleUp = () => {
+      const afterElements = beforeElements.map(el => (
+        el.id === elementId
+          ? { ...el, rotation: finalRotation }
+          : el
+      ))
+      pushFloatingHistoryEntry(beforeElements, afterElements)
+      setFloatingTransformState(null)
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseup', handleUp)
     }
 
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
-  }, [floatingElements, updateFloatingElement])
+  }, [floatingElements, pushFloatingHistoryEntry, updateFloatingElement])
 
   // Upload de imagem para floating_image
   const handleFloatingImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5899,6 +6051,10 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
+        if (
+          (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
+          undoFloatingElementChange()
+        ) return
         handleUndo()
         return
       }
@@ -5906,6 +6062,10 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
+        if (
+          (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
+          redoFloatingElementChange()
+        ) return
         handleRedo()
         return
       }
@@ -6135,7 +6295,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -6266,10 +6426,36 @@ ${pagesHtml}
         <div className="flex items-center gap-1.5">
           {/* Undo/Redo */}
           <div className="flex items-center gap-0.5 mr-1">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleUndo} disabled={!canUndo()} title="Desfazer (Ctrl+Z)">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => {
+                if (
+                  (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
+                  undoFloatingElementChange()
+                ) return
+                handleUndo()
+              }}
+              disabled={!canUndo() && !((selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId)) && canUndoFloatingElementChange())}
+              title="Desfazer (Ctrl+Z)"
+            >
               <ArrowCounterClockwise size={15} />
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleRedo} disabled={!canRedo()} title="Refazer (Ctrl+Y)">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => {
+                if (
+                  (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
+                  redoFloatingElementChange()
+                ) return
+                handleRedo()
+              }}
+              disabled={!canRedo() && !((selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId)) && canRedoFloatingElementChange())}
+              title="Refazer (Ctrl+Y)"
+            >
               <ArrowCounterClockwise size={15} className="scale-x-[-1]" />
             </Button>
           </div>
@@ -6353,6 +6539,21 @@ ${pagesHtml}
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Aplicar template de material</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline" size="sm"
+                  className="h-8 gap-1 text-[11px]"
+                  onClick={() => setElementsPickerOpen(true)}
+                >
+                  <Shapes size={14} /> Elementos
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Adicionar elemento visual ao material</p></TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -6730,6 +6931,7 @@ ${pagesHtml}
                 className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
                 data-page-index={pageIdx}
                 data-editor-page-active="true"
+                onMouseDownCapture={handleCanvasPageMouseDownCapture}
                 style={{ position: 'relative', ...pageLayerStyle, ...(pageBgColor ? { backgroundColor: pageBgColor } : {}) }}
               >
                 {/* Guias visuais */}
@@ -6865,6 +7067,10 @@ ${pagesHtml}
                           <>
                           <CanvasMaterialPreview
                             block={block}
+                            brandKit={{
+                              primaryColor: school?.primary_color,
+                              secondaryColor: school?.secondary_color,
+                            }}
                             coverTitleEditing={coverTitleEditing}
                             musicRendererSnapshotCacheRef={musicRendererSnapshotCacheRef}
                             canHydrateMusicRenderer={!blockUsesAlphaTab(block) || hydratingAlphaTabBlockIds.has(block.id)}
@@ -6942,6 +7148,9 @@ ${pagesHtml}
                       onDragStart={(e) => handleFloatingDragStart(e, el.id)}
                       onResizeStart={(e, handle) => handleFloatingResizeStart(e, el.id, handle)}
                       onRotateStart={(e) => handleFloatingRotateStart(e, el.id)}
+                      isTransforming={floatingTransformState?.id === el.id}
+                      isRotating={floatingTransformState?.id === el.id && floatingTransformState.type === 'rotate'}
+                      rotationPreview={floatingTransformState?.id === el.id ? floatingTransformState.rotation ?? null : null}
                       onDuplicate={() => duplicateFloatingElement(el.id)}
                       onDelete={() => removeFloatingElement(el.id)}
                       onToggleLock={() => updateFloatingElement(el.id, { locked: !el.locked })}
@@ -7077,7 +7286,7 @@ ${pagesHtml}
                       onChange={(e) => updateFloatingElement(selectedFloating.id, { rotation: Number(e.target.value) })}
                       className="flex-1 accent-accent h-1.5"
                     />
-                    <span className="text-[10px] text-text3 w-8 font-mono">{selectedFloating.rotation}°</span>
+                    <span className="text-[10px] text-text3 w-8 font-mono">{formatFloatingRotationForDisplay(selectedFloating.rotation)}°</span>
                   </div>
                 </div>
 
@@ -7342,6 +7551,72 @@ ${pagesHtml}
                   open={isPropertiesSectionOpen(selectedBlock.block_type, 'content', true)}
                   onOpenChange={(open) => setPropertiesSectionOpen(selectedBlock.block_type, 'content', open)}
                 >
+                  {selectedBlock.block_type === 'title' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="prop-label mb-0">Templates de titulo</div>
+                          <p className="text-[9px] leading-snug text-text3">Aplica um visual pronto sem apagar o texto.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 rounded-md px-2 text-[10px]"
+                          onClick={() => applyTitleTemplate('legacy')}
+                        >
+                          Limpar
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {TITLE_TEMPLATE_PRESETS.map(template => {
+                          const renderData = (selectedBlock.render_data ?? {}) as Record<string, any>
+                          const activeTemplate = renderData.title_template_id ?? null
+                          const isActive = activeTemplate === template.id
+                          return (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => applyTitleTemplate(template.id)}
+                              className={cn(
+                                'group rounded-[12px] border bg-white p-2 text-left transition hover:border-accent/60 hover:shadow-sm',
+                                isActive ? 'border-accent ring-2 ring-accent/15' : 'border-border',
+                              )}
+                            >
+                              <div className="mb-1.5 flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="truncate text-[11px] font-semibold text-text">{template.name}</div>
+                                  <div className="truncate text-[8px] text-text3">{template.description}</div>
+                                </div>
+                                {isActive && <Badge variant="gold" className="text-[8px]">ativo</Badge>}
+                              </div>
+                              <div className="overflow-hidden rounded-[10px] border border-border/60 bg-bg2/50 p-1.5">
+                                <TitleTemplateRenderer
+                                  templateId={template.id}
+                                  title="Modulo 1"
+                                  subtitle="Elementos Basicos da Musica"
+                                  accentColor={String(school?.primary_color ?? renderData.brand_primary_color ?? '#1E3A5F')}
+                                  secondaryColor={String(school?.secondary_color ?? renderData.brand_secondary_color ?? '#FF2D78')}
+                                  compact
+                                />
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {!((selectedBlock.render_data ?? {}) as Record<string, any>).title_template_id && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 w-full rounded-md bg-accent text-[11px] text-white hover:bg-accent/90"
+                          onClick={() => applyTitleTemplate(DEFAULT_TITLE_TEMPLATE_ID)}
+                        >
+                          Aplicar recomendado
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
                   <div>
                     <div className="prop-label">Título</div>
                     <div className="title-editor-compact">
@@ -7362,7 +7637,7 @@ ${pagesHtml}
                         }}
                         placeholder="Título do bloco"
                         variant="title"
-                        className="[&_.tiptap]:font-bold [&_.tiptap_p]:mb-0 [&_.tiptap_h1]:mb-0 [&_.tiptap_h2]:mb-0 [&_.tiptap_h3]:mb-0"
+                        className="[&_.tiptap_p]:mb-0 [&_.tiptap_h1]:mb-0 [&_.tiptap_h2]:mb-0 [&_.tiptap_h3]:mb-0"
                       />
                     </div>
                   </div>
@@ -7981,23 +8256,27 @@ ${pagesHtml}
                     </TabsContent>
 
                     <TabsContent value="elementos" className="mt-3 space-y-3">
-                  <FloatingElementLibraryPanel
-                    onAddText={addFloatingTextElement}
-                    onOpenImagePicker={() => { setFloatingImagePickerOpen(true); loadLibraryImages() }}
-                    onAddShape={addFloatingShapeElement}
-                    onAddIcon={addFloatingIconElement}
-                    onToggleLayers={() => setShowLayersPanel(!showLayersPanel)}
-                    layersPanel={showLayersPanel ? (
-                      <LayersPanel
-                        elements={floatingElements}
-                        currentPageIndex={getCurrentVisiblePageIndex()}
-                        selectedId={selectedFloatingId}
-                        onSelect={(id) => { setSelectedFloatingId(id); setSelectedBlockId(null) }}
-                        onUpdate={updateFloatingElement}
-                        onClose={() => setShowLayersPanel(false)}
-                      />
-                    ) : undefined}
-                  />
+                  <div className="rounded-[var(--radius-sm)] border border-border bg-card/60 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <label className="block text-[10px] font-medium uppercase tracking-wider text-text3">
+                          Elementos do material
+                        </label>
+                        <p className="mt-0.5 text-[10px] leading-snug text-text3">
+                          Use o painel unico da barra superior para formas, icones, SVG e PNG.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 shrink-0 gap-1.5 px-2 text-[10px]"
+                        onClick={() => setElementsPickerOpen(true)}
+                      >
+                        <Shapes size={13} /> Abrir
+                      </Button>
+                    </div>
+                  </div>
 
                   {/* Logomarca */}
                   <div className="space-y-2">
@@ -9460,6 +9739,41 @@ ${pagesHtml}
           return keyboardBlockToEditorChord(block, { keyboardIndex: keyboardGridEditingIndex })
         })() : null}
         onSave={handleKeyboardEditorSave}
+      />
+
+      <ElementsPicker
+        open={elementsPickerOpen}
+        schoolId={school?.id}
+        layersPanel={showLayersPanel ? (
+          <LayersPanel
+            elements={floatingElements}
+            currentPageIndex={getCurrentVisiblePageIndex()}
+            selectedId={selectedFloatingId}
+            onSelect={(id) => { setSelectedFloatingId(id); setSelectedBlockId(null) }}
+            onUpdate={updateFloatingElement}
+            onClose={() => setShowLayersPanel(false)}
+          />
+        ) : undefined}
+        onAddText={() => {
+          addFloatingTextElement()
+          setElementsPickerOpen(false)
+        }}
+        onOpenImagePicker={() => {
+          setElementsPickerOpen(false)
+          setFloatingImagePickerOpen(true)
+          loadLibraryImages()
+        }}
+        onAddShape={(shape) => {
+          addFloatingShapeElement(shape)
+          setElementsPickerOpen(false)
+        }}
+        onAddIcon={(icon, label) => {
+          addFloatingIconElement(icon, label)
+          setElementsPickerOpen(false)
+        }}
+        onOpenChange={setElementsPickerOpen}
+        onSelectElement={addElementAssetFromPicker}
+        onToggleLayers={() => setShowLayersPanel(!showLayersPanel)}
       />
       {/* Dialog — Importar imagem da Biblioteca para capa */}
       <Dialog open={coverLibraryOpen} onOpenChange={setCoverLibraryOpen}>

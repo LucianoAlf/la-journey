@@ -10,6 +10,8 @@ registerIconifyElementIcons()
 
 interface FloatingElementLibraryPanelProps {
   layersPanel?: ReactNode
+  title?: string
+  layersLabel?: string
   onAddIcon: (icon: string, label: string) => void
   onAddShape: (shape: FloatingShapeKind) => void
   onAddText: () => void
@@ -28,6 +30,8 @@ const SHAPE_OPTIONS: Array<{ shape: FloatingShapeKind; label: string }> = [
 
 export function FloatingElementLibraryPanel({
   layersPanel,
+  title = 'Elementos livres do material',
+  layersLabel = 'Camadas',
   onAddIcon,
   onAddShape,
   onAddText,
@@ -38,7 +42,7 @@ export function FloatingElementLibraryPanel({
     <div className="space-y-3 rounded-[var(--radius-sm)] border border-border bg-card/60 p-2.5">
       <div className="flex items-center justify-between px-1">
         <label className="text-[10px] font-medium uppercase tracking-wider text-text3">
-          Elementos livres do material
+          {title}
         </label>
         <Button
           variant="ghost"
@@ -46,7 +50,7 @@ export function FloatingElementLibraryPanel({
           className="h-6 px-2 text-[10px]"
           onClick={onToggleLayers}
         >
-          <Rows size={12} className="mr-1" /> Camadas
+          <Rows size={12} className="mr-1" /> {layersLabel}
         </Button>
       </div>
 

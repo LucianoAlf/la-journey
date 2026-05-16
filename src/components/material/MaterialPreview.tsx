@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState, useEffect } from 'react'
+import React, { createContext, useContext, useRef, useCallback, useState, useEffect } from 'react'
 import {
   AlignBottom,
   AlignCenterHorizontal,
@@ -49,6 +49,7 @@ import {
   shouldAllowLocalChordFallback,
   type ResolvedGridChord,
 } from '@/services/chordLibraryResolver'
+import { TitleTemplateRenderer } from '@/components/material/TitleTemplateRenderer'
 
 export interface MaterialBlock {
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
@@ -121,6 +122,10 @@ export const DEFAULT_TEXT_BG: CoverTextBackground = { enabled: false, color: '#0
 
 interface MaterialPreviewProps {
   blocks: MaterialBlock[]
+  brandKit?: {
+    primaryColor?: string | null
+    secondaryColor?: string | null
+  }
   onLegacyNotationStavePointerDown?: (staveIndex: number) => void
   onMusicStableRender?: (block: MaterialBlock, html: string) => void
   onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void
@@ -151,6 +156,8 @@ interface MaterialPreviewProps {
 }
 
 type MusicStableRenderHandler = (block: MaterialBlock, html: string) => void
+
+const TitleTemplateBrandKitContext = createContext<MaterialPreviewProps['brandKit']>(undefined)
 
 const DIMENSION_COLORS: Record<string, string> = {
   teoria: 'text-foundation border-foundation/30',
@@ -228,7 +235,7 @@ function renderTitle(block: MaterialBlock, className = 'font-bold text-[14px] te
   if (titleHtml) {
     return (
       <div
-        className={`rich-title text-text mb-2 [&_p]:mb-0 [&_p]:text-[14px] [&_p]:font-bold [&_strong]:font-extrabold [&_em]:italic [&_u]:underline [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:mb-0 [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:mb-0 [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:mb-0`}
+        className={`${className} rich-title [&_p]:mb-0 [&_p]:text-[14px] [&_strong]:font-extrabold [&_em]:italic [&_u]:underline [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:mb-0 [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:mb-0 [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:mb-0`}
         dangerouslySetInnerHTML={{ __html: titleHtml }}
       />
     )
@@ -255,18 +262,24 @@ function renderContent(content?: { text?: string; html?: string; [key: string]: 
 
 function BlockTitle({ block }: { block: MaterialBlock }) {
   const content = getBlockContent(block)
-  const dimension = content.dimension?.toLowerCase() ?? ''
-  const colorClass = DIMENSION_COLORS[dimension] ?? 'text-accent border-accent/30'
-  const emoji = DIMENSION_EMOJIS[dimension] ?? '📌'
+  const renderData = getBlockRenderData(block)
+  const titleTemplateId = renderData.title_template_id
+  const brandKit = useContext(TitleTemplateBrandKitContext)
+  if (titleTemplateId && titleTemplateId !== 'legacy') {
+    return (
+      <TitleTemplateRenderer
+        block={{ ...block, content, render_data: renderData }}
+        accentColor={brandKit?.primaryColor ?? undefined}
+        secondaryColor={brandKit?.secondaryColor ?? undefined}
+      />
+    )
+  }
 
   return (
-    <div className={`border-l-[3px] pl-4 py-1 mt-6 mb-3 ${colorClass}`}>
-      <div className="flex items-center gap-1">
-        <span>{emoji}</span>
-        {renderTitle(block, 'font-serif text-lg font-bold [&_p]:inline') ?? (
-          <h2 className="font-serif text-lg font-bold">{block.title}</h2>
-        )}
-      </div>
+    <div className="mt-6 mb-3">
+      {renderTitle(block, 'font-serif text-lg text-text [&_p]:mb-0 [&_h1]:mb-0 [&_h2]:mb-0 [&_h3]:mb-0') ?? (
+        <h2 className="font-serif text-lg text-text">{block.title}</h2>
+      )}
     </div>
   )
 }
@@ -2111,7 +2124,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -2121,6 +2134,7 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMu
   }
 
   return (
+    <TitleTemplateBrandKitContext.Provider value={brandKit}>
     <div className="space-y-1">
       {blocks.map((block, i) => {
         if (block.block_type === 'cover') {
@@ -2159,5 +2173,6 @@ export function MaterialPreview({ blocks, onLegacyNotationStavePointerDown, onMu
         )
       })}
     </div>
+    </TitleTemplateBrandKitContext.Provider>
   )
 }

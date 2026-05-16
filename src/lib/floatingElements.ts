@@ -61,6 +61,8 @@ export interface FloatingText extends FloatingElementBase {
 export interface FloatingImage extends FloatingElementBase {
   type: 'floating_image'
   imageUrl: string
+  svgCode?: string | null
+  color?: string
   objectFit: 'contain' | 'cover' | 'fill'
   borderRadius: number
   shadow: FloatingShadow
@@ -98,6 +100,25 @@ export interface FloatingIcon extends FloatingElementBase {
 }
 
 export type FloatingElement = FloatingText | FloatingImage | FloatingShape | FloatingIcon
+
+export const FLOATING_PAGE_ASPECT_RATIO = 210 / 297
+
+export function getFloatingAspectLockedHeight(width: number): number {
+  return Math.round(width * FLOATING_PAGE_ASPECT_RATIO * 10) / 10
+}
+
+export function isFloatingElementAspectLocked(el: FloatingElement): boolean {
+  if (el.type === 'iconify_icon') return true
+  if (el.type === 'floating_image') return Boolean(el.svgCode)
+  return el.type === 'shape' && ['circle', 'star'].includes(el.shape)
+}
+
+export function getFloatingElementHeight(el: FloatingElement): number | undefined {
+  if (isFloatingElementAspectLocked(el)) return getFloatingAspectLockedHeight(el.width)
+  if (el.height != null) return el.height
+  if (el.type === 'floating_image') return getFloatingAspectLockedHeight(el.width)
+  return undefined
+}
 
 // ── Defaults ──
 
@@ -149,6 +170,7 @@ export const DEFAULT_FLOATING_IMAGE: Omit<FloatingImage, 'id' | 'imageUrl'> = {
   x: 50,
   y: 50,
   width: 30,
+  height: getFloatingAspectLockedHeight(30),
   rotation: 0,
   opacity: 1,
   zIndex: 10,
@@ -188,7 +210,7 @@ export const DEFAULT_FLOATING_ICON: Omit<FloatingIcon, 'id' | 'icon'> = {
   x: 50,
   y: 50,
   width: 8,
-  height: 8,
+  height: getFloatingAspectLockedHeight(8),
   rotation: 0,
   opacity: 1,
   zIndex: 10,
@@ -212,19 +234,71 @@ export function getFloatingShapeLabel(shape: FloatingShapeKind): string {
   return SHAPE_LABELS[shape]
 }
 
+export function isFloatingLinearShape(shape: FloatingShapeKind): boolean {
+  return shape === 'line' || shape === 'arrow'
+}
+
+export function getFloatingShapePrimaryColor(shape: FloatingShape): string {
+  return isFloatingLinearShape(shape.shape) ? shape.stroke.color : shape.fill.color
+}
+
+export function buildFloatingShapePrimaryColorUpdate(shape: FloatingShape, color: string): Partial<FloatingShape> {
+  if (isFloatingLinearShape(shape.shape)) {
+    return {
+      stroke: {
+        ...shape.stroke,
+        color,
+        width: shape.stroke.width || 3,
+      },
+    }
+  }
+
+  return {
+    fill: {
+      ...shape.fill,
+      color,
+      type: 'solid',
+    },
+  }
+}
+
+export function buildFloatingShapeKindUpdate(shape: FloatingShape, nextShape: FloatingShapeKind): Partial<FloatingShape> {
+  const nextIsLinear = isFloatingLinearShape(nextShape)
+  const currentVisibleColor = shape.fill.type === 'none'
+    ? shape.stroke.color
+    : shape.fill.color
+
+  return {
+    shape: nextShape,
+    name: getFloatingShapeLabel(nextShape),
+    ...(nextIsLinear
+      ? {
+          fill: { ...shape.fill, type: 'none' as const, color: 'transparent' },
+          stroke: {
+            ...shape.stroke,
+            color: currentVisibleColor,
+            width: shape.stroke.width || 3,
+          },
+        }
+      : {}),
+  }
+}
+
 export function createFloatingShape(
   shape: FloatingShapeKind,
   options: Partial<Omit<FloatingShape, 'type' | 'shape'>> & { id: string },
 ): FloatingShape {
-  const isLinear = shape === 'line' || shape === 'arrow'
+  const isLinear = isFloatingLinearShape(shape)
+  const isAspectLocked = shape === 'circle' || shape === 'star'
+  const width = options.width ?? (isLinear ? 26 : DEFAULT_SHAPE.width)
   return {
     ...DEFAULT_SHAPE,
     ...options,
     type: 'shape',
     shape,
     name: options.name || getFloatingShapeLabel(shape),
-    width: options.width ?? (isLinear ? 26 : DEFAULT_SHAPE.width),
-    height: options.height ?? (isLinear ? 2 : DEFAULT_SHAPE.height),
+    width,
+    height: options.height ?? (isLinear ? 2 : isAspectLocked ? getFloatingAspectLockedHeight(width) : DEFAULT_SHAPE.height),
     fill: options.fill ?? (isLinear
       ? { ...DEFAULT_SHAPE.fill, type: 'none', color: 'transparent' }
       : { ...DEFAULT_SHAPE.fill }),
@@ -259,14 +333,20 @@ export function createFloatingIcon({
 // ── Helpers ──
 
 /** CSS base do container de um floating element */
-export function floatingBaseCSS(el: FloatingElement): React.CSSProperties {
+export function floatingBaseCSS(el: FloatingElement, options: { rotate?: boolean } = {}): React.CSSProperties {
+  const shouldRotate = options.rotate ?? true
+  const height = isFloatingElementAspectLocked(el)
+    ? getFloatingAspectLockedHeight(el.width)
+    : getFloatingElementHeight(el)
   return {
     position: 'absolute',
     left: `${el.x}%`,
     top: `${el.y}%`,
     width: `${el.width}%`,
-    ...(el.height != null ? { height: `${el.height}%` } : {}),
-    transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
+    ...(height != null ? { height: `${height}%` } : {}),
+    transform: shouldRotate
+      ? `translate(-50%, -50%) rotate(${el.rotation}deg)`
+      : 'translate(-50%, -50%)',
     opacity: el.opacity,
     zIndex: el.zIndex,
     cursor: el.locked ? 'default' : 'move',
