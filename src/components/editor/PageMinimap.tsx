@@ -4,36 +4,32 @@ import { Label } from '@/components/ui/label'
 interface PageMinimapProps {
   totalPages: number
   currentPage: number
-  pageBlockCounts?: number[]
   onNavigate: (pageIndex: number) => void
 }
 
-export function PageMinimap({ totalPages, currentPage, pageBlockCounts = [], onNavigate }: PageMinimapProps) {
+export function PageMinimap({ totalPages, currentPage, onNavigate }: PageMinimapProps) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="sticky top-0 z-10 border-b border-border bg-surface/95 px-4 py-3 backdrop-blur">
-        <Label className="text-[10px] uppercase tracking-wider text-text3">
-          {totalPages} {totalPages === 1 ? 'pagina' : 'paginas'}
+      <div className="p-3 space-y-2">
+        <Label className="text-[10px] text-text3 uppercase tracking-wider">
+          {totalPages} {totalPages === 1 ? 'página' : 'páginas'}
         </Label>
-        <div className="mt-1 text-xs font-semibold text-text">
-          Atual: pagina {Math.min(currentPage + 1, Math.max(totalPages, 1))}
-        </div>
-      </div>
 
-      <div className="p-4">
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-2 gap-2">
           {Array.from({ length: totalPages }, (_, i) => (
             <button
               key={i}
               onClick={() => onNavigate(i)}
-              aria-current={currentPage === i ? 'page' : undefined}
-              className={`group relative aspect-[210/297] overflow-hidden rounded-md border-2 bg-white text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+              className={`relative aspect-[210/297] rounded-md border-2 overflow-hidden
+                         transition-all hover:shadow-md bg-white ${
                 currentPage === i
-                  ? 'border-accent shadow-accent/20 shadow-md ring-2 ring-accent/10'
+                  ? 'border-accent shadow-accent/20 shadow-md'
                   : 'border-border hover:border-accent/30'
               }`}
             >
-              <span className={`absolute bottom-1 right-1 z-10 rounded px-1.5 py-0.5 text-[9px] font-bold ${
+              {/* Número da página */}
+              <span className={`absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 
+                               rounded z-10 ${
                 currentPage === i
                   ? 'bg-accent text-white'
                   : 'bg-card/90 text-text3'
@@ -41,16 +37,15 @@ export function PageMinimap({ totalPages, currentPage, pageBlockCounts = [], onN
                 {i + 1}
               </span>
 
-              <span className="absolute bottom-1 left-1 z-10 rounded bg-card/90 px-1.5 py-0.5 text-[8px] font-semibold text-text3">
-                {pageBlockCounts[i] ?? 0} bl.
-              </span>
-
+              {/* Badge capa */}
               {i === 0 && (
-                <span className="absolute left-1 top-1 z-10 rounded bg-roxo/80 px-1.5 py-0.5 text-[7px] font-medium uppercase text-white">
+                <span className="absolute top-1 left-1 text-[7px] bg-roxo/80 text-white 
+                                 px-1.5 py-0.5 rounded font-medium uppercase z-10">
                   Capa
                 </span>
               )}
 
+              {/* Mini preview — escala reduzida do conteúdo real */}
               <PageThumbnail pageIndex={i} />
             </button>
           ))}
@@ -64,6 +59,7 @@ function PageThumbnail({ pageIndex }: { pageIndex: number }) {
   const [html, setHtml] = useState('')
 
   useEffect(() => {
+    // Capturar conteúdo da .a4-page correspondente com debounce
     const timer = setTimeout(() => {
       const pages = document.querySelectorAll('.a4-page')
       const page = pages[pageIndex] as HTMLElement
@@ -73,7 +69,7 @@ function PageThumbnail({ pageIndex }: { pageIndex: number }) {
   }, [pageIndex])
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <div
         style={{
           transform: 'scale(0.13)',
