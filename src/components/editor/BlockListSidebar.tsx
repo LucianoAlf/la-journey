@@ -10,8 +10,8 @@ export const BlockListSidebar = memo(function BlockListSidebar({
   children,
 }: BlockListSidebarProps) {
   return (
-    <div className={`editor-sidebar transition-all duration-300 ease-in-out overflow-hidden ${open ? 'w-[260px] border-r border-border' : 'w-0 border-r-0'}`}>
-      <div className="w-[260px] h-full flex flex-col">
+    <div className={`editor-sidebar transition-all duration-300 ease-in-out overflow-hidden ${open ? 'w-[284px] border-r border-border' : 'w-0 border-r-0'}`}>
+      <div className="w-[284px] h-full flex flex-col">
         {children}
       </div>
     </div>

@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import {
-  TextAlignLeft, TextAlignCenter, TextAlignRight, TextT,
+  TextAlignLeft, TextAlignCenter, TextAlignRight, TextItalic, TextT,
 } from '@phosphor-icons/react'
 import type { FloatingText } from '@/lib/floatingElements'
 import { COVER_FONTS } from '@/components/material/MaterialPreview'
@@ -115,6 +115,13 @@ export function FloatingTextProperties({ element, onUpdate }: FloatingTextProper
           onCheckedChange={(c) => onUpdate({ uppercase: c })}
         />
         <Label className="text-[11px]">Maiúsculas</Label>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Switch checked={(element.fontStyle ?? 'normal') === 'italic'}
+          onCheckedChange={(c) => onUpdate({ fontStyle: c ? 'italic' : 'normal' })}
+        />
+        <Label className="flex items-center gap-1 text-[11px]"><TextItalic size={12} /> ItÃ¡lico</Label>
       </div>
 
       {/* Line height e Letter spacing */}

@@ -1,10 +1,13 @@
 import {
   canDeleteSelectedBlock,
   canEnterInlineEdit,
+  getFloatingElementNudgeStep,
+  getFloatingTextCanvasClickAction,
   getCanvasToolbarActions,
   getCanvasToolbarMode,
   getCanvasToolbarPosition,
   getInlineEditingBlockAfterCanvasBlockClick,
+  shouldNudgeFloatingElementFromKey,
 } from '../editorCanvasInteraction'
 
 function assertEqual(actual: unknown, expected: unknown, message: string) {
@@ -98,6 +101,66 @@ test('clicking another block exits the previous inline editing session', () => {
     }),
     'block-a',
     'clicking the same editing block should not unexpectedly exit editing',
+  )
+})
+
+test('floating text single click selects without entering text editing', () => {
+  assertEqual(
+    getFloatingTextCanvasClickAction({
+      clickCount: 1,
+      isEditing: false,
+      isLocked: false,
+      isSelected: true,
+    }),
+    'select',
+    'single click on an already selected text must keep selection controls available',
+  )
+})
+
+test('floating text double click enters text editing when unlocked', () => {
+  assertEqual(
+    getFloatingTextCanvasClickAction({
+      clickCount: 2,
+      isEditing: false,
+      isLocked: false,
+      isSelected: true,
+    }),
+    'edit',
+    'double click should be the canvas gesture that edits text',
+  )
+
+  assertEqual(
+    getFloatingTextCanvasClickAction({
+      clickCount: 2,
+      isEditing: false,
+      isLocked: true,
+      isSelected: true,
+    }),
+    'select',
+    'locked text should not enter editing from double click',
+  )
+})
+
+test('floating elements keep arrow nudging priority even when Alt is pressed', () => {
+  assertEqual(
+    shouldNudgeFloatingElementFromKey({ key: 'ArrowDown', altKey: true }),
+    true,
+    'Alt+Arrow should still be a valid floating element nudge when a floating element is selected',
+  )
+  assertEqual(
+    getFloatingElementNudgeStep({ key: 'ArrowDown', altKey: true }),
+    1,
+    'Alt+Arrow should move floating elements by a readable small step',
+  )
+  assertEqual(
+    getFloatingElementNudgeStep({ key: 'ArrowDown', altKey: true, shiftKey: true }),
+    5,
+    'Shift+Alt+Arrow should move floating elements faster without jumping a whole block',
+  )
+  assertEqual(
+    shouldNudgeFloatingElementFromKey({ key: 'ArrowDown', altKey: true, ctrlKey: true }),
+    false,
+    'Ctrl/Cmd shortcuts must remain reserved for browser/editor commands',
   )
 })
 

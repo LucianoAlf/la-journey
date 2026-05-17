@@ -11,15 +11,18 @@ import {
   floatingTextCSS,
   floatingImageCSS,
   floatingIconCSS,
+  floatingTextHtmlToPlainText,
+  floatingTextPlainTextToHtml,
+  isFloatingTextContentEmpty,
   shapeFillCSS,
   shapeStrokeCSS,
 } from '@/lib/floatingElements'
-import { RichTextEditor } from '@/components/editor/RichTextEditor'
 import { Icon } from '@iconify/react'
 import { registerIconifyElementIcons } from '@/lib/iconifyElementCatalog'
 import { FloatingSelectionControls } from '@/components/editor/FloatingSelectionControls'
 import type { FloatingResizeHandle } from '@/lib/floatingElementTransform'
-import { resolveCuratedMusicSvgCode } from '@/lib/elementPicker'
+import { resolveCuratedElementSvgCode } from '@/lib/elementPicker'
+import { getFloatingTextCanvasClickAction } from '@/lib/editorCanvasInteraction'
 
 registerIconifyElementIcons()
 
@@ -29,20 +32,92 @@ function FloatingTextContent({
   element,
   isEditing,
   onUpdate,
+  onStopEditing,
 }: {
   element: FloatingText
   isEditing: boolean
   onUpdate: (u: Partial<FloatingText>) => void
+  onStopEditing?: () => void
 }) {
   const style = floatingTextCSS(element)
+  const editableRef = React.useRef<HTMLDivElement>(null)
+  const didPrepareEditableRef = React.useRef(false)
+  const committedContentRef = React.useRef(element.content)
+
+  React.useEffect(() => {
+    committedContentRef.current = element.content
+    if (!isEditing) {
+      didPrepareEditableRef.current = false
+      return
+    }
+    const node = editableRef.current
+    if (!node || didPrepareEditableRef.current) return
+    didPrepareEditableRef.current = true
+    const plainText = floatingTextHtmlToPlainText(element.content)
+    node.innerText = plainText
+    window.requestAnimationFrame(() => {
+      node.focus()
+      const selection = window.getSelection()
+      if (!selection) return
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      if (plainText.trim() !== 'Novo texto') {
+        range.collapse(false)
+      }
+      selection.removeAllRanges()
+      selection.addRange(range)
+    })
+  }, [element.content, isEditing])
+
+  const commitEditableText = React.useCallback(() => {
+    const node = editableRef.current
+    if (!node) return
+    const nextContent = floatingTextPlainTextToHtml(node.innerText)
+    if (nextContent !== committedContentRef.current) {
+      committedContentRef.current = nextContent
+      onUpdate({ content: nextContent })
+    }
+  }, [onUpdate])
 
   if (isEditing) {
     return (
-      <div style={style} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-        <RichTextEditor
-          content={element.content}
-          onChange={(html) => onUpdate({ content: html })}
-          inline
+      <div
+        style={style}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <div
+          ref={editableRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-label={element.name}
+          spellCheck={false}
+          onInput={() => undefined}
+          onBlur={() => {
+            commitEditableText()
+            onStopEditing?.()
+          }}
+          onKeyDown={(event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+              commitEditableText()
+              return
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              commitEditableText()
+              onStopEditing?.()
+            }
+          }}
+          className="min-h-full w-full cursor-text select-text whitespace-pre-wrap break-words outline-none"
+          style={{
+            font: 'inherit',
+            color: 'inherit',
+            textAlign: 'inherit',
+            lineHeight: 'inherit',
+            letterSpacing: 'inherit',
+            textTransform: 'inherit',
+          }}
         />
       </div>
     )
@@ -51,19 +126,20 @@ function FloatingTextContent({
   return (
     <div
       style={style}
-      className="pointer-events-none select-none"
-      dangerouslySetInnerHTML={{ __html: element.content }}
+      className="pointer-events-none select-none [&_*]:m-0 [&_br]:block"
+      dangerouslySetInnerHTML={{ __html: isFloatingTextContentEmpty(element.content) ? '' : element.content }}
     />
   )
 }
 
 function FloatingImageContent({ element }: { element: FloatingImage }) {
   const style = floatingImageCSS(element)
-  const svgCode = resolveCuratedMusicSvgCode({
+  const svgCode = resolveCuratedElementSvgCode({
     label: element.name,
     description: element.name,
-    elementType: 'musica',
+    elementType: null,
     svgCode: element.svgCode,
+    source: element.source,
   })
 
   if (svgCode) {
@@ -220,6 +296,8 @@ interface FloatingElementRendererProps {
   onOpenLayers?: () => void
   onResetRotation?: () => void
   onUpdate: (updates: Partial<FloatingElement>) => void
+  onStopEditing?: () => void
+  onEditText?: () => void
   interactive?: boolean
   isTransforming?: boolean
   isRotating?: boolean
@@ -243,6 +321,8 @@ export function FloatingElementRenderer({
   onOpenLayers,
   onResetRotation,
   onUpdate,
+  onStopEditing,
+  onEditText,
   interactive = true,
   isTransforming = false,
   isRotating = false,
@@ -268,6 +348,18 @@ export function FloatingElementRenderer({
       onClick={(e) => {
         if (!interactive) return
         e.stopPropagation()
+        if (element.type === 'floating_text') {
+          const action = getFloatingTextCanvasClickAction({
+            clickCount: e.detail,
+            isEditing,
+            isLocked: element.locked,
+            isSelected,
+          })
+          if (action === 'edit') {
+            onDoubleClick()
+            return
+          }
+        }
         onSelect()
       }}
       onDoubleClick={(e) => {
@@ -291,6 +383,7 @@ export function FloatingElementRenderer({
             element={element as FloatingText}
             isEditing={isEditing}
             onUpdate={onUpdate as (u: Partial<FloatingText>) => void}
+            onStopEditing={onStopEditing}
           />
         )}
         {element.type === 'floating_image' && (
@@ -303,6 +396,14 @@ export function FloatingElementRenderer({
           <FloatingIconContent element={element as FloatingIcon} />
         )}
       </div>
+      {interactive && isSelected && isEditing && element.type === 'floating_text' && (
+        <div className="pointer-events-none absolute inset-0 z-[2]">
+          <div
+            className="absolute inset-0 rounded-[2px] border-2 border-[#7c3aed]"
+            style={{ transform: `rotate(${element.rotation}deg)` }}
+          />
+        </div>
+      )}
       {interactive && isSelected && !isEditing && (
         <FloatingSelectionControls
           element={element}
@@ -317,6 +418,8 @@ export function FloatingElementRenderer({
           onSendBackward={onSendBackward ?? (() => undefined)}
           onOpenLayers={onOpenLayers ?? (() => undefined)}
           onResetRotation={onResetRotation ?? (() => undefined)}
+          onEditText={onEditText}
+          onUpdateText={onUpdate as (u: Partial<FloatingText>) => void}
         />
       )}
     </div>

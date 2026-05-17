@@ -150,6 +150,12 @@ assert(
   'eleva pagina ativa com bloco deslocado para evitar recorte entre paginas',
 )
 
+const floatingDragPageCss = canvasPageLayerToCSS({ hasShiftedBlock: false, hasSelectedBlock: false, hasFloatingTransform: true })
+assert(
+  floatingDragPageCss.overflow === 'visible' && floatingDragPageCss.zIndex === 60,
+  'eleva pagina de origem durante drag de elemento flutuante para o preview passar sobre paginas vizinhas',
+)
+
 const idlePageCss = canvasPageLayerToCSS({ hasShiftedBlock: false, hasSelectedBlock: false })
 assert(
   Object.keys(idlePageCss).length === 0,

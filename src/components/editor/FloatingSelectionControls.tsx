@@ -5,9 +5,13 @@ import {
   ArrowsClockwise,
   Copy,
   DotsThree,
+  PencilSimpleLine,
   Lock,
   LockOpen,
   Rows,
+  TextAlignCenter,
+  TextAlignLeft,
+  TextAlignRight,
   Trash,
 } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { FloatingElement } from '@/lib/floatingElements'
+import type { FloatingElement, FloatingText } from '@/lib/floatingElements'
 import {
   formatFloatingRotationForDisplay,
   shouldShowFloatingSelectionFrame,
@@ -30,12 +34,14 @@ interface FloatingSelectionControlsProps {
   onBringForward: () => void
   onDelete: () => void
   onDuplicate: () => void
+  onEditText?: () => void
   onOpenLayers: () => void
   onResetRotation: () => void
   onResizeStart: (event: MouseEvent<HTMLButtonElement>, handle: FloatingResizeHandle) => void
   onRotateStart: (event: MouseEvent<HTMLButtonElement>) => void
   onSendBackward: () => void
   onToggleLock: () => void
+  onUpdateText?: (updates: Partial<FloatingText>) => void
   rotationPreview?: number | null
 }
 
@@ -97,15 +103,23 @@ export function FloatingSelectionControls({
   onBringForward,
   onDelete,
   onDuplicate,
+  onEditText,
   onOpenLayers,
   onResetRotation,
   onResizeStart,
   onRotateStart,
   onSendBackward,
   onToggleLock,
+  onUpdateText,
   rotationPreview,
 }: FloatingSelectionControlsProps) {
   const showSelectionFrame = shouldShowFloatingSelectionFrame({ isRotating })
+  const text = element.type === 'floating_text' ? element as FloatingText : null
+  const TextAlignIcon = text?.align === 'center'
+    ? TextAlignCenter
+    : text?.align === 'right'
+      ? TextAlignRight
+      : TextAlignLeft
 
   return (
     <div className="pointer-events-none absolute inset-0 z-[2]">
@@ -143,9 +157,60 @@ export function FloatingSelectionControls({
 
       {showSelectionFrame && (
         <div
-          className="pointer-events-auto absolute left-1/2 top-0 flex -translate-x-1/2 -translate-y-[calc(100%+12px)] items-center gap-1 rounded-full border border-border bg-white px-2 py-1 shadow-lg"
+          className="pointer-events-auto absolute left-1/2 top-0 z-[80] flex min-w-max -translate-x-1/2 -translate-y-[calc(100%+12px)] items-center gap-1 rounded-full border border-border bg-white px-2 py-1 shadow-lg"
           onMouseDown={(event) => event.stopPropagation()}
         >
+          {text && (
+            <>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-accent" title="Editar texto" onClick={stopThen(onEditText ?? (() => undefined))}>
+                <PencilSimpleLine size={14} />
+              </Button>
+              <label
+                className="relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-md hover:bg-bg2"
+                title="Cor do texto"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <span className="h-4 w-4 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(15,23,42,0.22)]" style={{ backgroundColor: text.color }} />
+                <input
+                  type="color"
+                  value={text.color}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  onChange={(event) => onUpdateText?.({ color: event.target.value })}
+                />
+              </label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 w-7 p-0 ${text.fontWeight >= 700 ? 'bg-accent/15 text-accent' : ''}`}
+                title="Negrito"
+                onClick={stopThen(() => onUpdateText?.({ fontWeight: text.fontWeight >= 700 ? 400 : 700 }))}
+              >
+                <span className="text-[13px] font-bold leading-none">B</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 w-7 p-0 ${(text.fontStyle ?? 'normal') === 'italic' ? 'bg-accent/15 text-accent' : ''}`}
+                title="Italico"
+                onClick={stopThen(() => onUpdateText?.({ fontStyle: (text.fontStyle ?? 'normal') === 'italic' ? 'normal' : 'italic' }))}
+              >
+                <span className="font-serif text-[14px] italic leading-none">I</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Alternar alinhamento"
+                onClick={stopThen(() => {
+                  const next = text.align === 'left' ? 'center' : text.align === 'center' ? 'right' : 'left'
+                  onUpdateText?.({ align: next })
+                })}
+              >
+                <TextAlignIcon size={14} />
+              </Button>
+              <div className="mx-0.5 h-5 w-px bg-border" />
+            </>
+          )}
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Resetar rotação" onClick={stopThen(onResetRotation)}>
             <ArrowsClockwise size={14} />
           </Button>
@@ -155,7 +220,7 @@ export function FloatingSelectionControls({
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Duplicar" onMouseDown={(event) => event.stopPropagation()} onClick={stopThen(onDuplicate)}>
             <Copy size={14} />
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-text3 hover:text-vermelho" title="Excluir" onMouseDown={(event) => event.stopPropagation()} onClick={stopThen(onDelete)}>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-text3 hover:text-vermelho" title="Excluir" onMouseDown={stopThen(onDelete)}>
             <Trash size={14} />
           </Button>
           <DropdownMenu>

@@ -25,6 +25,13 @@ export interface NotationPreviewItem {
   width?: number
 }
 
+export type NotationPreviewSource = 'notation_data' | 'legacy_notation'
+
+export interface ResolvedNotationPreviewItem {
+  source: NotationPreviewSource
+  item: NotationPreviewItem
+}
+
 const EMPTY_BEAT_FIELDS = {
   tie: false,
   cifra: null,
@@ -204,4 +211,39 @@ export function legacyNotationToPreviewItems(
       width: notation?.width ?? fallback.width,
     }))
     .filter((item): item is NotationPreviewItem => item !== null)
+}
+
+export function resolveNotationPreviewItem(
+  {
+    notation,
+    notationData,
+    fallback = {},
+  }: {
+    notation?: LegacyNotationData | null
+    notationData?: any
+    fallback?: {
+      clef?: string
+      keySignature?: string
+      timeSignature?: string | null
+      width?: number
+    }
+  },
+): ResolvedNotationPreviewItem | null {
+  const directNotationDataItem = notationDataToPreviewItem(notationData, fallback)
+  if (directNotationDataItem) {
+    return {
+      source: 'notation_data',
+      item: directNotationDataItem,
+    }
+  }
+
+  const legacyItem = legacyNotationToCombinedPreviewItem(notation, fallback)
+  if (legacyItem) {
+    return {
+      source: 'legacy_notation',
+      item: legacyItem,
+    }
+  }
+
+  return null
 }

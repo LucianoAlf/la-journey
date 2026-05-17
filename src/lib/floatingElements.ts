@@ -42,6 +42,7 @@ export interface FloatingText extends FloatingElementBase {
   fontFamily: string
   fontSize: number
   fontWeight: number
+  fontStyle?: 'normal' | 'italic'
   color: string
   align: 'left' | 'center' | 'right'
   lineHeight: number
@@ -62,6 +63,7 @@ export interface FloatingImage extends FloatingElementBase {
   type: 'floating_image'
   imageUrl: string
   svgCode?: string | null
+  source?: string | null
   color?: string
   objectFit: 'contain' | 'cover' | 'fill'
   borderRadius: number
@@ -102,6 +104,8 @@ export interface FloatingIcon extends FloatingElementBase {
 export type FloatingElement = FloatingText | FloatingImage | FloatingShape | FloatingIcon
 
 export const FLOATING_PAGE_ASPECT_RATIO = 210 / 297
+const FLOATING_TEXT_PAGE_WIDTH_PX = 794
+const FLOATING_TEXT_PAGE_HEIGHT_PX = 1123
 
 export function getFloatingAspectLockedHeight(width: number): number {
   return Math.round(width * FLOATING_PAGE_ASPECT_RATIO * 10) / 10
@@ -115,6 +119,7 @@ export function isFloatingElementAspectLocked(el: FloatingElement): boolean {
 
 export function getFloatingElementHeight(el: FloatingElement): number | undefined {
   if (isFloatingElementAspectLocked(el)) return getFloatingAspectLockedHeight(el.width)
+  if (el.type === 'floating_text') return el.height ?? DEFAULT_FLOATING_TEXT.height
   if (el.height != null) return el.height
   if (el.type === 'floating_image') return getFloatingAspectLockedHeight(el.width)
   return undefined
@@ -143,7 +148,8 @@ export const DEFAULT_FLOATING_TEXT: Omit<FloatingText, 'id'> = {
   pageIndex: 0,
   x: 50,
   y: 50,
-  width: 40,
+  width: 21,
+  height: 3.4,
   rotation: 0,
   opacity: 1,
   zIndex: 10,
@@ -152,11 +158,12 @@ export const DEFAULT_FLOATING_TEXT: Omit<FloatingText, 'id'> = {
   name: 'Texto',
   content: '<p>Novo texto</p>',
   fontFamily: 'DM Sans',
-  fontSize: 16,
+  fontSize: 32,
   fontWeight: 400,
+  fontStyle: 'normal',
   color: '#1e293b',
   align: 'left',
-  lineHeight: 1.4,
+  lineHeight: 1.18,
   letterSpacing: 0,
   uppercase: false,
   background: { enabled: false, color: '#ffffff80', padding: 8, borderRadius: 4 },
@@ -357,9 +364,13 @@ export function floatingBaseCSS(el: FloatingElement, options: { rotate?: boolean
 /** CSS para FloatingText */
 export function floatingTextCSS(el: FloatingText): React.CSSProperties {
   return {
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
     fontFamily: `'${el.fontFamily}', sans-serif`,
     fontSize: `${el.fontSize}px`,
     fontWeight: el.fontWeight,
+    fontStyle: el.fontStyle ?? 'normal',
     color: el.color,
     textAlign: el.align,
     lineHeight: el.lineHeight,
@@ -378,6 +389,78 @@ export function floatingTextCSS(el: FloatingText): React.CSSProperties {
       boxShadow: `${el.shadow.offsetX}px ${el.shadow.offsetY}px ${el.shadow.blur}px ${el.shadow.color}`,
     }),
     wordBreak: 'break-word' as const,
+    overflow: 'visible',
+  }
+}
+
+const HTML_ENTITY_MAP: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+}
+
+function decodeFloatingTextEntities(text: string): string {
+  return text.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (entity, code: string) => {
+    const normalized = code.toLowerCase()
+    if (normalized.startsWith('#x')) {
+      return String.fromCodePoint(Number.parseInt(normalized.slice(2), 16))
+    }
+    if (normalized.startsWith('#')) {
+      return String.fromCodePoint(Number.parseInt(normalized.slice(1), 10))
+    }
+    return HTML_ENTITY_MAP[normalized] ?? entity
+  })
+}
+
+function escapeFloatingTextHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+export function floatingTextHtmlToPlainText(html: string): string {
+  return decodeFloatingTextEntities(html)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+export function floatingTextPlainTextToHtml(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  if (lines.every(line => line.trim() === '')) return '<p></p>'
+  return lines
+    .map(line => `<p>${line ? escapeFloatingTextHtml(line) : '<br>'}</p>`)
+    .join('')
+}
+
+export function isFloatingTextContentEmpty(html: string): boolean {
+  return floatingTextHtmlToPlainText(html).trim().length === 0
+}
+
+export function getFloatingTextAutoSize({
+  content,
+  fontSize,
+  lineHeight,
+  letterSpacing,
+}: Pick<FloatingText, 'content' | 'fontSize' | 'lineHeight' | 'letterSpacing'>): { width: number; height: number } {
+  const plain = floatingTextHtmlToPlainText(content) || 'Texto'
+  const lines = plain.split('\n')
+  const longestLineLength = Math.max(...lines.map(line => line.length), 1)
+  const estimatedCharacterWidth = Math.max(4, fontSize * 0.52 + letterSpacing)
+  const widthPx = longestLineLength * estimatedCharacterWidth
+  const heightPx = Math.max(lines.length, 1) * fontSize * lineHeight
+  return {
+    width: Math.round(Math.max(6, Math.min(80, (widthPx / FLOATING_TEXT_PAGE_WIDTH_PX) * 100)) * 10) / 10,
+    height: Math.round(Math.max(2.4, Math.min(60, (heightPx / FLOATING_TEXT_PAGE_HEIGHT_PX) * 100)) * 10) / 10,
   }
 }
 

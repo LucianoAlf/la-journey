@@ -83,6 +83,7 @@ import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
+import { buildBlockSidebarMeta, countSidebarBlocksByPage, getSidebarBlockTitle, type SidebarBlockMeta } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
@@ -124,6 +125,12 @@ import {
   formatFloatingRotationForDisplay,
   type FloatingResizeHandle,
 } from "@/lib/floatingElementTransform";
+import {
+  calculateFloatingElementPageDrag,
+  getVisiblePageIndexFromRects,
+  shouldHydrateFloatingElementsFromPageConfig,
+  shouldPersistFloatingElementsToPageConfig,
+} from "@/lib/floatingElementPagePlacement";
 import { createFloatingImageFromElementAsset, type ElementLibraryAsset } from "@/lib/elementPicker";
 import { isReusableBlockType } from "@/lib/exerciseLibraryOptions";
 import { applyBlockPatch, createBlockPatch, type EditorBlockPatch } from "@/lib/editorBlockHistory";
@@ -145,7 +152,16 @@ import {
   type CanvasNudgeDirection,
 } from "@/lib/canvasBlockLayout";
 import { blockUsesAlphaTab, buildMusicHydrationPlan, shouldMountMusicRenderer } from "@/lib/editorMusicHydrationQueue";
-import { canDeleteSelectedBlock, canEnterInlineEdit, getCanvasToolbarMode, getCanvasToolbarPosition, getInlineEditingBlockAfterCanvasBlockClick, isTextInputTarget } from "@/lib/editorCanvasInteraction";
+import {
+  canDeleteSelectedBlock,
+  canEnterInlineEdit,
+  getCanvasToolbarMode,
+  getCanvasToolbarPosition,
+  getFloatingElementNudgeStep,
+  getInlineEditingBlockAfterCanvasBlockClick,
+  isTextInputTarget,
+  shouldNudgeFloatingElementFromKey,
+} from "@/lib/editorCanvasInteraction";
 import {
   A4_CONTENT_HEIGHT,
   canSplitBlockForPagination,
@@ -731,34 +747,46 @@ function editorBlockToExerciseBlock(block: EditorBlock) {
 // --- Item da sidebar de blocos ---
 
 const BlockListItem = memo(function BlockListItem({
-  block, isSelected, onSelectBlock, onDeleteBlock, onDuplicateBlock,
+  block, isSelected, meta, onSelectBlock, onDeleteBlock, onDuplicateBlock,
 }: {
   block: EditorBlock
   isSelected: boolean
+  meta: SidebarBlockMeta
   onSelectBlock: (id: string) => void
   onDeleteBlock: (id: string) => void
   onDuplicateBlock: (id: string) => void
 }) {
   const cfg = getBlockConfig(block.block_type)
   const Icon = cfg.icon
+  const displayTitle = getSidebarBlockTitle(block, cfg.label)
   const handleSelect = useCallback(() => onSelectBlock(block.id), [block.id, onSelectBlock])
   const handleDuplicate = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     onDuplicateBlock(block.id)
   }, [block.id, onDuplicateBlock])
   const handleDelete = useCallback(() => onDeleteBlock(block.id), [block.id, onDeleteBlock])
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    onSelectBlock(block.id)
+  }, [block.id, onSelectBlock])
 
   return (
     <div
-      className={`block-item ${isSelected ? 'selected' : ''}`}
+      className={`block-item group ${isSelected ? 'selected' : ''}`}
       onClick={handleSelect}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-current={isSelected ? 'true' : undefined}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-start gap-2.5 pr-12">
+        <span className="block-order-badge">{meta.orderLabel}</span>
         <div className="block-type-icon" style={{ background: cfg.bg, color: cfg.color }}>
           <Icon size={16} />
         </div>
-        <div className="min-w-0">
-          <div className="font-bold text-xs truncate">{cfg.label}</div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs font-bold text-text">{displayTitle}</div>
           <div className="text-[11px] text-text3 truncate">{block.title ?? '(sem título)'}</div>
         </div>
       </div>
@@ -3674,26 +3702,51 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [editingFloatingId, setEditingFloatingId] = useState<string | null>(null)
   const [floatingTransformState, setFloatingTransformState] = useState<{
     id: string
-    type: 'resize' | 'rotate'
+    type: 'drag' | 'resize' | 'rotate'
     rotation?: number
   } | null>(null)
   const [showLayersPanel, setShowLayersPanel] = useState(false)
   const [floatingImagePickerOpen, setFloatingImagePickerOpen] = useState(false)
   const [elementsPickerOpen, setElementsPickerOpen] = useState(false)
   const floatingImageInputRef = useRef<HTMLInputElement>(null)
+  const floatingElementsHydratedRef = useRef(false)
 
   // Carregar floating elements do pageConfig
   useEffect(() => {
     if (pageConfig.floating_elements && pageConfig.floating_elements.length > 0) {
       setFloatingElements(pageConfig.floating_elements)
+      floatingElementsHydratedRef.current = true
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps — apenas no mount
 
+  // Hidratar quando o page_config real chega depois do mount.
+  useEffect(() => {
+    const savedFloatingElements = pageConfig.floating_elements ?? []
+    if (shouldHydrateFloatingElementsFromPageConfig({
+      alreadyHydrated: floatingElementsHydratedRef.current,
+      localElementCount: floatingElements.length,
+      pageConfigElementCount: savedFloatingElements.length,
+    })) {
+      setFloatingElements(savedFloatingElements)
+      floatingElementsHydratedRef.current = true
+    }
+  }, [floatingElements.length, pageConfig.floating_elements])
+
   // Persistir floating elements no pageConfig
   useEffect(() => {
-    if (!initialLoadDone.current) return
-    setPageConfig(prev => ({ ...prev, floating_elements: floatingElements }))
-  }, [floatingElements]) // eslint-disable-line react-hooks/exhaustive-deps
+    const savedFloatingElements = pageConfig.floating_elements ?? []
+    if (!shouldPersistFloatingElementsToPageConfig({
+      initialLoadDone: initialLoadDone.current,
+      alreadyHydrated: floatingElementsHydratedRef.current,
+      localElementCount: floatingElements.length,
+      pageConfigElementCount: savedFloatingElements.length,
+    })) return
+
+    setPageConfig(prev => {
+      if (stableSerialize(prev.floating_elements ?? []) === stableSerialize(floatingElements)) return prev
+      return { ...prev, floating_elements: floatingElements }
+    })
+  }, [floatingElements, pageConfig.floating_elements])
 
   const selectedFloating = useMemo(() =>
     floatingElements.find(el => el.id === selectedFloatingId) ?? null
@@ -3716,6 +3769,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const setFloatingElementsWithHistory = useCallback((
     updater: FloatingElement[] | ((prev: FloatingElement[]) => FloatingElement[]),
   ) => {
+    floatingElementsHydratedRef.current = true
     setFloatingElements(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater
       pushFloatingHistoryEntry(prev, next)
@@ -3727,6 +3781,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const entry = floatingUndoStack.current.pop()
     if (!entry) return false
     floatingRedoStack.current.push(entry)
+    floatingElementsHydratedRef.current = true
     setFloatingElements(entry.before)
     setSelectedFloatingId(currentId => (
       currentId && entry.before.some(el => el.id === currentId)
@@ -3743,6 +3798,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const entry = floatingRedoStack.current.pop()
     if (!entry) return false
     floatingUndoStack.current.push(entry)
+    floatingElementsHydratedRef.current = true
     setFloatingElements(entry.after)
     setSelectedFloatingId(currentId => (
       currentId && entry.after.some(el => el.id === currentId)
@@ -3761,19 +3817,13 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   // Qual página está visível no canvas (baseado no scroll)
   const getCurrentVisiblePageIndex = useCallback((): number => {
     const scrollEl = canvasScrollRef.current
-    if (!scrollEl) return 0
-    const pageEls = scrollEl.querySelectorAll('.a4-page')
-    if (!pageEls.length) return 0
-    const scrollTop = scrollEl.scrollTop + scrollEl.clientHeight / 2
-    let closest = 0
-    let minDist = Infinity
-    pageEls.forEach((el, i) => {
-      const rect = (el as HTMLElement).offsetTop
-      const dist = Math.abs(rect - scrollTop)
-      if (dist < minDist) { minDist = dist; closest = i }
-    })
-    return closest
-  }, [])
+    if (!scrollEl) return currentVisiblePage
+    const pageEls = Array.from(scrollEl.querySelectorAll('.a4-page')) as HTMLElement[]
+    if (!pageEls.length) return currentVisiblePage
+    const viewportRect = scrollEl.getBoundingClientRect()
+    const pageRects = pageEls.map(page => page.getBoundingClientRect())
+    return getVisiblePageIndexFromRects(viewportRect, pageRects, currentVisiblePage)
+  }, [currentVisiblePage])
 
   const addFloatingTextElement = useCallback(() => {
     const currentPage = getCurrentVisiblePageIndex()
@@ -3787,6 +3837,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } as FloatingElement
     setFloatingElementsWithHistory(prev => [...prev, newEl])
     setSelectedFloatingId(newEl.id)
+    setEditingFloatingId(null)
     setSelectedBlockId(null) // desselecionar bloco normal
   }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
@@ -3856,6 +3907,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
   const updateFloatingElement = useCallback((id: string, updates: Record<string, unknown>, options: { history?: boolean } = {}) => {
+    floatingElementsHydratedRef.current = true
     const setter = options.history === false ? setFloatingElements : setFloatingElementsWithHistory
     setter(prev => {
       const next: FloatingElement[] = []
@@ -3954,34 +4006,45 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const element = floatingElements.find(el => el.id === elementId)
     if (!element || element.locked) return
 
-    const pageEls = document.querySelectorAll('.a4-page')
-    const pageEl = pageEls[element.pageIndex] as HTMLElement
+    const pageEls = Array.from(canvasScrollRef.current?.querySelectorAll('.a4-page') ?? []) as HTMLElement[]
+    const pageEl = pageEls[element.pageIndex]
     if (!pageEl) return
 
     const rect = pageEl.getBoundingClientRect()
+    const startElementRect = e.currentTarget.getBoundingClientRect()
     const startX = e.clientX
     const startY = e.clientY
     const startElX = element.x
     const startElY = element.y
     const targetEl = e.currentTarget
     let pendingPosition: { x: number; y: number } | null = null
-    let finalPosition = { x: startElX, y: startElY }
+    let finalPosition = { pageIndex: element.pageIndex, x: startElX, y: startElY }
     let animationFrame: number | null = null
 
     const flushPosition = () => {
       animationFrame = null
       if (!pendingPosition) return
-      finalPosition = pendingPosition
-      targetEl.style.left = `${finalPosition.x}%`
-      targetEl.style.top = `${finalPosition.y}%`
+      targetEl.style.left = `${pendingPosition.x}%`
+      targetEl.style.top = `${pendingPosition.y}%`
       pendingPosition = null
     }
 
+    setFloatingTransformState({ id: elementId, type: 'drag' })
+
     const handleMove = (moveEvent: MouseEvent) => {
-      const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100
-      const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100
-      const sx = floatingSnapValue(Math.max(0, Math.min(100, startElX + deltaX)))
-      const sy = floatingSnapValue(Math.max(0, Math.min(100, startElY + deltaY)))
+      const deltaXPercent = ((moveEvent.clientX - startX) / rect.width) * 100
+      const deltaYPercent = ((moveEvent.clientY - startY) / rect.height) * 100
+      const sx = floatingSnapValue(startElX + deltaXPercent)
+      const sy = floatingSnapValue(startElY + deltaYPercent)
+      finalPosition = calculateFloatingElementPageDrag({
+        startPointer: { x: startX, y: startY },
+        currentPointer: { x: moveEvent.clientX, y: moveEvent.clientY },
+        startPageIndex: element.pageIndex,
+        startElementX: startElX,
+        startElementY: startElY,
+        startElementRect,
+        pageRects: pageEls.map(page => page.getBoundingClientRect()),
+      })
       pendingPosition = {
         x: Math.round(sx.snapped * 10) / 10,
         y: Math.round(sy.snapped * 10) / 10,
@@ -3998,6 +4061,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       }
       targetEl.style.willChange = ''
       updateFloatingElement(elementId, finalPosition)
+      setFloatingTransformState(null)
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseup', handleUp)
     }
@@ -6152,6 +6216,12 @@ ${pagesHtml}
       if (isEditingTarget) return
 
       // Delete / Backspace — Remover elemento selecionado da capa
+      if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        addFloatingTextElement()
+        return
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedFloatingId && !editingFloatingId) {
           e.preventDefault()
@@ -6222,14 +6292,11 @@ ${pagesHtml}
       }
       if (inlineEditingBlockId) return
       if (
-        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
-        !e.altKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
+        shouldNudgeFloatingElementFromKey(e) &&
         (selectedFloatingId || selectedTextId || selectedOverlayId)
       ) {
         e.preventDefault()
-        if (nudgeSelectedFloatingElement(e.key, e.shiftKey ? 1.5 : 0.3)) return
+        if (nudgeSelectedFloatingElement(e.key, getFloatingElementNudgeStep(e))) return
         if (nudgeSelectedCoverElement(e.key, e.shiftKey ? 1.5 : 0.3)) return
       }
       if (e.altKey && e.key === '0' && selectedBlockId) {
@@ -6295,7 +6362,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -6919,9 +6986,13 @@ ${pagesHtml}
                 ? pageBlocks.some(block => getPaginationSourceBlockId(block) === selectedBlockId)
                 : false
               const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
+              const pageHasFloatingTransform = floatingTransformState
+                ? floatingElements.some(el => el.id === floatingTransformState.id && el.pageIndex === pageIdx)
+                : false
               const pageLayerStyle = canvasPageLayerToCSS({
                 hasSelectedBlock: pageHasSelectedBlock,
                 hasShiftedBlock: pageHasShiftedBlock,
+                hasFloatingTransform: pageHasFloatingTransform,
               })
 
               return (
@@ -7159,6 +7230,8 @@ ${pagesHtml}
                       onOpenLayers={() => setShowLayersPanel(true)}
                       onResetRotation={() => updateFloatingElement(el.id, { rotation: 0 })}
                       onUpdate={(updates) => updateFloatingElement(el.id, updates)}
+                      onStopEditing={() => setEditingFloatingId(null)}
+                      onEditText={() => setEditingFloatingId(el.id)}
                     />
                   ))}
               </div>

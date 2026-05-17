@@ -1,9 +1,11 @@
 import { supabase } from '@/lib/supabase'
 import {
   buildCuratedMusicSymbolSvg,
+  buildCuratedInstrumentSvg,
   buildSvgElementPrompt,
   convertSvgColorsToCurrentColor,
   extractSvgFromAiText,
+  inferGeneratedElementType,
   mapElementTypeToImageCategory,
   sanitizeSvg,
   type ElementLibraryAsset,
@@ -503,7 +505,7 @@ async function generateSvgCodeWithGemini(prompt: string): Promise<string> {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192,
           thinkingConfig: { thinkingBudget: 0 },
         },
       }),
@@ -648,10 +650,27 @@ export async function generateAndSaveElement(
   request: GenerateElementRequest,
   onProgress?: (status: string) => void,
 ): Promise<ElementLibraryAsset> {
-  const category = mapElementTypeToImageCategory(request.elementType) as ImageCategory
+  const effectiveElementType = inferGeneratedElementType({
+    label: request.label,
+    description: request.prompt,
+    requestedType: request.elementType,
+  })
+  const category = mapElementTypeToImageCategory(effectiveElementType) as ImageCategory
   const tags = request.tags ?? []
+  const curatedSvg = request.format === 'svg'
+    ? buildCuratedMusicSymbolSvg({
+      label: request.label,
+      description: request.prompt,
+      elementType: effectiveElementType,
+    }) ?? buildCuratedInstrumentSvg({
+      label: request.label,
+      description: request.prompt,
+      elementType: effectiveElementType,
+    })
+    : null
+  const shouldGeneratePng = request.format === 'png'
 
-  if (request.format === 'png') {
+  if (shouldGeneratePng) {
     const image = await generateAndSaveImage(
       schoolId,
       {
@@ -664,9 +683,14 @@ export async function generateAndSaveElement(
         height: 512,
         transparentBackground: true,
         isElement: true,
-        elementType: request.elementType,
+        elementType: effectiveElementType,
         source: 'ai-png',
-        metadata: { generated_element_format: 'png' },
+        metadata: {
+          generated_element_format: 'png',
+          requested_element_format: request.format,
+          requested_element_type: request.elementType,
+          effective_element_type: effectiveElementType,
+        },
       },
       onProgress,
     )
@@ -678,7 +702,7 @@ export async function generateAndSaveElement(
       label: image.label,
       category: image.category ?? null,
       image_format: image.image_format ?? null,
-      element_type: image.element_type ?? request.elementType,
+      element_type: image.element_type ?? effectiveElementType,
       tags: image.tags ?? [],
     }
   }
@@ -686,16 +710,10 @@ export async function generateAndSaveElement(
   const svgPrompt = buildSvgElementPrompt({
     label: request.label,
     description: request.prompt,
-    elementType: request.elementType,
+    elementType: effectiveElementType,
   })
 
-  const curatedSvg = buildCuratedMusicSymbolSvg({
-    label: request.label,
-    description: request.prompt,
-    elementType: request.elementType,
-  })
-
-  onProgress?.(curatedSvg ? 'Preparando simbolo musical...' : 'Gerando SVG com Gemini...')
+  onProgress?.(curatedSvg ? 'Preparando SVG curado...' : 'Gerando SVG com Gemini...')
   const svgCode = curatedSvg ?? await generateSvgCodeWithGemini(svgPrompt)
   const source = curatedSvg ? 'curated-svg' : 'ai-svg'
 
@@ -721,9 +739,14 @@ export async function generateAndSaveElement(
       style: 'vector',
       tags,
       is_element: true,
-      element_type: request.elementType,
+      element_type: effectiveElementType,
       source,
-      metadata: { generated_element_format: 'svg', curated: Boolean(curatedSvg) },
+      metadata: {
+        generated_element_format: 'svg',
+        curated: Boolean(curatedSvg),
+        requested_element_type: request.elementType,
+        effective_element_type: effectiveElementType,
+      },
     })
     .select('id, image_url, svg_code, label, category, image_format, element_type, tags')
     .single()

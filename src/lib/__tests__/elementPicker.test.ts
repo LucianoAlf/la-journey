@@ -1,6 +1,7 @@
 import {
   buildSvgElementPrompt,
   buildCuratedMusicSymbolSvg,
+  buildCuratedInstrumentSvg,
   convertSvgColorsToCurrentColor,
   createFloatingImageFromElementAsset,
   extractSvgFromAiText,
@@ -307,6 +308,37 @@ test('maps element type to image library category', () => {
   assertEqual(mapElementTypeToImageCategory('instrumento'), 'instrument', 'instrument elements should be instruments')
   assertEqual(mapElementTypeToImageCategory('forma'), 'diagram', 'shape elements should be diagrams')
   assertEqual(mapElementTypeToImageCategory('decorativo'), 'other', 'decorative elements should be generic image assets')
+})
+
+test('keeps unknown instrument SVG requests as SVG generation work', () => {
+  const saxCuratedSvg = buildCuratedInstrumentSvg({
+    label: 'saxofone',
+    description: 'Cria um elemento monocromatico saxofone',
+    elementType: 'instrumento',
+  })
+
+  assertEqual(saxCuratedSvg, null, 'saxophone is not curated yet')
+
+  const prompt = buildSvgElementPrompt({
+    label: 'saxofone',
+    description: 'Cria um elemento monocromatico saxofone',
+    elementType: 'instrumento',
+  })
+
+  assert(prompt.includes('detailed but clean monochrome SVG illustration'), 'instrument SVG prompt should allow real illustration detail')
+  assert(prompt.includes('curves, paths, groups, defs, clipPath'), 'instrument SVG prompt should allow complex vector construction')
+  assert(!prompt.includes('at most 12 SVG elements'), 'instrument SVG prompt must not use the tiny-icon hard limit')
+})
+
+test('keeps known curated instrument SVG requests as editable SVG', () => {
+  const guitarCuratedSvg = buildCuratedInstrumentSvg({
+    label: 'violao',
+    description: 'violao monocromatico',
+    elementType: 'instrumento',
+  })
+
+  assert(guitarCuratedSvg != null, 'guitar should be curated')
+  assert(guitarCuratedSvg!.includes('<svg'), 'curated instruments should remain editable SVG')
 })
 
 test('rejects invalid SVG text', () => {

@@ -16,6 +16,7 @@ export interface ElementLibraryAsset {
   image_format: string | null
   element_type: string | null
   tags: string[] | null
+  source?: string | null
 }
 
 interface ElementAssetFilters {
@@ -43,6 +44,48 @@ export function mapElementTypeToImageCategory(elementType: GeneratedElementType)
   return 'other'
 }
 
+function textMatchesKeywords(text: string, keywords: string[]): boolean {
+  const normalized = normalize(text)
+  return keywords.some(keyword => normalized.includes(normalize(keyword)))
+}
+
+const INSTRUMENT_QUERY_KEYWORDS = [
+  'violao',
+  'violão',
+  'guitarra',
+  'guitar',
+  'piano',
+  'teclado',
+  'keyboard',
+  'bateria',
+  'tambor',
+  'caixa',
+  'drum',
+  'drums',
+  'snare',
+  'baqueta',
+  'baquetas',
+  'microfone',
+  'microphone',
+  'mic',
+]
+
+export function inferGeneratedElementType({
+  label,
+  description,
+  requestedType,
+}: {
+  label: string
+  description: string
+  requestedType: GeneratedElementType
+}): GeneratedElementType {
+  const query = `${label} ${description}`
+  if (requestedType !== 'instrumento' && textMatchesKeywords(query, INSTRUMENT_QUERY_KEYWORDS)) {
+    return 'instrumento'
+  }
+  return requestedType
+}
+
 export function buildSvgElementPrompt({
   label,
   description,
@@ -52,6 +95,25 @@ export function buildSvgElementPrompt({
   description: string
   elementType: GeneratedElementType
 }): string {
+  if (elementType === 'instrumento') {
+    return [
+      'Create a detailed but clean monochrome SVG illustration of a musical instrument for a music education material element.',
+      'Return a real vector drawing, not an abstract placeholder, not a simple circle, not a generic icon unless the requested instrument is naturally simple.',
+      'The instrument must be recognizable from the label and description, with accurate silhouette and important details.',
+      'Use transparent background. Do not draw a white rectangle or any solid background.',
+      'Use currentColor for visible fills and strokes whenever possible so the editor can recolor the illustration.',
+      'You may use curves, paths, groups, defs, clipPath, circles, ellipses, rectangles, lines, polylines, and polygons.',
+      'Keep the SVG self-contained: no external fonts, raster images, external links, scripts, animations, or foreignObject.',
+      'Use an appropriate viewBox and preserveAspectRatio="xMidYMid meet".',
+      'Prefer a centered full-instrument view with comfortable padding and complete visible geometry.',
+      'Target a production-ready educational asset, similar to a clean vector icon library or a high-quality Gemini-generated SVG.',
+      `Element type: ${elementType}.`,
+      `Label: ${label.trim()}.`,
+      `Description: ${description.trim()}.`,
+      'Return only the <svg>...</svg> markup.',
+    ].join('\n')
+  }
+
   return [
     'Create a very small inline SVG icon for a music education material element.',
     'Do not include markdown, code fences, comments, explanations, raster images, external links, external fonts, scripts, animations, or foreignObject.',
@@ -293,9 +355,8 @@ export function buildCuratedMusicSymbolSvg({
 }): string | null {
   if (elementType !== 'musica') return null
 
-  const query = normalize(`${label} ${description}`)
   const symbol = CURATED_MUSIC_SYMBOLS.find(item =>
-    item.keywords.some(keyword => query.includes(normalize(keyword))),
+    textMatchesKeywords(`${label} ${description}`, item.keywords),
   )
 
   if (!symbol) return null
@@ -312,6 +373,94 @@ export function buildCuratedMusicSymbolSvg({
     `<text x="50" y="${symbol.y}" font-family="${BRAVURA_FONT_STACK}" font-size="${symbol.fontSize}" fill="currentColor" text-anchor="middle" dominant-baseline="middle">${symbol.glyph}</text>`,
     '</svg>',
   ].join('')
+}
+
+interface CuratedInstrumentSvgDefinition {
+  keywords: string[]
+  body: string
+}
+
+const CURATED_INSTRUMENT_SVGS: CuratedInstrumentSvgDefinition[] = [
+  {
+    keywords: ['violao', 'violão', 'guitarra', 'guitar', 'acoustic guitar', 'electric guitar'],
+    body: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m11.9 12.1l4.514-4.514M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 17.828 7h1.344a2 2 0 0 0 1.414-.586L21.7 5.3a1 1 0 0 0 0-1.4zM6 16l2 2m.23-8.15A3 3 0 0 1 11 8a5 5 0 0 1 5 5a3 3 0 0 1-1.85 2.77l-.92.38A2 2 0 0 0 12 18a4 4 0 0 1-4 4a6 6 0 0 1-6-6a4 4 0 0 1 4-4a2 2 0 0 0 1.85-1.23z"/>',
+  },
+  {
+    keywords: ['piano', 'teclado', 'keyboard', 'teclas'],
+    body: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.5 8c-1.4 0-2.6-.8-3.2-2A6.87 6.87 0 0 0 2 9v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8.5C22 9.6 20.4 8 18.5 8M2 14h20M6 14v4m4-4v4m4-4v4m4-4v4"/>',
+  },
+  {
+    keywords: ['bateria', 'tambor', 'caixa', 'drum', 'drums', 'snare'],
+    body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="m2 2l8 8m12-8l-8 8"/><ellipse cx="12" cy="9" rx="10" ry="5"/><path d="M7 13.4v7.9m5-7.3v8m5-8.6v7.9M2 9v8a10 5 0 0 0 20 0V9"/></g>',
+  },
+  {
+    keywords: ['baqueta', 'baquetas', 'drumstick', 'drumsticks'],
+    body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M15.4 15.63a7.875 6 135 1 1 6.23-6.23a4.5 3.43 135 0 0-6.23 6.23"/><path d="m8.29 12.71l-2.6 2.6a2.5 2.5 0 1 0-1.65 4.65A2.5 2.5 0 1 0 8.7 18.3l2.59-2.59"/></g>',
+  },
+  {
+    keywords: ['microfone', 'microphone', 'mic', 'voz', 'vocal'],
+    body: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 19v3m7-12v2a7 7 0 0 1-14 0v-2"/><rect width="6" height="13" x="9" y="2" rx="3"/></g>',
+  },
+]
+
+export function buildCuratedInstrumentSvg({
+  label,
+  description,
+  elementType,
+}: {
+  label: string
+  description: string
+  elementType: GeneratedElementType
+}): string | null {
+  if (elementType !== 'instrumento') return null
+
+  const instrument = CURATED_INSTRUMENT_SVGS.find(item =>
+    textMatchesKeywords(`${label} ${description}`, item.keywords),
+  )
+
+  if (!instrument) return null
+
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">',
+    instrument.body,
+    '</svg>',
+  ].join('')
+}
+
+export function resolveCuratedElementSvgCode({
+  label,
+  description = '',
+  elementType,
+  svgCode,
+  source,
+}: {
+  label: string
+  description?: string
+  elementType?: string | null
+  svgCode?: string | null
+  source?: string | null
+}): string | null {
+  if (!svgCode) return null
+  const inferredType = inferGeneratedElementType({
+    label,
+    description,
+    requestedType: elementType === 'instrumento' ? 'instrumento' : elementType === 'forma' ? 'forma' : elementType === 'decorativo' ? 'decorativo' : 'musica',
+  })
+  const shouldOverrideGeneratedInstrument =
+    inferredType === 'instrumento' &&
+    (source === 'ai-svg' || source === 'curated-svg' || /^gemini(?:-|_)?svg$/i.test(label.trim()))
+  if (!shouldOverrideGeneratedInstrument) {
+    return resolveCuratedMusicSvgCode({ label, description, elementType, svgCode })
+  }
+
+  const curatedInstrument = buildCuratedInstrumentSvg({
+    label,
+    description,
+    elementType: inferredType,
+  })
+  if (curatedInstrument) return curatedInstrument
+
+  return resolveCuratedMusicSvgCode({ label, description, elementType, svgCode })
 }
 
 export function resolveCuratedMusicSvgCode({
@@ -449,6 +598,16 @@ export function getElementPickerVisibleAssets(
   return filterElementAssets([...curated, ...uploadedAssets], filters)
 }
 
+export function getElementAssetDisplaySvg(asset: ElementLibraryAsset): string | null {
+  return resolveCuratedElementSvgCode({
+    label: asset.label,
+    description: (asset.tags ?? []).join(' '),
+    elementType: asset.element_type,
+    svgCode: asset.svg_code,
+    source: asset.source,
+  })
+}
+
 export function createFloatingImageFromElementAsset(
   asset: ElementLibraryAsset,
   options: CreateFloatingImageOptions,
@@ -464,12 +623,8 @@ export function createFloatingImageFromElementAsset(
     ...DEFAULT_FLOATING_IMAGE,
     id: options.id,
     imageUrl: asset.image_url,
-    svgCode: resolveCuratedMusicSvgCode({
-      label: asset.label,
-      description: (asset.tags ?? []).join(' '),
-      elementType: asset.element_type,
-      svgCode: asset.svg_code,
-    }),
+    svgCode: getElementAssetDisplaySvg(asset),
+    source: asset.source ?? null,
     color: asset.svg_code ? '#111827' : undefined,
     pageIndex: options.pageIndex,
     x: 50,

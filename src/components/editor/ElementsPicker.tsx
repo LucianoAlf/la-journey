@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Icon } from '@iconify/react'
 import {
   Image as ImageIcon,
   MagnifyingGlass,
@@ -33,8 +34,10 @@ import {
 import { deleteImage, generateAndSaveElement } from '@/services/imageGenerationService'
 import { supabase } from '@/lib/supabase'
 import { FloatingElementLibraryPanel } from '@/components/editor/FloatingElementLibraryPanel'
+import { ICONIFY_ELEMENT_OPTIONS } from '@/lib/iconifyElementCatalog'
 import {
   convertSvgColorsToCurrentColor,
+  getElementAssetDisplaySvg,
   getElementPickerVisibleAssets,
   sanitizeSvg,
   type ElementLibraryAsset,
@@ -46,19 +49,32 @@ import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 24
 
-const ELEMENT_FILTERS: Array<{ value: ElementTypeFilter; label: string }> = [
-  { value: 'todos', label: 'Todos' },
-  { value: 'musica', label: 'Musica' },
-  { value: 'instrumento', label: 'Instrumentos' },
-  { value: 'forma', label: 'Formas' },
-  { value: 'decorativo', label: 'Decorativo' },
-]
-
 const GENERATOR_TYPES: Array<{ value: GeneratedElementType; label: string }> = [
   { value: 'musica', label: 'Musica' },
   { value: 'instrumento', label: 'Instrumento' },
   { value: 'forma', label: 'Forma' },
   { value: 'decorativo', label: 'Decorativo' },
+]
+
+type ElementsDrawerTab = 'add' | ElementTypeFilter | 'iconify'
+
+const DRAWER_TABS: Array<{ value: ElementsDrawerTab; label: string }> = [
+  { value: 'add', label: 'Criar' },
+  { value: 'todos', label: 'Todos' },
+  { value: 'musica', label: 'Musica' },
+  { value: 'instrumento', label: 'Instrumentos' },
+  { value: 'forma', label: 'Formas' },
+  { value: 'iconify', label: 'Icones' },
+  { value: 'decorativo', label: 'Decorativo' },
+]
+
+const SHAPE_OPTIONS: Array<{ shape: FloatingShapeKind; label: string }> = [
+  { shape: 'rectangle', label: 'Retangulo' },
+  { shape: 'circle', label: 'Circulo' },
+  { shape: 'line', label: 'Linha' },
+  { shape: 'arrow', label: 'Seta' },
+  { shape: 'star', label: 'Estrela' },
+  { shape: 'callout', label: 'Callout' },
 ]
 
 interface ElementsPickerProps {
@@ -95,6 +111,7 @@ export function ElementsPicker({
 }: ElementsPickerProps) {
   const [assets, setAssets] = useState<ElementLibraryAsset[]>([])
   const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState<ElementsDrawerTab>('add')
   const [elementType, setElementType] = useState<ElementTypeFilter>('todos')
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -157,6 +174,11 @@ export function ElementsPicker({
     void loadElements('reset')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, elementType])
+
+  useEffect(() => {
+    if (activeTab === 'add' || activeTab === 'iconify') return
+    setElementType(activeTab)
+  }, [activeTab])
 
   const visibleAssets = useMemo(
     () => getElementPickerVisibleAssets(assets, { search, elementType }),
@@ -289,6 +311,7 @@ export function ElementsPicker({
       setAssets(prev => [asset, ...prev.filter(item => item.id !== asset.id)])
       setSearch('')
       setElementType('todos')
+      setActiveTab('todos')
       setGeneratorOpen(false)
       setGenerateLabel('')
       setGeneratePrompt('')
@@ -343,17 +366,6 @@ export function ElementsPicker({
         </SheetHeader>
 
         <div className="space-y-3 border-b border-border px-4 py-3">
-          <FloatingElementLibraryPanel
-            title="Adicionar direto na pagina"
-            layersLabel="Camadas"
-            onAddText={onAddText}
-            onOpenImagePicker={onOpenImagePicker}
-            onAddShape={onAddShape}
-            onAddIcon={onAddIcon}
-            onToggleLayers={onToggleLayers}
-            layersPanel={layersPanel}
-          />
-
           <div className="relative">
             <MagnifyingGlass size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text3" />
             <Input
@@ -364,17 +376,17 @@ export function ElementsPicker({
             />
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
-            {ELEMENT_FILTERS.map(filter => (
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {DRAWER_TABS.map(tab => (
               <Button
-                key={filter.value}
+                key={tab.value}
                 type="button"
-                variant={elementType === filter.value ? 'default' : 'outline'}
+                variant={activeTab === tab.value ? 'default' : 'outline'}
                 size="sm"
-                className="h-7 px-2 text-[10px]"
-                onClick={() => setElementType(filter.value)}
+                className="h-7 shrink-0 px-2 text-[10px]"
+                onClick={() => setActiveTab(tab.value)}
               >
-                {filter.label}
+                {tab.label}
               </Button>
             ))}
           </div>
@@ -495,7 +507,75 @@ export function ElementsPicker({
         </div>
 
         <ScrollArea className="flex-1 px-4 py-4" onScroll={handleScroll}>
-          {loading ? (
+          {activeTab === 'add' ? (
+            <FloatingElementLibraryPanel
+              title="Criar elemento na pagina"
+              layersLabel="Camadas"
+              onAddText={onAddText}
+              onOpenImagePicker={onOpenImagePicker}
+              onAddShape={onAddShape}
+              onAddIcon={onAddIcon}
+              onToggleLayers={onToggleLayers}
+              layersPanel={layersPanel}
+            />
+          ) : activeTab === 'forma' ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {SHAPE_OPTIONS.map(item => (
+                  <Button
+                    key={item.shape}
+                    variant="outline"
+                    className="h-16 flex-col gap-1 text-[11px]"
+                    onClick={() => onAddShape(item.shape)}
+                  >
+                    <Shapes size={18} />
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+              {visibleAssets.length > 0 && (
+                <div className="border-t border-border pt-3">
+                  <div className="mb-2 text-[10px] uppercase tracking-wider text-text3">Formas salvas</div>
+                  <div className="grid grid-cols-4 gap-2 pb-4">
+                    {visibleAssets.map(asset => {
+                      const canInsert = Boolean(asset.image_url)
+                      const displaySvg = getElementAssetDisplaySvg(asset)
+                      return (
+                        <button
+                          key={asset.id}
+                          type="button"
+                          className={cn('min-h-[112px] rounded-md border border-border bg-card text-left transition hover:border-accent hover:shadow-sm', !canInsert && 'cursor-not-allowed opacity-50')}
+                          onClick={() => canInsert ? onSelectElement(asset) : toast.info('SVG inline entra na proxima passada. Use assets com image_url agora.')}
+                        >
+                          <div className="flex h-20 items-center justify-center rounded-t-md border-b border-border bg-bg2 p-1.5">
+                            {displaySvg ? <div className="flex h-full w-full items-center justify-center [&>svg]:max-h-full [&>svg]:max-w-full" dangerouslySetInnerHTML={{ __html: displaySvg }} /> : asset.image_url ? <img src={asset.image_url} alt={asset.label} className="h-full w-full object-contain" loading="lazy" /> : <ImageIcon size={18} className="text-text3" />}
+                          </div>
+                          <div className="truncate px-1.5 py-1.5 text-[9px] font-semibold text-text">{asset.label}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'iconify' ? (
+            <div className="grid grid-cols-4 gap-2 pb-4">
+              {ICONIFY_ELEMENT_OPTIONS
+                .filter(option => !search.trim() || `${option.label} ${option.collection}`.toLowerCase().includes(search.trim().toLowerCase()))
+                .map(option => (
+                  <Button
+                    key={option.icon}
+                    type="button"
+                    variant="outline"
+                    className="h-20 flex-col gap-2 text-[10px]"
+                    onClick={() => onAddIcon(option.icon, option.label)}
+                  >
+                    <Icon icon={option.icon} className="h-6 w-6" aria-hidden="true" />
+                    <span className="max-w-full truncate">{option.label}</span>
+                  </Button>
+                ))}
+            </div>
+          ) : loading ? (
             <div className="flex items-center justify-center gap-2 py-14 text-[12px] text-text3">
               <SpinnerGap size={18} className="animate-spin" />
               Carregando elementos...
@@ -521,6 +601,7 @@ export function ElementsPicker({
               {visibleAssets.map(asset => {
                 const canInsert = Boolean(asset.image_url)
                 const isCurated = asset.id.startsWith('curated-music-')
+                const displaySvg = getElementAssetDisplaySvg(asset)
                 return (
                   <div
                     key={asset.id}
@@ -547,10 +628,10 @@ export function ElementsPicker({
                           backgroundSize: '10px 10px',
                         } : undefined}
                       >
-                        {asset.svg_code ? (
+                        {displaySvg ? (
                           <div
                             className="flex h-full w-full items-center justify-center [&>svg]:max-h-full [&>svg]:max-w-full"
-                            dangerouslySetInnerHTML={{ __html: asset.svg_code }}
+                            dangerouslySetInnerHTML={{ __html: displaySvg }}
                           />
                         ) : asset.image_url ? (
                           <img

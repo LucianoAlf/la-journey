@@ -1340,26 +1340,27 @@ function BlockCover({ block, editable, onPositionChange, onCoverRenderDataChange
                 }}
                 onClick={e => e.stopPropagation()}
               >
-                <button type="button" title="Editar texto" onClick={() => onTextEditStart?.(text.id)}>
+                <button type="button" title="Editar texto" aria-label="Editar texto" onClick={() => onTextEditStart?.(text.id)}>
                   <PencilSimple size={20} weight="bold" />
                 </button>
-                <button type="button" title="Duplicar" onClick={() => onTextDuplicate?.(text.id)}>
+                <button type="button" title="Duplicar" aria-label="Duplicar" onClick={() => onTextDuplicate?.(text.id)}>
                   <Copy size={20} weight="bold" />
                 </button>
-                <button type="button" title="Excluir" onClick={() => onTextDelete?.(text.id)}>
+                <button type="button" title="Excluir" aria-label="Excluir" onClick={() => onTextDelete?.(text.id)}>
                   <Trash size={20} weight="bold" />
                 </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      title="Menu de acoes"
-                      onMouseDown={event => {
-                        event.stopPropagation()
-                      }}
-                    >
-                      <DotsThree size={22} weight="bold" />
-                    </button>
+                  <button
+                    type="button"
+                    title="Menu de acoes"
+                    aria-label="Menu de acoes"
+                    onMouseDown={event => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    <DotsThree size={22} weight="bold" />
+                  </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="center"

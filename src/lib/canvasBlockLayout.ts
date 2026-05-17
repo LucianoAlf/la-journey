@@ -22,6 +22,7 @@ export type CanvasLayoutNudgeResult<TBlock extends LayoutEditableBlock> = {
 export type CanvasPageLayerState = {
   hasShiftedBlock: boolean
   hasSelectedBlock: boolean
+  hasFloatingTransform?: boolean
 }
 
 export type CanvasNudgeKeyLike = {
@@ -305,11 +306,11 @@ export function hasCanvasBlockLayoutOffset(renderData: Record<string, unknown> |
 }
 
 export function canvasPageLayerToCSS(state: CanvasPageLayerState): CSSProperties {
-  if (!state.hasShiftedBlock && !state.hasSelectedBlock) return {}
+  if (!state.hasShiftedBlock && !state.hasSelectedBlock && !state.hasFloatingTransform) return {}
 
   return {
     overflow: 'visible',
-    zIndex: state.hasSelectedBlock ? 30 : 10,
+    zIndex: state.hasFloatingTransform ? 60 : state.hasSelectedBlock ? 30 : 10,
   }
 }
 

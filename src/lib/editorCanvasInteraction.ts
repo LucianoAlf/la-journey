@@ -42,6 +42,44 @@ export function canDeleteSelectedBlock({
   return Boolean(selectedBlockId && !inlineEditingBlockId && !isTextInputTarget)
 }
 
+export type FloatingTextCanvasClickAction = 'select' | 'edit'
+
+export type FloatingElementNudgeKeyLike = {
+  key: string
+  altKey?: boolean
+  shiftKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+}
+
+export function getFloatingTextCanvasClickAction({
+  clickCount,
+  isEditing,
+  isLocked,
+  isSelected,
+}: {
+  clickCount: number
+  isEditing: boolean
+  isLocked: boolean
+  isSelected: boolean
+}): FloatingTextCanvasClickAction {
+  if (clickCount >= 2 && isSelected && !isEditing && !isLocked) return 'edit'
+  return 'select'
+}
+
+export function shouldNudgeFloatingElementFromKey(event: FloatingElementNudgeKeyLike): boolean {
+  return ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key) &&
+    !event.ctrlKey &&
+    !event.metaKey
+}
+
+export function getFloatingElementNudgeStep(event: FloatingElementNudgeKeyLike): number {
+  if (event.altKey && event.shiftKey) return 5
+  if (event.altKey) return 1
+  if (event.shiftKey) return 1.5
+  return 0.3
+}
+
 export function getInlineEditingBlockAfterCanvasBlockClick({
   inlineEditingBlockId,
   clickedBlockId,
