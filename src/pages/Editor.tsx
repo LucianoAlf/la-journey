@@ -787,14 +787,18 @@ const BlockListItem = memo(function BlockListItem({
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-bold text-text">{displayTitle}</div>
-          <div className="text-[11px] text-text3 truncate">{block.title ?? '(sem título)'}</div>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-text3">
+            <span className="truncate">{cfg.label}</span>
+            <span className="h-1 w-1 rounded-full bg-border" />
+            <span className="shrink-0">{meta.pageLabel}</span>
+          </div>
         </div>
       </div>
       <div className="block-actions">
         {block.is_edited && (
-          <span className="text-[9px] text-dourado font-bold mr-1">editado</span>
+          <span className="mr-1 rounded bg-dourado-soft px-1.5 py-0.5 text-[9px] font-bold text-dourado">editado</span>
         )}
-        <button onClick={handleDuplicate} title="Duplicar bloco" className="hover:text-accent transition-colors">
+        <button onClick={handleDuplicate} title="Duplicar bloco" className="block-action-duplicate hover:text-accent transition-colors">
           <Copy size={12} />
         </button>
         <AlertDialog>
@@ -807,7 +811,7 @@ const BlockListItem = memo(function BlockListItem({
             <AlertDialogHeader>
               <AlertDialogTitle>Remover bloco?</AlertDialogTitle>
               <AlertDialogDescription>
-                O bloco "{block.title ?? cfg.label}" será removido permanentemente.
+                O bloco "{displayTitle}" sera removido permanentemente.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -2043,6 +2047,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     })
     return byId
   }, [canvasPages])
+
+  const blockSidebarMeta = useMemo(
+    () => buildBlockSidebarMeta(blocks, pageIndexByBlockId),
+    [blocks, pageIndexByBlockId],
+  )
+  const pageBlockCounts = useMemo(
+    () => countSidebarBlocksByPage(blocks, pageIndexByBlockId),
+    [blocks, pageIndexByBlockId],
+  )
 
   const [showPaginationDebug, setShowPaginationDebug] = useState(false)
   const paginationDebugPages = useMemo<PaginationDebugPage[]>(() => {
@@ -6709,22 +6722,39 @@ ${pagesHtml}
         {/* Coluna 1 — Sidebar Esquerda: Lista de Blocos */}
         <BlockListSidebar open={leftSidebarOpen}>
           <Tabs defaultValue="blocks" className="flex flex-col h-full">
-            <TabsList className="grid grid-cols-2 mx-3 mt-2 h-8 shrink-0">
-              <TabsTrigger value="blocks" className="text-[10px] gap-1">Blocos</TabsTrigger>
-              <TabsTrigger value="pages" className="text-[10px] gap-1"><MapTrifold size={12} /> Páginas</TabsTrigger>
+            <div className="border-b border-border bg-surface px-4 pb-3 pt-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text3">Estrutura</div>
+                  <div className="mt-1 truncate text-sm font-bold text-text">{blocks.length} blocos</div>
+                </div>
+                <div className="rounded-md border border-border bg-bg2 px-2 py-1 text-right">
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-text3">Atual</div>
+                  <div className="text-[11px] font-bold text-text">
+                    Pag. {currentVisiblePage + 1}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <TabsList className="mx-3 mt-3 grid h-8 shrink-0 grid-cols-2">
+              <TabsTrigger value="blocks" className="gap-1 text-[10px]">Blocos</TabsTrigger>
+              <TabsTrigger value="pages" className="gap-1 text-[10px]"><MapTrifold size={12} /> Paginas</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="blocks" className="flex-1 overflow-y-auto p-4 pt-2 mt-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
+            <TabsContent value="blocks" className="mt-0 flex-1 overflow-y-auto p-4 pt-3">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="prop-label" style={{ marginBottom: 0 }}>Lista do material</div>
+            <span className="rounded bg-bg2 px-2 py-1 text-[10px] font-semibold text-text3">{pages.length} pag.</span>
           </div>
 
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-2">
             {blocks.map(block => (
               <BlockListItem
                 key={block.id}
                 block={block}
                 isSelected={block.id === selectedBlockId}
+                meta={blockSidebarMeta[block.id]}
                 onSelectBlock={selectBlock}
                 onDeleteBlock={handleDeleteBlock}
                 onDuplicateBlock={handleDuplicateBlock}
@@ -6817,6 +6847,7 @@ ${pagesHtml}
               <PageMinimap
                 totalPages={pages.length}
                 currentPage={currentVisiblePage}
+                pageBlockCounts={pageBlockCounts}
                 onNavigate={scrollToPage}
               />
             </TabsContent>
