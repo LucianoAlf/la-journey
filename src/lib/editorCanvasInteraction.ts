@@ -63,7 +63,7 @@ export function getFloatingTextCanvasClickAction({
   isLocked: boolean
   isSelected: boolean
 }): FloatingTextCanvasClickAction {
-  if (clickCount >= 2 && isSelected && !isEditing && !isLocked) return 'edit'
+  if (isSelected && !isEditing && !isLocked) return 'edit'
   return 'select'
 }
 

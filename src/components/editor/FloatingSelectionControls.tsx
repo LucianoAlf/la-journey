@@ -1,7 +1,8 @@
-import type { MouseEvent } from 'react'
+import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import {
   ArrowFatDown,
   ArrowFatUp,
+  ArrowsOutSimple,
   ArrowsClockwise,
   Copy,
   DotsThree,
@@ -36,9 +37,10 @@ interface FloatingSelectionControlsProps {
   onDuplicate: () => void
   onEditText?: () => void
   onOpenLayers: () => void
+  onMoveStart?: (event: MouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>) => void
   onResetRotation: () => void
-  onResizeStart: (event: MouseEvent<HTMLButtonElement>, handle: FloatingResizeHandle) => void
-  onRotateStart: (event: MouseEvent<HTMLButtonElement>) => void
+  onResizeStart: (event: MouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>, handle: FloatingResizeHandle) => void
+  onRotateStart: (event: MouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>) => void
   onSendBackward: () => void
   onToggleLock: () => void
   onUpdateText?: (updates: Partial<FloatingText>) => void
@@ -58,6 +60,20 @@ const HANDLE_POSITIONS: Array<{
   { handle: 's', className: 'left-1/2 -bottom-1 -translate-x-1/2', kind: 'side-y' },
   { handle: 'sw', className: '-bottom-1.5 -left-1.5', kind: 'corner' },
   { handle: 'w', className: '-left-1 top-1/2 -translate-y-1/2', kind: 'side-x' },
+]
+
+const BORDER_MOVE_ZONES: Array<{
+  key: string
+  style: CSSProperties
+}> = [
+  { key: 'top-left', style: { top: -6, left: 14, width: 'max(8px, calc(50% - 38px))', height: 12 } },
+  { key: 'top-right', style: { top: -6, right: 14, width: 'max(8px, calc(50% - 38px))', height: 12 } },
+  { key: 'right-top', style: { top: 14, right: -6, width: 12, height: 'max(8px, calc(50% - 38px))' } },
+  { key: 'right-bottom', style: { bottom: 14, right: -6, width: 12, height: 'max(8px, calc(50% - 38px))' } },
+  { key: 'bottom-left', style: { bottom: -6, left: 14, width: 'max(8px, calc(50% - 38px))', height: 12 } },
+  { key: 'bottom-right', style: { bottom: -6, right: 14, width: 'max(8px, calc(50% - 38px))', height: 12 } },
+  { key: 'left-top', style: { top: 14, left: -6, width: 12, height: 'max(8px, calc(50% - 38px))' } },
+  { key: 'left-bottom', style: { bottom: 14, left: -6, width: 12, height: 'max(8px, calc(50% - 38px))' } },
 ]
 
 const HANDLE_LOCAL_ANGLE: Record<FloatingResizeHandle, number> = {
@@ -97,6 +113,11 @@ function stopThen(action: () => void) {
   }
 }
 
+function stopToolbarPointer(event: { preventDefault: () => void; stopPropagation: () => void }) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
 export function FloatingSelectionControls({
   element,
   isRotating = false,
@@ -105,6 +126,7 @@ export function FloatingSelectionControls({
   onDuplicate,
   onEditText,
   onOpenLayers,
+  onMoveStart,
   onResetRotation,
   onResizeStart,
   onRotateStart,
@@ -127,17 +149,31 @@ export function FloatingSelectionControls({
         <div
           className="absolute inset-0"
           style={{ transform: `rotate(${element.rotation}deg)` }}
+          onClick={(event) => event.stopPropagation()}
         >
           <div className="absolute inset-0 rounded-[2px] border-2 border-[#7c3aed]" />
+
+          {!element.locked && onMoveStart && BORDER_MOVE_ZONES.map(({ key, style }) => (
+            <button
+              key={`move-${key}`}
+              type="button"
+              aria-label={`Mover pela borda ${key}`}
+              className="pointer-events-auto absolute z-10 bg-transparent"
+              style={{ ...style, cursor: 'move' }}
+              onPointerDown={onMoveStart}
+              onClick={(event) => event.stopPropagation()}
+            />
+          ))}
 
           {!element.locked && HANDLE_POSITIONS.map(({ handle, className, kind }) => (
             <button
               key={handle}
               type="button"
               aria-label={`Redimensionar ${handle}`}
-              className={`pointer-events-auto absolute transition-transform hover:scale-110 ${getHandleClass(kind)} ${className}`}
+              className={`pointer-events-auto absolute z-20 transition-transform hover:scale-110 ${getHandleClass(kind)} ${className}`}
               style={{ cursor: getResizeCursor(handle, element.rotation) }}
-              onMouseDown={(event) => onResizeStart(event, handle)}
+              onPointerDown={(event) => onResizeStart(event, handle)}
+              onClick={(event) => event.stopPropagation()}
             />
           ))}
 
@@ -147,7 +183,8 @@ export function FloatingSelectionControls({
               aria-label="Rotacionar elemento"
               className="pointer-events-auto absolute left-1/2 top-full mt-8 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-white shadow-lg"
               style={{ transform: `translateX(-50%) rotate(${-element.rotation}deg)` }}
-              onMouseDown={onRotateStart}
+              onPointerDown={onRotateStart}
+              onClick={(event) => event.stopPropagation()}
             >
               <ArrowsClockwise size={15} />
             </button>
@@ -159,12 +196,25 @@ export function FloatingSelectionControls({
         <div
           className="pointer-events-auto absolute left-1/2 top-0 z-[80] flex min-w-max -translate-x-1/2 -translate-y-[calc(100%+12px)] items-center gap-1 rounded-full border border-border bg-white px-2 py-1 shadow-lg"
           onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
         >
           {text && (
             <>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-accent" title="Editar texto" onClick={stopThen(onEditText ?? (() => undefined))}>
                 <PencilSimpleLine size={14} />
               </Button>
+              {onMoveStart && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 cursor-move p-0 text-text2"
+                  title="Mover"
+                  onPointerDown={onMoveStart}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <ArrowsOutSimple size={14} />
+                </Button>
+              )}
               <label
                 className="relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-md hover:bg-bg2"
                 title="Cor do texto"
@@ -220,7 +270,17 @@ export function FloatingSelectionControls({
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Duplicar" onMouseDown={(event) => event.stopPropagation()} onClick={stopThen(onDuplicate)}>
             <Copy size={14} />
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-text3 hover:text-vermelho" title="Excluir" onMouseDown={stopThen(onDelete)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-text3 hover:text-vermelho"
+            title="Excluir"
+            onPointerDown={(event) => {
+              stopToolbarPointer(event)
+              onDelete()
+            }}
+            onClick={stopToolbarPointer}
+          >
             <Trash size={14} />
           </Button>
           <DropdownMenu>

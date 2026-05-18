@@ -104,7 +104,7 @@ test('clicking another block exits the previous inline editing session', () => {
   )
 })
 
-test('floating text single click selects without entering text editing', () => {
+test('floating text single click edits when it is already selected', () => {
   assertEqual(
     getFloatingTextCanvasClickAction({
       clickCount: 1,
@@ -112,12 +112,12 @@ test('floating text single click selects without entering text editing', () => {
       isLocked: false,
       isSelected: true,
     }),
-    'select',
-    'single click on an already selected text must keep selection controls available',
+    'edit',
+    'single click on an already selected text should place the caret back into the text',
   )
 })
 
-test('floating text double click enters text editing when unlocked', () => {
+test('floating text click enters text editing when unlocked', () => {
   assertEqual(
     getFloatingTextCanvasClickAction({
       clickCount: 2,

@@ -1,6 +1,9 @@
 import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type ReactNode, type WheelEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS as DndCSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft, FloppyDisk, TextAa, Article,
@@ -13,10 +16,10 @@ import {
   BookOpen, Rows, GridFour, Sparkle, SpeakerHigh, VideoCamera, DownloadSimple,
   PlusCircle, SlidersHorizontal, Drop, ArrowsClockwise, ArrowFatUp, TextT, ArrowFatDown,
   BookmarkSimple, Copy, ArrowUUpRight, ArrowUDownRight,
-  CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
+  CaretDown, CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple,
   MagicWand, Translate, Brain, Lightning,
   Ruler, Layout, ClockCounterClockwise, MapTrifold, QrCode,
-  Shapes,
+  Shapes, DotsSixVertical,
 } from "@phosphor-icons/react";
 import QRCodeLib from "qrcode";
 import { Button } from "@/components/ui/button";
@@ -38,15 +41,16 @@ import { useSchool } from "@/hooks/useSchool";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   updateMaterialBlockRpc, addMaterialBlock,
-  deleteMaterialBlock, updateMaterial,
+  deleteMaterialBlock, reorderMaterialBlocks, updateMaterial,
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { TitleTemplateRenderer } from "@/components/material/TitleTemplateRenderer";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
 import { SaveAsReusableDialog, type SaveAsReusablePayload } from "@/components/content/SaveAsReusableDialog";
-import { ExerciseLibraryBrowser } from "@/components/content/ExerciseLibraryBrowser";
+import { ContentBrowser } from "@/components/content/ContentBrowser";
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
+import { ChordLibraryPicker } from "@/components/music/ChordLibraryPicker";
 import type { ChordPositions } from "@/components/music/ChordDiagram";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
 import { TablatureEditor, INSTRUMENTS as TAB_INSTRUMENTS, gridToAlphaTex, type TablatureData, type TabInstrument } from "@/components/music/TablatureEditor";
@@ -83,6 +87,7 @@ import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
+import { buildSidebarPageGroups, buildSidebarPagePreviewItems, reorderSidebarBlocks } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
 import { VersionHistoryDialog } from "@/components/editor/VersionHistoryDialog";
@@ -94,7 +99,11 @@ import {
   listSchoolCoverTemplates,
   type SchoolCoverTemplate,
 } from "@/services/coverTemplateService";
-import { createExercise, getExerciseById, type ExerciseLibraryItem } from "@/services/exerciseLibraryService";
+import { createExercise } from "@/services/exerciseLibraryService";
+import { type PreparedMaterialBlock } from "@/lib/contentBrowserAdapters";
+import { appendLibraryChordToDiagramAsGridBlock, applyLibraryChordToDiagramBlock, applyLibraryChordToGridBlock } from "@/lib/editorChordSelection";
+import { resolveInsertionAnchorOrder, resolvePageInsertionAnchorOrder } from "@/lib/editorInsertion";
+import type { Chord } from "@/services/contentBrowserService";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HeaderFooterBar } from "@/components/editor/HeaderFooterBar";
 import { HeaderFooterEditor } from "@/components/editor/HeaderFooterEditor";
@@ -276,6 +285,27 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType
   video:           { label: 'Vídeo',   icon: VideoCamera,  bg: 'var(--accent-soft)',  color: 'var(--accent)' },
 }
 
+const ADD_BLOCK_MENU_TYPES = [
+  'text',
+  'tip',
+  'exercise',
+  'title',
+  'image',
+  'audio',
+  'video',
+  'qr_code',
+  'cover',
+  'columns',
+  'notation',
+  'chord_diagram',
+  'chord_grid',
+  'keyboard',
+  'keyboard_grid',
+  'tablature',
+  'separator',
+  'page_break',
+]
+
 function getBlockConfig(type: string) {
   return BLOCK_TYPE_CONFIG[type] ?? { label: type, icon: Article, bg: 'var(--azul-soft)', color: 'var(--azul-claro)' }
 }
@@ -405,6 +435,41 @@ function ensureSelectOption(options: { value: string; label: string }[], current
   const value = currentValue ?? ''
   if (!value || options.some(option => option.value === value)) return options
   return [...options, { value, label: value }]
+}
+
+function inferGridChordPosition(chord: any) {
+  if (typeof chord?.position === 'number' && chord.position > 0) return chord.position
+
+  const fingerFrets = Array.isArray(chord?.fingers)
+    ? chord.fingers
+      .map((finger: any) => Array.isArray(finger) ? finger[1] : null)
+      .filter((fret: unknown): fret is number => typeof fret === 'number' && fret > 0)
+    : []
+  const barreFrets = Array.isArray(chord?.barres)
+    ? chord.barres
+      .map((barre: any) => barre?.fret)
+      .filter((fret: unknown): fret is number => typeof fret === 'number' && fret > 0)
+    : []
+  const frets = [...fingerFrets, ...barreFrets]
+
+  if (frets.length === 0) return 1
+  return Math.max(...frets) > 5 ? Math.min(...frets) : 1
+}
+
+function getGridChordMetaLabel(chord: any) {
+  const parts: string[] = []
+  const cagedShape = chord?.caged_shape ?? chord?.cagedShape
+  const position = inferGridChordPosition(chord)
+
+  if (cagedShape) parts.push(`CAGED ${cagedShape}`)
+  if (position > 1) parts.push(`${position}ª casa`)
+
+  return parts.join(' · ')
+}
+
+function getAutoChordGridColumns(currentColumns: unknown, chordCount: number) {
+  const safeCurrentColumns = typeof currentColumns === 'number' && currentColumns > 0 ? currentColumns : 3
+  return Math.min(5, Math.max(safeCurrentColumns, Math.min(chordCount, 5)))
 }
 
 function resolveCoverVisualDirection(renderData: Record<string, unknown> | null | undefined) {
@@ -745,14 +810,22 @@ function editorBlockToExerciseBlock(block: EditorBlock) {
 
 // --- Item da sidebar de blocos ---
 
+type SidebarBlockDragHandleProps = React.HTMLAttributes<HTMLButtonElement> & {
+  role?: string
+  tabIndex?: number
+  'aria-describedby'?: string
+}
+
 const BlockListItem = memo(function BlockListItem({
-  block, isSelected, onSelectBlock, onDeleteBlock, onDuplicateBlock,
+  block, isSelected, onSelectBlock, onDeleteBlock, onDuplicateBlock, dragHandleProps, isDragging = false,
 }: {
   block: EditorBlock
   isSelected: boolean
   onSelectBlock: (id: string) => void
   onDeleteBlock: (id: string) => void
   onDuplicateBlock: (id: string) => void
+  dragHandleProps?: SidebarBlockDragHandleProps
+  isDragging?: boolean
 }) {
   const cfg = getBlockConfig(block.block_type)
   const Icon = cfg.icon
@@ -765,10 +838,25 @@ const BlockListItem = memo(function BlockListItem({
 
   return (
     <div
-      className={`block-item ${isSelected ? 'selected' : ''}`}
+      className={cn('block-item', isSelected && 'selected', isDragging && 'opacity-60 shadow-lg')}
       onClick={handleSelect}
     >
       <div className="flex items-center gap-2">
+        {dragHandleProps && (
+          <button
+            type="button"
+            {...dragHandleProps}
+            className={cn(
+              'flex h-6 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-text3 transition-colors hover:bg-card hover:text-text active:cursor-grabbing',
+              dragHandleProps.className,
+            )}
+            onClick={(e) => e.stopPropagation()}
+            title="Arrastar bloco"
+            aria-label={`Arrastar bloco ${block.title ?? cfg.label}`}
+          >
+            <DotsSixVertical size={14} weight="bold" />
+          </button>
+        )}
         <div className="block-type-icon" style={{ background: cfg.bg, color: cfg.color }}>
           <Icon size={16} />
         </div>
@@ -809,6 +897,42 @@ const BlockListItem = memo(function BlockListItem({
     </div>
   )
 })
+
+function SortableBlockListItem({
+  block,
+  isSelected,
+  onSelectBlock,
+  onDeleteBlock,
+  onDuplicateBlock,
+}: {
+  block: EditorBlock
+  isSelected: boolean
+  onSelectBlock: (id: string) => void
+  onDeleteBlock: (id: string) => void
+  onDuplicateBlock: (id: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
+  const style: React.CSSProperties = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+  }
+  const dragHandleProps = { ...attributes, ...listeners } as SidebarBlockDragHandleProps
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn(isDragging && 'relative')}>
+      <BlockListItem
+        block={block}
+        isSelected={isSelected}
+        onSelectBlock={onSelectBlock}
+        onDeleteBlock={onDeleteBlock}
+        onDuplicateBlock={onDuplicateBlock}
+        dragHandleProps={dragHandleProps}
+        isDragging={isDragging}
+      />
+    </div>
+  )
+}
 
 function useEditorAutosave({
   blocksRef,
@@ -1077,6 +1201,7 @@ interface CanvasMaterialPreviewProps {
   onLegacyCoverTextActivate?: () => void
   onLegacyNotationStavePointerDown: (blockId: string, staveIndex: number) => void
   onChordGridItemClick: (blockId: string, chord: any, index: number) => void
+  onChordGridItemRemove: (blockId: string, chord: any, index: number) => void
   onKeyboardGridItemClick: (blockId: string, keyboard: any, index: number) => void
   onCoverPositionChange: (blockId: string, field: string, pos: { x: number; y: number }) => void
   onCoverRenderDataChange: (blockId: string, patch: Record<string, any>) => void
@@ -1109,6 +1234,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   onLegacyCoverTextActivate,
   onLegacyNotationStavePointerDown,
   onChordGridItemClick,
+  onChordGridItemRemove,
   onKeyboardGridItemClick,
   onCoverPositionChange,
   onCoverRenderDataChange,
@@ -1208,6 +1334,10 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     (_previewBlock: MaterialBlock, chord: any, index: number) => onChordGridItemClick(block.id, chord, index),
     [block.id, onChordGridItemClick],
   )
+  const handleChordGridItemRemove = useCallback(
+    (_previewBlock: MaterialBlock, chord: any, index: number) => onChordGridItemRemove(block.id, chord, index),
+    [block.id, onChordGridItemRemove],
+  )
   const handleKeyboardGridItemClick = useCallback(
     (_previewBlock: MaterialBlock, keyboard: any, index: number) => onKeyboardGridItemClick(block.id, keyboard, index),
     [block.id, onKeyboardGridItemClick],
@@ -1232,6 +1362,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       onLegacyNotationStavePointerDown={handleLegacyNotationStavePointerDown}
       onMusicStableRender={handleMusicStableRender}
       onChordGridItemClick={handleChordGridItemClick}
+      onChordGridItemRemove={handleChordGridItemRemove}
       onKeyboardGridItemClick={handleKeyboardGridItemClick}
       coverEditable={block.block_type === 'cover'}
       onCoverPositionChange={block.block_type === 'cover' ? handleCoverPositionChange : undefined}
@@ -1299,6 +1430,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     return (
       prev.onLegacyNotationStavePointerDown === next.onLegacyNotationStavePointerDown &&
       prev.onChordGridItemClick === next.onChordGridItemClick &&
+      prev.onChordGridItemRemove === next.onChordGridItemRemove &&
       prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
       prev.onCoverPositionChange === next.onCoverPositionChange &&
       prev.onCoverTitleChange === next.onCoverTitleChange &&
@@ -1328,6 +1460,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
     prev.onLegacyCoverTextActivate === next.onLegacyCoverTextActivate &&
     prev.onLegacyNotationStavePointerDown === next.onLegacyNotationStavePointerDown &&
     prev.onChordGridItemClick === next.onChordGridItemClick &&
+    prev.onChordGridItemRemove === next.onChordGridItemRemove &&
     prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
     prev.onCoverPositionChange === next.onCoverPositionChange &&
     prev.onCoverTitleChange === next.onCoverTitleChange &&
@@ -1823,6 +1956,9 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [editingTitle, setEditingTitle] = useState(false)
   const canvasRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const sidebarBlocksScrollRef = useRef<HTMLDivElement | null>(null)
+  const sidebarPageGroupRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const insertionAnchorOrderOverrideRef = useRef<number | null>(null)
   const musicRendererSnapshotCacheRef = useRef<Map<string, MusicSnapshotCacheEntry>>(new Map())
   const selectedBlockIdRef = useRef<string | null>(null)
   selectedBlockIdRef.current = selectedBlockId
@@ -1844,6 +1980,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => {
     try { const s = localStorage.getItem('editor-sidebar-state'); return s ? JSON.parse(s).left !== false : true } catch { return true }
   })
+  const [leftSidebarTab, setLeftSidebarTab] = useState('blocks')
   const [rightSidebarOpen, setRightSidebarOpen] = useState(() => {
     try { const s = localStorage.getItem('editor-sidebar-state'); return s ? JSON.parse(s).right !== false : true } catch { return true }
   })
@@ -1860,13 +1997,19 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const notationPreviewStaveRef = useRef<{ blockId: string; staveIndex: number } | null>(null)
   const [saveReusableOpen, setSaveReusableOpen] = useState(false)
   const [saveReusableLoading, setSaveReusableLoading] = useState(false)
-  const [exerciseBrowserOpen, setExerciseBrowserOpen] = useState(false)
-  const [insertingExerciseId, setInsertingExerciseId] = useState<string | null>(null)
+  const [contentBrowserOpen, setContentBrowserOpen] = useState(false)
+  const [insertingContentId, setInsertingContentId] = useState<string | null>(null)
   const [chordEditorOpen, setChordEditorOpen] = useState(false)
   const [chordEditorBlockId, setChordEditorBlockId] = useState<string | null>(null)
   const [chordEditorState, setChordEditorState] = useState<ChordEditorState>(createEmptyState())
   const [chordEditorName, setChordEditorName] = useState('')
   const [chordEditorStartFret, setChordEditorStartFret] = useState(1)
+  const [chordLibraryPickerOpen, setChordLibraryPickerOpen] = useState(false)
+  const [chordLibraryPickerTarget, setChordLibraryPickerTarget] = useState<{
+    mode: 'diagram' | 'grid'
+    blockId: string
+    index?: number | null
+  } | null>(null)
   const [tablatureEditorOpen, setTablatureEditorOpen] = useState(false)
   const [tablatureEditorBlockId, setTablatureEditorBlockId] = useState<string | null>(null)
 
@@ -2031,6 +2174,36 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return byId
   }, [canvasPages])
 
+  const sidebarPageGroups = useMemo(
+    () => buildSidebarPageGroups(canvasPages, { getSourceBlockId: getPaginationSourceBlockId }),
+    [canvasPages],
+  )
+
+  const { sidebarSortableBlockIds, sidebarFirstSortableKeyByBlockId } = useMemo(() => {
+    const ids: string[] = []
+    const firstKeyById = new Map<string, string>()
+
+    for (const group of sidebarPageGroups) {
+      for (const block of group.blocks) {
+        const sourceBlockId = getPaginationSourceBlockId(block)
+        if (firstKeyById.has(sourceBlockId)) continue
+
+        ids.push(sourceBlockId)
+        firstKeyById.set(sourceBlockId, `${group.pageIndex}-${sourceBlockId}`)
+      }
+    }
+
+    return {
+      sidebarSortableBlockIds: ids,
+      sidebarFirstSortableKeyByBlockId: firstKeyById,
+    }
+  }, [sidebarPageGroups])
+
+  const sidebarPagePreviewItems = useMemo(
+    () => buildSidebarPagePreviewItems(sidebarPageGroups),
+    [sidebarPageGroups],
+  )
+
   const [showPaginationDebug, setShowPaginationDebug] = useState(false)
   const paginationDebugPages = useMemo<PaginationDebugPage[]>(() => {
     const blockIndexById = new Map(blocks.map((block, index) => [block.id, index]))
@@ -2164,6 +2337,71 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
   const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
   const selectedPageIndex = selectedBlockId ? pageIndexByBlockId[selectedBlockId] : undefined
+  const [expandedSidebarPageIndexes, setExpandedSidebarPageIndexes] = useState<Set<number>>(() => new Set([0]))
+  const lastAutoExpandedSidebarPageRef = useRef<number | null>(0)
+  const pendingSidebarPageSyncRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const pendingPageIndex = pendingSidebarPageSyncRef.current
+    const autoPageIndex = typeof pendingPageIndex === 'number' ? pendingPageIndex : currentVisiblePage
+    if (pendingPageIndex === currentVisiblePage) {
+      pendingSidebarPageSyncRef.current = null
+    }
+    const previousAutoPageIndex = lastAutoExpandedSidebarPageRef.current
+    lastAutoExpandedSidebarPageRef.current = autoPageIndex
+
+    setExpandedSidebarPageIndexes(prev => {
+      const next = new Set(prev)
+      let changed = false
+      const add = (pageIndex: number | undefined) => {
+        if (typeof pageIndex !== 'number' || Number.isNaN(pageIndex)) return
+        if (next.has(pageIndex)) return
+        next.add(pageIndex)
+        changed = true
+      }
+
+      if (
+        typeof previousAutoPageIndex === 'number' &&
+        previousAutoPageIndex !== autoPageIndex &&
+        previousAutoPageIndex !== selectedPageIndex &&
+        next.delete(previousAutoPageIndex)
+      ) {
+        changed = true
+      }
+
+      add(autoPageIndex)
+      add(selectedPageIndex)
+
+      return changed ? next : prev
+    })
+  }, [currentVisiblePage, selectedPageIndex])
+
+  const setSidebarPageExpanded = useCallback((pageIndex: number, open: boolean) => {
+    setExpandedSidebarPageIndexes(prev => {
+      const next = new Set(prev)
+      if (open) next.add(pageIndex)
+      else next.delete(pageIndex)
+      return next
+    })
+  }, [])
+
+  const sidebarSyncPageIndex = pendingSidebarPageSyncRef.current ?? currentVisiblePage
+
+  useLayoutEffect(() => {
+    if (!leftSidebarOpen || leftSidebarTab !== 'blocks') return
+    const container = sidebarBlocksScrollRef.current
+    const pageGroup = sidebarPageGroupRefs.current[sidebarSyncPageIndex]
+    if (!container || !pageGroup) return
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!isElementComfortablyVisibleInContainer(pageGroup, container)) {
+        pageGroup.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [expandedSidebarPageIndexes, leftSidebarOpen, leftSidebarTab, sidebarSyncPageIndex])
+
   const activePageIndexes = useMemo(() => {
     if (forceAllPagesActive) {
       return new Set(canvasPages.map((_, idx) => idx))
@@ -2396,6 +2634,24 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (el && !isAlreadyVisible) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [activePageIndexes, pageIndexByBlockId])
 
+  const navigateToSidebarPage = useCallback((pageIndex: number) => {
+    const group = sidebarPageGroups[pageIndex]
+    const firstBlock = group?.blocks[0]
+    pendingSidebarPageSyncRef.current = pageIndex
+
+    if (firstBlock) {
+      setSelectedBlockId(getPaginationSourceBlockId(firstBlock))
+    } else {
+      setSelectedBlockId(null)
+    }
+    setSelectedFloatingId(null)
+    setEditingFloatingId(null)
+    setCurrentVisiblePage(pageIndex)
+    const page = pageRefs.current[pageIndex]
+      ?? canvasScrollRef.current?.querySelector<HTMLElement>(`.a4-page[data-page-index="${pageIndex}"]`)
+    page?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [sidebarPageGroups])
+
   const handleCanvasClick = useCallback(() => {
     setSelectedBlockId(null)
     setSelectedFloatingId(null)
@@ -2420,14 +2676,89 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     setZoom(z => Math.max(0.5, Math.min(1.5, +(z + (e.deltaY > 0 ? -0.05 : 0.05)).toFixed(2))))
   }, [])
 
+  const getSidebarPageSourceBlockIds = useCallback((pageIndex: number) => {
+    const group = sidebarPageGroups[pageIndex]
+    if (!group) return []
+    return group.blocks.map(block => getPaginationSourceBlockId(block))
+  }, [sidebarPageGroups])
+
+  const getPreviousSidebarPageSourceBlockIds = useCallback((pageIndex: number) => (
+    sidebarPageGroups
+      .slice(0, Math.max(0, pageIndex))
+      .flatMap(group => group.blocks.map(block => getPaginationSourceBlockId(block)))
+  ), [sidebarPageGroups])
+
+  const resolveEditorInsertionAnchorOrder = useCallback(() => {
+    const safePageIndex = Math.max(0, Math.min(currentVisiblePage, Math.max(sidebarPageGroups.length - 1, 0)))
+
+    return resolveInsertionAnchorOrder({
+      blocks: blocksRef.current,
+      selectedBlockId,
+      pageBlockIds: getSidebarPageSourceBlockIds(safePageIndex),
+      previousPageBlockIds: getPreviousSidebarPageSourceBlockIds(safePageIndex),
+    })
+  }, [blocksRef, currentVisiblePage, getPreviousSidebarPageSourceBlockIds, getSidebarPageSourceBlockIds, selectedBlockId, sidebarPageGroups.length])
+
+  const resolveEditorPageInsertionAnchorOrder = useCallback((pageIndex: number) => {
+    const safePageIndex = Math.max(0, Math.min(pageIndex, Math.max(sidebarPageGroups.length - 1, 0)))
+
+    return resolvePageInsertionAnchorOrder({
+      blocks: blocksRef.current,
+      pageBlockIds: getSidebarPageSourceBlockIds(safePageIndex),
+      previousPageBlockIds: getPreviousSidebarPageSourceBlockIds(safePageIndex),
+    })
+  }, [blocksRef, getPreviousSidebarPageSourceBlockIds, getSidebarPageSourceBlockIds, sidebarPageGroups.length])
+
+  const clearInsertionAnchorOverride = useCallback(() => {
+    insertionAnchorOrderOverrideRef.current = null
+  }, [])
+
+  const setInsertionAnchorOverrideForPage = useCallback((pageIndex: number) => {
+    insertionAnchorOrderOverrideRef.current = resolveEditorPageInsertionAnchorOrder(pageIndex)
+  }, [resolveEditorPageInsertionAnchorOrder])
+
+  const resolveInsertActionAnchorOrder = useCallback((anchorOrderOverride?: number) => {
+    if (typeof anchorOrderOverride === 'number') return anchorOrderOverride
+    if (typeof insertionAnchorOrderOverrideRef.current === 'number') return insertionAnchorOrderOverrideRef.current
+    return resolveEditorInsertionAnchorOrder()
+  }, [resolveEditorInsertionAnchorOrder])
+
+  const insertPreparedBlocks = useCallback(async (preparedBlocks: PreparedMaterialBlock[], anchorOrderOverride?: number) => {
+    if (preparedBlocks.length === 0) return []
+
+    const anchorOrder = resolveInsertActionAnchorOrder(anchorOrderOverride)
+    const insertedBlocks: EditorBlock[] = []
+
+    for (const preparedBlock of [...preparedBlocks].reverse()) {
+      const insertedId = await addMaterialBlock({
+        materialId,
+        blockType: preparedBlock.blockType,
+        title: preparedBlock.title,
+        content: preparedBlock.content,
+        renderData: preparedBlock.renderData,
+        afterOrder: anchorOrder,
+      })
+
+      insertedBlocks.unshift({
+        id: insertedId,
+        block_type: preparedBlock.blockType,
+        title: preparedBlock.title,
+        content: preparedBlock.content,
+        render_data: preparedBlock.renderData,
+        sort_order: anchorOrder + 1,
+        is_edited: false,
+        original_content: null,
+      })
+    }
+
+    setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, insertedBlocks, anchorOrder))
+    setSelectedBlockId(insertedBlocks[0]?.id ?? null)
+    return insertedBlocks
+  }, [materialId, resolveInsertActionAnchorOrder, setBlocksWithHistory, setSelectedBlockId])
+
   // Adicionar bloco
-  const handleAddBlock = useCallback(async (blockType: string) => {
-    const currentBlocks = blocksRef.current
-    const selectedBlockCurrent = selectedBlockId
-      ? currentBlocks.find((block) => block.id === selectedBlockId) ?? null
-      : null
-    const lastOrder = currentBlocks.length > 0 ? Math.max(...currentBlocks.map(b => b.sort_order)) : 0
-    const anchorOrder = selectedBlockCurrent?.sort_order ?? lastOrder
+  const handleAddBlock = useCallback(async (blockType: string, anchorOrderOverride?: number) => {
+    const anchorOrder = resolveInsertActionAnchorOrder(anchorOrderOverride)
     const { title: defaultTitle, content: defaultContent, renderData: defaultRenderData } = getDefaultBlockPayload(blockType, materialTitle)
     try {
       const insertedId = await addMaterialBlock({
@@ -2468,7 +2799,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       setSelectedBlockId(tempId)
       toast.info('Bloco adicionado localmente (salvar no banco pendente)')
     }
-  }, [blocksRef, materialId, materialTitle, selectedBlockId, setBlocksWithHistory, setSelectedBlockId])
+  }, [materialId, materialTitle, resolveInsertActionAnchorOrder, setBlocksWithHistory, setSelectedBlockId])
 
   const handleOpenSaveReusable = useCallback(() => {
     if (!selectedBlock) {
@@ -2527,67 +2858,24 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     }
   }, [school?.id, selectedBlock])
 
-  const handleInsertExerciseFromLibrary = useCallback(async (exercise: ExerciseLibraryItem) => {
-    setInsertingExerciseId(exercise.id)
+  const handleInsertContentFromBrowser = useCallback(async (preparedBlocks: PreparedMaterialBlock[], item: { id: string; title: string }) => {
+    setInsertingContentId(item.id)
     try {
-      const fullExercise = await getExerciseById(exercise.id) ?? exercise
-      const exerciseBlocks = Array.isArray(fullExercise.blocks) ? fullExercise.blocks : []
-
-      if (exerciseBlocks.length === 0) {
-        toast.error('Esse item da biblioteca nao possui blocos para inserir')
+      if (preparedBlocks.length === 0) {
+        toast.error('Esse item nao possui blocos para inserir')
         return
       }
 
-      pushSnapshot(blocksRef.current)
-
-      const selectedBlockCurrent = selectedBlockId
-        ? blocksRef.current.find((block) => block.id === selectedBlockId) ?? null
-        : null
-      const lastOrder = blocksRef.current.length > 0
-        ? Math.max(...blocksRef.current.map((block) => block.sort_order))
-        : 0
-      const anchorOrder = selectedBlockCurrent?.sort_order ?? lastOrder
-
-      const insertedBlocks: EditorBlock[] = []
-      for (const libraryBlock of [...exerciseBlocks].reverse()) {
-        const blockType = String(libraryBlock?.block_type ?? 'text')
-        const title = typeof libraryBlock?.title === 'string' && libraryBlock.title.trim()
-          ? libraryBlock.title
-          : null
-        const content = libraryBlock?.content ? cloneJsonValue(libraryBlock.content) : null
-        const renderData = libraryBlock?.render_data ? cloneJsonValue(libraryBlock.render_data) : null
-        const insertedId = await addMaterialBlock({
-          materialId,
-          blockType,
-          title,
-          content,
-          renderData,
-          afterOrder: anchorOrder,
-        })
-        insertedBlocks.unshift({
-          id: insertedId,
-          block_type: blockType,
-          title,
-          content,
-          render_data: renderData,
-          sort_order: anchorOrder + 1,
-          is_edited: false,
-          original_content: null,
-        })
-      }
-
-      if (insertedBlocks.length > 0) {
-        setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, insertedBlocks, anchorOrder))
-        setSelectedBlockId(insertedBlocks[0].id)
-      }
-      setExerciseBrowserOpen(false)
-      toast.success(`${exerciseBlocks.length} bloco(s) inserido(s)!`)
+      const insertedBlocks = await insertPreparedBlocks(preparedBlocks)
+      setContentBrowserOpen(false)
+      toast.success(`${insertedBlocks.length} bloco(s) inserido(s): ${item.title}`)
     } catch (e: any) {
-      toast.error('Erro ao inserir da biblioteca: ' + (e?.message ?? ''))
+      toast.error('Erro ao inserir conteúdo: ' + (e?.message ?? ''))
     } finally {
-      setInsertingExerciseId(null)
+      setInsertingContentId(null)
+      clearInsertionAnchorOverride()
     }
-  }, [materialId, selectedBlockId, pushSnapshot, setBlocksWithHistory, setSelectedBlockId])
+  }, [clearInsertionAnchorOverride, insertPreparedBlocks])
 
   // Deletar bloco
   const handleDeleteBlock = useCallback(async (blockId: string) => {
@@ -2691,6 +2979,34 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       refetch()
     })
   }, [commitBlocksHistory, refetch, setBlocks])
+
+  const handleSidebarBlockDragEnd = useCallback(async (event: DragEndEvent) => {
+    const activeId = String(event.active.id)
+    const overId = event.over?.id ? String(event.over.id) : ''
+    if (!overId || activeId === overId) return
+
+    const beforeBlocks = blocksRef.current
+    if (beforeBlocks.some(block => block.id.startsWith('temp_'))) {
+      toast.info('Aguarde o bloco terminar de salvar antes de reorganizar.')
+      return
+    }
+
+    const result = reorderSidebarBlocks(beforeBlocks, activeId, overId)
+    if (!result.changed) return
+
+    flushCanvasNudgeSession()
+    setBlocks(result.blocks)
+    setSelectedBlockId(activeId)
+
+    try {
+      await reorderMaterialBlocks(materialId, result.blocks.map(block => block.id))
+      commitBlocksHistory(beforeBlocks, result.blocks)
+      toast.success('Ordem dos blocos atualizada')
+    } catch (e: any) {
+      setBlocks(beforeBlocks)
+      toast.error('Erro ao reorganizar blocos: ' + (e?.message ?? ''))
+    }
+  }, [blocksRef, commitBlocksHistory, flushCanvasNudgeSession, materialId, setBlocks, setSelectedBlockId])
 
   useEffect(() => () => {
     const session = canvasNudgeSessionRef.current
@@ -3069,7 +3385,12 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       const updatedChords = chordGridEditingIndex !== null
         ? existingChords.map((chord, idx) => idx === chordGridEditingIndex ? { ...chord, ...newChord } : chord)
         : [...existingChords, newChord]
-      return { ...b, render_data: { ...(b.render_data ?? {}), chords: updatedChords } }
+      const nextRenderData = {
+        ...(b.render_data ?? {}),
+        ...(chordGridEditingIndex === null ? { columns: getAutoChordGridColumns((b.render_data as any)?.columns, updatedChords.length) } : {}),
+        chords: updatedChords,
+      }
+      return { ...b, render_data: nextRenderData }
     }))
     setChordGridTargetBlockId(null)
     setChordGridEditingIndex(null)
@@ -3721,6 +4042,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Persistir floating elements no pageConfig
   useEffect(() => {
+    if (floatingTransformState) return
     const savedFloatingElements = pageConfig.floating_elements ?? []
     if (!shouldPersistFloatingElementsToPageConfig({
       initialLoadDone: initialLoadDone.current,
@@ -3729,11 +4051,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       pageConfigElementCount: savedFloatingElements.length,
     })) return
 
-    setPageConfig(prev => {
-      if (stableSerialize(prev.floating_elements ?? []) === stableSerialize(floatingElements)) return prev
-      return { ...prev, floating_elements: floatingElements }
-    })
-  }, [floatingElements, pageConfig.floating_elements])
+    const timer = window.setTimeout(() => {
+      setPageConfig(prev => {
+        if (stableSerialize(prev.floating_elements ?? []) === stableSerialize(floatingElements)) return prev
+        return { ...prev, floating_elements: floatingElements }
+      })
+    }, 250)
+
+    return () => window.clearTimeout(timer)
+  }, [floatingElements, floatingTransformState, pageConfig.floating_elements])
 
   const selectedFloating = useMemo(() =>
     floatingElements.find(el => el.id === selectedFloatingId) ?? null
@@ -3824,7 +4150,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } as FloatingElement
     setFloatingElementsWithHistory(prev => [...prev, newEl])
     setSelectedFloatingId(newEl.id)
-    setEditingFloatingId(null)
+    setEditingFloatingId(newEl.id)
     setSelectedBlockId(null) // desselecionar bloco normal
   }, [floatingElements, getCurrentVisiblePageIndex, setFloatingElementsWithHistory])
 
@@ -3898,14 +4224,23 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const setter = options.history === false ? setFloatingElements : setFloatingElementsWithHistory
     setter(prev => {
       const next: FloatingElement[] = []
+      let changed = false
       for (const el of prev) {
         if (el.id === id) {
+          const hasElementChange = Object.entries(updates).some(([key, value]) => (
+            !Object.is((el as unknown as Record<string, unknown>)[key], value)
+          ))
+          if (!hasElementChange) {
+            next.push(el)
+            continue
+          }
+          changed = true
           next.push(Object.assign({}, el, updates) as FloatingElement)
         } else {
           next.push(el)
         }
       }
-      return next
+      return changed ? next : prev
     })
   }, [setFloatingElementsWithHistory])
 
@@ -3987,9 +4322,17 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return true
   }, [selectedFloating, updateFloatingElement])
 
-  const handleFloatingDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>, elementId: string) => {
+  const handleFloatingDragStart = useCallback((e: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>, elementId: string) => {
     e.preventDefault()
     e.stopPropagation()
+    const usingPointerEvents = 'pointerId' in e
+    const moveEventName = usingPointerEvents ? 'pointermove' : 'mousemove'
+    const upEventName = usingPointerEvents ? 'pointerup' : 'mouseup'
+    const pointerId = usingPointerEvents ? e.pointerId : null
+    const pointerTarget = e.currentTarget
+    if (usingPointerEvents && pointerId != null) {
+      try { pointerTarget.setPointerCapture(pointerId) } catch {}
+    }
     const element = floatingElements.find(el => el.id === elementId)
     if (!element || element.locked) return
 
@@ -3998,12 +4341,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!pageEl) return
 
     const rect = pageEl.getBoundingClientRect()
-    const startElementRect = e.currentTarget.getBoundingClientRect()
+    const targetEl = document.querySelector(`[data-floating-element-id="${elementId}"]`) as HTMLElement | null
+    if (!targetEl) return
+
+    const startElementRect = targetEl.getBoundingClientRect()
     const startX = e.clientX
     const startY = e.clientY
     const startElX = element.x
     const startElY = element.y
-    const targetEl = e.currentTarget
     let pendingPosition: { x: number; y: number } | null = null
     let finalPosition = { pageIndex: element.pageIndex, x: startElX, y: startElY }
     let animationFrame: number | null = null
@@ -4018,7 +4363,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
     setFloatingTransformState({ id: elementId, type: 'drag' })
 
-    const handleMove = (moveEvent: MouseEvent) => {
+    const handleMove = (moveEvent: MouseEvent | PointerEvent) => {
       const deltaXPercent = ((moveEvent.clientX - startX) / rect.width) * 100
       const deltaYPercent = ((moveEvent.clientY - startY) / rect.height) * 100
       const sx = floatingSnapValue(startElX + deltaXPercent)
@@ -4047,24 +4392,35 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         flushPosition()
       }
       targetEl.style.willChange = ''
+      if (usingPointerEvents && pointerId != null) {
+        try { pointerTarget.releasePointerCapture(pointerId) } catch {}
+      }
       updateFloatingElement(elementId, finalPosition)
       setFloatingTransformState(null)
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
+      window.removeEventListener(moveEventName, handleMove as EventListener)
+      window.removeEventListener(upEventName, handleUp)
     }
 
     targetEl.style.willChange = 'left, top'
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
+    window.addEventListener(moveEventName, handleMove as EventListener)
+    window.addEventListener(upEventName, handleUp)
   }, [floatingElements, updateFloatingElement])
 
   const handleFloatingResizeStart = useCallback((
-    e: React.MouseEvent<HTMLButtonElement>,
+    e: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>,
     elementId: string,
     handle: FloatingResizeHandle,
   ) => {
     e.preventDefault()
     e.stopPropagation()
+    const usingPointerEvents = 'pointerId' in e
+    const moveEventName = usingPointerEvents ? 'pointermove' : 'mousemove'
+    const upEventName = usingPointerEvents ? 'pointerup' : 'mouseup'
+    const pointerId = usingPointerEvents ? e.pointerId : null
+    const pointerTarget = e.currentTarget
+    if (usingPointerEvents && pointerId != null) {
+      try { pointerTarget.setPointerCapture(pointerId) } catch {}
+    }
     const element = floatingElements.find(el => el.id === elementId)
     if (!element || element.locked) return
     const pageEl = document.querySelectorAll('.a4-page')[element.pageIndex] as HTMLElement | undefined
@@ -4087,14 +4443,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       pendingUpdates = null
     }
 
-    const handleMove = (moveEvent: MouseEvent) => {
+    const handleMove = (moveEvent: MouseEvent | PointerEvent) => {
       pendingUpdates = calculateFloatingElementResize({
         element,
         handle,
         deltaXPercent: ((moveEvent.clientX - startX) / rect.width) * 100,
         deltaYPercent: ((moveEvent.clientY - startY) / rect.height) * 100,
         fromCenter: moveEvent.altKey,
-        keepAspectRatio: moveEvent.shiftKey,
+        keepAspectRatio: moveEvent.altKey || moveEvent.shiftKey,
       })
       if (animationFrame === null) {
         animationFrame = window.requestAnimationFrame(flushResize)
@@ -4114,18 +4470,29 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         ))
         pushFloatingHistoryEntry(beforeElements, afterElements)
       }
+      if (usingPointerEvents && pointerId != null) {
+        try { pointerTarget.releasePointerCapture(pointerId) } catch {}
+      }
       setFloatingTransformState(null)
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
+      window.removeEventListener(moveEventName, handleMove as EventListener)
+      window.removeEventListener(upEventName, handleUp)
     }
 
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
+    window.addEventListener(moveEventName, handleMove as EventListener)
+    window.addEventListener(upEventName, handleUp)
   }, [floatingElements, pushFloatingHistoryEntry, updateFloatingElement])
 
-  const handleFloatingRotateStart = useCallback((e: React.MouseEvent<HTMLButtonElement>, elementId: string) => {
+  const handleFloatingRotateStart = useCallback((e: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>, elementId: string) => {
     e.preventDefault()
     e.stopPropagation()
+    const usingPointerEvents = 'pointerId' in e
+    const moveEventName = usingPointerEvents ? 'pointermove' : 'mousemove'
+    const upEventName = usingPointerEvents ? 'pointerup' : 'mouseup'
+    const pointerId = usingPointerEvents ? e.pointerId : null
+    const pointerTarget = e.currentTarget
+    if (usingPointerEvents && pointerId != null) {
+      try { pointerTarget.setPointerCapture(pointerId) } catch {}
+    }
     const element = floatingElements.find(el => el.id === elementId)
     if (!element || element.locked) return
     const elementNode = document.querySelector(`[data-floating-element-id="${elementId}"]`) as HTMLElement | null
@@ -4142,7 +4509,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     let finalRotation = element.rotation
     setFloatingTransformState({ id: elementId, type: 'rotate', rotation: element.rotation })
 
-    const handleMove = (moveEvent: MouseEvent) => {
+    const handleMove = (moveEvent: MouseEvent | PointerEvent) => {
       finalRotation = calculateFloatingElementRotationFromDrag({
         center,
         startPointer,
@@ -4162,13 +4529,16 @@ function MaterialEditor({ materialId }: { materialId: string }) {
           : el
       ))
       pushFloatingHistoryEntry(beforeElements, afterElements)
+      if (usingPointerEvents && pointerId != null) {
+        try { pointerTarget.releasePointerCapture(pointerId) } catch {}
+      }
       setFloatingTransformState(null)
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
+      window.removeEventListener(moveEventName, handleMove as EventListener)
+      window.removeEventListener(upEventName, handleUp)
     }
 
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
+    window.addEventListener(moveEventName, handleMove as EventListener)
+    window.addEventListener(upEventName, handleUp)
   }, [floatingElements, pushFloatingHistoryEntry, updateFloatingElement])
 
   // Upload de imagem para floating_image
@@ -4778,39 +5148,26 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
       const blockData = JSON.parse(jsonStr)
       const blockType = ['text', 'tip', 'exercise'].includes(blockData.block_type) ? blockData.block_type : 'text'
 
-      const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
       const contentHtml = blockData.content?.text ?? ''
       const contentPlain = contentHtml.replace(/<[^>]+>/g, '')
-      const newBlockId = await addMaterialBlock({
-        materialId,
+      await insertPreparedBlocks([{
         blockType,
         title: blockData.title ?? 'Bloco gerado',
         content: { html: contentHtml, text: contentPlain },
         renderData: blockData.render_data ?? null,
-        afterOrder: lastOrder,
-      })
-
-      setBlocksWithHistory(prev => [...prev, {
-        id: newBlockId,
-        block_type: blockType,
-        title: blockData.title ?? 'Bloco gerado',
-        content: { html: blockData.content?.text ?? '', text: blockData.content?.text?.replace(/<[^>]+>/g, '') ?? '' },
-        render_data: blockData.render_data ?? null,
-        sort_order: lastOrder + 1,
-        is_edited: false,
-        original_content: null,
       }])
 
       toast.success(`Bloco "${blockData.title}" gerado em ${(result.latencyMs / 1000).toFixed(1)}s`)
       setAiBlockDialogOpen(false)
       setAiBlockPrompt('')
+      clearInsertionAnchorOverride()
     } catch (e: any) {
       console.error('Erro ao gerar bloco:', e)
       toast.error('Erro ao gerar bloco: ' + (e?.message?.slice(0, 80) ?? ''))
     } finally {
       setAiBlockLoading(false)
     }
-  }, [aiBlockPrompt, blocks, materialId, materialTitle])
+  }, [aiBlockPrompt, clearInsertionAnchorOverride, insertPreparedBlocks, materialTitle])
 
   // Sugestão automática de próximo bloco
   const [aiSuggestion, setAiSuggestion] = useState<{ block_type: string; title: string; content: { text: string } } | null>(null)
@@ -4837,18 +5194,21 @@ Retorne APENAS o JSON do bloco, sem markdown ou explicações.`
 
   const handleAcceptSuggestion = useCallback(async () => {
     if (!aiSuggestion) return
-    const lastOrder = blocks.length > 0 ? Math.max(...blocks.map(b => b.sort_order)) : 0
     const html = aiSuggestion.content?.text ?? ''
     const plain = html.replace(/<[^>]+>/g, '')
     try {
-      const id = await addMaterialBlock({ materialId, blockType: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, afterOrder: lastOrder })
-      setBlocksWithHistory(prev => [...prev, { id, block_type: aiSuggestion.block_type, title: aiSuggestion.title, content: { html, text: plain }, render_data: null, sort_order: lastOrder + 1, is_edited: false, original_content: null }])
+      await insertPreparedBlocks([{
+        blockType: aiSuggestion.block_type,
+        title: aiSuggestion.title,
+        content: { html, text: plain },
+        renderData: null,
+      }])
       toast.success(`Bloco "${aiSuggestion.title}" aceito!`)
       setAiSuggestion(null)
     } catch (e: any) {
       toast.error('Erro ao salvar sugestão')
     }
-  }, [aiSuggestion, blocks, materialId])
+  }, [aiSuggestion, insertPreparedBlocks])
 
   // ── Fase 6: IA Avançada — States ──────────────────────────────────
 
@@ -5160,8 +5520,10 @@ Regras:
 
   // 7.2 — scrollToPage + IntersectionObserver
   const scrollToPage = useCallback((pageIndex: number) => {
-    const pages = document.querySelectorAll('.a4-page')
-    const page = pages[pageIndex]
+    pendingSidebarPageSyncRef.current = pageIndex
+    setCurrentVisiblePage(pageIndex)
+    const page = pageRefs.current[pageIndex]
+      ?? canvasScrollRef.current?.querySelector<HTMLElement>(`.a4-page[data-page-index="${pageIndex}"]`)
     page?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
@@ -5169,35 +5531,32 @@ Regras:
     const canvas = canvasScrollRef.current
     if (!canvas) return
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let maxRatio = -1
-        let maxIndex = 0
-        entries.forEach((entry) => {
-          const idx = Number((entry.target as HTMLElement).dataset.pageIndex || 0)
-          if (entry.intersectionRatio > maxRatio) {
-            maxRatio = entry.intersectionRatio
-            maxIndex = idx
-          }
-        })
-        if (maxRatio > 0) setCurrentVisiblePage(maxIndex)
-      },
-      { root: canvas, rootMargin: '0px', threshold: [0, 0.01, 0.25, 0.5, 0.75, 1] },
-    )
+    let frame = 0
+    const updateCurrentPage = () => {
+      frame = 0
+      const pageEls = Array.from(canvas.querySelectorAll('.a4-page')) as HTMLElement[]
+      if (!pageEls.length) return
+      pageEls.forEach((page, i) => { page.dataset.pageIndex = String(i) })
+      const viewportRect = canvas.getBoundingClientRect()
+      const pageRects = pageEls.map(page => page.getBoundingClientRect())
+      const nextPageIndex = getVisiblePageIndexFromRects(viewportRect, pageRects, currentVisiblePage)
+      setCurrentVisiblePage(prev => (prev === nextPageIndex ? prev : nextPageIndex))
+    }
+    const scheduleUpdate = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(updateCurrentPage)
+    }
 
-    const timer = setTimeout(() => {
-      const pageEls = canvas.querySelectorAll('.a4-page')
-      pageEls.forEach((page, i) => {
-        ;(page as HTMLElement).dataset.pageIndex = String(i)
-        observer.observe(page)
-      })
-    }, 500)
+    scheduleUpdate()
+    canvas.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
 
     return () => {
-      clearTimeout(timer)
-      observer.disconnect()
+      if (frame) window.cancelAnimationFrame(frame)
+      canvas.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
     }
-  }, [pages.length])
+  }, [currentVisiblePage, pages.length])
 
   // 7.3 — Aplicar template
   const handleApplyTemplate = useCallback(async (template: MaterialTemplate) => {
@@ -5644,6 +6003,81 @@ Regras:
     setChordEditorOpen(true)
   }, [blocks])
 
+  const openChordLibraryPickerForBlock = useCallback((blockId: string) => {
+    setChordLibraryPickerTarget({ mode: 'diagram', blockId })
+    setChordLibraryPickerOpen(true)
+  }, [])
+
+  const openChordLibraryPickerForGrid = useCallback((blockId: string, index?: number | null) => {
+    setChordLibraryPickerTarget({ mode: 'grid', blockId, index })
+    setChordLibraryPickerOpen(true)
+  }, [])
+
+  const closeChordLibraryPicker = useCallback(() => {
+    setChordLibraryPickerOpen(false)
+    setChordLibraryPickerTarget(null)
+  }, [])
+
+  const handleManualChordEditFromPicker = useCallback(() => {
+    const target = chordLibraryPickerTarget
+    if (!target) return
+
+    closeChordLibraryPicker()
+    if (target.mode === 'diagram') {
+      openChordEditorForBlock(target.blockId)
+      return
+    }
+
+    const block = blocksRef.current.find(b => b.id === target.blockId)
+    const chords = ((block?.render_data as any)?.chords ?? []) as any[]
+    const chordToEdit = typeof target.index === 'number' ? chords[target.index] : undefined
+    openChordEditorForGrid(target.blockId, chordToEdit, target.index ?? undefined)
+  }, [blocksRef, chordLibraryPickerTarget, closeChordLibraryPicker, openChordEditorForBlock, openChordEditorForGrid])
+
+  const handleSelectChordFromLibrary = useCallback((chord: Chord) => {
+    const target = chordLibraryPickerTarget
+    if (!target) return
+
+    const currentBlock = blocksRef.current.find(block => block.id === target.blockId)
+    if (!currentBlock) return
+
+    if (target.mode === 'diagram') {
+      setBlockWithHistory(target.blockId, block => applyLibraryChordToDiagramBlock(block, chord))
+      queueBlockAutosave(target.blockId)
+      toast.success(`Acorde "${chord.name}" aplicado ao bloco`)
+      closeChordLibraryPicker()
+      return
+    }
+
+    setBlockWithHistory(target.blockId, block => applyLibraryChordToGridBlock(block, chord, target.index))
+    queueBlockAutosave(target.blockId)
+    toast.success(typeof target.index === 'number'
+      ? `Acorde "${chord.name}" atualizado na grade`
+      : `Acorde "${chord.name}" adicionado à grade`)
+    closeChordLibraryPicker()
+  }, [blocksRef, chordLibraryPickerTarget, closeChordLibraryPicker, queueBlockAutosave, setBlockWithHistory])
+
+  const handleAddChordFromLibrary = useCallback((chord: Chord) => {
+    const target = chordLibraryPickerTarget
+    if (!target) return
+
+    const currentBlock = blocksRef.current.find(block => block.id === target.blockId)
+    if (!currentBlock) return
+
+    if (target.mode === 'diagram') {
+      setBlockWithHistory(target.blockId, block => appendLibraryChordToDiagramAsGridBlock(block, chord))
+      queueBlockAutosave(target.blockId)
+      toast.success(`Acorde "${chord.name}" adicionado à grade`)
+      closeChordLibraryPicker()
+      return
+    }
+
+    setBlockWithHistory(target.blockId, block => applyLibraryChordToGridBlock(block, chord))
+    queueBlockAutosave(target.blockId)
+    toast.success(`Acorde "${chord.name}" adicionado à grade`)
+    closeChordLibraryPicker()
+  }, [blocksRef, chordLibraryPickerTarget, closeChordLibraryPicker, queueBlockAutosave, setBlockWithHistory])
+
   // Salvar acorde de volta no bloco
   const handleSaveChordToBlock = useCallback(async () => {
     if (!chordEditorBlockId) return
@@ -5698,8 +6132,8 @@ Regras:
       enterInlineEditForBlock(block.id, focusPoint)
       return
     }
-    if (block.block_type === 'chord_diagram') openChordEditorForBlock(block.id)
-    else if (block.block_type === 'chord_grid') openChordEditorForGrid(block.id)
+    if (block.block_type === 'chord_diagram') openChordLibraryPickerForBlock(block.id)
+    else if (block.block_type === 'chord_grid') openChordLibraryPickerForGrid(block.id)
     else if (block.block_type === 'keyboard') openKeyboardEditorForBlock(block.id)
     else if (block.block_type === 'keyboard_grid') openKeyboardEditorForGrid(block.id)
     else if (block.block_type === 'tablature') openTablatureEditorForBlock(block.id)
@@ -5709,8 +6143,8 @@ Regras:
   }, [
     blockHasNotation,
     enterInlineEditForBlock,
-    openChordEditorForBlock,
-    openChordEditorForGrid,
+    openChordLibraryPickerForBlock,
+    openChordLibraryPickerForGrid,
     openKeyboardEditorForBlock,
     openKeyboardEditorForGrid,
     openNotationEditorForBlock,
@@ -5739,9 +6173,27 @@ Regras:
     notationPreviewStaveRef.current = { blockId, staveIndex }
   }, [])
 
-  const handleCanvasChordGridItemClick = useCallback((blockId: string, chord: any, index: number) => {
-    openChordEditorForGrid(blockId, chord, index)
-  }, [openChordEditorForGrid])
+  const handleCanvasChordGridItemClick = useCallback((blockId: string, _chord: any, index: number) => {
+    openChordLibraryPickerForGrid(blockId, index)
+  }, [openChordLibraryPickerForGrid])
+
+  const handleCanvasChordGridItemRemove = useCallback((blockId: string, _chord: any, index: number) => {
+    setBlockWithHistory(blockId, block => {
+      const currentChords = Array.isArray((block.render_data as any)?.chords)
+        ? [...((block.render_data as any).chords as any[])]
+        : []
+      if (currentChords.length <= 1 || index < 0 || index >= currentChords.length) return block
+      currentChords.splice(index, 1)
+      return {
+        ...block,
+        render_data: {
+          ...(block.render_data ?? {}),
+          chords: currentChords,
+        },
+      }
+    })
+    queueBlockAutosave(blockId)
+  }, [queueBlockAutosave, setBlockWithHistory])
 
   const handleCanvasKeyboardGridItemClick = useCallback((blockId: string, keyboard: any, index: number) => {
     openKeyboardEditorForGrid(blockId, keyboard, index)
@@ -6695,116 +7147,280 @@ ${pagesHtml}
       <div className="editor-layout editor-layout--flex flex-1 min-h-0" style={{ marginTop: 0 }}>
         {/* Coluna 1 — Sidebar Esquerda: Lista de Blocos */}
         <BlockListSidebar open={leftSidebarOpen}>
-          <Tabs defaultValue="blocks" className="flex flex-col h-full">
+          <Tabs value={leftSidebarTab} onValueChange={setLeftSidebarTab} className="flex flex-col h-full">
             <TabsList className="grid grid-cols-2 mx-3 mt-2 h-8 shrink-0">
               <TabsTrigger value="blocks" className="text-[10px] gap-1">Blocos</TabsTrigger>
               <TabsTrigger value="pages" className="text-[10px] gap-1"><MapTrifold size={12} /> Páginas</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="blocks" className="flex-1 overflow-y-auto p-4 pt-2 mt-0">
+            <TabsContent ref={sidebarBlocksScrollRef} value="blocks" className="flex-1 overflow-y-auto p-4 pt-2 mt-0">
           <div className="flex items-center justify-between mb-3">
             <div className="prop-label" style={{ marginBottom: 0 }}>Blocos ({blocks.length})</div>
           </div>
 
-          <div className="flex flex-col">
-            {blocks.map(block => (
-              <BlockListItem
-                key={block.id}
-                block={block}
-                isSelected={block.id === selectedBlockId}
-                onSelectBlock={selectBlock}
-                onDeleteBlock={handleDeleteBlock}
-                onDuplicateBlock={handleDuplicateBlock}
-              />
-            ))}
-          </div>
+          <DndContext collisionDetection={closestCenter} onDragEnd={handleSidebarBlockDragEnd}>
+            <SortableContext items={sidebarSortableBlockIds} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-2">
+                {sidebarPageGroups.map(group => {
+              const isOpen = expandedSidebarPageIndexes.has(group.pageIndex)
+              const isCurrentPage = currentVisiblePage === group.pageIndex
+              const pageHasSelectedBlock = selectedBlockId
+                ? group.blocks.some(block => getPaginationSourceBlockId(block) === selectedBlockId)
+                : false
+              const isSelectedPageOnly = pageHasSelectedBlock && !isCurrentPage
 
-          {/* Botão Adicionar */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="add-block-btn mt-2">
-                <Plus size={16} className="inline-block mb-0.5" /> Adicionar bloco
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onClick={() => setExerciseBrowserOpen(true)} className="gap-2 text-accent font-medium">
-                <BookmarkSimple size={16} weight="fill" className="text-accent" />
-                Da Biblioteca
-              </DropdownMenuItem>
-              <div className="h-px bg-border my-1" />
-              {['text', 'tip', 'exercise', 'title', 'image', 'audio', 'video', 'qr_code', 'cover', 'columns', 'notation', 'chord_diagram', 'chord_grid', 'keyboard', 'keyboard_grid', 'tablature', 'separator', 'page_break'].map(type => {
-                const cfg = getBlockConfig(type)
-                const Icon = cfg.icon
-                return (
-                  <DropdownMenuItem key={type} onClick={() => handleAddBlock(type)} className="gap-2">
-                    <Icon size={16} style={{ color: cfg.color }} />
-                    {cfg.label}
-                  </DropdownMenuItem>
-                )
-              })}
-              <div className="h-px bg-border my-1" />
-              <DropdownMenuItem onClick={() => setAiBlockDialogOpen(true)} className="gap-2 text-accent font-medium">
-                <Sparkle size={16} weight="fill" className="text-accent" />
-                Gerar com IA
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              return (
+                <Collapsible
+                  key={group.pageIndex}
+                  ref={el => { sidebarPageGroupRefs.current[group.pageIndex] = el }}
+                  open={isOpen}
+                  className={cn(
+                    'overflow-hidden rounded-lg border bg-card shadow-sm transition-colors',
+                    isCurrentPage
+                      ? 'border-accent bg-accent-soft/40 shadow-accent/10'
+                      : isSelectedPageOnly
+                        ? 'border-azul-claro/35 bg-card'
+                      : 'border-border hover:border-border/80',
+                  )}
+                >
+                  <div className={cn(
+                    'flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors',
+                    isCurrentPage ? 'bg-accent-soft/55' : 'bg-bg2/45 hover:bg-bg2/80',
+                  )}>
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      onClick={() => navigateToSidebarPage(group.pageIndex)}
+                      aria-label={`Ir para ${group.label}`}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className={cn(
+                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-black',
+                          group.isCover ? 'bg-accent text-white' : 'bg-card text-azul-claro ring-1 ring-border',
+                        )}>
+                          {group.isCover ? <BookOpen size={14} /> : group.pageIndex + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-text3">
+                            {group.isCover ? 'Capa' : 'Página'}
+                          </div>
+                          <div className="truncate text-[13px] font-black text-text">
+                            {group.label}
+                          </div>
+                          <div className="text-[10px] font-medium text-text3">
+                            {group.blocks.length} {group.blocks.length === 1 ? 'bloco' : 'blocos'}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text3 transition-colors hover:bg-card hover:text-text"
+                      onClick={() => setSidebarPageExpanded(group.pageIndex, !isOpen)}
+                      aria-label={`${isOpen ? 'Recolher' : 'Expandir'} ${group.label}`}
+                      title={`${isOpen ? 'Recolher' : 'Expandir'} ${group.label}`}
+                    >
+                      <CaretDown
+                        size={13}
+                        className={cn('transition-transform', isOpen && 'rotate-180')}
+                      />
+                    </button>
+                  </div>
+                  <CollapsibleContent>
+                    <div className="border-t border-border bg-surface py-2 pl-4 pr-2">
+                      {group.blocks.length === 0 ? (
+                        <div className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-2 text-[11px] text-text3">
+                          Página sem blocos.
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1 border-l-2 border-border/70 pl-2">
+                          {group.blocks.map(block => {
+                            const sourceBlockId = getPaginationSourceBlockId(block)
+                            const sourceBlock = blocks.find(item => item.id === sourceBlockId) ?? block
 
-          {/* Ghost block — sugestão automática */}
-          {aiSuggestion && (
-            <div className="mt-2 border border-dashed border-accent/40 rounded-[var(--radius-sm)] p-2.5 bg-accent/5 animate-in fade-in slide-in-from-bottom-2">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Sparkle size={12} weight="fill" className="text-accent" />
-                <span className="text-[10px] font-semibold text-accent uppercase tracking-wide">Sugestão IA</span>
-              </div>
-              <div className="text-[11px] font-medium text-text1 mb-0.5">{aiSuggestion.title}</div>
-              <div className="text-[10px] text-text3 line-clamp-3 mb-2" dangerouslySetInnerHTML={{ __html: aiSuggestion.content?.text?.slice(0, 200) + '...' }} />
-              <div className="flex gap-1.5">
-                <Button size="sm" onClick={handleAcceptSuggestion} className="h-6 text-[10px] px-2 gap-1">
-                  <Plus size={10} /> Aceitar
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setAiSuggestion(null)} className="h-6 text-[10px] px-2">
-                  Descartar
-                </Button>
-                <Button size="sm" variant="ghost" onClick={handleSuggestNextBlock} className="h-6 text-[10px] px-2" disabled={aiSuggestLoading}>
-                  Outra
-                </Button>
-              </div>
-            </div>
-          )}
+                            const renderKey = `${group.pageIndex}-${sourceBlockId}`
+                            const commonProps = {
+                              block: sourceBlock,
+                              isSelected: sourceBlockId === selectedBlockId,
+                              onSelectBlock: selectBlock,
+                              onDeleteBlock: handleDeleteBlock,
+                              onDuplicateBlock: handleDuplicateBlock,
+                            }
 
-          {/* Botão sugerir próximo */}
-          {!aiSuggestion && blocks.length >= 2 && (
-            <button
-              onClick={handleSuggestNextBlock}
-              disabled={aiSuggestLoading}
-              className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-accent/70 hover:text-accent hover:bg-accent/5 rounded-[var(--radius-sm)] transition-colors disabled:opacity-50"
-            >
-              {aiSuggestLoading ? (
-                <><SpinnerGap size={12} className="animate-spin" /> Gerando sugestão...</>
-              ) : (
-                <><Sparkle size={12} /> Sugerir próximo bloco</>
-              )}
-            </button>
-          )}
+                            if (sidebarFirstSortableKeyByBlockId.get(sourceBlockId) !== renderKey) {
+                              return (
+                                <BlockListItem
+                                  key={renderKey}
+                                  {...commonProps}
+                                />
+                              )
+                            }
 
-          {/* Rodapé info */}
-          <div className="mt-3 p-2.5 bg-azul-soft rounded-[var(--radius-sm)] text-[11px] text-text2">
-            <strong>{blocks.length} blocos</strong> · v{materialMeta?.version ?? 1}
-            {materialMeta?.generated_at && (
-              <div className="text-text3 mt-0.5">
-                Gerado em: {new Date(materialMeta.generated_at).toLocaleDateString('pt-BR')}
+                            return (
+                              <SortableBlockListItem
+                                key={renderKey}
+                                {...commonProps}
+                              />
+                            )
+                          })}
+                        </div>
+                      )}
+                      <div className="mt-2 border-l-2 border-border/70 pl-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-dashed border-border bg-card text-[11px] font-semibold text-text3 transition-colors hover:border-accent/60 hover:bg-accent-soft/35 hover:text-accent"
+                            >
+                              <Plus size={13} /> Adicionar aqui
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setInsertionAnchorOverrideForPage(group.pageIndex)
+                                setContentBrowserOpen(true)
+                              }}
+                              className="gap-2 text-accent font-medium"
+                            >
+                              <BookmarkSimple size={16} weight="fill" className="text-accent" />
+                              Buscar conteúdo
+                            </DropdownMenuItem>
+                            <div className="h-px bg-border my-1" />
+                            {ADD_BLOCK_MENU_TYPES.map(type => {
+                              const cfg = getBlockConfig(type)
+                              const Icon = cfg.icon
+                              return (
+                                <DropdownMenuItem
+                                  key={type}
+                                  onClick={() => handleAddBlock(type, resolveEditorPageInsertionAnchorOrder(group.pageIndex))}
+                                  className="gap-2"
+                                >
+                                  <Icon size={16} style={{ color: cfg.color }} />
+                                  {cfg.label}
+                                </DropdownMenuItem>
+                              )
+                            })}
+                            <div className="h-px bg-border my-1" />
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setInsertionAnchorOverrideForPage(group.pageIndex)
+                                setAiBlockDialogOpen(true)
+                              }}
+                              className="gap-2 text-accent font-medium"
+                            >
+                              <Sparkle size={16} weight="fill" className="text-accent" />
+                              Gerar com IA
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )
+                })}
               </div>
-            )}
-          </div>
+            </SortableContext>
+          </DndContext>
 
             </TabsContent>{/* fim tab blocos */}
+
+            {leftSidebarTab === 'blocks' && (
+              <div className="shrink-0 border-t border-border bg-surface/95 p-3 shadow-[0_-8px_20px_rgba(15,23,42,0.06)] backdrop-blur">
+                {/* Botão Adicionar */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="add-block-btn w-full">
+                      <Plus size={16} className="inline-block mb-0.5" /> Adicionar bloco
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuItem onClick={() => {
+                      clearInsertionAnchorOverride()
+                      setContentBrowserOpen(true)
+                    }} className="gap-2 text-accent font-medium">
+                      <BookmarkSimple size={16} weight="fill" className="text-accent" />
+                      Buscar conteúdo
+                    </DropdownMenuItem>
+                    <div className="h-px bg-border my-1" />
+                    {ADD_BLOCK_MENU_TYPES.map(type => {
+                      const cfg = getBlockConfig(type)
+                      const Icon = cfg.icon
+                      return (
+                        <DropdownMenuItem key={type} onClick={() => handleAddBlock(type)} className="gap-2">
+                          <Icon size={16} style={{ color: cfg.color }} />
+                          {cfg.label}
+                        </DropdownMenuItem>
+                      )
+                    })}
+                    <div className="h-px bg-border my-1" />
+                    <DropdownMenuItem onClick={() => {
+                      clearInsertionAnchorOverride()
+                      setAiBlockDialogOpen(true)
+                    }} className="gap-2 text-accent font-medium">
+                      <Sparkle size={16} weight="fill" className="text-accent" />
+                      Gerar com IA
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Ghost block — sugestão automática */}
+                {aiSuggestion && (
+                  <div className="mt-2 border border-dashed border-accent/40 rounded-[var(--radius-sm)] p-2.5 bg-accent/5 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Sparkle size={12} weight="fill" className="text-accent" />
+                      <span className="text-[10px] font-semibold text-accent uppercase tracking-wide">Sugestão IA</span>
+                    </div>
+                    <div className="text-[11px] font-medium text-text1 mb-0.5">{aiSuggestion.title}</div>
+                    <div className="text-[10px] text-text3 line-clamp-3 mb-2" dangerouslySetInnerHTML={{ __html: aiSuggestion.content?.text?.slice(0, 200) + '...' }} />
+                    <div className="flex gap-1.5">
+                      <Button size="sm" onClick={handleAcceptSuggestion} className="h-6 text-[10px] px-2 gap-1">
+                        <Plus size={10} /> Aceitar
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setAiSuggestion(null)} className="h-6 text-[10px] px-2">
+                        Descartar
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={handleSuggestNextBlock} className="h-6 text-[10px] px-2" disabled={aiSuggestLoading}>
+                        Outra
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Botão sugerir próximo */}
+                {!aiSuggestion && blocks.length >= 2 && (
+                  <button
+                    onClick={handleSuggestNextBlock}
+                    disabled={aiSuggestLoading}
+                    className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-accent/70 hover:text-accent hover:bg-accent/5 rounded-[var(--radius-sm)] transition-colors disabled:opacity-50"
+                  >
+                    {aiSuggestLoading ? (
+                      <><SpinnerGap size={12} className="animate-spin" /> Gerando sugestão...</>
+                    ) : (
+                      <><Sparkle size={12} /> Sugerir próximo bloco</>
+                    )}
+                  </button>
+                )}
+
+                {/* Rodapé info */}
+                <div className="mt-2 rounded-[var(--radius-sm)] bg-azul-soft px-2.5 py-2 text-[11px] text-text2">
+                  <strong>{blocks.length} blocos</strong> · v{materialMeta?.version ?? 1}
+                  {materialMeta?.generated_at && (
+                    <div className="text-text3 mt-0.5">
+                      Gerado em: {new Date(materialMeta.generated_at).toLocaleDateString('pt-BR')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <TabsContent value="pages" className="flex-1 overflow-hidden mt-0">
               <PageMinimap
                 totalPages={pages.length}
                 currentPage={currentVisiblePage}
-                onNavigate={scrollToPage}
+                pages={sidebarPagePreviewItems}
+                onNavigate={navigateToSidebarPage}
               />
             </TabsContent>
           </Tabs>
@@ -7151,6 +7767,7 @@ ${pagesHtml}
                             onLegacyCoverTextActivate={block.block_type === 'cover' ? initTextElements : undefined}
                             onLegacyNotationStavePointerDown={handleCanvasNotationStavePointerDown}
                             onChordGridItemClick={handleCanvasChordGridItemClick}
+                            onChordGridItemRemove={handleCanvasChordGridItemRemove}
                             onKeyboardGridItemClick={handleCanvasKeyboardGridItemClick}
                             onCoverPositionChange={handleCanvasCoverPositionChange}
                             onCoverRenderDataChange={handleCanvasCoverRenderDataChange}
@@ -7217,6 +7834,7 @@ ${pagesHtml}
                       onOpenLayers={() => setShowLayersPanel(true)}
                       onResetRotation={() => updateFloatingElement(el.id, { rotation: 0 })}
                       onUpdate={(updates) => updateFloatingElement(el.id, updates)}
+                      onDraftUpdate={(updates) => updateFloatingElement(el.id, updates, { history: false })}
                       onStopEditing={() => setEditingFloatingId(null)}
                       onEditText={() => setEditingFloatingId(el.id)}
                     />
@@ -7585,12 +8203,17 @@ ${pagesHtml}
                   </Button>
                 )}
                 {selectedBlock.block_type === 'chord_diagram' && (
-                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordEditorForBlock(selectedBlock.id)}>
-                    <Guitar size={14} weight="bold" /> Editar Acorde
-                  </Button>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button size="sm" variant="outline" className="h-8 justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordEditorForBlock(selectedBlock.id)}>
+                      <PencilSimple size={14} weight="bold" /> Editar
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordLibraryPickerForBlock(selectedBlock.id)}>
+                      <Guitar size={14} weight="bold" /> Trocar
+                    </Button>
+                  </div>
                 )}
                 {selectedBlock.block_type === 'chord_grid' && (
-                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordEditorForGrid(selectedBlock.id)}>
+                  <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10" onClick={() => openChordLibraryPickerForGrid(selectedBlock.id)}>
                     <Guitar size={14} weight="bold" /> Adicionar Acorde
                   </Button>
                 )}
@@ -7910,14 +8533,24 @@ ${pagesHtml}
               {selectedBlock.block_type === 'chord_diagram' && (
                 <div className="prop-section">
                   <div className="prop-label">Diagrama</div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10"
-                    onClick={() => openChordEditorForBlock(selectedBlock.id)}
-                  >
-                    <Guitar size={14} weight="bold" /> Editar Acorde
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10"
+                      onClick={() => openChordEditorForBlock(selectedBlock.id)}
+                    >
+                      <PencilSimple size={14} weight="bold" /> Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10"
+                      onClick={() => openChordLibraryPickerForBlock(selectedBlock.id)}
+                    >
+                      <Guitar size={14} weight="bold" /> Trocar
+                    </Button>
+                  </div>
                   {(selectedBlock.render_data as any)?.chord_name && (
                     <div className="text-[10px] text-text3 mt-1 text-center">
                       Acorde: {(selectedBlock.render_data as any).chord_name}
@@ -8962,7 +9595,7 @@ ${pagesHtml}
                   <div>
                     <label className="text-[10px] text-text3 block mb-1">Colunas</label>
                     <div className="flex gap-1">
-                      {[2, 3, 4, 6].map(n => (
+                      {[2, 3, 4, 5].map(n => (
                         <button
                           key={n}
                           className={`flex-1 px-2 py-1.5 rounded text-[11px] border transition-colors ${
@@ -8984,28 +9617,43 @@ ${pagesHtml}
                     size="sm"
                     variant="outline"
                     className="w-full justify-center gap-2 border-grow/30 text-grow hover:bg-grow/10"
-                    onClick={() => openChordEditorForGrid(selectedBlock.id)}
+                    onClick={() => openChordLibraryPickerForGrid(selectedBlock.id)}
                   >
                     <Guitar size={14} weight="bold" /> Adicionar Acorde
                   </Button>
                   {/* Lista dos acordes existentes */}
                   {((selectedBlock.render_data as any)?.chords as any[])?.length > 0 && (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {((selectedBlock.render_data as any).chords as any[]).map((chord: any, idx: number) => (
-                        <div key={idx} className="flex items-center justify-between px-2 py-1 bg-bg2 rounded text-[11px]">
-                          <span className="font-medium text-text">{chord.chord_name ?? chord.name ?? `Acorde ${idx + 1}`}</span>
-                          <button
-                            className="text-text3 hover:text-vermelho transition-colors"
-                            onClick={() => {
-                              const chords = [...((selectedBlock.render_data as any)?.chords ?? [])]
-                              chords.splice(idx, 1)
-                              updateSelectedRenderData('chords', chords)
-                            }}
-                          >
-                            <Trash size={12} />
-                          </button>
-                        </div>
-                      ))}
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {((selectedBlock.render_data as any).chords as any[]).map((chord: any, idx: number) => {
+                        const chordName = chord.chord_name ?? chord.name ?? `Acorde ${idx + 1}`
+                        const chordMeta = getGridChordMetaLabel(chord)
+
+                        return (
+                          <div key={idx} className="flex items-center gap-2 rounded border border-border bg-bg2 px-2 py-1.5 text-[11px]">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-semibold text-text3">
+                              {idx + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-semibold text-text">{chordName}</div>
+                              {chordMeta && <div className="truncate text-[10px] text-text3">{chordMeta}</div>}
+                            </div>
+                            <button
+                              type="button"
+                              className="inline-flex h-7 shrink-0 items-center gap-1 rounded px-2 text-[10px] font-semibold text-text3 transition-colors hover:bg-vermelho/10 hover:text-vermelho"
+                              aria-label={`Excluir acorde ${idx + 1}: ${chordName}`}
+                              title={`Excluir acorde ${idx + 1}`}
+                              onClick={() => {
+                                const chords = [...((selectedBlock.render_data as any)?.chords ?? [])]
+                                chords.splice(idx, 1)
+                                updateSelectedRenderData('chords', chords)
+                              }}
+                            >
+                              <Trash size={12} />
+                              Excluir
+                            </button>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -9588,7 +10236,7 @@ ${pagesHtml}
           onExitEdit={exitInlineEdit}
           onEditNotation={() => openNotationEditorForBlock(selectedBlock.id)}
           onEditTablature={() => openTablatureEditorForBlock(selectedBlock.id)}
-          onEditChord={() => selectedBlock.block_type === 'chord_grid' ? openChordEditorForGrid(selectedBlock.id) : openChordEditorForBlock(selectedBlock.id)}
+          onEditChord={() => selectedBlock.block_type === 'chord_grid' ? openChordLibraryPickerForGrid(selectedBlock.id) : openChordLibraryPickerForBlock(selectedBlock.id)}
           onEditKeyboard={() => selectedBlock.block_type === 'keyboard_grid' ? openKeyboardEditorForGrid(selectedBlock.id) : openKeyboardEditorForBlock(selectedBlock.id)}
           onReplaceImage={() => imageInputRef.current?.click()}
           onAIRewrite={() => handleAIRewrite('rewrite')}
@@ -9643,11 +10291,14 @@ ${pagesHtml}
         onSave={handleSaveReusable}
       />
 
-      <ExerciseLibraryBrowser
-        open={exerciseBrowserOpen}
-        onClose={() => setExerciseBrowserOpen(false)}
-        onSelect={handleInsertExerciseFromLibrary}
-        insertingId={insertingExerciseId}
+      <ContentBrowser
+        open={contentBrowserOpen}
+        onClose={() => {
+          setContentBrowserOpen(false)
+          clearInsertionAnchorOverride()
+        }}
+        onSelect={handleInsertContentFromBrowser}
+        insertingId={insertingContentId}
       />
 
       {/* ── Modais dos editores visuais integrados ── */}
@@ -9680,7 +10331,10 @@ ${pagesHtml}
       />
 
       {/* Dialog — Gerar bloco com IA */}
-      <Dialog open={aiBlockDialogOpen} onOpenChange={setAiBlockDialogOpen}>
+      <Dialog open={aiBlockDialogOpen} onOpenChange={(open) => {
+        setAiBlockDialogOpen(open)
+        if (!open) clearInsertionAnchorOverride()
+      }}>
         <DialogContent className="sm:max-w-[500px] bg-surface border-border">
           <DialogHeader>
             <DialogTitle className="font-serif text-[20px] flex items-center gap-2">
@@ -9709,7 +10363,10 @@ ${pagesHtml}
             </div>
           </div>
           <DialogFooter className="mt-4">
-            <Button variant="ghost" onClick={() => setAiBlockDialogOpen(false)} disabled={aiBlockLoading}>
+            <Button variant="ghost" onClick={() => {
+              setAiBlockDialogOpen(false)
+              clearInsertionAnchorOverride()
+            }} disabled={aiBlockLoading}>
               Cancelar
             </Button>
             <Button onClick={handleGenerateAIBlock} disabled={aiBlockLoading || !aiBlockPrompt.trim()} className="gap-2">
@@ -9730,6 +10387,17 @@ ${pagesHtml}
       </Dialog>
 
       {/* ChordEditor — edição de diagrama de acorde (wrapper Dialog) */}
+      <ChordLibraryPicker
+        open={chordLibraryPickerOpen}
+        title={chordLibraryPickerTarget?.mode === 'grid' ? 'Escolher acorde para a grade' : 'Escolher acorde'}
+        selectLabel={chordLibraryPickerTarget?.mode === 'grid' && typeof chordLibraryPickerTarget.index !== 'number' ? 'Adicionar à grade' : 'Trocar'}
+        secondarySelectLabel={chordLibraryPickerTarget?.mode === 'diagram' ? 'Adicionar ao lado' : undefined}
+        onClose={closeChordLibraryPicker}
+        onSelect={handleSelectChordFromLibrary}
+        onSecondarySelect={chordLibraryPickerTarget?.mode === 'diagram' ? handleAddChordFromLibrary : undefined}
+        onManualEdit={handleManualChordEditFromPicker}
+      />
+
       <Dialog open={chordEditorOpen} onOpenChange={(v) => { setChordEditorOpen(v); if (!v) { setChordEditorBlockId(null); setChordGridTargetBlockId(null); setChordGridEditingIndex(null) } }}>
         <DialogContent className="sm:max-w-[860px] max-h-[90vh] overflow-y-auto bg-surface border-border" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>

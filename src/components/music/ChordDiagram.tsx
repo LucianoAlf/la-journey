@@ -14,8 +14,8 @@ export interface ChordDiagramProps {
   /** Objeto positions direto do banco {fingers, barres, muted} */
   positions: ChordPositions
   position?: number
-  /** Tamanho: 'compact' para inline, 'full' para editor/biblioteca */
-  size?: 'compact' | 'full'
+  /** Tamanho: 'compact' para inline, 'dense' para grades com 5 colunas, 'full' para editor/biblioteca */
+  size?: 'compact' | 'dense' | 'full'
   /** Forçar tema (ignora detecção automática) — útil para PDF */
   forceTheme?: 'light' | 'dark'
   /** Número de cordas do instrumento (default: 6) */
@@ -53,10 +53,27 @@ function useTheme() {
   return theme
 }
 
+function inferDisplayPosition(positions: ChordPositions, position: number) {
+  if (position > 1) return position
+
+  const frets = [
+    ...(positions.fingers ?? [])
+      .map((finger: any) => finger?.[1])
+      .filter((fret): fret is number => typeof fret === 'number' && fret > 0),
+    ...(positions.barres ?? [])
+      .map((barre: any) => barre?.fret)
+      .filter((fret): fret is number => typeof fret === 'number' && fret > 0),
+  ]
+
+  if (frets.length === 0) return position
+  return Math.max(...frets) > 5 ? Math.min(...frets) : position
+}
+
 export function ChordDiagram({ name, positions, position = 1, size = 'full', forceTheme, strings = 6 }: ChordDiagramProps) {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useTheme()
   const effectiveIsDark = forceTheme ? forceTheme === 'dark' : theme === 'dark'
+  const effectivePosition = inferDisplayPosition(positions, position)
 
   useEffect(() => {
     if (!ref.current) return
@@ -64,10 +81,11 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
 
     // Normalizar frets: se position > 1 e os frets são absolutos, converter para relativos
     // SVGuitar espera frets relativos ao position (ex: position=5, fret 5→1, fret 7→3)
-    const needsNormalization = position > 1 && (positions.fingers ?? []).some(
-      (f: any) => typeof f[1] === 'number' && f[1] >= position
+    const needsNormalization = effectivePosition > 1 && (
+      (positions.fingers ?? []).some((f: any) => typeof f[1] === 'number' && f[1] >= effectivePosition) ||
+      (positions.barres ?? []).some((b: any) => typeof b.fret === 'number' && b.fret >= effectivePosition)
     )
-    const offset = needsNormalization ? position - 1 : 0
+    const offset = needsNormalization ? effectivePosition - 1 : 0
 
     // Mesclar fingers normais + cordas mudas (fret='x') no formato SVGuitar
     const allFingers: Array<[number, number | 'x', (string | undefined)?]> = [
@@ -97,9 +115,9 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
         title: name,
         strings,
         frets: 5,
-        position,
+        position: effectivePosition,
         style: ChordStyle.normal,
-        titleFontSize: size === 'compact' ? 36 : 48,
+        titleFontSize: size === 'compact' ? 36 : size === 'dense' ? 42 : 48,
         fingerSize: 0.65,
         ...style,
       })
@@ -124,12 +142,14 @@ export function ChordDiagram({ name, positions, position = 1, size = 'full', for
         })
       }
     }
-  }, [name, positions, position, size, theme, forceTheme, effectiveIsDark, strings])
+  }, [name, positions, effectivePosition, size, theme, forceTheme, effectiveIsDark, strings])
 
   const is4 = strings <= 4
   const dimensions = size === 'compact'
     ? { width: is4 ? 70 : 90, height: 120 }
-    : { width: is4 ? 110 : 140, height: 180 }
+    : size === 'dense'
+      ? { width: is4 ? 92 : 116, height: 154 }
+      : { width: is4 ? 110 : 140, height: 180 }
 
   return (
     <div

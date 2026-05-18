@@ -108,6 +108,8 @@ export function ContextualToolbar({
   const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
   const layoutPanelPosition = position.placement === 'below' ? 'bottom-full mb-2' : 'top-full mt-2'
   const hasLayoutAdjustments = hasCanvasBlockLayoutAdjustments(blockStyle, paginationPolicy)
+  const chordActionLabel = blockType === 'chord_grid' ? 'Adicionar acorde' : 'Trocar acorde'
+  const chordActionTooltip = blockType === 'chord_grid' ? 'Adicionar acorde na grade' : 'Trocar acorde'
 
   // Não mostrar para cover e page_break
   if (['cover', 'page_break'].includes(blockType)) return null
@@ -370,10 +372,10 @@ export function ContextualToolbar({
             <TooltipTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-grow" onClick={onEditChord} data-testid="canvas-toolbar-edit-chord">
                 <Guitar size={14} />
-                <span className="text-[10px]">Trocar acorde</span>
+                <span className="text-[10px]">{chordActionLabel}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom"><p>Trocar Acorde</p></TooltipContent>
+            <TooltipContent side="bottom"><p>{chordActionTooltip}</p></TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}

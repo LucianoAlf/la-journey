@@ -32,26 +32,30 @@ function FloatingTextContent({
   element,
   isEditing,
   onUpdate,
+  onDraftUpdate,
   onStopEditing,
 }: {
   element: FloatingText
   isEditing: boolean
   onUpdate: (u: Partial<FloatingText>) => void
+  onDraftUpdate?: (u: Partial<FloatingText>) => void
   onStopEditing?: () => void
 }) {
   const style = floatingTextCSS(element)
   const editableRef = React.useRef<HTMLDivElement>(null)
   const didPrepareEditableRef = React.useRef(false)
   const committedContentRef = React.useRef(element.content)
+  const draftUpdateTimerRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
-    committedContentRef.current = element.content
     if (!isEditing) {
+      committedContentRef.current = element.content
       didPrepareEditableRef.current = false
       return
     }
     const node = editableRef.current
     if (!node || didPrepareEditableRef.current) return
+    committedContentRef.current = element.content
     didPrepareEditableRef.current = true
     const plainText = floatingTextHtmlToPlainText(element.content)
     node.innerText = plainText
@@ -69,9 +73,32 @@ function FloatingTextContent({
     })
   }, [element.content, isEditing])
 
+  React.useEffect(() => (
+    () => {
+      if (draftUpdateTimerRef.current !== null) {
+        window.clearTimeout(draftUpdateTimerRef.current)
+      }
+    }
+  ), [])
+
+  const scheduleDraftUpdate = React.useCallback((nextContent: string) => {
+    if (!onDraftUpdate) return
+    if (draftUpdateTimerRef.current !== null) {
+      window.clearTimeout(draftUpdateTimerRef.current)
+    }
+    draftUpdateTimerRef.current = window.setTimeout(() => {
+      draftUpdateTimerRef.current = null
+      onDraftUpdate({ content: nextContent })
+    }, 450)
+  }, [onDraftUpdate])
+
   const commitEditableText = React.useCallback(() => {
     const node = editableRef.current
     if (!node) return
+    if (draftUpdateTimerRef.current !== null) {
+      window.clearTimeout(draftUpdateTimerRef.current)
+      draftUpdateTimerRef.current = null
+    }
     const nextContent = floatingTextPlainTextToHtml(node.innerText)
     if (nextContent !== committedContentRef.current) {
       committedContentRef.current = nextContent
@@ -93,7 +120,10 @@ function FloatingTextContent({
           role="textbox"
           aria-label={element.name}
           spellCheck={false}
-          onInput={() => undefined}
+          onInput={(event) => {
+            const nextContent = floatingTextPlainTextToHtml(event.currentTarget.innerText)
+            scheduleDraftUpdate(nextContent)
+          }}
           onBlur={() => {
             commitEditableText()
             onStopEditing?.()
@@ -285,9 +315,9 @@ interface FloatingElementRendererProps {
   isEditing: boolean
   onSelect: () => void
   onDoubleClick: () => void
-  onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void
-  onResizeStart?: (e: React.MouseEvent<HTMLButtonElement>, handle: FloatingResizeHandle) => void
-  onRotateStart?: (e: React.MouseEvent<HTMLButtonElement>) => void
+  onDragStart: (e: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => void
+  onResizeStart?: (e: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>, handle: FloatingResizeHandle) => void
+  onRotateStart?: (e: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => void
   onDuplicate?: () => void
   onDelete?: () => void
   onToggleLock?: () => void
@@ -296,6 +326,7 @@ interface FloatingElementRendererProps {
   onOpenLayers?: () => void
   onResetRotation?: () => void
   onUpdate: (updates: Partial<FloatingElement>) => void
+  onDraftUpdate?: (updates: Partial<FloatingElement>) => void
   onStopEditing?: () => void
   onEditText?: () => void
   interactive?: boolean
@@ -321,6 +352,7 @@ export function FloatingElementRenderer({
   onOpenLayers,
   onResetRotation,
   onUpdate,
+  onDraftUpdate,
   onStopEditing,
   onEditText,
   interactive = true,
@@ -328,6 +360,38 @@ export function FloatingElementRenderer({
   isRotating = false,
   rotationPreview = null,
 }: FloatingElementRendererProps) {
+  const stopTextEditingForControls = React.useCallback(() => {
+    if (element.type !== 'floating_text' || !isEditing) return
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement && activeElement.isContentEditable) {
+      activeElement.blur()
+    }
+    onStopEditing?.()
+  }, [element.type, isEditing, onStopEditing])
+
+  const handleControlDragStart = React.useCallback((event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => {
+    stopTextEditingForControls()
+    onDragStart(event)
+  }, [onDragStart, stopTextEditingForControls])
+
+  const handleControlResizeStart = React.useCallback((
+    event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>,
+    handle: FloatingResizeHandle,
+  ) => {
+    stopTextEditingForControls()
+    onResizeStart?.(event, handle)
+  }, [onResizeStart, stopTextEditingForControls])
+
+  const handleControlRotateStart = React.useCallback((event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => {
+    stopTextEditingForControls()
+    onRotateStart?.(event)
+  }, [onRotateStart, stopTextEditingForControls])
+
+  const handleControlDelete = React.useCallback(() => {
+    stopTextEditingForControls()
+    onDelete?.()
+  }, [onDelete, stopTextEditingForControls])
+
   const baseStyle: React.CSSProperties = {
     ...floatingBaseCSS(element, { rotate: false }),
     outline: 'none',
@@ -383,6 +447,7 @@ export function FloatingElementRenderer({
             element={element as FloatingText}
             isEditing={isEditing}
             onUpdate={onUpdate as (u: Partial<FloatingText>) => void}
+            onDraftUpdate={onDraftUpdate as ((u: Partial<FloatingText>) => void) | undefined}
             onStopEditing={onStopEditing}
           />
         )}
@@ -396,27 +461,20 @@ export function FloatingElementRenderer({
           <FloatingIconContent element={element as FloatingIcon} />
         )}
       </div>
-      {interactive && isSelected && isEditing && element.type === 'floating_text' && (
-        <div className="pointer-events-none absolute inset-0 z-[2]">
-          <div
-            className="absolute inset-0 rounded-[2px] border-2 border-[#7c3aed]"
-            style={{ transform: `rotate(${element.rotation}deg)` }}
-          />
-        </div>
-      )}
-      {interactive && isSelected && !isEditing && (
+      {interactive && isSelected && (
         <FloatingSelectionControls
           element={element}
           isRotating={isRotating}
           rotationPreview={rotationPreview}
-          onResizeStart={onResizeStart ?? (() => undefined)}
-          onRotateStart={onRotateStart ?? (() => undefined)}
+          onResizeStart={handleControlResizeStart}
+          onRotateStart={handleControlRotateStart}
           onDuplicate={onDuplicate ?? (() => undefined)}
-          onDelete={onDelete ?? (() => undefined)}
+          onDelete={handleControlDelete}
           onToggleLock={onToggleLock ?? (() => undefined)}
           onBringForward={onBringForward ?? (() => undefined)}
           onSendBackward={onSendBackward ?? (() => undefined)}
           onOpenLayers={onOpenLayers ?? (() => undefined)}
+          onMoveStart={!element.locked ? handleControlDragStart : undefined}
           onResetRotation={onResetRotation ?? (() => undefined)}
           onEditText={onEditText}
           onUpdateText={onUpdate as (u: Partial<FloatingText>) => void}

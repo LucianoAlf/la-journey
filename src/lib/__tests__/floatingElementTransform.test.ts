@@ -182,7 +182,7 @@ test('resizes floating text vertical writing area without scaling font from top 
   assertEqual(updates, { width: 40, height: 10, x: 50, y: 52 }, 'text top and bottom handles should change writing area without changing font size')
 })
 
-test('resizes floating text corner writing area without scaling font', () => {
+test('scales floating text font from corner handles', () => {
   const updates = calculateFloatingElementResize({
     element: baseText,
     handle: 'se',
@@ -190,7 +190,19 @@ test('resizes floating text corner writing area without scaling font', () => {
     deltaYPercent: 4,
   })
 
-  assertEqual(updates, { width: 50, height: 10, x: 55, y: 52 }, 'text corner handles should resize the text box without changing font size')
+  assertEqual(updates, { width: 66.7, height: 10, fontSize: 27, x: 63.3, y: 52 }, 'text corner handles should scale the text and keep the opposite corner anchored')
+})
+
+test('alt corner resize scales floating text from the center', () => {
+  const updates = calculateFloatingElementResize({
+    element: baseText,
+    handle: 'se',
+    deltaXPercent: -5,
+    deltaYPercent: -1,
+    fromCenter: true,
+  })
+
+  assertEqual(updates, { width: 26.7, height: 4, fontSize: 11, x: 50, y: 50 }, 'Alt corner resize should scale the text size and keep the center anchored')
 })
 
 test('calculates rotation from the element center to the pointer', () => {

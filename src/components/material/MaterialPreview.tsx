@@ -129,6 +129,7 @@ interface MaterialPreviewProps {
   onLegacyNotationStavePointerDown?: (staveIndex: number) => void
   onMusicStableRender?: (block: MaterialBlock, html: string) => void
   onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void
+  onChordGridItemRemove?: (block: MaterialBlock, chord: any, index: number) => void
   onKeyboardGridItemClick?: (block: MaterialBlock, keyboard: any, index: number) => void
   coverEditable?: boolean
   onCoverPositionChange?: (field: string, pos: { x: number; y: number }) => void
@@ -325,7 +326,7 @@ function BlockChordDiagram({ block }: { block: MaterialBlock }) {
   )
 }
 
-function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock; onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void }) {
+function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: { block: MaterialBlock; onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void; onChordGridItemRemove?: (block: MaterialBlock, chord: any, index: number) => void }) {
   const renderData = getBlockRenderData(block)
   const content = getBlockContent(block)
   const renderChords = renderData.chords
@@ -397,11 +398,11 @@ function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock;
   ))
   const canRenderAsDiagrams = normalizedChords.length > 0 && normalizedChords.some((chord: any) => Array.isArray(chord?.fingers) && chord.fingers.length > 0)
   const configuredColumns = (renderData.columns as number) ?? 3
-  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), Math.max(configuredColumns, 1), 4)
+  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), Math.max(configuredColumns, 1), 5)
+  const useDenseChordGrid = chordColumns >= 5
 
   return (
     <div className="mb-4">
-      {block.title && <h3 className="font-bold text-[14px] text-text mb-3">{block.title}</h3>}
       {!canRenderAsDiagrams ? (
         <div className="flex flex-wrap gap-2 justify-center">
           {normalizedChords.map((chord: any, i: number) => (
@@ -415,31 +416,49 @@ function BlockChordGrid({ block, onChordGridItemClick }: { block: MaterialBlock;
         </div>
       ) : (
         <div
-          className="mx-auto grid gap-4 justify-center"
+          className={`mx-auto grid justify-center ${useDenseChordGrid ? 'gap-1.5' : 'gap-4'}`}
           style={{
-            gridTemplateColumns: `repeat(${chordColumns}, minmax(0, 140px))`,
+            gridTemplateColumns: `repeat(${chordColumns}, minmax(0, ${useDenseChordGrid ? 116 : 140}px))`,
             width: 'fit-content',
             maxWidth: '100%',
           }}
         >
           {normalizedChords.map((chord: any, i: number) => (
-            <button
+            <div
               key={i}
-              type="button"
-              className="rounded-[12px] p-1 transition-colors hover:bg-bg2/40"
-              onClick={() => onChordGridItemClick?.(block, chord, i)}
+              className="group relative rounded-[12px] p-1 transition-colors hover:bg-bg2/40"
             >
-              <ChordDiagram
-                name={chord.chord_name ?? chord.name ?? '?'}
-                positions={{
-                  fingers: chord.fingers ?? [],
-                  barres: chord.barres ?? [],
+              <button
+                type="button"
+                className="block"
+                onClick={() => onChordGridItemClick?.(block, chord, i)}
+              >
+                <ChordDiagram
+                  name={chord.chord_name ?? chord.name ?? '?'}
+                  positions={{
+                    fingers: chord.fingers ?? [],
+                    barres: chord.barres ?? [],
                   muted: chord.muted ?? [],
                 }}
                 position={chord.position ?? 1}
-                size="full"
+                size={useDenseChordGrid ? 'dense' : 'full'}
               />
-            </button>
+              </button>
+              {onChordGridItemRemove && normalizedChords.length > 1 && (
+                <button
+                  type="button"
+                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border bg-white text-text3 opacity-0 shadow-sm transition hover:border-vermelho/40 hover:bg-vermelho-soft hover:text-vermelho group-hover:opacity-100"
+                  aria-label={`Excluir acorde ${i + 1}`}
+                  title={`Excluir acorde ${i + 1}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onChordGridItemRemove(block, chord, i)
+                  }}
+                >
+                  <Trash size={12} weight="bold" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -2125,7 +2144,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onChordGridItemRemove, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -2168,7 +2187,7 @@ export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointer
           <Renderer
             key={i}
             block={block}
-            {...(block.block_type === 'chord_grid' ? { onChordGridItemClick } : {})}
+            {...(block.block_type === 'chord_grid' ? { onChordGridItemClick, onChordGridItemRemove } : {})}
             {...(block.block_type === 'keyboard_grid' ? { onKeyboardGridItemClick } : {})}
           />
         )

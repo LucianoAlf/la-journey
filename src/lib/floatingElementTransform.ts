@@ -31,6 +31,8 @@ interface RotationDragInput {
 
 const MIN_FLOATING_ELEMENT_SIZE = 2
 const MAX_FLOATING_ELEMENT_SIZE = 100
+const MIN_FLOATING_TEXT_FONT_SIZE = 8
+const MAX_FLOATING_TEXT_FONT_SIZE = 120
 
 function roundTenths(value: number) {
   return Math.round(value * 10) / 10
@@ -38,6 +40,10 @@ function roundTenths(value: number) {
 
 function clampSize(value: number) {
   return Math.max(MIN_FLOATING_ELEMENT_SIZE, Math.min(MAX_FLOATING_ELEMENT_SIZE, value))
+}
+
+function clampTextFontSize(value: number) {
+  return Math.max(MIN_FLOATING_TEXT_FONT_SIZE, Math.min(MAX_FLOATING_TEXT_FONT_SIZE, value))
 }
 
 function screenDeltaToElementDelta(deltaX: number, deltaY: number, rotation: number) {
@@ -65,6 +71,7 @@ function elementDeltaToScreenDelta(deltaX: number, deltaY: number, rotation: num
 function shouldKeepAspectRatio(element: FloatingElement, handle: FloatingResizeHandle, explicit?: boolean) {
   if (explicit) return true
   if (!['nw', 'ne', 'se', 'sw'].includes(handle)) return false
+  if (element.type === 'floating_text') return true
   return isFloatingElementAspectLocked(element)
 }
 
@@ -88,6 +95,30 @@ export function calculateFloatingElementResize({
 
   let nextWidth = clampSize(startWidth + (localDelta.x * horizontalSign * multiplier))
   let nextHeight = clampSize(startHeight + (localDelta.y * verticalSign * multiplier))
+
+  if (element.type === 'floating_text' && horizontalSign !== 0 && verticalSign !== 0) {
+    const widthCandidateDelta = localDelta.x * horizontalSign * multiplier
+    const heightCandidateDelta = localDelta.y * verticalSign * multiplier
+    const widthScale = (startWidth + widthCandidateDelta) / startWidth
+    const heightScale = (startHeight + heightCandidateDelta) / startHeight
+    const scale = Math.abs(widthScale - 1) >= Math.abs(heightScale - 1) ? widthScale : heightScale
+    const nextScale = Math.max(0.35, Math.min(3, scale))
+    const scaledWidth = clampSize(startWidth * nextScale)
+    const scaledHeight = clampSize(startHeight * nextScale)
+    const centerDelta = elementDeltaToScreenDelta(
+      fromCenter ? 0 : ((scaledWidth - startWidth) / 2) * horizontalSign,
+      fromCenter ? 0 : ((scaledHeight - startHeight) / 2) * verticalSign,
+      element.rotation,
+    )
+
+    return {
+      width: roundTenths(scaledWidth),
+      height: roundTenths(scaledHeight),
+      fontSize: Math.round(clampTextFontSize((element as any).fontSize * nextScale)),
+      x: roundTenths(element.x + centerDelta.x),
+      y: roundTenths(element.y + centerDelta.y),
+    } as Partial<FloatingElement>
+  }
 
   if (isAspectLocked || shouldKeepAspectRatio(element, handle, keepAspectRatio)) {
     const widthCandidateDelta = horizontalSign === 0
