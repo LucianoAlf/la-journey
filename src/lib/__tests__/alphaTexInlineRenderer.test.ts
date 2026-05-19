@@ -1,5 +1,6 @@
 import {
   getAlphaTexInlineFrameStyle,
+  getLegacyNotationAlphaTexDisplayTex,
   getAlphaTexInlineRenderTex,
   hasExplicitAlphaTexTimeSignature,
   isFreeTimeSignaturePathData,
@@ -38,6 +39,17 @@ test('keeps free notation free instead of inventing a 4/4 time signature', () =>
 test('recognizes explicit AlphaTex time signatures', () => {
   assert(hasExplicitAlphaTexTimeSignature('\\ts 3 2 . :4 c4'), 'expected \\ts signatures to be detected')
   assert(hasExplicitAlphaTexTimeSignature('\\time 6/8 . :8 c4'), 'expected \\time signatures to be detected')
+})
+
+test('adds 4/4 only for legacy notation blocks whose metadata says 4/4', () => {
+  const legacyTex = '\\title "Divisao - Colcheias" \\tempo 60 . :8 c4 d4 e4 f4 | :4 g4'
+  const displayTex = getLegacyNotationAlphaTexDisplayTex(legacyTex, 'Colcheias em 4/4 Colcheias em compasso quaternario')
+  const freeDisplayTex = getLegacyNotationAlphaTexDisplayTex(legacyTex, 'Notas soltas')
+
+  assert(displayTex.includes('\\ts 4 4'), 'legacy 4/4 notation should receive an explicit display time signature')
+  assert(hasExplicitAlphaTexTimeSignature(displayTex), 'legacy 4/4 display tex should be detected as explicit time')
+  assert(!freeDisplayTex.includes('\\ts 4 4'), 'generic legacy notation must stay free-time')
+  assert(!hasExplicitAlphaTexTimeSignature(freeDisplayTex), 'generic legacy notation should not become explicit time')
 })
 
 test('hides AlphaTab free-time text from canvas previews without changing the music data', () => {

@@ -4,6 +4,7 @@ import {
   applyLibraryChordToDiagramBlock,
   applyLibraryChordToGridBlock,
   chordLibraryItemToRenderData,
+  getRenderableGridChords,
 } from '../editorChordSelection'
 
 const chord = {
@@ -27,6 +28,31 @@ const chord = {
 }
 
 function run() {
+  {
+    const chords = getRenderableGridChords([
+      {
+        name: 'G',
+        position: 7,
+        positions: {
+          muted: [2, 3, 5, 6],
+          barres: [],
+          fingers: [[1, 4, null], [4, 1, null]],
+        },
+      },
+    ])
+
+    assert.deepEqual(chords, [
+      {
+        chord_name: 'G',
+        name: 'G',
+        fingers: [[1, 4, null], [4, 1, null]],
+        barres: [],
+        muted: [2, 3, 5, 6],
+        position: 7,
+      },
+    ])
+  }
+
   {
     const renderData = chordLibraryItemToRenderData(chord) as any
 
@@ -119,6 +145,20 @@ function run() {
 
   {
     const block = {
+      id: 'grid-1',
+      render_data: {
+        columns: 3,
+        chords: [{ chord_name: '', fingers: [], barres: [], muted: [], position: 1 }],
+      },
+    }
+    const next = applyLibraryChordToGridBlock(block, chord)
+
+    assert.equal(next.render_data.columns, 3)
+    assert.deepEqual(next.render_data.chords.map((item: any) => item.chord_name), ['G'])
+  }
+
+  {
+    const block = {
       id: 'block-1',
       block_type: 'chord_diagram',
       title: 'C',
@@ -140,6 +180,60 @@ function run() {
     assert.deepEqual(renderData.chords.map((item: any) => item.chord_name), ['C', 'G'])
     assert.deepEqual(renderData.chords[0].fingers, [[1, 2]])
     assert.equal(renderData.chords[1].chord_library_id, 'g-major')
+  }
+
+  {
+    const block = {
+      id: 'empty-block',
+      block_type: 'chord_diagram',
+      title: '',
+      render_data: {
+        chord_name: '',
+        fingers: [],
+        barres: [],
+        muted: [],
+        position: 1,
+      },
+    }
+    const next = appendLibraryChordToDiagramAsGridBlock(block, chord)
+    const renderData = next.render_data as any
+
+    assert.equal(next.block_type, 'chord_grid')
+    assert.deepEqual(renderData.chords.map((item: any) => item.chord_name), ['G'])
+  }
+
+  {
+    const block = {
+      id: 'empty-block-null',
+      block_type: 'chord_diagram',
+      title: null,
+      render_data: null,
+    }
+    const next = appendLibraryChordToDiagramAsGridBlock(block, chord)
+    const renderData = next.render_data as any
+
+    assert.equal(next.block_type, 'chord_grid')
+    assert.deepEqual(renderData.chords.map((item: any) => item.chord_name), ['G'])
+  }
+
+  {
+    const block = {
+      id: 'malformed-grid-as-diagram',
+      block_type: 'chord_diagram',
+      title: 'Grade de Acordes',
+      render_data: {
+        columns: 3,
+        chords: [
+          { chord_name: '', fingers: [], barres: [], muted: [], position: 1 },
+          { chord_name: 'C', fingers: [[1, 2]], barres: [], muted: [], position: 1 },
+        ],
+      },
+    }
+    const next = appendLibraryChordToDiagramAsGridBlock(block, chord)
+    const renderData = next.render_data as any
+
+    assert.equal(next.block_type, 'chord_grid')
+    assert.deepEqual(renderData.chords.map((item: any) => item.chord_name), ['C', 'G'])
   }
 }
 

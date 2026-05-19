@@ -50,6 +50,71 @@ function getAutoChordGridColumns(currentColumns: unknown, chordCount: number) {
   return Math.min(5, Math.max(safeCurrentColumns, Math.min(chordCount, 5)))
 }
 
+function hasChordPositionData(chord: Record<string, any>) {
+  return arrayValue(chord.fingers).length > 0
+    || arrayValue(chord.barres).length > 0
+    || arrayValue(chord.muted).length > 0
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+export function hasGridChordData(chord: unknown) {
+  if (typeof chord === 'string') return textValue(chord).length > 0
+  if (!chord || typeof chord !== 'object' || Array.isArray(chord)) return false
+
+  const item = chord as Record<string, any>
+  const positions = cloneRecord(item.positions)
+  return Boolean(
+    textValue(item.chord_name)
+      || textValue(item.name)
+      || textValue(item.chord_library_id)
+      || hasChordPositionData(item)
+      || hasChordPositionData(positions),
+  )
+}
+
+export function getRenderableGridChords(chords: unknown[]) {
+  return chords
+    .map(normalizeGridChord)
+    .filter((chord): chord is string | Record<string, any> => chord !== null)
+}
+
+export function normalizeGridChord(chord: unknown): string | Record<string, any> | null {
+  if (typeof chord === 'string') {
+    const name = textValue(chord)
+    return name ? name : null
+  }
+  if (!chord || typeof chord !== 'object' || Array.isArray(chord)) return null
+
+  const item = chord as Record<string, any>
+  const positions = cloneRecord(item.positions)
+  const fingers = arrayValue(item.fingers).length > 0 ? arrayValue(item.fingers) : arrayValue(positions.fingers)
+  const barres = arrayValue(item.barres).length > 0 ? arrayValue(item.barres) : arrayValue(positions.barres)
+  const muted = arrayValue(item.muted).length > 0 ? arrayValue(item.muted) : arrayValue(positions.muted)
+  const chordName = textValue(item.chord_name) || textValue(item.name)
+
+  const normalized = {
+    ...(textValue(item.chord_library_id) ? { chord_library_id: item.chord_library_id } : {}),
+    ...(textValue(item.instrument) ? { instrument: item.instrument } : {}),
+    ...(textValue(item.source) ? { source: item.source } : {}),
+    ...(textValue(item.canonical_name) ? { canonical_name: item.canonical_name } : {}),
+    ...(typeof item.strings === 'number' ? { strings: item.strings } : {}),
+    ...(chordName ? { chord_name: chordName, name: textValue(item.name) || chordName } : {}),
+    fingers,
+    barres,
+    muted,
+    position: typeof item.position === 'number'
+      ? item.position
+      : typeof positions.position === 'number'
+        ? positions.position
+        : inferChordPosition({ fingers, barres }),
+  }
+
+  return hasGridChordData(normalized) ? normalized : null
+}
+
 export function chordLibraryItemToRenderData(item: EditorChordLibraryItem) {
   const positions = cloneRecord(item.positions)
   const svgConfig = cloneRecord(item.svg_config)
@@ -89,9 +154,14 @@ export function applyLibraryChordToGridBlock<TBlock extends ChordEditableBlock>(
   index?: number | null,
 ): TBlock {
   const renderData = chordLibraryItemToRenderData(item)
-  const currentChords = Array.isArray(block.render_data?.chords) ? block.render_data.chords : []
+  const currentChords = getRenderableGridChords(Array.isArray(block.render_data?.chords) ? block.render_data.chords : [])
   const nextChords = typeof index === 'number' && index >= 0
-    ? currentChords.map((chord, chordIndex) => chordIndex === index ? { ...chord, ...renderData } : chord)
+    ? currentChords.map((chord, chordIndex) => {
+      if (chordIndex !== index) return chord
+      return chord && typeof chord === 'object' && !Array.isArray(chord)
+        ? { ...chord, ...renderData }
+        : renderData
+    })
     : [...currentChords, renderData]
   const shouldAutoGrowColumns = !(typeof index === 'number' && index >= 0)
 
@@ -107,9 +177,8 @@ export function applyLibraryChordToGridBlock<TBlock extends ChordEditableBlock>(
 
 function diagramBlockToGridChord(block: ChordEditableBlock) {
   const renderData = block.render_data ?? {}
-  const chordName = renderData.chord_name ?? block.title ?? 'Acorde'
-
-  return {
+  const chordName = renderData.chord_name ?? block.title ?? ''
+  const chord = {
     chord_name: chordName,
     chord_library_id: renderData.chord_library_id,
     instrument: renderData.instrument ?? 'guitar',
@@ -119,22 +188,33 @@ function diagramBlockToGridChord(block: ChordEditableBlock) {
     position: typeof renderData.position === 'number' ? renderData.position : 1,
     strings: renderData.strings,
   }
+
+  return hasGridChordData(chord) ? chord : null
 }
 
 export function appendLibraryChordToDiagramAsGridBlock<TBlock extends ChordEditableBlock>(
   block: TBlock,
   item: EditorChordLibraryItem,
 ): TBlock {
-  const existingChord = diagramBlockToGridChord(block)
   const renderData = chordLibraryItemToRenderData(item)
+  const hasEmbeddedGridChords = Array.isArray(block.render_data?.chords)
+  const existingChords = hasEmbeddedGridChords
+    ? getRenderableGridChords(block.render_data.chords)
+    : []
+  const diagramChord = hasEmbeddedGridChords ? null : diagramBlockToGridChord(block)
+  const nextChords = [
+    ...existingChords,
+    ...(diagramChord ? [diagramChord] : []),
+    renderData,
+  ]
 
   return {
     ...block,
     block_type: 'chord_grid',
     title: 'Grade de Acordes',
     render_data: {
-      columns: getAutoChordGridColumns(block.render_data?.columns, 2),
-      chords: [existingChord, renderData],
+      columns: getAutoChordGridColumns(block.render_data?.columns, nextChords.length),
+      chords: nextChords,
     },
   }
 }

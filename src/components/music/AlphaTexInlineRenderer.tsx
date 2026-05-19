@@ -47,6 +47,41 @@ export function hasExplicitAlphaTexTimeSignature(input: string) {
   return /\\(?:ts|time)\s+\d+\s*(?:[\/xX]\s*)?\d+/.test(input)
 }
 
+function normalizeLegacyNotationContext(input: string) {
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function shouldApplyLegacyFourFourTimeSignature(context: string) {
+  const normalized = normalizeLegacyNotationContext(context)
+  return /(^|[^\d])4\s*\/\s*4([^\d]|$)/.test(normalized)
+    || /\bcompasso\s+quaternario\b/.test(normalized)
+}
+
+function insertAlphaTexTimeSignature(input: string, signature: string) {
+  const tex = input.trim()
+  if (!tex) return tex
+
+  if (/(^|\s)\.(?=\s|$)/.test(tex)) {
+    return tex.replace(/(^|\s)\.(?=\s|$)/, `$1${signature} .`)
+  }
+
+  if (/\\tempo\s+\d+/.test(tex)) {
+    return tex.replace(/(\\tempo\s+\d+\s*)/, `$1${signature} `)
+  }
+
+  return `${signature} ${tex}`
+}
+
+export function getLegacyNotationAlphaTexDisplayTex(input: string, context: string) {
+  const tex = input.trim()
+  if (!tex || hasExplicitAlphaTexTimeSignature(tex)) return tex
+  if (!shouldApplyLegacyFourFourTimeSignature(context)) return tex
+  return insertAlphaTexTimeSignature(tex, '\\ts 4 4')
+}
+
 export function stripAlphaTexFreeTimeMarker(input: string) {
   return input.replace(/\\ft\b\s*/g, '')
 }

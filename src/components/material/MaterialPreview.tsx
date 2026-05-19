@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useCallback, useState, useEffect } from 'react'
+import React, { createContext, useContext, useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import {
   AlignBottom,
   AlignCenterHorizontal,
@@ -12,9 +12,11 @@ import {
   ArrowUp,
   Copy,
   DotsThree,
+  Guitar,
   Lightbulb,
   MusicNotes,
   PencilSimple,
+  PianoKeys,
   Stack,
   Target,
   Trash,
@@ -36,13 +38,15 @@ import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } 
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { Tablature } from '@/components/music/Tablature'
-import { AlphaTexInlineRenderer, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
+import { AlphaTexInlineRenderer, getLegacyNotationAlphaTexDisplayTex, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
 import { COVER_FONT_OPTIONS } from '@/lib/googleFonts'
 import { loadGoogleFonts } from '@/lib/fontLoader'
 import { keyboardEntryToDisplayData } from '@/lib/keyboardBlockAdapter'
+import { getRenderableGridChords } from '@/lib/editorChordSelection'
 import { lookupGuitarChord } from '@/services/chordAutoFillService'
+import { getMaterialBlockEmptyState } from '@/lib/materialBlockEmptyState'
 import {
   notFoundGridChord,
   resolveGuitarChordFromLibrary,
@@ -57,6 +61,8 @@ export interface MaterialBlock {
   content?: { text?: string; [key: string]: any }
   render_data?: any
 }
+
+const EMPTY_CHORD_LIST: unknown[] = []
 
 export interface CoverOverlayElement {
   id: string
@@ -261,6 +267,277 @@ function renderContent(content?: { text?: string; html?: string; [key: string]: 
   return null
 }
 
+function EmptyBlockPlaceholder({ state }: { state: NonNullable<ReturnType<typeof getMaterialBlockEmptyState>> }) {
+  if (state.kind === 'keyboard' || state.kind === 'keyboard_grid') {
+    const whiteKeys = [
+      { label: 'Dó', octave: 'C4' },
+      { label: 'Ré', octave: 'D4' },
+      { label: 'Mi', octave: 'E4' },
+      { label: 'Fá', octave: 'F4' },
+      { label: 'Sol', octave: 'G4' },
+      { label: 'Lá', octave: 'A4' },
+      { label: 'Si', octave: 'B4' },
+      { label: 'Dó', octave: 'C5' },
+      { label: 'Ré', octave: 'D5' },
+      { label: 'Mi', octave: 'E5' },
+      { label: 'Fá', octave: 'F5' },
+      { label: 'Sol', octave: 'G5' },
+      { label: 'Lá', octave: 'A5' },
+      { label: 'Si', octave: 'B5' },
+    ]
+    const blackKeys = [
+      { after: 0, label: 'Dó#' },
+      { after: 1, label: 'Ré#' },
+      { after: 3, label: 'Fá#' },
+      { after: 4, label: 'Sol#' },
+      { after: 5, label: 'Lá#' },
+      { after: 7, label: 'Dó#' },
+      { after: 8, label: 'Ré#' },
+      { after: 10, label: 'Fá#' },
+      { after: 11, label: 'Sol#' },
+      { after: 12, label: 'Lá#' },
+    ]
+    const whiteKeyWidth = 38
+    const whiteKeyStep = 39.4
+    const blackKeyWidth = 26
+
+    return (
+      <div
+        className="mb-4 rounded-[var(--radius-sm)] border border-dashed border-master/35 bg-master/5 px-4 py-3"
+        data-editor-empty-block-placeholder={state.kind}
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex h-20 w-24 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-master/20 bg-white">
+            <PianoKeys size={30} className="text-master" weight="duotone" />
+          </div>
+          <div className="flex min-h-[158px] min-w-0 flex-1 items-center px-1 py-1">
+            <svg
+              viewBox="0 0 590 164"
+              className="block h-[152px] w-full"
+              role="img"
+              aria-label="Teclado vazio"
+              data-editor-keyboard-placeholder-grid="true"
+            >
+              <g transform="translate(18 12)">
+                {whiteKeys.map((key, index) => {
+                  const x = index * whiteKeyStep
+                  return (
+                    <g key={`${key.octave}-${index}`}>
+                      <rect
+                        x={x}
+                        y="0"
+                        width={whiteKeyWidth}
+                        height="132"
+                        rx="4"
+                        fill="#fff"
+                        stroke="var(--border)"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={x + whiteKeyWidth / 2}
+                        y="105"
+                        textAnchor="middle"
+                        fontFamily="DM Sans, sans-serif"
+                        fontSize="10"
+                        fontWeight="600"
+                        fill="var(--text3)"
+                      >
+                        {key.label}
+                      </text>
+                      <text
+                        x={x + whiteKeyWidth / 2}
+                        y="119"
+                        textAnchor="middle"
+                        fontFamily="DM Sans, sans-serif"
+                        fontSize="8"
+                        fontWeight="600"
+                        fill="var(--text3)"
+                        opacity="0.45"
+                      >
+                        {key.octave}
+                      </text>
+                    </g>
+                  )
+                })}
+                {blackKeys.map(key => (
+                  <g key={`${key.label}-${key.after}`}>
+                    <rect
+                      x={key.after * whiteKeyStep + whiteKeyWidth - blackKeyWidth / 2}
+                      y="0"
+                      width={blackKeyWidth}
+                      height="90"
+                      rx="4"
+                      fill="#1f1f30"
+                    />
+                    <text
+                      x={key.after * whiteKeyStep + whiteKeyWidth}
+                      y="70"
+                      textAnchor="middle"
+                      fontFamily="DM Sans, sans-serif"
+                      fontSize="8"
+                      fill="rgba(255,255,255,.58)"
+                    >
+                      {key.label}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="text-[12px] font-semibold text-text">{state.headline}</div>
+          <div className="mt-0.5 text-[11px] text-text3">{state.detail}</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (state.kind === 'chord_diagram') {
+    return (
+      <div
+        className="mb-4 rounded-[var(--radius-sm)] border border-dashed border-grow/35 bg-grow/5 px-4 py-3"
+        data-editor-empty-block-placeholder="chord_diagram"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-grow/20 bg-white">
+            <Guitar size={26} className="text-grow" weight="duotone" />
+          </div>
+          <div className="flex min-h-[160px] min-w-0 flex-1 items-center justify-center rounded-[var(--radius-sm)] border border-border/70 bg-white px-4 py-4">
+            <svg
+              viewBox="0 0 96 140"
+              className="block h-[142px] w-[98px]"
+              role="img"
+              aria-label="Diagrama de acorde vazio"
+              data-editor-chord-placeholder-grid="true"
+            >
+              <line x1="18" y1="16" x2="78" y2="16" stroke="var(--text, #1a1a2e)" strokeWidth="3.2" strokeLinecap="round" />
+              {[0, 1, 2, 3, 4, 5].map(index => {
+                const x = 18 + index * 12
+                return <line key={`string-${index}`} x1={x} y1="16" x2={x} y2="124" stroke="var(--border)" strokeWidth="1.15" />
+              })}
+              {[1, 2, 3, 4, 5].map(index => {
+                const y = 16 + index * 21.6
+                return <line key={`fret-${index}`} x1="18" y1={y} x2="78" y2={y} stroke="var(--border)" strokeWidth="1.15" />
+              })}
+            </svg>
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="text-[12px] font-semibold text-text">{state.headline}</div>
+          <div className="mt-0.5 text-[11px] text-text3">{state.detail}</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (state.kind === 'tablature') {
+    const strings = ['e', 'B', 'G', 'D', 'A', 'E']
+    return (
+      <div
+        className="mb-4 rounded-[var(--radius-sm)] border border-dashed border-foundation/35 bg-foundation/5 px-4 py-3"
+        data-editor-empty-block-placeholder="tablature"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-foundation/20 bg-white">
+            <Guitar size={26} className="text-foundation" weight="duotone" />
+          </div>
+          <div className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-border/70 bg-white px-3 py-2">
+            <svg
+              viewBox="0 0 540 82"
+              className="block h-[74px] w-full"
+              role="img"
+              aria-label="Tablatura vazia"
+              data-editor-tab-placeholder-grid="true"
+            >
+              {strings.map((stringName, index) => {
+                const y = 12 + index * 12
+                return (
+                  <React.Fragment key={`${stringName}-${index}`}>
+                    <text
+                      x="13"
+                      y={y}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize="10"
+                      fontWeight="600"
+                      fontFamily="DM Sans, sans-serif"
+                      fill="var(--foundation)"
+                    >
+                      {stringName}
+                    </text>
+                    <line
+                      x1="28"
+                      y1={y}
+                      x2="522"
+                      y2={y}
+                      stroke="var(--border)"
+                      strokeWidth="0.9"
+                    />
+                  </React.Fragment>
+                )
+              })}
+              <line x1="28" y1="12" x2="28" y2="72" stroke="var(--border)" strokeWidth="0.9" opacity="0.7" />
+              <line x1="522" y1="12" x2="522" y2="72" stroke="var(--border)" strokeWidth="0.9" opacity="0.45" />
+            </svg>
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="text-[12px] font-semibold text-text">{state.headline}</div>
+          <div className="mt-0.5 text-[11px] text-text3">{state.detail}</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (state.kind === 'notation') {
+    return (
+      <div
+        className="mb-4 rounded-[var(--radius-sm)] border border-dashed border-accent/35 bg-accent/5 px-4 py-3"
+        data-editor-empty-block-placeholder="notation"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-accent/20 bg-white">
+            <MusicNotes size={24} className="text-accent" weight="duotone" />
+          </div>
+          <div className="relative h-14 min-w-0 flex-1">
+            {[0, 1, 2, 3, 4].map(index => (
+              <div
+                key={index}
+                className="absolute left-0 right-0 border-t border-text3/45"
+                style={{ top: `${10 + index * 8}px` }}
+              />
+            ))}
+            <div className="absolute left-4 top-[18px] h-3 w-3 rounded-full border-2 border-accent/45 bg-white" />
+            <div className="absolute left-9 right-0 top-[18px] border-t border-dashed border-accent/35" />
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="text-[12px] font-semibold text-text">{state.headline}</div>
+          <div className="mt-0.5 text-[11px] text-text3">{state.detail}</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="mb-4 rounded-[var(--radius-sm)] border border-dashed border-border bg-bg2/45 px-4 py-3"
+      data-editor-empty-block-placeholder="text"
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-white text-text3 shadow-sm ring-1 ring-border/70">
+          <PencilSimple size={15} weight="bold" />
+        </div>
+        <div>
+          <div className="text-[13px] font-medium text-text">{state.headline}</div>
+          <div className="mt-0.5 text-[11px] text-text3">{state.detail}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function BlockTitle({ block }: { block: MaterialBlock }) {
   const content = getBlockContent(block)
   const renderData = getBlockRenderData(block)
@@ -288,10 +565,16 @@ function BlockTitle({ block }: { block: MaterialBlock }) {
 function BlockText({ block, onLegacyNotationStavePointerDown }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void }) {
   const content = getBlockContent(block)
   const renderData = getBlockRenderData(block)
+  const emptyState = getMaterialBlockEmptyState({
+    blockType: block.block_type,
+    title: block.title,
+    content,
+    renderData,
+  })
   return (
     <div className="mb-4">
       {renderTitle(block)}
-      {renderContent(content)}
+      {emptyState ? <EmptyBlockPlaceholder state={emptyState} /> : renderContent(content)}
       {(renderData.notation || renderData.notation_data) && (
         <NotationPreviewCompat
           notation={renderData.notation as any}
@@ -305,7 +588,19 @@ function BlockText({ block, onLegacyNotationStavePointerDown }: { block: Materia
 }
 
 function BlockChordDiagram({ block }: { block: MaterialBlock }) {
-  const rd = block.render_data ?? {}
+  const rd = getBlockRenderData(block)
+  if (Array.isArray(rd.chords)) {
+    return <BlockChordGrid block={{ ...block, block_type: 'chord_grid', render_data: rd }} />
+  }
+
+  const emptyState = getMaterialBlockEmptyState({
+    blockType: block.block_type,
+    title: block.title,
+    content: getBlockContent(block),
+    renderData: rd,
+  })
+  if (emptyState) return <EmptyBlockPlaceholder state={emptyState} />
+
   const name = rd.chord_name ?? block.title ?? '?'
   const position = rd.position ?? 1
   const positions = {
@@ -329,9 +624,10 @@ function BlockChordDiagram({ block }: { block: MaterialBlock }) {
 function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: { block: MaterialBlock; onChordGridItemClick?: (block: MaterialBlock, chord: any, index: number) => void; onChordGridItemRemove?: (block: MaterialBlock, chord: any, index: number) => void }) {
   const renderData = getBlockRenderData(block)
   const content = getBlockContent(block)
-  const renderChords = renderData.chords
-  const contentChords = Array.isArray(content.chords) ? content.chords : []
-  const chords = renderChords?.length ? renderChords : contentChords
+  const renderChords = Array.isArray(renderData.chords) ? renderData.chords : EMPTY_CHORD_LIST
+  const contentChords = Array.isArray(content.chords) ? content.chords : EMPTY_CHORD_LIST
+  const sourceChords = renderChords.length ? renderChords : contentChords
+  const chords = useMemo(() => getRenderableGridChords(sourceChords), [sourceChords])
   const [resolvedChords, setResolvedChords] = useState<any[]>([])
 
   useEffect(() => {
@@ -390,6 +686,18 @@ function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: 
       cancelled = true
     }
   }, [chords])
+
+  if (chords.length === 0) {
+    return (
+      <EmptyBlockPlaceholder
+        state={{
+          kind: 'chord_diagram',
+          headline: 'Grade de acordes vazia',
+          detail: 'Clique em Adicionar acorde para escolher os acordes.',
+        }}
+      />
+    )
+  }
 
   const normalizedChords = resolvedChords.length === chords.length ? resolvedChords : chords.map((chord: any) => (
     typeof chord === 'string'
@@ -468,23 +776,36 @@ function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: 
 
 function BlockNotation({ block, onLegacyNotationStavePointerDown, onMusicStableRender }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void; onMusicStableRender?: MusicStableRenderHandler }) {
   const rd = getBlockRenderData(block)
+  const content = getBlockContent(block)
   const alphaTex = typeof rd.alphaTex === 'string' ? rd.alphaTex.trim() : ''
-  const hasPreview = rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0) || alphaTex
+  const legacyAlphaTexContext = [
+    block.title,
+    typeof content.text === 'string' ? content.text : '',
+    typeof content.title_html === 'string' ? content.title_html : '',
+  ].filter(Boolean).join(' ')
+  const displayAlphaTex = getLegacyNotationAlphaTexDisplayTex(alphaTex, legacyAlphaTexContext)
   const shouldRenderStructuredNotation = Boolean(rd.notation || rd.notation_data || (rd.notes && rd.notes.length > 0))
-  if (!hasPreview) return null
+  const emptyState = getMaterialBlockEmptyState({
+    blockType: block.block_type,
+    title: block.title,
+    content,
+    renderData: rd,
+  })
 
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      {!shouldRenderStructuredNotation && alphaTex ? (
+      {emptyState ? (
+        <EmptyBlockPlaceholder state={emptyState} />
+      ) : !shouldRenderStructuredNotation && alphaTex ? (
         <AlphaTabViewer
-          tex={alphaTex}
+          tex={displayAlphaTex}
           minHeight={130}
           scale={1}
           staveProfile="score"
           purpose="canvas-notation-score"
           layout="page"
-          showTimeSignature={hasExplicitAlphaTexTimeSignature(alphaTex)}
+          showTimeSignature={hasExplicitAlphaTexTimeSignature(displayAlphaTex)}
           className="notation-container"
           onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
@@ -587,10 +908,18 @@ function BlockTablature({ block }: { block: MaterialBlock }) {
   const content = getBlockContent(block)
   const alphaTex = typeof renderData.alphaTex === 'string' ? renderData.alphaTex.trim() : ''
   const tab = renderData.tab ?? content.text ?? ''
+  const emptyState = getMaterialBlockEmptyState({
+    blockType: block.block_type,
+    title: block.title,
+    content,
+    renderData,
+  })
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      {alphaTex ? (
+      {emptyState ? (
+        <EmptyBlockPlaceholder state={emptyState} />
+      ) : alphaTex ? (
         <AlphaTexInlineRenderer
           tex={alphaTex}
           minHeight={120}
@@ -1884,6 +2213,12 @@ function BlockKeyboard({ block }: { block: MaterialBlock }) {
   const displayData = keyboardEntryToDisplayData(rd, chordName)
   const chords = Array.isArray(rd.chords) ? rd.chords as Array<Record<string, unknown>> : []
   const chordColumns = Math.min(Math.max(chords.length, 1), 2)
+  const emptyState = getMaterialBlockEmptyState({
+    blockType: block.block_type,
+    title: block.title,
+    content: getBlockContent(block),
+    renderData: rd,
+  })
 
   if (chords.length > 0) {
     return (
@@ -1927,6 +2262,8 @@ function BlockKeyboard({ block }: { block: MaterialBlock }) {
     )
   }
 
+  if (emptyState) return <EmptyBlockPlaceholder state={emptyState} />
+
   if (!displayData) {
     return (
       <div className="mb-4 p-6 bg-bg2 border border-border rounded-[var(--radius-sm)] text-center text-text3 text-[12px]">
@@ -1964,6 +2301,14 @@ function BlockKeyboardGrid({ block, onKeyboardGridItemClick }: { block: Material
   const keyboards = (rd.keyboards as any[]) ?? []
   const configuredColumns = (rd.columns as number) ?? 3
   const keyboardColumns = Math.min(Math.max(keyboards.length, 1), Math.max(configuredColumns, 1), 2)
+  const emptyState = getMaterialBlockEmptyState({
+    blockType: block.block_type,
+    title: block.title,
+    content: getBlockContent(block),
+    renderData: rd,
+  })
+
+  if (emptyState) return <EmptyBlockPlaceholder state={emptyState} />
 
   if (keyboards.length === 0) {
     return (

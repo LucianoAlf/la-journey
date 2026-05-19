@@ -92,6 +92,7 @@ export function getBlockHtml(block: EditableBlockData) {
 export function getPlaceholder(blockType: string) {
   if (blockType === 'title') return 'Titulo'
   if (blockType === 'subtitle') return 'Subtitulo'
+  if (blockType === 'text') return 'Escreva seu texto aqui'
   if (blockType === 'tip') return 'Digite a dica...'
   if (blockType === 'exercise') return 'Digite o exercicio...'
   return 'Clique para editar...'

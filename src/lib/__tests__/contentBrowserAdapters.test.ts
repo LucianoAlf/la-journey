@@ -23,6 +23,42 @@ function run() {
   }
 
   {
+    const blocks = adaptContentBlockItem({
+      block_type: 'chord_chart',
+      title: 'Transicoes de G',
+      content: {
+        text: 'Duas formas de G no braco.',
+        chords: [
+          {
+            name: 'G',
+            position: 7,
+            positions: {
+              muted: [2, 3, 5, 6],
+              barres: [],
+              fingers: [[1, 4, null], [4, 1, null]],
+            },
+          },
+        ],
+      },
+      render_data: {},
+    })
+
+    assert.equal(blocks.length, 1)
+    assert.equal(blocks[0].blockType, 'chord_grid')
+    assert.equal(blocks[0].title, 'Transicoes de G')
+    assert.deepEqual((blocks[0].renderData as any).chords, [
+      {
+        chord_name: 'G',
+        name: 'G',
+        fingers: [[1, 4, null], [4, 1, null]],
+        barres: [],
+        muted: [2, 3, 5, 6],
+        position: 7,
+      },
+    ])
+  }
+
+  {
     const blocks = adaptNotationLibraryItem({
       name: 'Escala de Do',
       notation_data: { staves: [{ notes: ['C4:q'] }] },
@@ -62,6 +98,22 @@ function run() {
     assert.equal(blocks[0].title, 'Asa Branca')
     assert.match(String(blocks[0].content?.html), /Luiz Gonzaga/)
     assert.match(String(blocks[0].content?.html), /G, D7/)
+  }
+
+  {
+    const blocks = adaptRepertoireItem({
+      title: 'Asa Branca',
+      artist: 'Luiz Gonzaga',
+      key: 'G',
+      chords: ['G', 'D7', 'C'],
+      cifra_content: '[G]Quando olhei a terra ardendo',
+    }, { includeChordGrid: true })
+
+    assert.equal(blocks.length, 2)
+    assert.equal(blocks[0].blockType, 'text')
+    assert.equal(blocks[1].blockType, 'chord_grid')
+    assert.deepEqual((blocks[1].renderData as any).chords, ['G', 'D7', 'C'])
+    assert.equal((blocks[1].renderData as any).columns, 3)
   }
 
   {

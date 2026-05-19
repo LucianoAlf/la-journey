@@ -1,3 +1,5 @@
+import { getRenderableGridChords } from './editorChordSelection'
+
 export interface PreparedMaterialBlock {
   blockType: string
   title: string | null
@@ -55,11 +57,33 @@ export function adaptContentBlockItem(item: {
   content?: unknown
   render_data?: unknown
 }): PreparedMaterialBlock[] {
+  const blockType = normalizeBlockType(item.block_type)
+  const content = cloneRecord(item.content) ?? { text: '' }
+  const renderData = cloneRecord(item.render_data)
+
+  if (blockType === 'chord_grid') {
+    const renderChords = Array.isArray(renderData?.chords) ? renderData.chords : []
+    const contentChords = Array.isArray(content.chords) ? content.chords : []
+    const chords = getRenderableGridChords(renderChords.length ? renderChords : contentChords)
+    return [{
+      blockType,
+      title: item.title ?? null,
+      content,
+      renderData: {
+        ...(renderData ?? {}),
+        ...(chords.length ? { chords } : {}),
+        columns: typeof renderData?.columns === 'number'
+          ? renderData.columns
+          : Math.min(Math.max(chords.length, 3), 5),
+      },
+    }]
+  }
+
   return [{
-    blockType: normalizeBlockType(item.block_type),
+    blockType,
     title: item.title ?? null,
-    content: cloneRecord(item.content) ?? { text: '' },
-    renderData: cloneRecord(item.render_data),
+    content,
+    renderData,
   }]
 }
 
@@ -120,7 +144,7 @@ export function adaptRepertoireItem(item: {
   key?: string | null
   chords?: string[] | null
   cifra_content?: string | null
-}): PreparedMaterialBlock[] {
+}, options: { includeChordGrid?: boolean } = {}): PreparedMaterialBlock[] {
   const title = item.title ?? 'Repertorio'
   const artist = item.artist?.trim()
   const chords = item.chords?.filter(Boolean) ?? []
@@ -136,12 +160,30 @@ export function adaptRepertoireItem(item: {
     cifra ? `<pre>${escapeHtml(cifra)}</pre>` : '<p>Repertorio selecionado.</p>',
   ].filter(Boolean).join('')
 
-  return [{
+  const blocks: PreparedMaterialBlock[] = [{
     blockType: 'text',
     title,
     content: { html, text: stripHtml(html) },
     renderData: null,
   }]
+
+  if (options.includeChordGrid && chords.length > 0) {
+    blocks.push({
+      blockType: 'chord_grid',
+      title: `${title} — Acordes`,
+      content: {
+        text: `Acordes de ${title}`,
+        key: item.key ?? null,
+        chords,
+      },
+      renderData: {
+        chords,
+        columns: Math.min(Math.max(chords.length, 3), 5),
+      },
+    })
+  }
+
+  return blocks
 }
 
 export function adaptExerciseLibraryItem(item: {

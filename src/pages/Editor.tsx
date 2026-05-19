@@ -101,8 +101,9 @@ import {
 } from "@/services/coverTemplateService";
 import { createExercise } from "@/services/exerciseLibraryService";
 import { type PreparedMaterialBlock } from "@/lib/contentBrowserAdapters";
-import { appendLibraryChordToDiagramAsGridBlock, applyLibraryChordToDiagramBlock, applyLibraryChordToGridBlock } from "@/lib/editorChordSelection";
+import { appendLibraryChordToDiagramAsGridBlock, applyLibraryChordToDiagramBlock, applyLibraryChordToGridBlock, getRenderableGridChords } from "@/lib/editorChordSelection";
 import { resolveInsertionAnchorOrder, resolvePageInsertionAnchorOrder } from "@/lib/editorInsertion";
+import { EDITOR_ADD_BLOCK_MENU_TYPES } from "@/lib/editorBlockTypes";
 import type { Chord } from "@/services/contentBrowserService";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HeaderFooterBar } from "@/components/editor/HeaderFooterBar";
@@ -168,6 +169,7 @@ import {
   getFloatingElementNudgeStep,
   getInlineEditingBlockAfterCanvasBlockClick,
   isTextInputTarget,
+  shouldEnterInlineEditAfterInsert,
   shouldNudgeFloatingElementFromKey,
 } from "@/lib/editorCanvasInteraction";
 import {
@@ -284,27 +286,6 @@ const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ElementType
   audio:           { label: 'Áudio',   icon: SpeakerHigh, bg: 'var(--grow-soft)',    color: 'var(--grow)' },
   video:           { label: 'Vídeo',   icon: VideoCamera,  bg: 'var(--accent-soft)',  color: 'var(--accent)' },
 }
-
-const ADD_BLOCK_MENU_TYPES = [
-  'text',
-  'tip',
-  'exercise',
-  'title',
-  'image',
-  'audio',
-  'video',
-  'qr_code',
-  'cover',
-  'columns',
-  'notation',
-  'chord_diagram',
-  'chord_grid',
-  'keyboard',
-  'keyboard_grid',
-  'tablature',
-  'separator',
-  'page_break',
-]
 
 function getBlockConfig(type: string) {
   return BLOCK_TYPE_CONFIG[type] ?? { label: type, icon: Article, bg: 'var(--azul-soft)', color: 'var(--azul-claro)' }
@@ -520,6 +501,8 @@ function getDefaultBlockPayload(blockType: string, materialTitle: string): {
   if (blockType === 'keyboard_grid') return { title: 'Grade de Teclados', content: { text: '' }, renderData: { keyboards: [], columns: 3 } }
   if (blockType === 'columns') return { title: null, content: { text: '' }, renderData: { columns: [{ blocks: [] }, { blocks: [] }] } }
   if (blockType === 'qr_code') return { title: 'QR Code', content: { text: '' }, renderData: { url: '', caption: '' } }
+  if (blockType === 'audio') return { title: 'Áudio', content: { text: '' }, renderData: { url: '', caption: '' } }
+  if (blockType === 'video') return { title: 'Vídeo', content: { text: '' }, renderData: { url: '', caption: '' } }
   if (blockType === 'tablature') {
     const notationData = createEmptyTablatureData()
     return {
@@ -2781,23 +2764,16 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       }
       setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], anchorOrder))
       setSelectedBlockId(insertedId)
+      if (shouldEnterInlineEditAfterInsert(blockType)) {
+        setInlineEditingBlockId(insertedId)
+        setInlineEditFocusPoint(null)
+      } else {
+        setInlineEditingBlockId(null)
+        setInlineEditFocusPoint(null)
+      }
       toast.success('Bloco adicionado')
     } catch (e: any) {
-      // Fallback local: banco pode rejeitar block_types novos (CHECK constraint)
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      const newBlock: EditorBlock = {
-        id: tempId,
-        block_type: blockType,
-        title: defaultTitle,
-        content: defaultContent,
-        render_data: defaultRenderData,
-        sort_order: anchorOrder + 1,
-        is_edited: false,
-        original_content: null,
-      }
-      setBlocksWithHistory(prev => insertBlocksAfterOrder(prev, [newBlock], anchorOrder))
-      setSelectedBlockId(tempId)
-      toast.info('Bloco adicionado localmente (salvar no banco pendente)')
+      toast.error('Erro ao adicionar bloco: ' + (e?.message ?? ''))
     }
   }, [materialId, materialTitle, resolveInsertActionAnchorOrder, setBlocksWithHistory, setSelectedBlockId])
 
@@ -6180,7 +6156,7 @@ Regras:
   const handleCanvasChordGridItemRemove = useCallback((blockId: string, _chord: any, index: number) => {
     setBlockWithHistory(blockId, block => {
       const currentChords = Array.isArray((block.render_data as any)?.chords)
-        ? [...((block.render_data as any).chords as any[])]
+        ? getRenderableGridChords((block.render_data as any).chords as any[])
         : []
       if (currentChords.length <= 1 || index < 0 || index >= currentChords.length) return block
       currentChords.splice(index, 1)
@@ -7287,7 +7263,7 @@ ${pagesHtml}
                               Buscar conteúdo
                             </DropdownMenuItem>
                             <div className="h-px bg-border my-1" />
-                            {ADD_BLOCK_MENU_TYPES.map(type => {
+                            {EDITOR_ADD_BLOCK_MENU_TYPES.map(type => {
                               const cfg = getBlockConfig(type)
                               const Icon = cfg.icon
                               return (
@@ -7344,7 +7320,7 @@ ${pagesHtml}
                       Buscar conteúdo
                     </DropdownMenuItem>
                     <div className="h-px bg-border my-1" />
-                    {ADD_BLOCK_MENU_TYPES.map(type => {
+                    {EDITOR_ADD_BLOCK_MENU_TYPES.map(type => {
                       const cfg = getBlockConfig(type)
                       const Icon = cfg.icon
                       return (
@@ -9611,7 +9587,7 @@ ${pagesHtml}
                     </div>
                   </div>
                   <div className="text-[10px] text-text3">
-                    {((selectedBlock.render_data as any)?.chords as any[])?.length ?? 0} acordes na grade
+                    {getRenderableGridChords(((selectedBlock.render_data as any)?.chords as any[]) ?? []).length} acordes na grade
                   </div>
                   <Button
                     size="sm"
@@ -9622,9 +9598,9 @@ ${pagesHtml}
                     <Guitar size={14} weight="bold" /> Adicionar Acorde
                   </Button>
                   {/* Lista dos acordes existentes */}
-                  {((selectedBlock.render_data as any)?.chords as any[])?.length > 0 && (
+                  {getRenderableGridChords(((selectedBlock.render_data as any)?.chords as any[]) ?? []).length > 0 && (
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {((selectedBlock.render_data as any).chords as any[]).map((chord: any, idx: number) => {
+                      {getRenderableGridChords(((selectedBlock.render_data as any).chords as any[]) ?? []).map((chord: any, idx: number) => {
                         const chordName = chord.chord_name ?? chord.name ?? `Acorde ${idx + 1}`
                         const chordMeta = getGridChordMetaLabel(chord)
 
@@ -9643,7 +9619,7 @@ ${pagesHtml}
                               aria-label={`Excluir acorde ${idx + 1}: ${chordName}`}
                               title={`Excluir acorde ${idx + 1}`}
                               onClick={() => {
-                                const chords = [...((selectedBlock.render_data as any)?.chords ?? [])]
+                                const chords = getRenderableGridChords(((selectedBlock.render_data as any)?.chords as any[]) ?? [])
                                 chords.splice(idx, 1)
                                 updateSelectedRenderData('chords', chords)
                               }}

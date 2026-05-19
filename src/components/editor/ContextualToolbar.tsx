@@ -108,8 +108,8 @@ export function ContextualToolbar({
   const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
   const layoutPanelPosition = position.placement === 'below' ? 'bottom-full mb-2' : 'top-full mt-2'
   const hasLayoutAdjustments = hasCanvasBlockLayoutAdjustments(blockStyle, paginationPolicy)
-  const chordActionLabel = blockType === 'chord_grid' ? 'Adicionar acorde' : 'Trocar acorde'
-  const chordActionTooltip = blockType === 'chord_grid' ? 'Adicionar acorde na grade' : 'Trocar acorde'
+  const chordActionLabel = blockType === 'chord_grid' ? 'Adicionar acorde' : 'Editar acorde'
+  const chordActionTooltip = blockType === 'chord_grid' ? 'Adicionar acorde na grade' : 'Editar acorde'
 
   // Não mostrar para cover e page_break
   if (['cover', 'page_break'].includes(blockType)) return null

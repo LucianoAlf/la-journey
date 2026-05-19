@@ -7,6 +7,7 @@ import {
   getCanvasToolbarMode,
   getCanvasToolbarPosition,
   getInlineEditingBlockAfterCanvasBlockClick,
+  shouldEnterInlineEditAfterInsert,
   shouldNudgeFloatingElementFromKey,
 } from '../editorCanvasInteraction'
 
@@ -59,6 +60,14 @@ test('only text-like blocks enter inline edit from canvas', () => {
   assertEqual(canEnterInlineEdit('exercise'), true, 'exercise should edit inline')
   assertEqual(canEnterInlineEdit('notation'), false, 'notation should open its editor, not text inline')
   assertEqual(canEnterInlineEdit('keyboard'), false, 'keyboard should open its editor, not title inline')
+})
+
+test('newly inserted text-like blocks start inline editing immediately', () => {
+  assertEqual(shouldEnterInlineEditAfterInsert('text'), true, 'new text block should be ready for typing')
+  assertEqual(shouldEnterInlineEditAfterInsert('tip'), true, 'new tip block should be ready for typing')
+  assertEqual(shouldEnterInlineEditAfterInsert('exercise'), true, 'new exercise block should be ready for typing')
+  assertEqual(shouldEnterInlineEditAfterInsert('title'), true, 'new title block should be ready for typing')
+  assertEqual(shouldEnterInlineEditAfterInsert('notation'), false, 'new notation block should not open text inline editing')
 })
 
 test('toolbar exposes direct actions by block type', () => {

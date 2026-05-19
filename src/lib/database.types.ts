@@ -1684,6 +1684,9 @@ export type Database = {
         | "title"
         | "text"
         | "image"
+        | "audio"
+        | "video"
+        | "columns"
         | "chord_diagram"
         | "notation"
         | "tablature"
@@ -1889,6 +1892,9 @@ export const Constants = {
         "title",
         "text",
         "image",
+        "audio",
+        "video",
+        "columns",
         "chord_diagram",
         "notation",
         "tablature",

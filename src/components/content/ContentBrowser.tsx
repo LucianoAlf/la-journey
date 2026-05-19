@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
-import { BookmarkSimple, Books, FunnelSimple, Guitar, MagnifyingGlass, MusicNotes, Plus, SpinnerGap, TextAa } from '@phosphor-icons/react'
+import { BookmarkSimple, Books, Columns, FunnelSimple, Guitar, ImageSquare, ListNumbers, MagnifyingGlass, MusicNotes, PianoKeys, Plus, SpinnerGap, TextAa, TextT } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,7 @@ import {
   adaptRepertoireItem,
   type PreparedMaterialBlock,
 } from '@/lib/contentBrowserAdapters'
+import { buildContentPreview, type ContentPreviewKind, type ContentPreviewSummary } from '@/lib/contentPreview'
 import { getExerciseOptionLabel, EXERCISE_CATEGORIES, EXERCISE_LEVELS } from '@/lib/exerciseLibraryOptions'
 
 type ContentBrowserTab = 'exercises' | 'curated' | 'notation' | 'chords' | 'repertoire'
@@ -36,6 +37,12 @@ interface ContentBrowserItem {
   badge: string
   meta?: string
   blocks: PreparedMaterialBlock[]
+  preview: ContentPreviewSummary
+  actions?: Array<{
+    id: string
+    label: string
+    blocks: PreparedMaterialBlock[]
+  }>
 }
 
 interface ContentBrowserProps {
@@ -61,6 +68,16 @@ const TAB_ICONS: Record<ContentBrowserTab, ComponentType<{ size?: number; classN
   repertoire: TextAa,
 }
 
+const PREVIEW_ICONS: Record<ContentPreviewKind, ComponentType<{ size?: number; className?: string }>> = {
+  text: TextT,
+  notation: MusicNotes,
+  chord: Guitar,
+  tablature: ListNumbers,
+  keyboard: PianoKeys,
+  media: ImageSquare,
+  layout: Columns,
+}
+
 function stripHtml(value: string) {
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -73,57 +90,72 @@ function getContentText(value: unknown) {
 }
 
 function mapExercise(item: ExerciseLibraryItem): ContentBrowserItem {
+  const blocks = adaptExerciseLibraryItem(item)
   return {
     id: item.id,
     title: item.title,
     subtitle: item.description ?? (getContentText(item.blocks?.[0]?.content) || `${item.block_count} bloco(s) reutilizáveis`),
     badge: getExerciseOptionLabel(EXERCISE_CATEGORIES, item.category),
     meta: `${getExerciseOptionLabel(EXERCISE_LEVELS, item.difficulty_level)} · ${item.block_count} bloco(s)`,
-    blocks: adaptExerciseLibraryItem(item),
+    blocks,
+    preview: buildContentPreview(blocks),
   }
 }
 
 function mapCurated(item: CuratedContentBlock): ContentBrowserItem {
+  const blocks = adaptContentBlockItem(item)
   return {
     id: item.id,
     title: item.title ?? 'Bloco curado',
     subtitle: getContentText(item.content) || 'Conteudo pedagogico curado',
     badge: String(item.block_type ?? 'text'),
     meta: item.similarity ? `${Math.round(item.similarity * 100)}% similar` : item.curation_status ?? undefined,
-    blocks: adaptContentBlockItem(item),
+    blocks,
+    preview: buildContentPreview(blocks),
   }
 }
 
 function mapNotation(item: NotationLibraryRow): ContentBrowserItem {
+  const blocks = adaptNotationLibraryItem(item)
   return {
     id: item.id,
     title: item.name,
     subtitle: item.description ?? `${item.clef} · ${item.key_signature ?? 'C'}`,
     badge: item.category,
     meta: item.time_signature ?? undefined,
-    blocks: adaptNotationLibraryItem(item),
+    blocks,
+    preview: buildContentPreview(blocks),
   }
 }
 
 function mapChord(item: Chord): ContentBrowserItem {
+  const blocks = adaptChordLibraryItem(item)
   return {
     id: item.id,
     title: item.name,
     subtitle: [item.instrument, item.family, item.quality].filter(Boolean).join(' · ') || 'Acorde da biblioteca',
     badge: item.root_note ?? 'Acorde',
     meta: item.difficulty ? `Nivel ${item.difficulty}` : undefined,
-    blocks: adaptChordLibraryItem(item),
+    blocks,
+    preview: buildContentPreview(blocks),
   }
 }
 
 function mapRepertoire(item: RepertoireContentItem): ContentBrowserItem {
+  const blocks = adaptRepertoireItem(item)
+  const chords = item.chords?.filter(Boolean) ?? []
+  const chordBlocks = chords.length ? adaptRepertoireItem(item, { includeChordGrid: true }) : null
   return {
     id: item.id,
     title: item.title,
     subtitle: item.artist ?? item.genre ?? 'Musica do repertorio',
     badge: item.key ?? 'Tom',
-    meta: item.chords?.length ? `${item.chords.length} acorde(s)` : item.genre ?? undefined,
-    blocks: adaptRepertoireItem(item),
+    meta: chords.length ? `${chords.length} acorde(s)` : item.genre ?? undefined,
+    blocks,
+    preview: buildContentPreview(blocks),
+    actions: chordBlocks
+      ? [{ id: 'with-chords', label: 'Com acordes', blocks: chordBlocks }]
+      : undefined,
   }
 }
 
@@ -185,7 +217,13 @@ export function ContentBrowser({ open, onClose, onSelect, insertingId = null }: 
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="max-w-6xl max-h-[90vh] bg-surface border-border overflow-hidden">
+      <DialogContent
+        className="max-h-[90vh] bg-surface border-border overflow-hidden"
+        style={{
+          width: 'min(980px, calc(100vw - 48px))',
+          maxWidth: 'min(980px, calc(100vw - 48px))',
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-serif text-[20px]">
             <ActiveIcon size={18} className="text-accent" />
@@ -194,12 +232,16 @@ export function ContentBrowser({ open, onClose, onSelect, insertingId = null }: 
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ContentBrowserTab)} className="min-h-0">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid !h-12 w-full grid-cols-5 rounded-xl bg-bg2/80 p-1">
             {(Object.keys(TAB_LABELS) as ContentBrowserTab[]).map((tab) => {
               const Icon = TAB_ICONS[tab]
               return (
-                <TabsTrigger key={tab} value={tab} className="gap-1.5 text-[12px]">
-                  <Icon size={14} />
+                <TabsTrigger
+                  key={tab}
+                  value={tab}
+                  className="!h-10 min-w-0 gap-2 rounded-lg px-3 text-[12px] font-semibold data-[state=active]:border-border data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
+                  <Icon size={15} className="shrink-0" />
                   {TAB_LABELS[tab]}
                 </TabsTrigger>
               )
@@ -238,7 +280,7 @@ export function ContentBrowser({ open, onClose, onSelect, insertingId = null }: 
                     Nenhum conteúdo encontrado nessa fonte.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {items.map((item) => (
                       <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
                         <div className="flex items-start justify-between gap-3">
@@ -251,17 +293,48 @@ export function ContentBrowser({ open, onClose, onSelect, insertingId = null }: 
                               <h3 className="line-clamp-2 text-[14px] font-semibold text-text">{item.title}</h3>
                               <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-text2">{item.subtitle}</p>
                             </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {item.preview.chips.map((chip) => {
+                                const Icon = PREVIEW_ICONS[chip.kind]
+                                return (
+                                  <span
+                                    key={chip.kind}
+                                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-bg2/55 px-2 py-1 text-[11px] font-medium text-text2"
+                                    title={chip.detail ? `${chip.label}: ${chip.detail}` : chip.label}
+                                  >
+                                    <Icon size={13} className="shrink-0 text-accent" />
+                                    <span className="truncate">{chip.label}{chip.count > 1 ? ` ${chip.count}` : ''}</span>
+                                    {chip.detail && <span className="max-w-[120px] truncate text-text3">· {chip.detail}</span>}
+                                  </span>
+                                )
+                              })}
+                            </div>
                           </div>
 
-                          <Button
-                            size="sm"
-                            onClick={() => onSelect(item.blocks, item)}
-                            disabled={insertingId === item.id || item.blocks.length === 0}
-                            className="shrink-0"
-                          >
-                            <Plus size={14} />
-                            {insertingId === item.id ? 'Inserindo...' : 'Inserir'}
-                          </Button>
+                          <div className="flex shrink-0 flex-col gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => onSelect(item.blocks, item)}
+                              disabled={insertingId === item.id || item.blocks.length === 0}
+                              className="shrink-0"
+                            >
+                              <Plus size={14} />
+                              {insertingId === item.id ? 'Inserindo...' : 'Inserir'}
+                            </Button>
+                            {item.actions?.map((action) => (
+                              <Button
+                                key={action.id}
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onSelect(action.blocks, { ...item, blocks: action.blocks })}
+                                disabled={insertingId === item.id || action.blocks.length === 0}
+                                className="shrink-0 gap-1.5 px-2 text-[11px]"
+                              >
+                                <Guitar size={13} />
+                                {action.label}
+                              </Button>
+                            ))}
+                          </div>
                         </div>
                       </article>
                     ))}

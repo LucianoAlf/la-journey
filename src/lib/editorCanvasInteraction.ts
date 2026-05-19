@@ -21,6 +21,10 @@ export function canEnterInlineEdit(blockType: string): boolean {
   return INLINE_EDIT_BLOCK_TYPES.has(blockType)
 }
 
+export function shouldEnterInlineEditAfterInsert(blockType: string): boolean {
+  return canEnterInlineEdit(blockType)
+}
+
 export function isTextInputTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tagName = target.tagName
