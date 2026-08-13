@@ -11,6 +11,19 @@ export const COVER_TEMPLATES = [
 
 export type CoverTemplate = (typeof COVER_TEMPLATES)[number]
 
+export const COVER_TEMPLATE_TAG_PREFIX = 'cover-template:'
+
+export function coverTemplateFromTags(tags: string[] | null | undefined): CoverTemplate | undefined {
+  const raw = (tags ?? []).find((tag) => tag.startsWith(COVER_TEMPLATE_TAG_PREFIX))
+    ?.slice(COVER_TEMPLATE_TAG_PREFIX.length)
+  return COVER_TEMPLATES.includes(raw as CoverTemplate) ? (raw as CoverTemplate) : undefined
+}
+
+export function withCoverTemplateTag(tags: string[] | null | undefined, template: CoverTemplate): string[] {
+  const rest = (tags ?? []).filter((tag) => !tag.startsWith(COVER_TEMPLATE_TAG_PREFIX))
+  return [...rest, `${COVER_TEMPLATE_TAG_PREFIX}${template}`]
+}
+
 export interface NotebookSongInput {
   title?: string | null
   artist?: string | null

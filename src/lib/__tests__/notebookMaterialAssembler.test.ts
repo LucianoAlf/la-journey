@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
-import { buildNotebookMaterialBlocks } from '../notebookMaterialAssembler'
+import {
+  buildNotebookMaterialBlocks,
+  coverTemplateFromTags,
+  withCoverTemplateTag,
+} from '../notebookMaterialAssembler'
 
 function test(name: string, fn: () => void) {
   try {
@@ -55,6 +59,21 @@ test('song without chords and without cifra has no chord_grid', () => {
   })
   const types = result.blocks.map((block) => block.blockType)
   assert.deepEqual(types, ['cover', 'page_break', 'text'])
+})
+
+test('coverTemplateFromTags reads a valid tagged template', () => {
+  assert.equal(coverTemplateFromTags(['pop', 'cover-template:bold']), 'bold')
+  assert.equal(coverTemplateFromTags(['cover-template:unknown']), undefined)
+  assert.equal(coverTemplateFromTags([]), undefined)
+  assert.equal(coverTemplateFromTags(null), undefined)
+})
+
+test('withCoverTemplateTag replaces only the cover-template tag', () => {
+  assert.deepEqual(withCoverTemplateTag(['pop', 'cover-template:modern'], 'elegant'), [
+    'pop',
+    'cover-template:elegant',
+  ])
+  assert.deepEqual(withCoverTemplateTag(null, 'classic'), ['cover-template:classic'])
 })
 
 test('two songs each start after a page_break', () => {

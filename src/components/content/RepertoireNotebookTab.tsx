@@ -4,7 +4,7 @@ import { Books, MagnifyingGlass, Plus, SpinnerGap, Warning } from '@phosphor-ico
 import { toast } from 'sonner'
 import { useRepertoireCollections } from '@/hooks/useRepertoireCollections'
 import { useSchool } from '@/hooks/useSchool'
-import type { CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import { withCoverTemplateTag, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
 import { createDraftMaterialFromNotebook, getCollectionItems, type RepertoireCollection } from '@/services/repertoireCollectionService'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -260,8 +260,11 @@ export function RepertoireNotebookTab() {
         schoolId={school?.id}
         onSave={formNotebook ? handleUpdate : handleCreate}
         onGenerateAfterCreate={async (notebook, cover) => openNotebookAsDraft(notebook, cover)}
-        onPersistCover={async (id, url) => {
-          await update(id, { cover_image_url: url })
+        onPersistCover={async (notebook, cover) => {
+          await update(notebook.id, {
+            cover_image_url: cover.coverImageUrl,
+            tags: withCoverTemplateTag(notebook.tags, cover.coverTemplate),
+          })
         }}
       />
     </div>

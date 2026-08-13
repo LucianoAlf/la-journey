@@ -1,4 +1,4 @@
-import { buildNotebookMaterialBlocks, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import { buildNotebookMaterialBlocks, coverTemplateFromTags, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
 import { createDraftMaterialWithBlocks } from './materialService'
@@ -123,7 +123,7 @@ export async function createDraftMaterialFromNotebook(
   const items = await getCollectionItems(collection.id)
   const assembled = buildNotebookMaterialBlocks({
     title: collection.name,
-    coverTemplate: options?.coverTemplate,
+    coverTemplate: options?.coverTemplate ?? coverTemplateFromTags(collection.tags),
     coverImageUrl: options?.coverImageUrl ?? collection.cover_image_url,
     songs: items.map((item) => item.repertoire ?? null),
   })

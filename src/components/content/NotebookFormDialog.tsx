@@ -26,7 +26,10 @@ interface NotebookFormDialogProps {
     notebook: RepertoireCollection,
     cover: { coverTemplate: CoverTemplate; coverImageUrl: string | null }
   ) => Promise<boolean | void>
-  onPersistCover?: (notebookId: string, coverImageUrl: string | null) => Promise<void>
+  onPersistCover?: (
+    notebook: RepertoireCollection,
+    cover: { coverTemplate: CoverTemplate; coverImageUrl: string | null }
+  ) => Promise<void>
   loading?: boolean
   notebook?: RepertoireCollection | null
   schoolId?: string
@@ -116,10 +119,13 @@ export function NotebookFormDialog({
 
   const persistCover = async () => {
     if (!created || !onPersistCover) return
-    await onPersistCover(created.id, coverImageUrl)
+    await onPersistCover(created, {
+      coverTemplate,
+      coverImageUrl,
+    })
   }
 
-  const handleSkipCover = async () => {
+  const persistCoverAndClose = async () => {
     if (busy) return
     setSaving(true)
     try {
@@ -128,6 +134,14 @@ export function NotebookFormDialog({
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && step === 'cover' && created) {
+      void persistCoverAndClose()
+      return
+    }
+    onOpenChange(nextOpen)
   }
 
   const handleGenerate = async () => {
@@ -147,7 +161,7 @@ export function NotebookFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-xl bg-surface border-border">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-serif text-[20px]">
@@ -245,7 +259,7 @@ export function NotebookFormDialog({
         <DialogFooter>
           {showCover ? (
             <>
-              <Button variant="outline" onClick={handleSkipCover} disabled={busy}>
+              <Button variant="outline" onClick={persistCoverAndClose} disabled={busy}>
                 Agora não
               </Button>
               <Button onClick={handleGenerate} disabled>
