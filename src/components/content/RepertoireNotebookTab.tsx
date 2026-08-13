@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Books, MagnifyingGlass, Plus, SpinnerGap, Warning } from '@phosphor-icons/react'
+import { toast } from 'sonner'
 import { useRepertoireCollections } from '@/hooks/useRepertoireCollections'
-import { getCollectionItems, type RepertoireCollection } from '@/services/repertoireCollectionService'
+import { useSchool } from '@/hooks/useSchool'
+import type { CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import { createDraftMaterialFromNotebook, getCollectionItems, type RepertoireCollection } from '@/services/repertoireCollectionService'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,12 +25,15 @@ const INSTRUMENT_OPTIONS = [
 ]
 
 export function RepertoireNotebookTab() {
+  const { data: school } = useSchool()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [instrument, setInstrument] = useState('all')
   const [selectedNotebook, setSelectedNotebook] = useState<RepertoireCollection | null>(null)
   const [formNotebook, setFormNotebook] = useState<RepertoireCollection | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [songCounts, setSongCounts] = useState<Record<string, number>>({})
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
 
   const { collections, loading, error, create, update, remove } = useRepertoireCollections({
     search,
@@ -119,6 +126,31 @@ export function RepertoireNotebookTab() {
     if (selectedNotebook?.id === notebook.id) setSelectedNotebook(null)
   }
 
+  const openNotebookAsDraft = async (
+    notebook: RepertoireCollection,
+    options?: { coverTemplate?: CoverTemplate; coverImageUrl?: string | null }
+  ) => {
+    if (generatingId) return
+    if (!school?.id) {
+      toast.error('Não foi possível identificar a escola para criar o rascunho.')
+      return
+    }
+
+    setGeneratingId(notebook.id)
+    try {
+      const result = await createDraftMaterialFromNotebook(notebook, school.id, options)
+      if (result.skippedMissingSongs > 0) {
+        toast.warning(`${result.skippedMissingSongs} música(s) sem dados foram puladas.`)
+      }
+      toast.success('Rascunho criado. Ajuste se quiser e use Imprimir / PDF.')
+      navigate(`/editor/${result.materialId}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível gerar o caderno.')
+    } finally {
+      setGeneratingId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-[14px] bg-card border border-border p-4">
@@ -196,6 +228,8 @@ export function RepertoireNotebookTab() {
                 setFormOpen(true)
               }}
               onDelete={handleDelete}
+              onGenerate={openNotebookAsDraft}
+              generating={generatingId === notebook.id}
             />
           ))}
         </div>
@@ -210,6 +244,8 @@ export function RepertoireNotebookTab() {
           setFormNotebook(notebook)
           setFormOpen(true)
         }}
+        onGenerate={openNotebookAsDraft}
+        generating={generatingId === selectedNotebook?.id}
       />
 
       <NotebookFormDialog
