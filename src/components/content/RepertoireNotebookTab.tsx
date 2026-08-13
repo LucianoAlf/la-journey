@@ -230,6 +230,7 @@ export function RepertoireNotebookTab() {
               onDelete={handleDelete}
               onGenerate={openNotebookAsDraft}
               generating={generatingId === notebook.id}
+              generateDisabled={Boolean(generatingId)}
             />
           ))}
         </div>
@@ -246,6 +247,7 @@ export function RepertoireNotebookTab() {
         }}
         onGenerate={openNotebookAsDraft}
         generating={generatingId === selectedNotebook?.id}
+        generateDisabled={Boolean(generatingId)}
       />
 
       <NotebookFormDialog

@@ -21,6 +21,7 @@ interface NotebookDetailModalProps {
   onEdit: (notebook: RepertoireCollection) => void
   onGenerate: (notebook: RepertoireCollection) => void
   generating?: boolean
+  generateDisabled?: boolean
 }
 
 type CollectionItemWithSong = Awaited<ReturnType<typeof getCollectionItems>>[number]
@@ -32,7 +33,7 @@ const LEVEL_LABELS: Record<string, string> = {
   master: 'Master',
 }
 
-export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGenerate, generating }: NotebookDetailModalProps) {
+export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGenerate, generating, generateDisabled }: NotebookDetailModalProps) {
   const [items, setItems] = useState<CollectionItemWithSong[]>([])
   const [loading, setLoading] = useState(false)
   const [addSongOpen, setAddSongOpen] = useState(false)
@@ -195,7 +196,7 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
               </Button>
               <Button
                 size="sm"
-                disabled={generating || !notebook}
+                disabled={generateDisabled || generating || !notebook}
                 onClick={() => notebook && onGenerate(notebook)}
               >
                 {generating ? 'Gerando...' : 'Gerar PDF'}
