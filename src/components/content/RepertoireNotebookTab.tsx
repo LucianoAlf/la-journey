@@ -85,7 +85,7 @@ export function RepertoireNotebookTab() {
     difficulty_level: string
     genre: string
   }) => {
-    await create({
+    return await create({
       name: values.name,
       description: values.description || null,
       instrument: values.instrument,
@@ -97,8 +97,6 @@ export function RepertoireNotebookTab() {
       curation_status: 'draft',
       sort_order: collections.length + 1,
     })
-    setFormOpen(false)
-    setFormNotebook(null)
   }
 
   const handleUpdate = async (values: {
@@ -257,7 +255,9 @@ export function RepertoireNotebookTab() {
           if (!open) setFormNotebook(null)
         }}
         notebook={formNotebook}
+        schoolId={school?.id}
         onSave={formNotebook ? handleUpdate : handleCreate}
+        onGenerateAfterCreate={(notebook, cover) => openNotebookAsDraft(notebook, cover)}
       />
     </div>
   )
