@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { RepertoireModal } from '@/components/modals/RepertoireModal'
+import { UnifiedImportModal } from '@/components/modals/UnifiedImportModal'
 import { AddSongModal } from './AddSongModal'
 
 interface NotebookDetailModalProps {
@@ -37,6 +39,8 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
   const [items, setItems] = useState<CollectionItemWithSong[]>([])
   const [loading, setLoading] = useState(false)
   const [addSongOpen, setAddSongOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [createSongOpen, setCreateSongOpen] = useState(false)
 
   const loadItems = async (collectionId: string) => {
     setLoading(true)
@@ -59,6 +63,8 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
     if (open) return
     setItems([])
     setAddSongOpen(false)
+    setImportOpen(false)
+    setCreateSongOpen(false)
   }, [open])
 
   const handleAddSongs = async (songIds: string[]) => {
@@ -113,7 +119,7 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/40 px-4 py-3">
             <div className="text-[12px] text-text3">
-              Adicione músicas ao caderno a partir do repertório já existente.
+              Adicione músicas do repertório ou importe uma nova.
             </div>
             <Button size="sm" onClick={() => setAddSongOpen(true)}>
               <Plus size={14} />
@@ -211,6 +217,30 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
         onOpenChange={setAddSongOpen}
         existingRepertoireIds={items.map((item) => item.repertoire_id)}
         onAddSongs={handleAddSongs}
+        onImportRequest={() => {
+          setAddSongOpen(false)
+          setImportOpen(true)
+        }}
+      />
+      <UnifiedImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onSuccess={async (result) => {
+          const ids = result?.repertoireIds ?? []
+          if (ids.length) await handleAddSongs(ids)
+        }}
+        onOpenEditor={() => {
+          setImportOpen(false)
+          setCreateSongOpen(true)
+        }}
+      />
+      <RepertoireModal
+        open={createSongOpen}
+        onClose={() => setCreateSongOpen(false)}
+        onSuccess={() => {
+          setCreateSongOpen(false)
+          toast.message('Música criada. Busque pelo título e adicione ao caderno.')
+        }}
       />
     </>
   )

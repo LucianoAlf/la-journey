@@ -36,7 +36,7 @@ import type { ChordProParsed } from '@/lib/chordproParser'
 interface UnifiedImportModalProps {
   open: boolean
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (result?: { repertoireIds: string[] }) => void
   onOpenEditor?: () => void // Abrir RepertoireModal para "Criar do Zero"
 }
 
@@ -245,9 +245,9 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
     if (!cifraPreview) return
     setSavingSearch(true)
     try {
-      await saveCifraToRepertoire(cifraPreview, ['Violão'])
+      const saved = await saveCifraToRepertoire(cifraPreview, ['Violão'])
       toast.success(`"${cifraPreview.title}" importada!`)
-      onSuccess()
+      onSuccess({ repertoireIds: saved?.id ? [saved.id] : [] })
       handleClose()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao salvar')
@@ -260,9 +260,9 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
     if (!songsterrPreview) return
     setSavingSearch(true)
     try {
-      await saveSongsterrToRepertoire(songsterrPreview)
+      const saved = await saveSongsterrToRepertoire(songsterrPreview)
       toast.success(`"${songsterrPreview.title}" importada!`)
-      onSuccess()
+      onSuccess({ repertoireIds: saved?.id ? [saved.id] : [] })
       handleClose()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao salvar')
@@ -331,7 +331,7 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
       const url = await uploadGpFile(gpFile, created.id)
       await updateGpFileUrl(created.id, url)
       toast.success(`"${gpTitle}" importada! 🎸`)
-      onSuccess()
+      onSuccess({ repertoireIds: created.id ? [created.id] : [] })
       handleClose()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao importar')
@@ -406,7 +406,7 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
     if (!cpPreview) return
     setCpSaving(true)
     try {
-      await saveChordProToRepertoire({
+      const data = await saveChordProToRepertoire({
         title: cpPreview.title,
         artist: cpPreview.artist || null,
         chords: cpPreview.chords,
@@ -421,7 +421,7 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
         sections: cpPreview.sections,
       }, ['Violão'])
       toast.success(`"${cpPreview.title}" importada!`)
-      onSuccess()
+      onSuccess({ repertoireIds: data?.id ? [data.id] : [] })
       handleClose()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao salvar')
@@ -434,18 +434,20 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
     if (cpBatch.length === 0) return
     setCpSaving(true)
     let success = 0, errors = 0
+    const ids: string[] = []
     for (const p of cpBatch) {
       try {
-        await saveChordProToRepertoire({
+        const data = await saveChordProToRepertoire({
           title: p.title, artist: p.artist || null, chords: p.chords, key: p.key,
           genre: p.genre, difficulty: p.chords.length > 8 ? 3 : p.chords.length > 4 ? 2 : 1,
           cifra_content: p.cifraContent, lyrics: p.lyrics || null, bpm: p.bpm,
           capo: p.capo, time_signature: p.timeSignature, sections: p.sections,
         }, ['Violão'])
+        if (data?.id) ids.push(data.id)
         success++
       } catch { errors++ }
     }
-    if (success > 0) { toast.success(`${success} música${success > 1 ? 's' : ''} importada${success > 1 ? 's' : ''}!`); onSuccess() }
+    if (success > 0) { toast.success(`${success} música${success > 1 ? 's' : ''} importada${success > 1 ? 's' : ''}!`); onSuccess({ repertoireIds: ids }) }
     if (errors > 0) toast.error(`${errors} falha${errors > 1 ? 's' : ''}`)
     setCpSaving(false)
     if (errors === 0) handleClose()

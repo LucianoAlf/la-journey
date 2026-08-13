@@ -22,6 +22,7 @@ interface AddSongModalProps {
   onOpenChange: (open: boolean) => void
   existingRepertoireIds: string[]
   onAddSongs: (songIds: string[]) => Promise<void>
+  onImportRequest: () => void
 }
 
 async function fetchSongs(search: string) {
@@ -41,7 +42,7 @@ async function fetchSongs(search: string) {
   return (data ?? []) as unknown as RepertoireSongRow[]
 }
 
-export function AddSongModal({ open, onOpenChange, existingRepertoireIds, onAddSongs }: AddSongModalProps) {
+export function AddSongModal({ open, onOpenChange, existingRepertoireIds, onAddSongs, onImportRequest }: AddSongModalProps) {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [songs, setSongs] = useState<RepertoireSongRow[]>([])
@@ -181,6 +182,9 @@ export function AddSongModal({ open, onOpenChange, existingRepertoireIds, onAddS
             {songs.length} resultado(s) · {selectedIds.length} selecionada(s)
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => onImportRequest()}>
+              Não está no catálogo? Importar
+            </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancelar
             </Button>
