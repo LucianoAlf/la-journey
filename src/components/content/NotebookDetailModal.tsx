@@ -69,9 +69,15 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
 
   const handleAddSongs = async (songIds: string[]) => {
     if (!notebook) return
-    await Promise.all(songIds.map((songId) => addItemToCollection(notebook.id, songId)))
-    toast.success(songIds.length === 1 ? 'Música adicionada ao caderno!' : `${songIds.length} músicas adicionadas ao caderno!`)
-    await loadItems(notebook.id)
+    try {
+      await Promise.all(songIds.map((songId) => addItemToCollection(notebook.id, songId)))
+      toast.success(songIds.length === 1 ? 'Música adicionada ao caderno!' : `${songIds.length} músicas adicionadas ao caderno!`)
+      await loadItems(notebook.id)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Não foi possível adicionar ao caderno. Busque pelo título e tente de novo.'
+      toast.error(message)
+      throw err
+    }
   }
 
   const handleRemoveItem = async (itemId: string) => {
@@ -227,7 +233,12 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
         onClose={() => setImportOpen(false)}
         onSuccess={async (result) => {
           const ids = result?.repertoireIds ?? []
-          if (ids.length) await handleAddSongs(ids)
+          if (!ids.length) return
+          try {
+            await handleAddSongs(ids)
+          } catch {
+            // toast already shown by handleAddSongs
+          }
         }}
         onOpenEditor={() => {
           setImportOpen(false)

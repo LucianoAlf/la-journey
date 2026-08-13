@@ -182,7 +182,7 @@ export function AddSongModal({ open, onOpenChange, existingRepertoireIds, onAddS
             {songs.length} resultado(s) · {selectedIds.length} selecionada(s)
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => onImportRequest()}>
+            <Button variant="outline" size="sm" onClick={() => onImportRequest()} disabled={saving}>
               Não está no catálogo? Importar
             </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
