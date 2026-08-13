@@ -127,11 +127,11 @@ export function RepertoireNotebookTab() {
   const openNotebookAsDraft = async (
     notebook: RepertoireCollection,
     options?: { coverTemplate?: CoverTemplate; coverImageUrl?: string | null }
-  ) => {
-    if (generatingId) return
+  ): Promise<boolean> => {
+    if (generatingId) return false
     if (!school?.id) {
       toast.error('Não foi possível identificar a escola para criar o rascunho.')
-      return
+      return false
     }
 
     setGeneratingId(notebook.id)
@@ -142,8 +142,10 @@ export function RepertoireNotebookTab() {
       }
       toast.success('Rascunho criado. Ajuste se quiser e use Imprimir / PDF.')
       navigate(`/editor/${result.materialId}`)
+      return true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Não foi possível gerar o caderno.')
+      return false
     } finally {
       setGeneratingId(null)
     }
@@ -257,7 +259,10 @@ export function RepertoireNotebookTab() {
         notebook={formNotebook}
         schoolId={school?.id}
         onSave={formNotebook ? handleUpdate : handleCreate}
-        onGenerateAfterCreate={(notebook, cover) => openNotebookAsDraft(notebook, cover)}
+        onGenerateAfterCreate={async (notebook, cover) => openNotebookAsDraft(notebook, cover)}
+        onPersistCover={async (id, url) => {
+          await update(id, { cover_image_url: url })
+        }}
       />
     </div>
   )

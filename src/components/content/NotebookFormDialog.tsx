@@ -25,7 +25,8 @@ interface NotebookFormDialogProps {
   onGenerateAfterCreate?: (
     notebook: RepertoireCollection,
     cover: { coverTemplate: CoverTemplate; coverImageUrl: string | null }
-  ) => Promise<void>
+  ) => Promise<boolean | void>
+  onPersistCover?: (notebookId: string, coverImageUrl: string | null) => Promise<void>
   loading?: boolean
   notebook?: RepertoireCollection | null
   schoolId?: string
@@ -52,6 +53,7 @@ export function NotebookFormDialog({
   onOpenChange,
   onSave,
   onGenerateAfterCreate,
+  onPersistCover,
   loading = false,
   notebook = null,
   schoolId,
@@ -109,22 +111,40 @@ export function NotebookFormDialog({
     }
   }
 
+  const busy = loading || saving || generating
+  const showCover = step === 'cover' && !notebook
+
+  const persistCover = async () => {
+    if (!created || !onPersistCover) return
+    await onPersistCover(created.id, coverImageUrl)
+  }
+
+  const handleSkipCover = async () => {
+    if (busy) return
+    setSaving(true)
+    try {
+      await persistCover()
+      onOpenChange(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleGenerate = async () => {
     if (!created || generating) return
     setGenerating(true)
     try {
-      await onGenerateAfterCreate?.(created, {
+      await persistCover()
+      const result = await onGenerateAfterCreate?.(created, {
         coverTemplate,
         coverImageUrl,
       })
+      if (result === false) return
       onOpenChange(false)
     } finally {
       setGenerating(false)
     }
   }
-
-  const busy = loading || saving || generating
-  const showCover = step === 'cover' && !notebook
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -148,6 +168,9 @@ export function NotebookFormDialog({
               onTemplateChange={setCoverTemplate}
               onImageUrlChange={setCoverImageUrl}
             />
+            <p className="text-[11px] text-text3">
+              Adicione músicas ao caderno para gerar o PDF.
+            </p>
           </div>
         ) : (
           <div className="space-y-4 py-1">
@@ -222,12 +245,12 @@ export function NotebookFormDialog({
         <DialogFooter>
           {showCover ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+              <Button variant="outline" onClick={handleSkipCover} disabled={busy}>
                 Agora não
               </Button>
-              <Button onClick={handleGenerate} disabled={busy || !created}>
+              <Button onClick={handleGenerate} disabled>
                 <FilePdf size={14} />
-                {generating ? 'Gerando...' : 'Gerar PDF'}
+                Gerar PDF
               </Button>
             </>
           ) : (
