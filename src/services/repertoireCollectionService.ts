@@ -1,5 +1,7 @@
+import { buildNotebookMaterialBlocks, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
+import { createDraftMaterialWithBlocks } from './materialService'
 
 // Helper para tabelas não tipadas no database.types.ts (regenerar tipos depois)
 const db = supabase as any
@@ -108,6 +110,46 @@ export async function getCollectionItems(
 
   if (error) handleError(error)
   return data ?? []
+}
+
+export async function createDraftMaterialFromNotebook(
+  collection: RepertoireCollection,
+  schoolId: string,
+  options?: {
+    coverTemplate?: CoverTemplate
+    coverImageUrl?: string | null
+  }
+): Promise<{ materialId: string; skippedMissingSongs: number }> {
+  const items = await getCollectionItems(collection.id)
+  const assembled = buildNotebookMaterialBlocks({
+    title: collection.name,
+    coverTemplate: options?.coverTemplate,
+    coverImageUrl: options?.coverImageUrl ?? collection.cover_image_url,
+    songs: items.map((item) => item.repertoire ?? null),
+  })
+
+  if (assembled.includedSongs === 0) {
+    throw new Error('Adicione pelo menos uma música.')
+  }
+
+  const materialId = await createDraftMaterialWithBlocks({
+    schoolId,
+    title: collection.name,
+    type: 'repertoire_sheet',
+    blocks: assembled.blocks,
+    instrument: collection.instrument,
+    level: collection.difficulty_level,
+    description: collection.description,
+    generationConfig: {
+      source: 'repertoire_collection',
+      collection_id: collection.id,
+    },
+  })
+
+  return {
+    materialId,
+    skippedMissingSongs: assembled.skippedMissingSongs,
+  }
 }
 
 export async function addItemToCollection(
