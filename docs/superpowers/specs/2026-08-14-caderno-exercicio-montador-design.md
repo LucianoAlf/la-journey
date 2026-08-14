@@ -1,7 +1,7 @@
 # Caderno de exercício — montador
 
 Data: 2026-08-14  
-Status: aprovado (brainstorm)  
+Status: aprovado  
 Corte: caderno de exercício → rascunho no editor → imprimir / PDF
 
 ## Problema
