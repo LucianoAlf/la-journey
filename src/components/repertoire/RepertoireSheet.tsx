@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from "react"
 import {
   MusicNote, Guitar, PianoKeys, MicrophoneStage, Lightning,
-  Star, YoutubeLogo, Link as LinkIcon, PencilSimple, ArrowSquareOut, WarningCircle,
+  Star, YoutubeLogo, SpotifyLogo, Link as LinkIcon, PencilSimple, ArrowSquareOut, WarningCircle,
   FloppyDisk, SpinnerGap, Trash, Eye, EyeSlash, FilePdf, UploadSimple, MusicNotesSimple
 } from "@phosphor-icons/react"
 import { toast } from "sonner"
@@ -376,6 +376,7 @@ interface EditForm {
   difficulty: number
   curation_status: CurationStatus
   youtube_url: string
+  spotify_url: string
   chords: string
   cifra_content: string
   lyrics: string
@@ -870,7 +871,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
   // Estado do formulário de edição
   const [form, setForm] = useState<EditForm>({
     title: '', artist: '', key: '', genre: '', difficulty: 1,
-    curation_status: 'draft', youtube_url: '', chords: '',
+    curation_status: 'draft', youtube_url: '', spotify_url: '', chords: '',
     cifra_content: '', lyrics: '', gp_file_url: '',
   })
   const [uploadingGp, setUploadingGp] = useState(false)
@@ -887,6 +888,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         difficulty: song.difficulty ?? 1,
         curation_status: (song.curation_status ?? 'draft') as CurationStatus,
         youtube_url: song.youtube_url ?? '',
+        spotify_url: song.spotify_url ?? '',
         chords: (song.chords ?? []).join(', '),
         cifra_content: song.cifra_content ?? '',
         lyrics: song.lyrics ?? '',
@@ -969,6 +971,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         difficulty: form.difficulty,
         curation_status: form.curation_status,
         youtube_url: form.youtube_url || null,
+        spotify_url: form.spotify_url || null,
         chords: chordsArr.length > 0 ? chordsArr : null,
         cifra_content: form.cifra_content || null,
         lyrics: form.lyrics || null,
@@ -1090,6 +1093,17 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                   className="inline-flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 transition-colors"
                 >
                   <YoutubeLogo size={14} weight="fill" /> YouTube
+                  <ArrowSquareOut size={10} />
+                </a>
+              )}
+              {song.spotify_url && (
+                <a
+                  href={song.spotify_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] text-green-500 hover:text-green-400 transition-colors"
+                >
+                  <SpotifyLogo size={14} weight="fill" /> Spotify
                   <ArrowSquareOut size={10} />
                 </a>
               )}
@@ -1244,9 +1258,9 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                       <div className="mb-4">
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-3">
                           Violão
-                          {guitarChords.length > 0 && (
+                          {guitarChordMap.size > 0 && (
                             <span className="ml-2 text-text3/60">
-                              ({guitarChords.length} de {transposedChords.length} na biblioteca)
+                              ({guitarChordMap.size} de {transposedChords.length} na biblioteca)
                             </span>
                           )}
                         </h3>
@@ -1313,7 +1327,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                         <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3 mb-3">
                           Teclado
                           <span className="ml-2 text-text3/60">
-                            ({pianoChords.length} de {transposedChords.length} na biblioteca)
+                            ({pianoChordMap.size} de {transposedChords.length} na biblioteca)
                           </span>
                         </h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1582,6 +1596,15 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                             value={form.youtube_url}
                             onChange={e => updateField('youtube_url', e.target.value)}
                             placeholder="https://youtube.com/watch?v=..."
+                            className="h-9 text-[13px] font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-text3">URL do Spotify</Label>
+                          <Input
+                            value={form.spotify_url}
+                            onChange={e => updateField('spotify_url', e.target.value)}
+                            placeholder="https://open.spotify.com/track/..."
                             className="h-9 text-[13px] font-mono"
                           />
                         </div>

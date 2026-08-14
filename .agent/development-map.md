@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** auditoria do motor de repertório (Cifra Club, Songsterr e outras fontes).
+**Próximo corte:** auditoria Songsterr (o que entra, GP, se a edição persiste).
 
 ## Como retomar
 
@@ -16,12 +16,12 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Caderno + PDF da folha + capa + carimbo do professor estão em produção.
+Auditoria Cifra Club (primeira fatia) pronta para ir ao ar. Caderno/PDF do corte anterior continua em produção.
 
-- App: https://la-journey.vercel.app
-- PRs: [#1](https://github.com/LucianoAlf/la-journey/pull/1) motor, [#2](https://github.com/LucianoAlf/la-journey/pull/2) build, [#3](https://github.com/LucianoAlf/la-journey/pull/3) mapa, [#4](https://github.com/LucianoAlf/la-journey/pull/4) capa + professor
-- Branch: `feat/caderno-repertorio-montador` (merged)
-- Conferir: `/biblioteca` → Exercícios → Cadernos → Caderno do Chiquinho — carimbo CURADA + nome; Gerar PDF começa na capa ilustrada
+- App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
+- Conferir: Repertório → Fé (IZA). Completar com IA puxa YouTube/BPM/Spotify. Header mostra os links. Gerar PDF da folha usa o motor unificado. Duplo clique no diagrama abre Editar Acorde.
+- PDF Chiquinho: `C:\Users\Texeira\Downloads\Caderno do Chiquinho  teste browser.pdf` (capa ok; diagramação fina no editor)
+- Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
 
 ---
 
@@ -50,7 +50,28 @@ Capa ilustrada entra como **página 1 do PDF** (full-bleed, sem chrome da folha)
 
 Arquivo de referência local (folhas, pré-capa): `C:\Users\Texeira\Downloads\Caderno do Chiquinho  teste browser.pdf`
 
-### Specs deste corte
+### Motor Cifra Club (14/08)
+
+12 músicas no banco (cifra + letra + `source_url`). Busca Solr + scrape funciona. Preview e import funcionam.
+
+Clicado na Fé (IZA): Completar com IA, Editar, Letra, Informações (embed YouTube), Gerar PDF, Editar Acorde (duplo clique). Caderno do Chiquinho é OLGA, não Cifra Club.
+
+Furos e o que foi feito:
+
+| Furo | Correção |
+|---|---|
+| YouTube no import: 1/12. Regex só pegava `href` watch/youtu.be | Parser lê watch, youtu.be, embed, `youtubeId`. Completar com IA continua como fallback (Fé → `KE0LxH8b7no`) |
+| Sem Spotify | Coluna `spotify_url`, link no header, campo em Editar, Completar com IA. Sem API do Spotify — URL oficial via IA ou cola manual |
+| Letra misturava `Em7(5-)` | Linha só de acorde (com parêntese) sai da letra |
+| `Em7(5-)` sumia da lista (virava `Em7`) | Token de acorde aceita alteração entre parênteses |
+| Teclado “32 de 9” | Conta nomes únicos (`pianoChordMap.size`), não linhas duplicadas da biblioteca |
+| Dois Tempo Perdido no mesmo `source_url` | Ficou o de 10 acordes. Unique index em `source_url`. Save recusa duplicata |
+
+Edge `cifra-club-import` e `cifra-club-batch` redeployadas. `cifra-club-search` já estava no ar (v23) e ainda não está no git.
+
+Migration `20260814140000_repertoire_spotify_and_source_unique.sql` aplicada em `rkfszavfqplhorvfpkcq`.
+
+### Specs do caderno
 
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-montador-design.md`
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-motor-design.md` (aprovada)
@@ -60,10 +81,13 @@ Arquivo de referência local (folhas, pré-capa): `C:\Users\Texeira\Downloads\Ca
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Auditoria do motor de repertório** — Cifra Club, Songsterr e outras fontes: o que entra, o que quebra, se a edição persiste. Fazer **antes** de receita-por-música / caderno de exercício / apostila. É o que alimenta o caderno. Há edge functions locais untracked (`cifra-club-import`, `cifra-club-batch`).
-2. Receita diferente por música.
-3. Cadernos de exercício (mesma ideia, outro motor).
-4. Apostila / Download do editor quando **não** é songbook (hoje Browserless `generate-pdf` → `/print/:id` com `APP_URL` de produção).
+1. **Auditoria Songsterr** — search/import/GP, o que entra, se a edição persiste.
+2. Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm (Completar com IA ou re-import).
+3. Duplicatas na `chord_library` piano (3–4 linhas por nome) — a conta na ficha já não infla, os dados ainda estão sujos.
+4. Trazer `cifra-club-search` para o git (hoje só no Supabase).
+5. Receita diferente por música.
+6. Cadernos de exercício.
+7. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
 
 ---
 
@@ -76,11 +100,10 @@ Arquivo de referência local (folhas, pré-capa): `C:\Users\Texeira\Downloads\Ca
 
 ### Working tree local, não shipado
 
-Não entrar no PR de capa/repertório:
+Não entrar no PR de repertório/Cifra Club:
 
 - Image-gen, Recraft SVG, Iconify, import de imagem
 - Ajustes de `ai-config` / Gemini / Integracoes
-- Edge functions locais `cifra-club-import` / `cifra-club-batch` (relevantes para o item 3 do radar, ainda untracked)
 - `tmp/`, `.cursor/mcp.json`
 
 ---
@@ -102,7 +125,10 @@ Não entrar no PR de capa/repertório:
 | Motor PDF | `src/services/repertoirePdfEngine.ts` |
 | Folhas a partir de caderno/blocos | `src/lib/repertoirePdfSongs.ts` |
 | Paginação html2canvas | `src/services/pdfService.ts`, `src/lib/pdfPageSlices.ts` |
-| Parser cifra | `src/lib/cifraBlocks.ts` |
+| Parser cifra (folha) | `src/lib/cifraBlocks.ts` |
+| Parser Cifra Club | `supabase/functions/_shared/cifra-parser.ts` |
+| Import Cifra Club | `supabase/functions/cifra-club-import/index.ts`, `cifra-club-batch` |
+| Enrich IA | `src/services/aiEnrichService.ts` |
 | Montador | `src/lib/notebookMaterialAssembler.ts` |
 | Receita | `src/lib/notebookPrintRecipe.ts` |
 | Folha UI | `src/components/repertoire/RepertoireSheet.tsx`, `PrintableCifra.tsx` |
