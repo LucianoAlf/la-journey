@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 import { parseCifraPage } from "../_shared/cifra-parser.ts"
+import { extractYouTubeVideoId } from "../_shared/youtube.ts"
 
 // Mesmo parser do cifra-club-import (youtube, Em7(5-), letra limpa).
 
@@ -121,6 +122,7 @@ Deno.serve(async (req) => {
             lyrics: cifra.lyrics,
             source_url: cifra.source_url,
             youtube_url: cifra.youtube_url,
+            youtube_video_id: cifra.youtube_url ? extractYouTubeVideoId(cifra.youtube_url) : null,
             is_public_domain: false,
             curation_status: "draft",
           })

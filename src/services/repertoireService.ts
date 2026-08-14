@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
+import { extractYouTubeVideoId } from './youtubeLookupService'
 import type { Tables, TablesInsert, TablesUpdate, Database } from '@/lib/database.types'
 
 export type Repertoire = Tables<'repertoire'>
@@ -475,6 +476,8 @@ export async function saveCifraToRepertoire(cifra: CifraData, instruments: strin
     }
   }
 
+  const youtubeVideoId = cifra.youtube_url ? extractYouTubeVideoId(cifra.youtube_url) : null
+
   const { data, error } = await supabase
     .from('repertoire')
     .insert({
@@ -492,6 +495,7 @@ export async function saveCifraToRepertoire(cifra: CifraData, instruments: strin
       source_url: cifra.source_url,
       is_public_domain: false,
       youtube_url: cifra.youtube_url,
+      youtube_video_id: youtubeVideoId,
       curation_status: 'draft',
     })
     .select()
