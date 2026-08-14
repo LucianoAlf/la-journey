@@ -274,15 +274,23 @@ Deno.serve(async (req) => {
     const publicUrl = urlData.publicUrl
     console.log(`[gp-download] URL publica: ${publicUrl}`)
 
+    const extractedBpmRaw = trackDataList[0]?.data?.automations?.tempo?.[0]?.bpm || trackDataList[0]?.data?.tempo || null
+    const extractedBpm = typeof extractedBpmRaw === 'number' && extractedBpmRaw > 0 ? Math.round(extractedBpmRaw) : null
+
+    const updatePayload: Record<string, any> = {
+      gp_file_url: publicUrl,
+      updated_at: new Date().toISOString(),
+    }
+    if (extractedBpm) {
+      updatePayload.bpm = extractedBpm
+    }
+
     // 6. Atualizar registro no banco se informado
     if (repertoireId) {
-      console.log(`[gp-download] Atualizando repertoire ID: ${repertoireId}`)
+      console.log(`[gp-download] Atualizando repertoire ID: ${repertoireId}`, updatePayload)
       const { error: dbError } = await supabase
         .from('repertoire')
-        .update({
-          gp_file_url: publicUrl,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', repertoireId)
 
       if (dbError) {
@@ -294,10 +302,7 @@ Deno.serve(async (req) => {
       // Se não passou repertoireId, tenta atualizar qualquer linha que tenha esse songsterr_id
       const { error: dbError } = await supabase
         .from('repertoire')
-        .update({
-          gp_file_url: publicUrl,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('songsterr_id', songId)
         .is('gp_file_url', null)
 
@@ -311,6 +316,7 @@ Deno.serve(async (req) => {
         publicUrl,
         songsterrJsonUrl: publicUrl,
         tracksCount: trackDataList.length,
+        bpm: extractedBpm,
         title: meta.title,
         artist: meta.artist,
       }),

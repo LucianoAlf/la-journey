@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** BPM/tom Songsterr (72 e 1º acorde) + YouTube do import sem lookup embeddable (Tarefa 3 do Radar).
+**Próximo corte:** Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm (Tarefa 2 do Radar).
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Songsterr GP + edges no git + fix cifra_source concluídos (14/08). 4/4 músicas com tablatura no ar.
+BPM/tom Songsterr + YouTube embeddable lookup concluídos e deployados (14/08). 4/4 músicas Songsterr re-enriquecidas com BPM real (Wonderwall 88, Sweet Child 123, Champagne 75, Like a Virgin 120), tom diatônico real (Em, G, D, D) e clipes oficiais embeddáveis com metadados completos.
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
 - Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
@@ -24,6 +24,20 @@ Songsterr GP + edges no git + fix cifra_source concluídos (14/08). 4/4 músicas
 ---
 
 ## Feito
+
+### Songsterr BPM Real + Tom Diatônico + YouTube Embeddable (14/08)
+
+- **BPM Real via CDN Track Automations:**
+  - `songsterr-enrich` e `songsterr-gp-download` agora extraem o BPM real do track 0 diretamente da CDN Songsterr (`automations.tempo[0].bpm` ou `data.tempo`), eliminando o valor placeholder padrão de 72 BPM.
+- **Detecção de Tom Diatônico Real:**
+  - Algoritmo de scoring diatônico maior/menor analisando a lista completa de acordes (`detectKeyFromChords`), eliminando o falso tom baseado no primeiro acorde (ex: Wonderwall agora é `Em` e não `Em7`; Champagne Supernova agora é `D` e não `Asus2`; Sweet Child O' Mine é `G` e não `D`).
+- **YouTube Embeddable Lookup via Data API v3:**
+  - Integração com `_shared/youtube.ts` avaliando até 10 IDs candidatos do Songsterr em lote (`videos.list` com `status.embeddable` e restrição regional BR).
+  - Prioriza clipes oficiais/HQ e grava metadados completos (`youtube_url`, `youtube_video_id`, `youtube_title`, `youtube_channel`, `youtube_duration`, `youtube_thumbnail_url`).
+- **UI de Importação Unificada (`UnifiedImportModal`):**
+  - Preview exibe badges de Tom detectado, BPM real, acordes e card de vídeo do YouTube com título e duração.
+- **Backfill no Banco de Dados:**
+  - As 4 músicas Songsterr (`repertoire`) foram re-enriquecidas com sucesso no banco de produção.
 
 ### Songsterr GP + Edges no Git + Fix Origem (14/08)
 
@@ -189,13 +203,12 @@ Edição:
 
 ## Radar (ordem combinada em 14/08)
 
-1. **BPM/tom Songsterr (72 e 1º acorde) + YouTube do import sem lookup embeddable.**
-2. Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm.
-3. Duplicatas na `chord_library` piano (3–4 linhas por nome).
-4. Receita diferente por música.
-5. Cadernos de exercício.
-6. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-7. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm.**
+2. Duplicatas na `chord_library` piano (3–4 linhas por nome).
+3. Receita diferente por música.
+4. Cadernos de exercício.
+5. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 

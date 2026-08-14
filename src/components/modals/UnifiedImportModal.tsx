@@ -670,6 +670,43 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
                   </div>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                  {songsterrPreview.key && (
+                    <Badge variant="secondary" className="text-[11px] font-semibold">
+                      Tom: {songsterrPreview.key}
+                    </Badge>
+                  )}
+                  {songsterrPreview.bpm && (
+                    <Badge variant="secondary" className="text-[11px]">
+                      {songsterrPreview.bpm} BPM
+                    </Badge>
+                  )}
+                  {songsterrPreview.chords && songsterrPreview.chords.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {songsterrPreview.chords.slice(0, 8).map((c) => (
+                        <Badge key={c} variant="outline" className="font-mono text-[10px]">
+                          {c}
+                        </Badge>
+                      ))}
+                      {songsterrPreview.chords.length > 8 && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          +{songsterrPreview.chords.length - 8}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {songsterrPreview.youtube_title && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/40 border border-border text-[11px] text-muted-foreground">
+                    <span className="font-semibold text-foreground">YouTube:</span>
+                    <span className="truncate flex-1">{songsterrPreview.youtube_title}</span>
+                    {songsterrPreview.youtube_duration && (
+                      <span className="font-mono text-[10px] opacity-75">{songsterrPreview.youtube_duration}</span>
+                    )}
+                  </div>
+                )}
+
                 {songsterrPreview.tracks && songsterrPreview.tracks.length > 0 && (
                   <div>
                     <Label className="text-[11px] mb-1">Tracks ({songsterrPreview.tracks.length})</Label>
@@ -679,6 +716,12 @@ export function UnifiedImportModal({ open, onClose, onSuccess, onOpenEditor }: U
                       ))}
                     </div>
                   </div>
+                )}
+
+                {songsterrPreview.cifra_content && (
+                  <ScrollArea className="h-[180px] rounded-lg border border-border p-3">
+                    <CifraPreview content={songsterrPreview.cifra_content} />
+                  </ScrollArea>
                 )}
 
                 <div className="flex justify-end gap-2 pt-2 border-t border-border">
