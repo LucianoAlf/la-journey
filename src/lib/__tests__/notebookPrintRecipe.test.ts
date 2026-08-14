@@ -3,6 +3,8 @@ import {
   printRecipeFromTags,
   recipeFromNotebookInstrument,
   withPrintRecipeTag,
+  isSameRecipe,
+  formatRecipeSummary,
 } from '../notebookPrintRecipe'
 
 function test(name: string, fn: () => void) {
@@ -35,5 +37,33 @@ test('withPrintRecipeTag replaces only the recipe tag', () => {
   assert.deepEqual(
     withPrintRecipeTag(['pop', 'print-recipe:guitar'], { guitar: true, piano: true, ukulele: false, tab: false }),
     ['pop', 'print-recipe:guitar+piano'],
+  )
+})
+
+test('isSameRecipe checks deep equality of recipe flags', () => {
+  assert.equal(
+    isSameRecipe(
+      { guitar: true, piano: false, ukulele: false, tab: true },
+      { guitar: true, piano: false, ukulele: false, tab: true },
+    ),
+    true,
+  )
+  assert.equal(
+    isSameRecipe(
+      { guitar: true, piano: false, ukulele: false, tab: true },
+      { guitar: false, piano: true, ukulele: false, tab: true },
+    ),
+    false,
+  )
+})
+
+test('formatRecipeSummary formats active elements correctly', () => {
+  assert.equal(
+    formatRecipeSummary({ guitar: true, piano: true, ukulele: false, tab: true }),
+    'Violão, Teclado, Tab',
+  )
+  assert.equal(
+    formatRecipeSummary({ guitar: false, piano: false, ukulele: false, tab: false }),
+    'Apenas letra/cifra',
   )
 })

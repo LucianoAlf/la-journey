@@ -50,3 +50,48 @@ test('recipe follows the grids present in the material', () => {
   assert.equal(recipe.guitar, true)
   assert.equal(recipe.piano, true)
 })
+
+test('songsFromNotebookItems accepts and attaches per-song recipe overrides', () => {
+  const songs = songsFromNotebookItems(
+    [
+      {
+        repertoire: {
+          id: 'song-1',
+          title: 'Guitar Song',
+          artist: 'Artist A',
+          key: 'G',
+          chords: ['G'],
+          cifra_content: 'G\nLyrics',
+        },
+      },
+      {
+        repertoire: {
+          id: 'song-2',
+          title: 'Piano Song',
+          artist: 'Artist B',
+          key: 'C',
+          chords: ['C'],
+          cifra_content: 'C\nLyrics',
+        },
+      },
+      {
+        repertoire: {
+          id: 'song-3',
+          title: 'Tag Song',
+          artist: 'Artist C',
+          tags: ['print-recipe:ukulele+tab'],
+          chords: ['F'],
+          cifra_content: 'F\nLyrics',
+        },
+      },
+    ],
+    {
+      'song-2': { guitar: false, piano: true, ukulele: false, tab: true },
+    },
+  )
+
+  assert.equal(songs.length, 3)
+  assert.equal(songs[0].recipe, undefined) // uses default
+  assert.deepEqual(songs[1].recipe, { guitar: false, piano: true, ukulele: false, tab: true })
+  assert.deepEqual(songs[2].recipe, { guitar: false, piano: false, ukulele: true, tab: true })
+})

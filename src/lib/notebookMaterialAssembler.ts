@@ -1,5 +1,5 @@
 import { adaptRepertoireItem, type PreparedMaterialBlock } from './contentBrowserAdapters'
-import { recipeFromNotebookInstrument, type NotebookPrintRecipe } from './notebookPrintRecipe'
+import { recipeFromNotebookInstrument, printRecipeFromTags, type NotebookPrintRecipe } from './notebookPrintRecipe'
 
 export const COVER_TEMPLATES = [
   'modern',
@@ -26,11 +26,14 @@ export function withCoverTemplateTag(tags: string[] | null | undefined, template
 }
 
 export interface NotebookSongInput {
+  id?: string | null
   title?: string | null
   artist?: string | null
   key?: string | null
   chords?: string[] | null
   cifra_content?: string | null
+  tags?: string[] | null
+  recipe?: NotebookPrintRecipe | null
 }
 
 export const NOTEBOOK_LEVEL_LABELS: Record<string, string> = {
@@ -126,9 +129,14 @@ export function buildNotebookMaterialBlocks(
       content: null,
       renderData: null,
     })
+    const songRecipe = song.recipe
+      ?? (song.tags ? printRecipeFromTags(song.tags) : null)
+      ?? input.recipe
+      ?? recipeFromNotebookInstrument(input.instrument)
+
     blocks.push(...adaptRepertoireItem(song, {
       includeChordGrid: true,
-      recipe: input.recipe ?? recipeFromNotebookInstrument(input.instrument),
+      recipe: songRecipe,
     }))
   }
 

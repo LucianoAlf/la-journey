@@ -65,3 +65,17 @@ export function withPrintRecipeTag(
 export function recipeHasDiagrams(recipe: NotebookPrintRecipe) {
   return recipe.guitar || recipe.piano || recipe.ukulele
 }
+
+export function isSameRecipe(a: NotebookPrintRecipe, b: NotebookPrintRecipe): boolean {
+  return a.guitar === b.guitar && a.piano === b.piano && a.ukulele === b.ukulele && a.tab === b.tab
+}
+
+export function formatRecipeSummary(recipe: NotebookPrintRecipe): string {
+  const parts: string[] = []
+  if (recipe.guitar) parts.push('Violão')
+  if (recipe.piano) parts.push('Teclado')
+  if (recipe.ukulele) parts.push('Ukulele')
+  if (recipe.tab) parts.push('Tab')
+  return parts.length > 0 ? parts.join(', ') : 'Apenas letra/cifra'
+}
+

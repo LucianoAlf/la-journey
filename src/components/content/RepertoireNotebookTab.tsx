@@ -149,7 +149,12 @@ export function RepertoireNotebookTab() {
 
   const openNotebookAsDraft = async (
     notebook: RepertoireCollection,
-    options?: { coverTemplate?: CoverTemplate; coverImageUrl?: string | null; recipe?: NotebookPrintRecipe }
+    options?: {
+      coverTemplate?: CoverTemplate
+      coverImageUrl?: string | null
+      recipe?: NotebookPrintRecipe
+      songRecipes?: Record<string, NotebookPrintRecipe>
+    }
   ): Promise<boolean> => {
     if (generatingId) return false
     if (!school?.id) {
@@ -186,7 +191,7 @@ export function RepertoireNotebookTab() {
       if (recipe) {
         try {
           await generateRepertoireBookPdf({
-            songs: songsFromNotebookItems(items),
+            songs: songsFromNotebookItems(items, options?.songRecipes),
             recipe,
             filename: notebook.name,
             cover: coverFromNotebook(notebook, coverExtras),
@@ -339,11 +344,11 @@ export function RepertoireNotebookTab() {
             setPendingCover(null)
           }
         }}
-        onConfirm={async (recipe) => {
+        onConfirm={async (recipe, songRecipes) => {
           if (!recipeNotebook) return
           const notebook = recipeNotebook
           const cover = pendingCover
-          const ok = await openNotebookAsDraft(notebook, { ...cover, recipe })
+          const ok = await openNotebookAsDraft(notebook, { ...cover, recipe, songRecipes })
           if (ok) {
             setRecipeNotebook(null)
             setPendingCover(null)

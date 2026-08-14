@@ -1,16 +1,18 @@
 import { extractCifraPlainText, isCifraHtml } from '@/lib/cifraBlocks'
 import { groupSongbookSongs, type SongbookSongGroup } from '@/lib/songbookPagination'
 import type { SharedPaginationBlock } from '@/lib/sharedPagination'
-import type { NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
+import { printRecipeFromTags, type NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
 import { mediaFromRepertoire, type RepertoireMediaSource, type RepertoirePdfMedia } from '@/lib/repertoirePdfMedia'
 
 export interface RepertoirePdfSong {
+  id?: string
   title: string
   artist: string
   key?: string
   chords: string[]
   cifraContent: string | null
   media?: RepertoirePdfMedia
+  recipe?: NotebookPrintRecipe
 }
 
 function stripTags(html: string) {
@@ -56,19 +58,39 @@ export function recipeFromSongbookBlocks(
 }
 
 export function songsFromNotebookItems(
-  items: Array<{ repertoire?: ({ title?: string | null; artist?: string | null; key?: string | null; chords?: string[] | null; cifra_content?: string | null } & RepertoireMediaSource) | null }>,
+  items: Array<{
+    repertoire_id?: string
+    recipe?: NotebookPrintRecipe | null
+    repertoire?: ({
+      id?: string | null
+      title?: string | null
+      artist?: string | null
+      key?: string | null
+      chords?: string[] | null
+      cifra_content?: string | null
+      tags?: string[] | null
+    } & RepertoireMediaSource) | null
+  }>,
+  songRecipes?: Record<string, NotebookPrintRecipe>,
 ): RepertoirePdfSong[] {
   return items
-    .map((item) => item.repertoire)
-    .filter((song): song is NonNullable<typeof song> => Boolean(song?.title || song?.cifra_content || song?.chords?.length))
-    .map((song) => ({
-      title: song.title?.trim() || 'Sem título',
-      artist: song.artist?.trim() || '',
-      key: song.key?.trim() || undefined,
-      chords: (song.chords ?? []).filter(Boolean),
-      cifraContent: song.cifra_content?.trim() || null,
-      media: mediaFromRepertoire(song),
-    }))
+    .map((item) => {
+      const song = item.repertoire
+      if (!song) return null
+      const songId = song.id || item.repertoire_id
+      const customRecipe = (songId && songRecipes?.[songId]) || item.recipe || (song.tags ? printRecipeFromTags(song.tags) : null)
+      return {
+        id: songId || undefined,
+        title: song.title?.trim() || 'Sem título',
+        artist: song.artist?.trim() || '',
+        key: song.key?.trim() || undefined,
+        chords: (song.chords ?? []).filter(Boolean),
+        cifraContent: song.cifra_content?.trim() || null,
+        media: mediaFromRepertoire(song),
+        recipe: customRecipe || undefined,
+      }
+    })
+    .filter((song): song is NonNullable<typeof song> => Boolean(song?.title || song?.cifraContent || song?.chords?.length))
 }
 
 export function songFromSongbookGroup(group: SongbookSongGroup<SharedPaginationBlock>): RepertoirePdfSong {

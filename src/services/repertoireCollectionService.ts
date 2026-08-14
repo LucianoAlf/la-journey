@@ -148,6 +148,7 @@ export async function createDraftMaterialFromNotebook(
     coverTemplate?: CoverTemplate
     coverImageUrl?: string | null
     recipe?: NotebookPrintRecipe
+    songRecipes?: Record<string, NotebookPrintRecipe>
     schoolName?: string | null
     professorName?: string | null
     logoUrl?: string | null
@@ -174,7 +175,16 @@ export async function createDraftMaterialFromNotebook(
     professorName: options?.professorName,
     logoUrl: options?.logoUrl,
     recipe,
-    songs: items.map((item) => item.repertoire ?? null),
+    songs: items.map((item) => {
+      const song = item.repertoire
+      if (!song) return null
+      const songId = song.id || item.repertoire_id
+      const customRecipe = (songId && options?.songRecipes?.[songId]) || (song.tags ? printRecipeFromTags(song.tags) : null)
+      return {
+        ...song,
+        recipe: customRecipe,
+      }
+    }),
   })
 
   if (assembled.includedSongs === 0) {
