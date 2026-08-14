@@ -98,6 +98,9 @@ function run() {
     assert.equal(blocks[0].title, 'Asa Branca')
     assert.match(String(blocks[0].content?.html), /Luiz Gonzaga/)
     assert.match(String(blocks[0].content?.html), /G, D7/)
+    assert.equal(blocks[1].blockType, 'text')
+    assert.match(String(blocks[1].content?.html), /<pre>/)
+    assert.match(String(blocks[1].content?.html), /terra ardendo/)
   }
 
   {
@@ -109,11 +112,29 @@ function run() {
       cifra_content: '[G]Quando olhei a terra ardendo',
     }, { includeChordGrid: true })
 
-    assert.equal(blocks.length, 2)
+    assert.equal(blocks.length, 3)
     assert.equal(blocks[0].blockType, 'text')
     assert.equal(blocks[1].blockType, 'chord_grid')
+    assert.equal(blocks[2].blockType, 'text')
     assert.deepEqual((blocks[1].renderData as any).chords, ['G', 'D7', 'C'])
     assert.equal((blocks[1].renderData as any).columns, 3)
+    assert.equal(blocks[1].title, null)
+    assert.match(String(blocks[2].content?.html), /<pre>/)
+  }
+
+  {
+    const blocks = adaptRepertoireItem({
+      title: 'Eduardo e Mônica',
+      chords: ['E', 'A9'],
+      cifra_content: '[Intro]\nE A9\n[Tab - Primeira Parte]\nE|--0--|\nQuem um dia irá dizer',
+    }, {
+      recipe: { guitar: false, piano: true, ukulele: false, tab: false },
+    })
+
+    assert.equal(blocks[1].blockType, 'keyboard_grid')
+    assert.ok(!blocks.some((block) => block.blockType === 'chord_grid'))
+    assert.match(String(blocks[2].content?.html), /Quem um dia/)
+    assert.doesNotMatch(String(blocks[2].content?.html), /Tab - Primeira|E\|--0--/)
   }
 
   {

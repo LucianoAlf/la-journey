@@ -1,5 +1,8 @@
+import { buildNotebookMaterialBlocks, coverTemplateFromTags, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import { printRecipeFromTags, withPrintRecipeTag, type NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
+import { createDraftMaterialWithBlocks } from './materialService'
 
 // Helper para tabelas não tipadas no database.types.ts (regenerar tipos depois)
 const db = supabase as any
@@ -108,6 +111,59 @@ export async function getCollectionItems(
 
   if (error) handleError(error)
   return data ?? []
+}
+
+export async function createDraftMaterialFromNotebook(
+  collection: RepertoireCollection,
+  schoolId: string,
+  options?: {
+    coverTemplate?: CoverTemplate
+    coverImageUrl?: string | null
+    recipe?: NotebookPrintRecipe
+  }
+): Promise<{ materialId: string; skippedMissingSongs: number }> {
+  const items = await getCollectionItems(collection.id)
+  const recipe = options?.recipe ?? printRecipeFromTags(collection.tags, collection.instrument)
+  if (options?.recipe) {
+    try {
+      await updateCollection(collection.id, {
+        tags: withPrintRecipeTag(collection.tags, options.recipe),
+      })
+    } catch {
+      // receita ainda entra no rascunho mesmo se o tag do caderno falhar
+    }
+  }
+  const assembled = buildNotebookMaterialBlocks({
+    title: collection.name,
+    coverTemplate: options?.coverTemplate ?? coverTemplateFromTags(collection.tags),
+    coverImageUrl: options?.coverImageUrl ?? collection.cover_image_url,
+    instrument: collection.instrument,
+    recipe,
+    songs: items.map((item) => item.repertoire ?? null),
+  })
+
+  if (assembled.includedSongs === 0) {
+    throw new Error('Adicione pelo menos uma música.')
+  }
+
+  const materialId = await createDraftMaterialWithBlocks({
+    schoolId,
+    title: collection.name,
+    type: 'repertoire_sheet',
+    blocks: assembled.blocks,
+    instrument: collection.instrument,
+    level: collection.difficulty_level,
+    description: collection.description,
+    generationConfig: {
+      source: 'repertoire_collection',
+      collection_id: collection.id,
+    },
+  })
+
+  return {
+    materialId,
+    skippedMissingSongs: assembled.skippedMissingSongs,
+  }
 }
 
 export async function addItemToCollection(

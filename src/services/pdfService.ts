@@ -1,26 +1,69 @@
 import html2canvas from 'html2canvas-pro'
 import { jsPDF } from 'jspdf'
+import { collectPdfBreaks, collectPdfHeaderEnd, computePdfSlices } from '@/lib/pdfPageSlices'
 
 export interface PdfOptions {
-  /** Nome do arquivo (sem extensão) */
   filename: string
-  /** Margem em mm */
   margin?: number
-  /** Escala de captura (padrão 3 para cifras, usar 2 para tablaturas grandes) */
   scale?: number
+  title?: string
+  subtitle?: string
 }
 
-/**
- * Gera um PDF a partir de um elemento HTML.
- * O elemento deve ter fundo branco e estar visível no DOM no momento da captura.
- */
-export async function generatePdfFromElement(
-  element: HTMLElement,
-  options: PdfOptions
-): Promise<void> {
-  const { filename, margin = 10, scale = 3 } = options
+export function drawFooter(
+  pdf: jsPDF,
+  options: {
+    margin: number
+    pageWidth: number
+    pageHeight: number
+    pageIndex: number
+    pageCount: number
+  },
+) {
+  const { margin, pageWidth, pageHeight, pageIndex, pageCount } = options
+  const footerY = pageHeight - 7
 
-  // Capturar o elemento como canvas
+  pdf.setDrawColor(210)
+  pdf.setLineWidth(0.2)
+  pdf.line(margin, footerY - 4, pageWidth - margin, footerY - 4)
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(8)
+  pdf.setTextColor(140)
+  pdf.text('LA Music', margin, footerY)
+  pdf.text(`${pageIndex + 1} / ${pageCount}`, pageWidth - margin, footerY, { align: 'right' })
+}
+
+export function drawRunningHeader(
+  pdf: jsPDF,
+  options: {
+    margin: number
+    pageWidth: number
+    title?: string
+  },
+) {
+  const { margin, pageWidth, title } = options
+  const headerY = margin + 3.5
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(8)
+  pdf.setTextColor(160)
+  pdf.text(title || '', margin, headerY)
+  pdf.text('Repertório', pageWidth - margin, headerY, { align: 'right' })
+
+  pdf.setDrawColor(220)
+  pdf.setLineWidth(0.15)
+  pdf.line(margin, headerY + 2.5, pageWidth - margin, headerY + 2.5)
+}
+
+export async function addRepertoirePages(
+  pdf: jsPDF,
+  element: HTMLElement,
+  options: Omit<PdfOptions, 'filename'> & { startOnNewPage?: boolean },
+): Promise<void> {
+  const { margin = 12, scale = 3, title, startOnNewPage = false } = options
+  const useChrome = Boolean(title)
+
   const canvas = await html2canvas(element, {
     scale,
     useCORS: true,
@@ -28,60 +71,111 @@ export async function generatePdfFromElement(
     logging: false,
   })
 
-  const imgData = canvas.toDataURL('image/png')
   const imgWidth = canvas.width
   const imgHeight = canvas.height
+  const scaleY = element.offsetHeight > 0 ? imgHeight / element.offsetHeight : scale
 
-  // Criar PDF A4 portrait
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const printableWidth = pageWidth - margin * 2
+  const ratio = printableWidth / imgWidth
+
+  const capturedHeaderEnd = useChrome ? collectPdfHeaderEnd(element, scaleY) : 0
+  const runningHeaderBand = 16
+  const footerBand = useChrome ? 14 : 0
+  const coverHeaderMm = capturedHeaderEnd > 0 ? capturedHeaderEnd * ratio : 0
+
+  const firstPageBudget = (pageHeight - margin * 2 - coverHeaderMm - footerBand) / ratio
+  const restPageBudget = (pageHeight - margin * 2 - (useChrome ? runningHeaderBand : 0) - footerBand) / ratio
+
+  const slices = computePdfSlices({
+    contentHeight: imgHeight,
+    pageBudget: restPageBudget,
+    firstPageBudget,
+    origin: capturedHeaderEnd,
+    breaks: collectPdfBreaks(element, scaleY),
+  })
+
+  const pages = slices.length > 0 ? slices : [{ start: capturedHeaderEnd, end: imgHeight }]
+
+  pages.forEach((slice, pageIndex) => {
+    if (pageIndex > 0 || startOnNewPage) pdf.addPage()
+
+    const isCover = pageIndex === 0
+    const headerMm = isCover ? coverHeaderMm : useChrome ? runningHeaderBand : 0
+
+    if (isCover && capturedHeaderEnd > 0) {
+      const headerCanvas = document.createElement('canvas')
+      headerCanvas.width = imgWidth
+      headerCanvas.height = Math.max(1, capturedHeaderEnd)
+      const headerCtx = headerCanvas.getContext('2d')
+      if (headerCtx) {
+        headerCtx.fillStyle = '#ffffff'
+        headerCtx.fillRect(0, 0, imgWidth, headerCanvas.height)
+        headerCtx.drawImage(
+          canvas,
+          0, 0, imgWidth, capturedHeaderEnd,
+          0, 0, imgWidth, capturedHeaderEnd,
+        )
+        pdf.addImage(
+          headerCanvas.toDataURL('image/png'),
+          'PNG',
+          margin,
+          margin,
+          printableWidth,
+          headerMm,
+        )
+      }
+    } else if (useChrome) {
+      drawRunningHeader(pdf, { margin, pageWidth, title })
+    }
+
+    const contentTop = margin + headerMm
+    const sliceHeight = Math.max(1, slice.end - slice.start)
+    const sliceCanvas = document.createElement('canvas')
+    sliceCanvas.width = imgWidth
+    sliceCanvas.height = sliceHeight
+    const ctx = sliceCanvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, imgWidth, sliceHeight)
+    ctx.drawImage(
+      canvas,
+      0, slice.start, imgWidth, sliceHeight,
+      0, 0, imgWidth, sliceHeight,
+    )
+
+    pdf.addImage(
+      sliceCanvas.toDataURL('image/png'),
+      'PNG',
+      margin,
+      contentTop,
+      printableWidth,
+      sliceHeight * ratio,
+    )
+
+    if (useChrome) {
+      drawFooter(pdf, {
+        margin,
+        pageWidth,
+        pageHeight,
+        pageIndex,
+        pageCount: pages.length,
+      })
+    }
+  })
+}
+
+export async function generatePdfFromElement(
+  element: HTMLElement,
+  options: PdfOptions
+): Promise<void> {
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
   })
-
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
-  const printableWidth = pageWidth - margin * 2
-  const printableHeight = pageHeight - margin * 2
-
-  // Calcular proporção para caber na largura da página
-  const ratio = printableWidth / imgWidth
-  const scaledHeight = imgHeight * ratio
-
-  // Se o conteúdo cabe em uma página
-  if (scaledHeight <= printableHeight) {
-    pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, scaledHeight)
-  } else {
-    // Múltiplas páginas: fatiar o canvas
-    const sliceHeight = printableHeight / ratio // altura em pixels do canvas por página
-    let yOffset = 0
-    let pageNum = 0
-
-    while (yOffset < imgHeight) {
-      if (pageNum > 0) pdf.addPage()
-
-      const currentSliceHeight = Math.min(sliceHeight, imgHeight - yOffset)
-
-      // Criar canvas parcial para esta fatia
-      const sliceCanvas = document.createElement('canvas')
-      sliceCanvas.width = imgWidth
-      sliceCanvas.height = currentSliceHeight
-      const ctx = sliceCanvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(
-          canvas,
-          0, yOffset, imgWidth, currentSliceHeight,
-          0, 0, imgWidth, currentSliceHeight
-        )
-        const sliceData = sliceCanvas.toDataURL('image/png')
-        const scaledSliceHeight = currentSliceHeight * ratio
-        pdf.addImage(sliceData, 'PNG', margin, margin, printableWidth, scaledSliceHeight)
-      }
-
-      yOffset += currentSliceHeight
-      pageNum++
-    }
-  }
-
-  pdf.save(`${filename}.pdf`)
+  await addRepertoirePages(pdf, element, options)
+  pdf.save(`${options.filename}.pdf`)
 }

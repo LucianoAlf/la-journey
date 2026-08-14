@@ -383,6 +383,103 @@ export async function cloneMaterialFromTemplate(params: {
   return createdMaterial.id
 }
 
+const MATERIAL_BLOCK_TYPES = new Set<MaterialBlockRow['block_type']>([
+  'title',
+  'text',
+  'image',
+  'audio',
+  'video',
+  'columns',
+  'chord_diagram',
+  'notation',
+  'tablature',
+  'exercise',
+  'tip',
+  'qr_code',
+  'separator',
+  'badge',
+  'cover',
+  'chord_grid',
+  'keyboard',
+  'keyboard_grid',
+  'page_break',
+  'rhythm',
+])
+
+function toMaterialBlockType(type: string): MaterialBlockRow['block_type'] {
+  return MATERIAL_BLOCK_TYPES.has(type as MaterialBlockRow['block_type'])
+    ? (type as MaterialBlockRow['block_type'])
+    : 'text'
+}
+
+export async function createDraftMaterialWithBlocks(params: {
+  schoolId: string
+  title: string
+  type?: GeneratedMaterial['type']
+  format?: GeneratedMaterial['format']
+  blocks: Array<{
+    blockType: string
+    title?: string | null
+    content?: Record<string, unknown> | null
+    renderData?: Record<string, unknown> | null
+  }>
+  instrument?: string | null
+  level?: string | null
+  description?: string | null
+  generationConfig?: Json | null
+}): Promise<string> {
+  const materialInsert: GeneratedMaterialInsertInput = {
+    school_id: params.schoolId,
+    title: params.title,
+    type: params.type ?? 'exercise_sheet',
+    format: params.format ?? 'html',
+    page_count: params.blocks.length,
+    status: 'ready',
+    is_draft: true,
+    is_template: false,
+    version: 1,
+    generation_config: params.generationConfig ?? null,
+    template_cover_url: null,
+    template_description: params.description ?? null,
+    template_instrument: params.instrument ?? null,
+    template_level: params.level ?? null,
+    journey_id: null,
+    stage_id: null,
+    station_id: null,
+  }
+
+  const { data: newMaterial, error: newMaterialError } = await (supabase
+    .from('generated_materials') as any)
+    .insert(materialInsert)
+    .select('id')
+    .single()
+
+  if (newMaterialError) handleError(newMaterialError)
+  const createdMaterial = newMaterial as { id: string } | null
+  if (!createdMaterial?.id) throw new Error('Não foi possível criar o rascunho do material')
+
+  if (params.blocks.length > 0) {
+    const insertedBlocks: MaterialBlockInsertInput[] = params.blocks.map((block, index) => ({
+      material_id: createdMaterial.id,
+      block_type: toMaterialBlockType(block.blockType),
+      title: block.title ?? null,
+      content: (block.content ?? null) as Json | null,
+      render_data: (block.renderData ?? null) as Json | null,
+      sort_order: index,
+      is_edited: false,
+      original_content: null,
+    }))
+
+    const { error: blocksInsertError } = await (supabase
+      .from('material_blocks') as any)
+      .insert(insertedBlocks)
+
+    if (blocksInsertError) handleError(blocksInsertError)
+  }
+
+  return createdMaterial.id
+}
+
 // --- Funções diretas (complementares) ---
 
 export async function updateMaterial(id: string, updates: Partial<GeneratedMaterial>) {

@@ -1,4 +1,6 @@
+import { stripCifraTablature } from './cifraBlocks'
 import { getRenderableGridChords } from './editorChordSelection'
+import { recipeHasDiagrams, type NotebookPrintRecipe } from './notebookPrintRecipe'
 
 export interface PreparedMaterialBlock {
   blockType: string
@@ -144,33 +146,49 @@ export function adaptRepertoireItem(item: {
   key?: string | null
   chords?: string[] | null
   cifra_content?: string | null
-}, options: { includeChordGrid?: boolean } = {}): PreparedMaterialBlock[] {
+}, options: { includeChordGrid?: boolean; recipe?: NotebookPrintRecipe } = {}): PreparedMaterialBlock[] {
   const title = item.title ?? 'Repertorio'
   const artist = item.artist?.trim()
   const chords = item.chords?.filter(Boolean) ?? []
-  const cifra = item.cifra_content?.trim() ?? ''
+  const recipe = options.recipe
+  const rawCifra = item.cifra_content?.trim() ?? ''
+  const cifra = recipe && !recipe.tab ? stripCifraTablature(rawCifra) : rawCifra
   const metaParts = [
     artist ? `<strong>Artista:</strong> ${escapeHtml(artist)}` : '',
     item.key ? `<strong>Tom:</strong> ${escapeHtml(item.key)}` : '',
     chords.length ? `<strong>Acordes:</strong> ${escapeHtml(chords.join(', '))}` : '',
   ].filter(Boolean)
 
-  const html = [
-    metaParts.length ? `<p>${metaParts.join(' &middot; ')}</p>` : '',
-    cifra ? `<pre>${escapeHtml(cifra)}</pre>` : '<p>Repertorio selecionado.</p>',
-  ].filter(Boolean).join('')
+  const headerHtml = metaParts.length
+    ? `<p>${metaParts.join(' &middot; ')}</p>`
+    : (cifra ? '' : '<p>Repertorio selecionado.</p>')
+  const includeLegacyGrid = Boolean(options.includeChordGrid) && !recipe
+  const showGuitarGrid = recipe
+    ? Boolean((recipe.guitar || recipe.ukulele) && chords.length > 0)
+    : Boolean(includeLegacyGrid && chords.length > 0)
+  const showPianoGrid = Boolean(recipe?.piano && chords.length > 0)
+  const hasDiagrams = showGuitarGrid || showPianoGrid || (recipe ? recipeHasDiagrams(recipe) && chords.length > 0 : false)
 
   const blocks: PreparedMaterialBlock[] = [{
     blockType: 'text',
     title,
-    content: { html, text: stripHtml(html) },
-    renderData: null,
+    content: {
+      html: headerHtml || `<p>${escapeHtml(title)}</p>`,
+      text: stripHtml(headerHtml) || title,
+    },
+    renderData: {
+      pagination: {
+        behavior: 'breakable',
+        keepWithNext: hasDiagrams || Boolean(cifra),
+        allowSplit: false,
+      },
+    },
   }]
 
-  if (options.includeChordGrid && chords.length > 0) {
+  if (showGuitarGrid) {
     blocks.push({
       blockType: 'chord_grid',
-      title: `${title} — Acordes`,
+      title: null,
       content: {
         text: `Acordes de ${title}`,
         key: item.key ?? null,
@@ -178,7 +196,52 @@ export function adaptRepertoireItem(item: {
       },
       renderData: {
         chords,
-        columns: Math.min(Math.max(chords.length, 3), 5),
+        columns: Math.min(Math.max(chords.length, 1), 7),
+        strings: recipe?.ukulele && !recipe.guitar ? 4 : 6,
+        instrument: recipe?.ukulele && !recipe.guitar ? 'ukulele' : 'guitar',
+        pagination: {
+          behavior: 'unbreakable',
+          keepWithNext: showPianoGrid || Boolean(cifra),
+          allowSplit: false,
+        },
+      },
+    })
+  }
+
+  if (showPianoGrid) {
+    blocks.push({
+      blockType: 'keyboard_grid',
+      title: null,
+      content: {
+        text: `Teclado de ${title}`,
+        chords,
+      },
+      renderData: {
+        keyboards: chords.map((chord) => ({ chord_name: chord, name: chord })),
+        columns: Math.min(Math.max(chords.length, 1), 3),
+        pagination: {
+          behavior: 'unbreakable',
+          keepWithNext: Boolean(cifra),
+          allowSplit: false,
+        },
+      },
+    })
+  }
+
+  if (cifra) {
+    blocks.push({
+      blockType: 'text',
+      title: null,
+      content: {
+        html: `<pre>${escapeHtml(cifra)}</pre>`,
+        text: cifra,
+      },
+      renderData: {
+        pagination: {
+          behavior: 'breakable',
+          allowSplit: true,
+          keepWithNext: false,
+        },
       },
     })
   }
@@ -194,10 +257,5 @@ export function adaptExerciseLibraryItem(item: {
     render_data?: unknown
   }> | null
 }): PreparedMaterialBlock[] {
-  return (item.blocks ?? []).map(block => ({
-    blockType: normalizeBlockType(block.block_type),
-    title: block.title ?? null,
-    content: cloneRecord(block.content) ?? null,
-    renderData: cloneRecord(block.render_data),
-  }))
+  return (item.blocks ?? []).flatMap((block) => adaptContentBlockItem(block))
 }

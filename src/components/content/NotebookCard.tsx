@@ -8,6 +8,9 @@ interface NotebookCardProps {
   onOpen: (notebook: RepertoireCollection) => void
   onEdit: (notebook: RepertoireCollection) => void
   onDelete: (notebook: RepertoireCollection) => void
+  onGenerate: (notebook: RepertoireCollection) => void
+  generating?: boolean
+  generateDisabled?: boolean
 }
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -17,7 +20,7 @@ const LEVEL_LABELS: Record<string, string> = {
   master: 'Master',
 }
 
-export function NotebookCard({ notebook, onOpen, onEdit, onDelete }: NotebookCardProps) {
+export function NotebookCard({ notebook, onOpen, onEdit, onDelete, onGenerate, generating, generateDisabled }: NotebookCardProps) {
   return (
     <div
       className="rounded-[14px] bg-card border border-border p-4 hover:border-accent/30 transition-colors group cursor-pointer"
@@ -60,7 +63,22 @@ export function NotebookCard({ notebook, onOpen, onEdit, onDelete }: NotebookCar
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div
+        className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-[11px] gap-1"
+          disabled={generateDisabled || generating}
+          onClick={(e) => {
+            e.stopPropagation()
+            onGenerate(notebook)
+          }}
+        >
+          {generating ? 'Gerando...' : 'Gerar PDF'}
+        </Button>
         <Button
           variant="ghost"
           size="sm"

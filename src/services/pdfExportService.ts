@@ -199,18 +199,11 @@ export async function exportMaterialToPDF(
         page.classList.remove('pdf-export-mode')
       }
 
-      // Converter canvas para imagem com boa qualidade
       const imgData = canvas.toDataURL('image/jpeg', 0.95)
 
-      // Preencher a página A4 inteira — escalar para caber
-      // As páginas no editor têm proporção 794:1123 ≈ 0.707 (mesmo que A4)
-      const drawWidth = pdfWidth
-      const drawHeight = pdfHeight
-
-      // Adicionar nova página (exceto na primeira)
       if (i > 0) pdf.addPage()
 
-      pdf.addImage(imgData, 'JPEG', 0, 0, drawWidth, drawHeight)
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight)
     }
 
     onProgress?.('Salvando PDF...')

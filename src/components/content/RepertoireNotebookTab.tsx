@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Books, MagnifyingGlass, Plus, SpinnerGap, Warning } from '@phosphor-icons/react'
+import { toast } from 'sonner'
 import { useRepertoireCollections } from '@/hooks/useRepertoireCollections'
-import { getCollectionItems, type RepertoireCollection } from '@/services/repertoireCollectionService'
+import { useSchool } from '@/hooks/useSchool'
+import { withCoverTemplateTag, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import type { NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
+import { createDraftMaterialFromNotebook, getCollectionItems, type RepertoireCollection } from '@/services/repertoireCollectionService'
+import { generateRepertoireBookPdf } from '@/services/repertoirePdfEngine'
+import { songsFromNotebookItems } from '@/lib/repertoirePdfSongs'
+import { NotebookPrintRecipeDialog } from './NotebookPrintRecipeDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,15 +26,24 @@ const INSTRUMENT_OPTIONS = [
   { value: 'baixo', label: 'Baixo' },
   { value: 'piano', label: 'Piano' },
   { value: 'canto', label: 'Canto' },
+  { value: 'ukulele', label: 'Ukulele' },
 ]
 
 export function RepertoireNotebookTab() {
+  const { data: school } = useSchool()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [instrument, setInstrument] = useState('all')
   const [selectedNotebook, setSelectedNotebook] = useState<RepertoireCollection | null>(null)
   const [formNotebook, setFormNotebook] = useState<RepertoireCollection | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [songCounts, setSongCounts] = useState<Record<string, number>>({})
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [recipeNotebook, setRecipeNotebook] = useState<RepertoireCollection | null>(null)
+  const [pendingCover, setPendingCover] = useState<{
+    coverTemplate?: CoverTemplate
+    coverImageUrl?: string | null
+  } | null>(null)
 
   const { collections, loading, error, create, update, remove } = useRepertoireCollections({
     search,
@@ -78,7 +95,7 @@ export function RepertoireNotebookTab() {
     difficulty_level: string
     genre: string
   }) => {
-    await create({
+    return await create({
       name: values.name,
       description: values.description || null,
       instrument: values.instrument,
@@ -90,8 +107,6 @@ export function RepertoireNotebookTab() {
       curation_status: 'draft',
       sort_order: collections.length + 1,
     })
-    setFormOpen(false)
-    setFormNotebook(null)
   }
 
   const handleUpdate = async (values: {
@@ -117,6 +132,58 @@ export function RepertoireNotebookTab() {
     if (!confirm(`Excluir o caderno "${notebook.name}"?`)) return
     await remove(notebook.id)
     if (selectedNotebook?.id === notebook.id) setSelectedNotebook(null)
+  }
+
+  const requestGenerate = (
+    notebook: RepertoireCollection,
+    options?: { coverTemplate?: CoverTemplate; coverImageUrl?: string | null },
+  ) => {
+    if (generatingId) return
+    setPendingCover(options ?? null)
+    setRecipeNotebook(notebook)
+  }
+
+  const openNotebookAsDraft = async (
+    notebook: RepertoireCollection,
+    options?: { coverTemplate?: CoverTemplate; coverImageUrl?: string | null; recipe?: NotebookPrintRecipe }
+  ): Promise<boolean> => {
+    if (generatingId) return false
+    if (!school?.id) {
+      toast.error('Não foi possível identificar a escola para criar o rascunho.')
+      return false
+    }
+
+    setGeneratingId(notebook.id)
+    try {
+      const result = await createDraftMaterialFromNotebook(notebook, school.id, options)
+      if (result.skippedMissingSongs > 0) {
+        toast.warning(`${result.skippedMissingSongs} música(s) sem dados foram puladas.`)
+      }
+      const items = await getCollectionItems(notebook.id)
+      const recipe = options?.recipe
+      if (recipe) {
+        try {
+          await generateRepertoireBookPdf({
+            songs: songsFromNotebookItems(items),
+            recipe,
+            filename: notebook.name,
+          })
+          toast.success('PDF gerado no motor de repertório. Rascunho aberto no editor.')
+        } catch (pdfError) {
+          console.error('[PDF] Caderno:', pdfError)
+          toast.error(pdfError instanceof Error ? pdfError.message : 'Não foi possível gerar o PDF.')
+        }
+      } else {
+        toast.success('Rascunho criado. Use Download no editor para gerar o PDF.')
+      }
+      navigate(`/editor/${result.materialId}`)
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível gerar o caderno.')
+      return false
+    } finally {
+      setGeneratingId(null)
+    }
   }
 
   return (
@@ -196,6 +263,9 @@ export function RepertoireNotebookTab() {
                 setFormOpen(true)
               }}
               onDelete={handleDelete}
+              onGenerate={requestGenerate}
+              generating={generatingId === notebook.id}
+              generateDisabled={Boolean(generatingId)}
             />
           ))}
         </div>
@@ -210,6 +280,9 @@ export function RepertoireNotebookTab() {
           setFormNotebook(notebook)
           setFormOpen(true)
         }}
+        onGenerate={requestGenerate}
+        generating={generatingId === selectedNotebook?.id}
+        generateDisabled={Boolean(generatingId)}
       />
 
       <NotebookFormDialog
@@ -219,7 +292,40 @@ export function RepertoireNotebookTab() {
           if (!open) setFormNotebook(null)
         }}
         notebook={formNotebook}
+        schoolId={school?.id}
         onSave={formNotebook ? handleUpdate : handleCreate}
+        onGenerateAfterCreate={async (notebook, cover) => {
+          requestGenerate(notebook, cover)
+          return true
+        }}
+        onPersistCover={async (notebook, cover) => {
+          await update(notebook.id, {
+            cover_image_url: cover.coverImageUrl,
+            tags: withCoverTemplateTag(notebook.tags, cover.coverTemplate),
+          })
+        }}
+      />
+
+      <NotebookPrintRecipeDialog
+        notebook={recipeNotebook}
+        open={!!recipeNotebook}
+        confirming={Boolean(generatingId)}
+        onOpenChange={(open) => {
+          if (!open && !generatingId) {
+            setRecipeNotebook(null)
+            setPendingCover(null)
+          }
+        }}
+        onConfirm={async (recipe) => {
+          if (!recipeNotebook) return
+          const notebook = recipeNotebook
+          const cover = pendingCover
+          const ok = await openNotebookAsDraft(notebook, { ...cover, recipe })
+          if (ok) {
+            setRecipeNotebook(null)
+            setPendingCover(null)
+          }
+        }}
       />
     </div>
   )

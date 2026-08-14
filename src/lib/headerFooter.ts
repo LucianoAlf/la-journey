@@ -127,7 +127,7 @@ export const DEFAULT_HEADER: HeaderFooterConfig = {
 
 export const DEFAULT_FOOTER: HeaderFooterConfig = {
   enabled: true,
-  height: 36,
+  height: 56,
   backgroundColor: 'transparent',
   borderTop: '1px solid #e2e8f0',
   paddingX: 24,

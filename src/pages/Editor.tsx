@@ -44,6 +44,8 @@ import {
   deleteMaterialBlock, reorderMaterialBlocks, updateMaterial,
 } from "@/services/materialService";
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
+import { generateRepertoireBookPdf } from "@/services/repertoirePdfEngine";
+import { recipeFromSongbookBlocks, songsFromSongbookBlocks } from "@/lib/repertoirePdfSongs";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { TitleTemplateRenderer } from "@/components/material/TitleTemplateRenderer";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
@@ -184,6 +186,7 @@ import {
   shouldKeepBlocksTogether,
   type BlockPaginationPolicy,
 } from "@/lib/sharedPagination";
+import { looksLikeSongbook, paginateSongbookBlocks } from "@/lib/songbookPagination";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
 
@@ -2093,11 +2096,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     })
   }, [blocks])
 
-  /** Distribui blocos em páginas A4 respeitando estimativas e alturas reais medidas */
-  const paginationResult = useMemo(() => paginateBlocks(
-    blocks,
-    block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
-  ), [blocks, blockHeights])
+  /** Caderno de repertório pagina por música; apostila continua no motor de blocos. */
+  const paginationResult = useMemo(() => {
+    const getHeight = (block: EditorBlock) => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
+    if (materialMeta?.material_type === 'repertoire_sheet' || looksLikeSongbook(blocks)) {
+      return paginateSongbookBlocks(blocks, getHeight)
+    }
+    return paginateBlocks(blocks, getHeight)
+  }, [blocks, blockHeights, materialMeta?.material_type])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -6402,7 +6408,7 @@ p{margin:0 0 12px}
 .a4-page--cover .canvas-block{padding:0;margin:0}
 .a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;flex-shrink:0}
 .a4-page-content{padding:12px 60px;flex:1;overflow:hidden}
-.a4-page-footer{padding:8px 60px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0}
+.a4-page-footer{padding:14px 56px 28px;font-size:10px;color:#64748b;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0;min-height:56px}
 .canvas-block{padding:10px 16px;margin-bottom:4px}
 .block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
 .block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
@@ -6454,6 +6460,25 @@ ${pagesHtml}
   }, [activateAllCanvasPages, blocks, materialTitle, pageConfig])
 
   const handleDownloadPDF = useCallback(async () => {
+    const isSongbook = materialMeta?.material_type === 'repertoire_sheet' || looksLikeSongbook(blocks)
+    if (isSongbook) {
+      const toastId = toast.loading('Gerando PDF...')
+      try {
+        const songs = songsFromSongbookBlocks(blocks)
+        if (songs.length === 0) throw new Error('Nenhuma música encontrada neste caderno.')
+        await generateRepertoireBookPdf({
+          songs,
+          recipe: recipeFromSongbookBlocks(blocks),
+          filename: materialTitle || 'caderno',
+        })
+        toast.success('PDF gerado com sucesso.', { id: toastId })
+      } catch (error) {
+        console.error('[PDF] Erro ao gerar PDF de repertório:', error)
+        toast.error(error instanceof Error ? error.message : 'Erro ao gerar PDF.', { id: toastId })
+      }
+      return
+    }
+
     const toastId = toast.loading('Gerando PDF profissional...')
     const pdfTab = window.open('', '_blank')
 
@@ -6516,7 +6541,7 @@ ${pagesHtml}
       }
       toast.error(error instanceof Error ? error.message : 'Erro ao gerar PDF.', { id: toastId })
     }
-  }, [materialId])
+  }, [blocks, materialId, materialMeta?.material_type, materialTitle])
 
   // --- Atalhos de teclado globais ---
   useEffect(() => {
@@ -7770,9 +7795,10 @@ ${pagesHtml}
                     type="footer"
                     context={hfContext}
                     pageIndex={pageIdx}
+                    className="a4-page-footer"
                   />
                 ) : !isCoverPage ? (
-                  <div className="a4-page-footer" style={{ borderTop: 'none', padding: '0 60px 8px' }} />
+                  <div className="a4-page-footer" style={{ borderTop: 'none' }} />
                 ) : null}
 
                 {/* ── Floating Elements desta página ── */}

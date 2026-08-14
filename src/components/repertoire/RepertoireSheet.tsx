@@ -28,11 +28,10 @@ import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@
 import { updateSong } from "@/services/repertoireService"
 import { enrichSongWithAI, enrichmentToUpdates, type EnrichmentResult, type EnrichmentPreview } from "@/services/aiEnrichService"
 import { uploadGpFile, deleteGpFile, updateGpFileUrl } from "@/services/gpFileService"
-import { PrintableCifra } from "@/components/repertoire/PrintableCifra"
+import { generateRepertoireBookPdf } from "@/services/repertoirePdfEngine"
 import { TransposeControl } from "@/components/repertoire/TransposeControl"
 import { ChordSuggestions } from "@/components/repertoire/ChordSuggestions"
 import { AlphaTabPlayer } from "@/components/music/AlphaTabPlayer"
-import { generatePdfFromElement } from "@/services/pdfService"
 import { transposeCifraContent, transposeChords, shouldUseFlats, transposeKey } from "@/lib/transpose"
 import type { Tables, Database } from "@/lib/database.types"
 import type { Json } from "@/lib/database.types"
@@ -431,33 +430,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
   const [enrichSelectedFields, setEnrichSelectedFields] = useState<Set<string>>(new Set())
   const [applyingEnrich, setApplyingEnrich] = useState(false)
 
-  // PDF
-  const printRef = useRef<HTMLDivElement>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
-  const [showPrintable, setShowPrintable] = useState(false)
-
-  const handleGeneratePdf = useCallback(async () => {
-    if (!song) return
-    setShowPrintable(true)
-    setGeneratingPdf(true)
-
-    // Aguardar renderização do componente printable + carregamento da logo
-    await new Promise(r => setTimeout(r, 1000))
-
-    try {
-      const el = printRef.current
-      if (!el) throw new Error('Elemento de impressão não encontrado')
-
-      const filename = `${song.title} - ${song.artist}`.replace(/[^a-zA-Z0-9À-ÿ\s\-_]/g, '').trim()
-      await generatePdfFromElement(el, { filename, margin: 8 })
-      toast.success('PDF gerado com sucesso!')
-    } catch (e: any) {
-      toast.error('Erro ao gerar PDF: ' + (e?.message ?? ''))
-    } finally {
-      setGeneratingPdf(false)
-      setShowPrintable(false)
-    }
-  }, [song, showGuitar, showPiano, showTab])
 
   // --- Enriquecimento IA ---
   const handleEnrichWithAI = useCallback(async () => {
@@ -741,6 +714,39 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
     if (!(song?.chords?.length) || transposeSemitones === 0) return song?.chords ?? []
     return transposeChords(song.chords, transposeSemitones, useFlats)
   }, [song?.chords, transposeSemitones, useFlats])
+
+  const handleGeneratePdf = useCallback(async () => {
+    if (!song) return
+    setGeneratingPdf(true)
+    try {
+      const filename = `${song.title} - ${song.artist}`.replace(/[^a-zA-Z0-9À-ÿ\s\-_]/g, '').trim()
+      await generateRepertoireBookPdf({
+        songs: [{
+          title: song.title,
+          artist: song.artist ?? '',
+          key: transposeSemitones !== 0
+            ? transposeKey(song.key ?? '', transposeSemitones, useFlats)
+            : (song.key ?? undefined),
+          chords: transposedChords,
+          cifraContent: transposedCifra,
+        }],
+        recipe: {
+          guitar: showGuitar,
+          piano: showPiano,
+          ukulele: false,
+          tab: showTab,
+        },
+        filename,
+        guitarChordMap,
+        pianoChordMap,
+      })
+      toast.success('PDF gerado com sucesso!')
+    } catch (e: any) {
+      toast.error('Erro ao gerar PDF: ' + (e?.message ?? ''))
+    } finally {
+      setGeneratingPdf(false)
+    }
+  }, [song, showGuitar, showPiano, showTab, transposeSemitones, useFlats, transposedChords, transposedCifra, guitarChordMap, pianoChordMap])
 
   // Buscar diagramas dos acordes transpostos (quando transpõe, buscar novos diagramas)
   const chordsForLibrary = useMemo(() => {
@@ -1760,25 +1766,6 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ====== Container oculto para geração de PDF ====== */}
-      {showPrintable && song && (
-        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1 }}>
-          <PrintableCifra
-            ref={printRef}
-            title={song.title}
-            artist={song.artist}
-            tom={transposeSemitones !== 0 ? transposeKey(song.key ?? '', transposeSemitones, useFlats) : (song.key ?? undefined)}
-            chords={transposedChords}
-            guitarChordMap={guitarChordMap}
-            pianoChordMap={pianoChordMap}
-            cifraContent={transposedCifra}
-            showGuitar={showGuitar}
-            showPiano={showPiano}
-            showTab={showTab}
-          />
-        </div>
-      )}
 
       {/* ====== MODAL: Preview Enriquecimento IA ====== */}
       <Dialog open={!!enrichPreview} onOpenChange={(v) => { if (!v) { setEnrichPreview(null); setEnrichResult(null) } }}>
