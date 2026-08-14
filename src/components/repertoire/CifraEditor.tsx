@@ -249,7 +249,12 @@ export function CifraEditor({
     getChordsByNames(chordsForDiagrams).then(data => {
       const guitar = new Map<string, Chord>()
       const piano = new Map<string, Chord>()
-      for (const chord of data) {
+      const sorted = [...data].sort((a, b) => {
+        const aRoot = a.voicing_position === 'root_position' || (a.positions as any)?.voicing_position === 'root_position' ? 1 : 0
+        const bRoot = b.voicing_position === 'root_position' || (b.positions as any)?.voicing_position === 'root_position' ? 1 : 0
+        return aRoot - bRoot
+      })
+      for (const chord of sorted) {
         if (!chord.positions || typeof chord.positions !== 'object') continue
         if (chord.instrument === 'guitar') {
           guitar.set(chord.name, chord)

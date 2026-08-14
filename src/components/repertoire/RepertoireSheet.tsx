@@ -510,7 +510,19 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
   const guitarChords = useMemo(() => libraryChords.filter(c => c.instrument === 'guitar'), [libraryChords])
   const pianoChords = useMemo(() => libraryChords.filter(c => (c.instrument as string) === 'piano'), [libraryChords])
   const guitarChordMap = useMemo(() => new Map(guitarChords.map(c => [c.name, c])), [guitarChords])
-  const pianoChordMap = useMemo(() => new Map(pianoChords.map(c => [c.name, c])), [pianoChords])
+  const pianoChordMap = useMemo(() => {
+    const map = new Map<string, Chord>()
+    // Priorizar root_position para o diagrama padrão
+    const sorted = [...pianoChords].sort((a, b) => {
+      const aRoot = a.voicing_position === 'root_position' || (a.positions as any)?.voicing_position === 'root_position' ? 1 : 0
+      const bRoot = b.voicing_position === 'root_position' || (b.positions as any)?.voicing_position === 'root_position' ? 1 : 0
+      return aRoot - bRoot
+    })
+    for (const c of sorted) {
+      map.set(c.name, c)
+    }
+    return map
+  }, [pianoChords])
 
   // --- Editor de acorde de violão (ChordEditor modal) ---
   const [chordEditorOpen, setChordEditorOpen] = useState(false)

@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass, Star } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass, Star, UploadSimple, Shapes } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useChords } from "@/hooks/useLibrary";
+import { libraryCountLabel, pianoQualityLabel, chordFooterText, VOICING_SHORT_LABELS, VOICING_LABELS } from "@/lib/chordLibraryDisplay";
 import { ChordDiagram } from "@/components/music/ChordDiagram";
 import { PianoKeyboard } from "@/components/music/PianoKeyboard";
 import { KeyboardEditor, type PianoChordData } from "@/components/music/KeyboardEditor";
@@ -36,6 +37,7 @@ import { createTablature, updateTablature, deleteTablature, type TablatureLibrar
 import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
+import { IconifyLibrary } from "@/components/music/IconifyLibrary";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
 import { beatsToAlphaTex } from "@/lib/beatsToAlphaTex";
 import { normalizeTimeSignature } from "@/lib/timeSignature";
@@ -148,28 +150,17 @@ function extractDegrees(positions: GuitarFretboardPositions, rootNote?: string):
   const sorted = Array.from(semitones).sort((a, b) => a - b)
   return sorted.map(s => semitoneToDegreeName(s, semitones)).join(', ')
 }
-function chordFooterText(chord: { family?: string | null; difficulty?: number | null }): string {
-  const family = FAMILY_LABELS[(chord.family ?? '')] ?? ''
-  const level = chord.difficulty ? `nível ${chord.difficulty}` : ''
-  return [family, level].filter(Boolean).join(' · ')
-}
-
 /** Card de acorde de piano com teclado SVG real */
-const PianoChordCard = memo(function PianoChordCard({ positions, name }: { positions: any; name: string }) {
+const PianoChordCard = memo(function PianoChordCard({ positions, name, voicingPosition }: { positions: any; name: string; voicingPosition?: string | null }) {
   const allKeys = (positions?.keys ?? []) as string[]
   const rawKeysLh = (positions?.keys_lh ?? []) as string[]
   const fingeringRhRaw = (positions?.fingering_rh ?? []) as number[]
   const fingeringLhRaw = (positions?.fingering_lh ?? []) as number[]
   const rawQuality = (positions?.quality ?? '') as string
   const rawRoot = (positions?.root ?? '') as string
-
-  // Inferir quality a partir do nome quando campo está vazio
-  const quality = rawQuality || (() => {
-    // Remover nota raiz do nome para extrair sufixo (ex: "Cm7" → "m7", "C" → "")
-    const rootFromName = name.match(/^[A-G][b#]?/)?.[0] ?? ''
-    const suffix = name.slice(rootFromName.length)
-    return suffix || 'maior'
-  })()
+  const quality = pianoQualityLabel(rawQuality, name)
+  const vp = voicingPosition || positions?.voicing_position
+  const voicingLabel = vp && (VOICING_SHORT_LABELS[vp] || vp)
 
   // Extrair nome e oitava do root (pode vir como "C4" ou "C")
   const rootMatch = rawRoot.match(/^([A-G][b#]?)(\d?)$/)
@@ -212,9 +203,14 @@ const PianoChordCard = memo(function PianoChordCard({ positions, name }: { posit
   return (
     <div className="flex flex-col items-center justify-center gap-1 w-full">
       <div className="font-bold text-[15px] text-text">{name}</div>
-      {quality && (
-        <Badge variant="foundation" className="text-[8px] mb-0.5">{quality}</Badge>
-      )}
+      <div className="flex items-center gap-1 mb-0.5">
+        {quality && (
+          <Badge variant="foundation" className="text-[8px]">{quality}</Badge>
+        )}
+        {voicingLabel && (
+          <Badge variant="outline" className="text-[8px] font-mono">{voicingLabel}</Badge>
+        )}
+      </div>
       <PianoKeyboard
         keys={keys}
         keysLh={keysLh}
@@ -233,11 +229,14 @@ const PianoChordCard = memo(function PianoChordCard({ positions, name }: { posit
 
 const NOTATION_CATEGORY_BADGES: Record<string, { label: string; variant: string }> = {
   scale: { label: 'Escala', variant: 'advance' },
+  arpeggio: { label: 'Arpejo', variant: 'foundation' },
   chord: { label: 'Acorde', variant: 'foundation' },
   interval: { label: 'Intervalo', variant: 'gold' },
   rhythm: { label: 'Ritmo', variant: 'accent' },
   exercise: { label: 'Exercício', variant: 'grow' },
+  melody: { label: 'Melodia', variant: 'gold' },
   pattern: { label: 'Padrão', variant: 'secondary' },
+  other: { label: 'Outro', variant: 'secondary' },
 }
 
 
@@ -259,6 +258,7 @@ export function Biblioteca() {
 
   // Estado da galeria de imagens IA
   const [imageGenOpen, setImageGenOpen] = useState(false);
+  const [imageImportOpen, setImageImportOpen] = useState(false);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<ImageLibraryItem | null>(null);
   const [chordSearch, setChordSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -373,9 +373,9 @@ export function Biblioteca() {
         const firstSem = firstRhMidi % 12
         const degree = classifyInterval(firstSem)
         if (degree === null) voicingPosition = 'root_position'
-        else if (degree === '3rd') voicingPosition = '1st_inv_shape'
-        else if (degree === '5th') voicingPosition = '2nd_inv_shape'
-        else if (degree === '7th') voicingPosition = '3rd_inv_shape'
+        else if (degree === '3rd') voicingPosition = '1st_inversion'
+        else if (degree === '5th') voicingPosition = '2nd_inversion'
+        else if (degree === '7th') voicingPosition = '3rd_inversion'
         else voicingPosition = 'root_position'
       }
     }
@@ -576,9 +576,16 @@ export function Biblioteca() {
             Biblioteca <em className="not-italic text-accent">Musical</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            {chordsCount} acordes · {(notations ?? []).length} notações · {(tablatures ?? []).length} tablaturas
+            {libraryCountLabel(chordsCount, 'acorde', 'acordes')} · {libraryCountLabel((notations ?? []).length, 'notação', 'notações')} · {libraryCountLabel((tablatures ?? []).length, 'tablatura', 'tablaturas')}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        {activeTab === 'imagens' && (
+          <Button variant="outline" onClick={() => setImageImportOpen(true)}>
+            <UploadSimple size={16} /> Importar
+          </Button>
+        )}
+        {activeTab !== 'icones' && (
         <Button onClick={() => {
           if (activeTab === 'imagens') {
             setImageGenOpen(true);
@@ -600,11 +607,13 @@ export function Biblioteca() {
           } else if (activeTab === 'exercises') {
             navigate('/editor');
           } else {
-            openModal('modal-acorde');
+            openModal('modal-acorde', { instrument: activeTab === 'ukulele' ? 'ukulele' : 'guitar' });
           }
         }}>
           <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (activeTab === 'electric_guitar' || activeTab === 'bass') ? 'Nova Escala/Acorde' : activeTab === 'exercises' ? 'Novo Conteúdo' : 'Novo Acorde'}
         </Button>
+        )}
+        </div>
       </div>
 
       <Tabs defaultValue="guitar" className="mb-6" onValueChange={setActiveTab}>
@@ -618,6 +627,7 @@ export function Biblioteca() {
             <TabsTrigger value="notacao"><MusicNotesSimple size={15} /> Notação ({(notations ?? []).length})</TabsTrigger>
             <TabsTrigger value="tablatura"><ListBullets size={15} /> Tablatura ({(tablatures ?? []).length})</TabsTrigger>
             <TabsTrigger value="imagens"><ImageSquare size={15} /> Imagens IA</TabsTrigger>
+            <TabsTrigger value="icones"><Shapes size={15} /> Ícones</TabsTrigger>
             <TabsTrigger value="exercises"><Star size={15} /> Exercícios</TabsTrigger>
           </TabsList>
           {isInstrumentTab && (
@@ -1035,7 +1045,10 @@ export function Biblioteca() {
                         {/* Grid 4 colunas: Fund. | 1ª Pos | 2ª Pos | 3ª Pos */}
                         <div className="grid grid-cols-4 gap-0 divide-x divide-border/50">
                           {VOICING_COLS.map(col => {
-                            const colChords = groupChords.filter(c => (c as any).voicing_position === col.key)
+                            const colChords = groupChords.filter(c => {
+                              const vp = (c as any).voicing_position || (c.positions as any)?.voicing_position
+                              return vp === col.key
+                            })
                             return (
                               <div key={col.key} className="min-h-[140px]">
                                 <div className="text-center py-1.5 bg-surface/30 border-b border-border/50">
@@ -1054,7 +1067,7 @@ export function Biblioteca() {
                                           onClick={() => { setEditingPianoChord(chord); setPianoEditorOpen(true) }}
                                         >
                                           <div className="flex justify-center mb-1">
-                                            <PianoChordCard positions={positions} name={chord.name} />
+                                            <PianoChordCard positions={positions} name={chord.name} voicingPosition={chord.voicing_position} />
                                           </div>
                                           <div className="text-[10px] text-text3">
                                             Nível {chord.difficulty}
@@ -1127,13 +1140,13 @@ export function Biblioteca() {
                           <GuitarFretboardDiagram
                             positions={positions as GuitarFretboardPositions}
                             name={chord.name}
-                            height={180}
+                            height={(positions as GuitarFretboardPositions).tuning?.length === 4 ? 140 : (positions as GuitarFretboardPositions).tuning?.length === 5 ? 160 : 180}
                             fretCount={positions.fretRange?.[1] ?? 15}
                             dotLabel="note"
                             dotSize={18}
                           />
                         ) : instrument === 'piano' ? (
-                          <PianoChordCard positions={positions} name={chord.name} />
+                          <PianoChordCard positions={positions} name={chord.name} voicingPosition={chord.voicing_position} />
                         ) : (
                           <ChordDiagram
                             name={chord.name}
@@ -1172,7 +1185,7 @@ export function Biblioteca() {
                       setEditingBassChord(null);
                       setBassEditorOpen(true);
                     } else {
-                      openModal('modal-acorde');
+                      openModal('modal-acorde', { instrument: instrument === 'ukulele' ? 'ukulele' : 'guitar' });
                     }
                   }}
                 >
@@ -1228,10 +1241,14 @@ export function Biblioteca() {
                     <SelectContent>
                       <SelectItem value="todas">Todas</SelectItem>
                       <SelectItem value="scale">Escalas</SelectItem>
+                      <SelectItem value="arpeggio">Arpejos</SelectItem>
                       <SelectItem value="chord">Acordes</SelectItem>
                       <SelectItem value="interval">Intervalos</SelectItem>
                       <SelectItem value="rhythm">Ritmo</SelectItem>
                       <SelectItem value="exercise">Exercícios</SelectItem>
+                      <SelectItem value="melody">Melodias</SelectItem>
+                      <SelectItem value="pattern">Padrões</SelectItem>
+                      <SelectItem value="other">Outros</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1506,7 +1523,13 @@ export function Biblioteca() {
           <ImageGallery
             onOpenGenerator={() => setImageGenOpen(true)}
             newImage={lastGeneratedImage}
+            importOpen={imageImportOpen}
+            onImportOpenChange={setImageImportOpen}
           />
+        </TabsContent>
+
+        <TabsContent value="icones">
+          <IconifyLibrary />
         </TabsContent>
 
         <TabsContent value="exercises">

@@ -25,9 +25,10 @@ function countMatches(html: string, pattern: RegExp) {
 function hasAlphaTabNotehead(html: string) {
   const hasRoundNotehead = /<(?:circle|ellipse)\b/i.test(html)
   const filledNoteheadPath = /<path\b[^>]*\bd="[^"]*C[^"]*Z[^"]*"/i.test(html)
+  const smuflNotehead = /<text\b[^>]*>[\s\S]*?[\uE0A0-\uE0FF]/i.test(html)
   const textTabNumbers = countMatches(html, /<text\b[^>]*>\s*(?:[0-9]|x)\s*<\/text>/gi)
 
-  return hasRoundNotehead || filledNoteheadPath || textTabNumbers > 0
+  return hasRoundNotehead || filledNoteheadPath || smuflNotehead || textTabNumbers > 0
 }
 
 function hasKeyboardKeys(html: string) {
@@ -47,7 +48,7 @@ export function isUsableMusicSnapshotHtml(
   blockOrType: MusicSnapshotBlockLike | string,
 ): boolean {
   const normalized = html.trim()
-  if (normalized.length < 80) return false
+  if (normalized.length < 20) return false
   if (hasLoadingArtifacts(normalized)) return false
   if (!normalized.includes('<svg')) return false
 

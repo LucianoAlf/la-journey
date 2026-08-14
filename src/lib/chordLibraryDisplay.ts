@@ -26,10 +26,54 @@ export const CAGED_SHAPE_DESCRIPTIONS: Record<CagedShape, string> = {
   D: 'Baixo na 4ª corda - cordas agudas',
 }
 
-export function chordFooterText(chord: { family?: string | null; difficulty?: number | null }) {
+export function chordFooterText(chord: { family?: string | null; difficulty?: number | null; voicing_position?: string | null; instrument?: string | null }) {
   const family = CHORD_FAMILY_LABELS[(chord.family ?? '')] ?? ''
   const level = chord.difficulty ? `nível ${chord.difficulty}` : ''
-  return [family, level].filter(Boolean).join(' · ')
+  const voicing = chord.instrument === 'piano' && chord.voicing_position
+    ? (VOICING_LABELS[chord.voicing_position] ?? chord.voicing_position)
+    : ''
+  return [voicing, family, level].filter(Boolean).join(' · ')
+}
+
+export const VOICING_LABELS: Record<string, string> = {
+  root_position: 'Posição Fundamental',
+  '1st_inversion': '1ª Inversão',
+  '2nd_inversion': '2ª Inversão',
+  '3rd_inversion': '3ª Inversão',
+}
+
+export const VOICING_SHORT_LABELS: Record<string, string> = {
+  root_position: 'Fund.',
+  '1st_inversion': '1ª Pos',
+  '2nd_inversion': '2ª Pos',
+  '3rd_inversion': '3ª Pos',
+}
+
+/** Qualidades do banco misturam EN/PT; o card de piano mostra o rótulo pedagógico. */
+const PIANO_QUALITY_LABELS: Record<string, string> = {
+  major: 'Maior',
+  maior: 'Maior',
+  minor: 'Menor',
+  menor: 'Menor',
+  m: 'Menor',
+  diminished: 'Dim',
+  dim: 'Dim',
+  augmented: 'Aum',
+  aug: 'Aum',
+  dominant7: '7',
+  dom7: '7',
+}
+
+export function pianoQualityLabel(rawQuality: string, chordName = ''): string {
+  const inferred = rawQuality.trim() || (() => {
+    const rootFromName = chordName.match(/^[A-G][b#]?/)?.[0] ?? ''
+    return chordName.slice(rootFromName.length) || 'maior'
+  })()
+  return PIANO_QUALITY_LABELS[inferred.toLowerCase()] ?? inferred
+}
+
+export function libraryCountLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`
 }
 
 export function getChordPosition(positions: any): number {
