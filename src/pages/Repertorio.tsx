@@ -491,22 +491,6 @@ export function Repertorio() {
     setPreviewSong(song)
   };
 
-  if (section === 'musicas' && loading) {
-    return (
-      <div className="flex items-center justify-center h-64 gap-2 text-text2">
-        <SpinnerGap size={20} className="animate-spin" /> Carregando repertório...
-      </div>
-    );
-  }
-
-  if (section === 'musicas' && error) {
-    return (
-      <div className="flex items-center justify-center h-64 gap-2 text-red-400">
-        <Warning size={20} /> Erro ao carregar repertório: {error}
-      </div>
-    );
-  }
-
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-5">
 
@@ -585,7 +569,19 @@ export function Repertorio() {
 
       {section === 'cadernos' && <RepertoireNotebookTab />}
 
-      {section === 'musicas' && (
+      {section === 'musicas' && loading && (
+        <div className="flex items-center justify-center h-64 gap-2 text-text2">
+          <SpinnerGap size={20} className="animate-spin" /> Carregando repertório...
+        </div>
+      )}
+
+      {section === 'musicas' && error && !loading && (
+        <div className="flex items-center justify-center h-64 gap-2 text-red-400">
+          <Warning size={20} /> Erro ao carregar repertório: {error}
+        </div>
+      )}
+
+      {section === 'musicas' && !loading && !error && (
         <>
       {showDashboard ? (
         <RepertorioDashboard

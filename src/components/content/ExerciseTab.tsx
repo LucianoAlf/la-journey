@@ -177,7 +177,7 @@ export function ExerciseTab() {
           {isNotebookTab ? (
             <div className="w-full">
               <p className="text-[12px] text-text3">
-                Explore e organize cadernos de repertório sem misturar a lógica da biblioteca de exercícios.
+                Monte cadernos de exercício a partir da biblioteca. Cada caderno vira um material no editor.
               </p>
             </div>
           ) : (
