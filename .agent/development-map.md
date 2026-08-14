@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Cadernos de exercício (Tarefa 2 do Radar).
+**Próximo corte:** Apostila / Download do editor quando não é songbook.
 
 ## Como retomar
 
@@ -16,17 +16,27 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Receita diferente por música no montador de caderno e motor de PDF concluída com 100% de cobertura (14/08).
-- Modal `NotebookPrintRecipeDialog.tsx` expandido com seção de personalização individual por faixa (chips rápidos de Violão, Teclado, Ukulele, Tablatura por música e botão de restaurar padrão).
-- Montador de blocos (`notebookMaterialAssembler.ts`) e motor de PDF (`repertoirePdfEngine.ts`, `repertoirePdfSongs.ts`) respeitam o override de receita de cada música independente do padrão do caderno.
-- 51/51 testes unitários passando e build de produção validado.
+Caderno de exercício no ar (tabelas, montador, UI, repertório movido).
+- Biblioteca → Exercícios → **Exercícios | Cadernos** monta `exercise_sheet` no editor (capa + cabeçalho + blocos). Sem receita de impressão.
+- Cadernos de repertório saíram dessa aba e ficam em `/repertorio` → **Músicas | Cadernos**. PDF/receita do songbook não mudou.
+- `npx tsx --test`: 50 arquivos, 0 falhas. `npm run build` ok neste worktree.
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
-- Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
+- Branch deste corte: `feat/caderno-exercicio-montador` (worktree `.worktrees/caderno-exercicio`). Não misturar image-gen/Iconify/Recraft.
 
 ---
 
 ## Feito
+
+### Cadernos de exercício (14/08)
+
+- Tabelas dedicadas `exercise_collections` + `exercise_collection_items` (migration `20260814200000_exercise_collections.sql`, aplicada em `rkfszavfqplhorvfpkcq`). Só `exercise_library`. Sem unificar com repertório.
+- Montador `buildExerciseNotebookBlocks`: capa + `page_break` + cabeçalho (título, categoria, nível, minutos) + blocos da biblioteca.
+- Service `createDraftMaterialFromExerciseNotebook` → rascunho `generated_materials` `type: exercise_sheet`. **Nunca** `generateRepertoireBookPdf`.
+- UI: `ExerciseNotebookTab` / card / form / detalhe / `AddExerciseModal`. Picker só dentro do caderno.
+- Repertório: `/repertorio?section=cadernos` renderiza `RepertoireNotebookTab`. Exercícios não lista mais cadernos de música.
+- Spec implementada: `docs/superpowers/specs/2026-08-14-caderno-exercicio-montador-design.md`
+- Plano: `docs/superpowers/plans/2026-08-14-caderno-exercicio-montador.md`
 
 ### Receita Diferente por Música no Caderno e Motor de PDF (14/08)
 
@@ -253,16 +263,15 @@ Edição:
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-montador-design.md`
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-motor-design.md` (aprovada)
 - Plano: `docs/superpowers/plans/2026-08-13-caderno-repertorio-motor.md`
-- Caderno de exercício: `docs/superpowers/specs/2026-08-14-caderno-exercicio-montador-design.md` (aprovada)
+- Caderno de exercício: `docs/superpowers/specs/2026-08-14-caderno-exercicio-montador-design.md` (implementada)
 - Plano: `docs/superpowers/plans/2026-08-14-caderno-exercicio-montador.md`
 
 ---
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Cadernos de exercício.**
-2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-3. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+2. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 
@@ -289,6 +298,7 @@ Não entrar no PR de repertório/Cifra Club:
 |---|---|---|---|
 | Folha | Modal da música → Cifra Completa → Gerar PDF | `generateRepertoireBookPdf` | Padrão ouro |
 | Caderno / editor songbook | Biblioteca → Gerar PDF, ou Download no `repertoire_sheet` | O mesmo | No ar |
+| Caderno de exercício | Download no editor (`exercise_sheet`) | Apostila (Browserless) — **não** o motor da folha | No ar o rascunho; PDF = próximo corte |
 | Apostila (não songbook) | Download no editor | Browserless `generate-pdf` → `/print/:id` | Separado de propósito |
 
 ---
@@ -316,6 +326,7 @@ Não entrar no PR de repertório/Cifra Club:
 | Receita | `src/lib/notebookPrintRecipe.ts` |
 | Folha UI | `src/components/repertoire/RepertoireSheet.tsx`, `PrintableCifra.tsx` |
 | Caderno UI | `NotebookDetailModal.tsx`, `NotebookPrintRecipeDialog.tsx`, `RepertoireNotebookTab.tsx` |
+| Caderno de exercício | `src/lib/exerciseNotebookAssembler.ts`, `src/services/exerciseCollectionService.ts`, `ExerciseNotebookTab.tsx` |
 | Preview/editor songbook | `SongbookCifra.tsx`, `src/lib/songbookPagination.ts`, `src/pages/Editor.tsx` |
 | Carimbo | `src/components/content/CurationStamp.tsx` |
 | Capa PDF | `src/lib/repertoirePdfCover.ts`, `src/components/repertoire/PrintableCover.tsx` |
