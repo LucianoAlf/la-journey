@@ -10,6 +10,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createSong, updateSong } from '@/services/repertoireService'
 import { uploadGpFile, updateGpFileUrl } from '@/services/gpFileService'
 import { CifraEditor, extractChordsFromCifra } from '@/components/repertoire/CifraEditor'
+import { SpotifySearchPicker } from '@/components/repertoire/SpotifySearchPicker'
+import { YoutubeUrlField } from '@/components/repertoire/YoutubeUrlField'
+import { YoutubeSearchPicker } from '@/components/repertoire/YoutubeSearchPicker'
+import {
+  emptySpotifyFields,
+  emptyYoutubeFields,
+  fieldsFromSpotifyHit,
+  fieldsFromYoutubeHit,
+  nullIfEmpty,
+} from '@/lib/repertoireMediaFields'
+import { extractYouTubeVideoId } from '@/services/youtubeLookupService'
 import type { Tables } from '@/lib/database.types'
 
 type Repertoire = Tables<'repertoire'>
@@ -30,6 +41,8 @@ const emptyForm = {
   chords: '',
   instruments: [] as string[],
   cifra_content: '',
+  ...emptyYoutubeFields(),
+  ...emptySpotifyFields(),
 }
 
 export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireModalProps) {
@@ -54,6 +67,23 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
         chords: (song.chords ?? []).join(', '),
         instruments: song.instruments ?? [],
         cifra_content: song.cifra_content ?? '',
+        ...emptyYoutubeFields(),
+        youtube_url: song.youtube_url ?? '',
+        youtube_video_id: song.youtube_video_id ?? '',
+        youtube_title: song.youtube_title ?? '',
+        youtube_channel: song.youtube_channel ?? '',
+        youtube_duration: song.youtube_duration ?? '',
+        youtube_thumbnail_url: song.youtube_thumbnail_url ?? '',
+        spotify_url: song.spotify_url ?? '',
+        spotify_track_id: song.spotify_track_id ?? '',
+        spotify_track_name: song.spotify_track_name ?? '',
+        spotify_artist_name: song.spotify_artist_name ?? '',
+        spotify_album_name: song.spotify_album_name ?? '',
+        spotify_album_year: song.spotify_album_year ?? '',
+        spotify_duration_ms: song.spotify_duration_ms ?? 0,
+        spotify_cover_url_large: song.spotify_cover_url_large ?? '',
+        spotify_cover_url_medium: song.spotify_cover_url_medium ?? '',
+        spotify_cover_url_small: song.spotify_cover_url_small ?? '',
       })
     } else {
       setForm(emptyForm)
@@ -93,6 +123,22 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
         instruments: form.instruments.length > 0 ? form.instruments : null,
         cifra_content: form.cifra_content || null,
         cifra_source: form.cifra_content ? 'manual' : (isEditing ? (song?.cifra_source ?? null) : null),
+        youtube_url: form.youtube_url || null,
+        youtube_video_id: nullIfEmpty(form.youtube_video_id),
+        youtube_title: nullIfEmpty(form.youtube_title),
+        youtube_channel: nullIfEmpty(form.youtube_channel),
+        youtube_duration: nullIfEmpty(form.youtube_duration),
+        youtube_thumbnail_url: nullIfEmpty(form.youtube_thumbnail_url),
+        spotify_url: form.spotify_url || null,
+        spotify_track_id: nullIfEmpty(form.spotify_track_id),
+        spotify_track_name: nullIfEmpty(form.spotify_track_name),
+        spotify_artist_name: nullIfEmpty(form.spotify_artist_name),
+        spotify_album_name: nullIfEmpty(form.spotify_album_name),
+        spotify_album_year: nullIfEmpty(form.spotify_album_year),
+        spotify_duration_ms: form.spotify_track_id ? (form.spotify_duration_ms || null) : null,
+        spotify_cover_url_large: nullIfEmpty(form.spotify_cover_url_large),
+        spotify_cover_url_medium: nullIfEmpty(form.spotify_cover_url_medium),
+        spotify_cover_url_small: nullIfEmpty(form.spotify_cover_url_small),
       }
 
       let savedSongId: string | null = null
@@ -236,6 +282,51 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
                     <SelectItem value="Bateria">Bateria</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5 mb-4">
+              <Label>URL do YouTube</Label>
+              <div className="flex gap-2">
+                <div className="min-w-0 flex-1">
+                  <YoutubeUrlField
+                    value={form.youtube_url}
+                    onChange={value => setForm(prev => ({
+                      ...prev,
+                      ...(extractYouTubeVideoId(value) ? {} : emptyYoutubeFields()),
+                      youtube_url: value,
+                    }))}
+                    onResolved={video => setForm(prev => ({
+                      ...prev,
+                      ...fieldsFromYoutubeHit(video),
+                      youtube_url: video?.url ?? prev.youtube_url,
+                    }))}
+                  />
+                </div>
+                <YoutubeSearchPicker
+                  title={form.title}
+                  artist={form.artist}
+                  onPick={video => setForm(prev => ({ ...prev, ...fieldsFromYoutubeHit(video) }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5 mb-4">
+              <Label>URL do Spotify</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="https://open.spotify.com/track/..."
+                  value={form.spotify_url}
+                  onChange={e => setForm(prev => ({
+                    ...prev,
+                    ...emptySpotifyFields(),
+                    spotify_url: e.target.value,
+                  }))}
+                  className="font-mono text-[13px]"
+                />
+                <SpotifySearchPicker
+                  title={form.title}
+                  artist={form.artist}
+                  onPick={track => setForm(prev => ({ ...prev, ...fieldsFromSpotifyHit(track) }))}
+                />
               </div>
             </div>
             <div className="space-y-1.5 mb-4">

@@ -1,6 +1,11 @@
 import html2canvas from 'html2canvas-pro'
 import { jsPDF } from 'jspdf'
+import { collectPdfHotspots, mapPdfLinkRects } from '@/lib/pdfHotspots'
 import { collectPdfBreaks, collectPdfHeaderEnd, computePdfSlices } from '@/lib/pdfPageSlices'
+
+/** Scale 4 ≈ 384 DPI on A4. JPEG 0.97 keeps SVG strokes sharp; white pages still compress hard. */
+export const REPERTOIRE_PDF_CAPTURE_SCALE = 4
+export const REPERTOIRE_PDF_JPEG_QUALITY = 0.97
 
 export interface PdfOptions {
   filename: string
@@ -8,6 +13,10 @@ export interface PdfOptions {
   scale?: number
   title?: string
   subtitle?: string
+}
+
+function jpegDataUrl(canvas: HTMLCanvasElement, quality = REPERTOIRE_PDF_JPEG_QUALITY) {
+  return canvas.toDataURL('image/jpeg', quality)
 }
 
 export function drawFooter(
@@ -61,7 +70,7 @@ export async function addCoverPage(
   element: HTMLElement,
   options: { startOnNewPage?: boolean; scale?: number } = {},
 ): Promise<void> {
-  const { startOnNewPage = false, scale = 3 } = options
+  const { startOnNewPage = false, scale = REPERTOIRE_PDF_CAPTURE_SCALE } = options
   const canvas = await html2canvas(element, {
     scale,
     useCORS: true,
@@ -74,7 +83,7 @@ export async function addCoverPage(
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   if (startOnNewPage) pdf.addPage()
-  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidth, pageHeight)
+  pdf.addImage(jpegDataUrl(canvas, 0.9), 'JPEG', 0, 0, pageWidth, pageHeight)
 }
 
 export async function addRepertoirePages(
@@ -82,7 +91,7 @@ export async function addRepertoirePages(
   element: HTMLElement,
   options: Omit<PdfOptions, 'filename'> & { startOnNewPage?: boolean },
 ): Promise<void> {
-  const { margin = 12, scale = 3, title, startOnNewPage = false } = options
+  const { margin = 12, scale = REPERTOIRE_PDF_CAPTURE_SCALE, title, startOnNewPage = false } = options
   const useChrome = Boolean(title)
 
   const canvas = await html2canvas(element, {
@@ -118,6 +127,20 @@ export async function addRepertoirePages(
   })
 
   const pages = slices.length > 0 ? slices : [{ start: capturedHeaderEnd, end: imgHeight }]
+  const hotspots = collectPdfHotspots(element, scaleY)
+  const linkRects = mapPdfLinkRects({
+    hotspots,
+    pages: pages.map((slice, pageIndex) => ({
+      start: slice.start,
+      end: slice.end,
+      contentTopMm: margin + (pageIndex === 0 ? coverHeaderMm : useChrome ? runningHeaderBand : 0),
+    })),
+    marginMm: margin,
+    imgWidth,
+    printableWidthMm: printableWidth,
+    ratio,
+    headerEnd: capturedHeaderEnd,
+  })
 
   pages.forEach((slice, pageIndex) => {
     if (pageIndex > 0 || startOnNewPage) pdf.addPage()
@@ -139,8 +162,8 @@ export async function addRepertoirePages(
           0, 0, imgWidth, capturedHeaderEnd,
         )
         pdf.addImage(
-          headerCanvas.toDataURL('image/png'),
-          'PNG',
+          jpegDataUrl(headerCanvas),
+          'JPEG',
           margin,
           margin,
           printableWidth,
@@ -168,8 +191,8 @@ export async function addRepertoirePages(
     )
 
     pdf.addImage(
-      sliceCanvas.toDataURL('image/png'),
-      'PNG',
+      jpegDataUrl(sliceCanvas),
+      'JPEG',
       margin,
       contentTop,
       printableWidth,
@@ -185,6 +208,12 @@ export async function addRepertoirePages(
         pageCount: pages.length,
       })
     }
+
+    linkRects
+      .filter((rect) => rect.pageIndex === pageIndex)
+      .forEach((rect) => {
+        pdf.link(rect.x, rect.y, rect.w, rect.h, { url: rect.href })
+      })
   })
 }
 

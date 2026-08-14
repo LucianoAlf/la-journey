@@ -489,3 +489,43 @@ export async function saveCifraToRepertoire(cifra: CifraData, instruments: strin
   if (error) handleError(error)
   return data
 }
+
+export interface SpotifyTrackHit {
+  id: string
+  name: string
+  artist: string
+  album: string
+  year: string
+  duration_ms: number
+  url: string
+  images: Array<{ url: string; height: number | null; width: number | null }>
+}
+
+export async function searchSpotifyTracks(title: string, artist: string): Promise<SpotifyTrackHit[]> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+  const { data: { session } } = await supabase.auth.getSession()
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/spotify-search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify({ title, artist }),
+  })
+
+  const result = await response.json() as { tracks?: SpotifyTrackHit[]; error?: string; retry_after?: string }
+
+  if (response.status === 429) {
+    const wait = result.retry_after ? ` Espere ${result.retry_after}s.` : ''
+    throw new Error(`Spotify pediu para esperar.${wait} Cole a URL na mão se precisar.`)
+  }
+
+  if (!response.ok) {
+    throw new Error(result.error || `Erro ${response.status} ao buscar no Spotify`)
+  }
+
+  return result.tracks ?? []
+}

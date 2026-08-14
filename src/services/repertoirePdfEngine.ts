@@ -5,6 +5,7 @@ import { PrintableCifra } from '@/components/repertoire/PrintableCifra'
 import { PrintableCover } from '@/components/repertoire/PrintableCover'
 import type { NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
 import { coverAssetUrls, type RepertoirePdfCover } from '@/lib/repertoirePdfCover'
+import { mediaAssetUrls } from '@/lib/repertoirePdfMedia'
 import type { RepertoirePdfSong } from '@/lib/repertoirePdfSongs'
 import { addCoverPage, addRepertoirePages } from '@/services/pdfService'
 import { resolveGuitarChordFromLibrary, resolvePianoChordFromLibrary } from '@/services/chordLibraryResolver'
@@ -96,6 +97,7 @@ export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): 
 
   try {
     if (cover) await waitForImages(coverAssetUrls(cover))
+    await waitForImages(songs.flatMap((song) => mediaAssetUrls(song.media)))
 
     root.render(
       createElement(
@@ -116,6 +118,7 @@ export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): 
           guitarChordMap: maps.guitar,
           pianoChordMap: maps.piano,
           cifraContent: song.cifraContent,
+          media: song.media,
           showGuitar: input.recipe.guitar || input.recipe.ukulele,
           showPiano: input.recipe.piano,
           showTab: input.recipe.tab,

@@ -26,6 +26,19 @@ import { TablatureEditor } from "@/components/music/TablatureEditor"
 import { getChordsByNames, updateChord, createChord, type Chord } from "@/services/libraryService"
 import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@/services/chordAutoFillService"
 import { updateSong } from "@/services/repertoireService"
+import { SpotifySearchPicker } from "@/components/repertoire/SpotifySearchPicker"
+import { YoutubeUrlField } from "@/components/repertoire/YoutubeUrlField"
+import { YoutubeSearchPicker } from "@/components/repertoire/YoutubeSearchPicker"
+import { YoutubePlayer } from "@/components/repertoire/YoutubePlayer"
+import { extractYouTubeVideoId } from "@/services/youtubeLookupService"
+import {
+  emptySpotifyFields,
+  emptyYoutubeFields,
+  fieldsFromSpotifyHit,
+  fieldsFromYoutubeHit,
+  nullIfEmpty,
+} from "@/lib/repertoireMediaFields"
+import { mediaFromRepertoire } from "@/lib/repertoirePdfMedia"
 import { useAuth } from "@/contexts/AuthContext"
 import { enrichSongWithAI, enrichmentToUpdates, type EnrichmentResult, type EnrichmentPreview } from "@/services/aiEnrichService"
 import { uploadGpFile, deleteGpFile, updateGpFileUrl } from "@/services/gpFileService"
@@ -337,33 +350,6 @@ function ChordStructureView({ structure }: { structure: Json | null }) {
   )
 }
 
-// YouTube embed
-function YouTubeEmbed({ url }: { url: string }) {
-  const videoId = useMemo(() => {
-    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
-    return match?.[1] ?? null
-  }, [url])
-
-  if (!videoId) return null
-
-  return (
-    <div className="space-y-2">
-      <h3 className="text-[11px] font-semibold uppercase tracking-[1.5px] text-text3">
-        Vídeo de referência
-      </h3>
-      <div className="relative w-full rounded-xl overflow-hidden" style={{ paddingBottom: '56.25%' }}>
-        <iframe
-          className="absolute inset-0 w-full h-full"
-          src={`https://www.youtube.com/embed/${videoId}`}
-          title="YouTube"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
-      </div>
-    </div>
-  )
-}
-
 // --- Componente principal ---
 
 type CurationStatus = Database['public']['Enums']['curation_status']
@@ -376,7 +362,21 @@ interface EditForm {
   difficulty: number
   curation_status: CurationStatus
   youtube_url: string
+  youtube_video_id: string
+  youtube_title: string
+  youtube_channel: string
+  youtube_duration: string
+  youtube_thumbnail_url: string
   spotify_url: string
+  spotify_track_id: string
+  spotify_track_name: string
+  spotify_artist_name: string
+  spotify_album_name: string
+  spotify_album_year: string
+  spotify_duration_ms: number
+  spotify_cover_url_large: string
+  spotify_cover_url_medium: string
+  spotify_cover_url_small: string
   chords: string
   cifra_content: string
   lyrics: string
@@ -732,6 +732,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
             : (song.key ?? undefined),
           chords: transposedChords,
           cifraContent: transposedCifra,
+          media: mediaFromRepertoire(song),
         }],
         recipe: {
           guitar: showGuitar,
@@ -871,8 +872,10 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
   // Estado do formulário de edição
   const [form, setForm] = useState<EditForm>({
     title: '', artist: '', key: '', genre: '', difficulty: 1,
-    curation_status: 'draft', youtube_url: '', spotify_url: '', chords: '',
+    curation_status: 'draft', chords: '',
     cifra_content: '', lyrics: '', gp_file_url: '',
+    ...emptyYoutubeFields(),
+    ...emptySpotifyFields(),
   })
   const [uploadingGp, setUploadingGp] = useState(false)
   const gpInputRef = useRef<HTMLInputElement>(null)
@@ -888,11 +891,25 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         difficulty: song.difficulty ?? 1,
         curation_status: (song.curation_status ?? 'draft') as CurationStatus,
         youtube_url: song.youtube_url ?? '',
+        youtube_video_id: song.youtube_video_id ?? '',
+        youtube_title: song.youtube_title ?? '',
+        youtube_channel: song.youtube_channel ?? '',
+        youtube_duration: song.youtube_duration ?? '',
+        youtube_thumbnail_url: song.youtube_thumbnail_url ?? '',
         spotify_url: song.spotify_url ?? '',
+        spotify_track_id: song.spotify_track_id ?? '',
+        spotify_track_name: song.spotify_track_name ?? '',
+        spotify_artist_name: song.spotify_artist_name ?? '',
+        spotify_album_name: song.spotify_album_name ?? '',
+        spotify_album_year: song.spotify_album_year ?? '',
+        spotify_duration_ms: song.spotify_duration_ms ?? 0,
+        spotify_cover_url_large: song.spotify_cover_url_large ?? '',
+        spotify_cover_url_medium: song.spotify_cover_url_medium ?? '',
+        spotify_cover_url_small: song.spotify_cover_url_small ?? '',
         chords: (song.chords ?? []).join(', '),
         cifra_content: song.cifra_content ?? '',
         lyrics: song.lyrics ?? '',
-        gp_file_url: (song as any).gp_file_url ?? '',
+        gp_file_url: song.gp_file_url ?? '',
       })
       setActiveTab('cifra')
     }
@@ -971,7 +988,21 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         difficulty: form.difficulty,
         curation_status: form.curation_status,
         youtube_url: form.youtube_url || null,
+        youtube_video_id: nullIfEmpty(form.youtube_video_id),
+        youtube_title: nullIfEmpty(form.youtube_title),
+        youtube_channel: nullIfEmpty(form.youtube_channel),
+        youtube_duration: nullIfEmpty(form.youtube_duration),
+        youtube_thumbnail_url: nullIfEmpty(form.youtube_thumbnail_url),
         spotify_url: form.spotify_url || null,
+        spotify_track_id: nullIfEmpty(form.spotify_track_id),
+        spotify_track_name: nullIfEmpty(form.spotify_track_name),
+        spotify_artist_name: nullIfEmpty(form.spotify_artist_name),
+        spotify_album_name: nullIfEmpty(form.spotify_album_name),
+        spotify_album_year: nullIfEmpty(form.spotify_album_year),
+        spotify_duration_ms: form.spotify_track_id ? (form.spotify_duration_ms || null) : null,
+        spotify_cover_url_large: nullIfEmpty(form.spotify_cover_url_large),
+        spotify_cover_url_medium: nullIfEmpty(form.spotify_cover_url_medium),
+        spotify_cover_url_small: nullIfEmpty(form.spotify_cover_url_small),
         chords: chordsArr.length > 0 ? chordsArr : null,
         cifra_content: form.cifra_content || null,
         lyrics: form.lyrics || null,
@@ -1419,7 +1450,13 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                     <ChordStructureView structure={song.chord_structure} />
 
                     {/* YouTube embed */}
-                    {song.youtube_url && <YouTubeEmbed url={song.youtube_url} />}
+                    {song.youtube_url && (
+                      <YoutubePlayer
+                        url={song.youtube_url}
+                        thumbnailUrl={song.youtube_thumbnail_url}
+                        title={song.youtube_title}
+                      />
+                    )}
 
                     {/* Metadados */}
                     <div className="space-y-3">
@@ -1592,21 +1629,48 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                       <div className="space-y-3">
                         <div className="space-y-1.5">
                           <Label className="text-[11px] text-text3">URL do YouTube</Label>
-                          <Input
-                            value={form.youtube_url}
-                            onChange={e => updateField('youtube_url', e.target.value)}
-                            placeholder="https://youtube.com/watch?v=..."
-                            className="h-9 text-[13px] font-mono"
-                          />
+                          <div className="flex gap-2 items-start">
+                            <div className="min-w-0 flex-1">
+                              <YoutubeUrlField
+                                value={form.youtube_url}
+                                onChange={value => setForm(prev => ({
+                                  ...prev,
+                                  ...(extractYouTubeVideoId(value) ? {} : emptyYoutubeFields()),
+                                  youtube_url: value,
+                                }))}
+                                onResolved={video => setForm(prev => ({
+                                  ...prev,
+                                  ...fieldsFromYoutubeHit(video),
+                                  youtube_url: video?.url ?? prev.youtube_url,
+                                }))}
+                              />
+                            </div>
+                            <YoutubeSearchPicker
+                              title={form.title}
+                              artist={form.artist}
+                              onPick={video => setForm(prev => ({ ...prev, ...fieldsFromYoutubeHit(video) }))}
+                            />
+                          </div>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-[11px] text-text3">URL do Spotify</Label>
-                          <Input
-                            value={form.spotify_url}
-                            onChange={e => updateField('spotify_url', e.target.value)}
-                            placeholder="https://open.spotify.com/track/..."
-                            className="h-9 text-[13px] font-mono"
-                          />
+                          <div className="flex gap-2">
+                            <Input
+                              value={form.spotify_url}
+                              onChange={e => setForm(prev => ({
+                                ...prev,
+                                ...emptySpotifyFields(),
+                                spotify_url: e.target.value,
+                              }))}
+                              placeholder="https://open.spotify.com/track/..."
+                              className="h-9 text-[13px] font-mono"
+                            />
+                            <SpotifySearchPicker
+                              title={form.title}
+                              artist={form.artist}
+                              onPick={track => setForm(prev => ({ ...prev, ...fieldsFromSpotifyHit(track) }))}
+                            />
+                          </div>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-[11px] text-text3">Arquivo Guitar Pro (tablatura)</Label>
