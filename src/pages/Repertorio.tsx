@@ -23,6 +23,7 @@ import { RepertoireModal } from "@/components/modals/RepertoireModal";
 import { RepertoireSheet } from "@/components/repertoire/RepertoireSheet";
 import { UnifiedImportModal } from "@/components/modals/UnifiedImportModal";
 import { RepertorioDashboard } from "@/components/repertoire/RepertorioDashboard";
+import { RepertoireNotebookTab } from "@/components/content/RepertoireNotebookTab";
 import type { Tables } from "@/lib/database.types";
 
 type Repertoire = Tables<'repertoire'>
@@ -306,18 +307,19 @@ export function Repertorio() {
   const viewMode = (searchParams.get('view') ?? 'table') as ViewMode;
   const showAdvancedFilters = searchParams.get('filters') === '1';
   const showDashboard = searchParams.get('dash') === '1';
+  const section = searchParams.get('section') === 'cadernos' ? 'cadernos' : 'musicas'
 
   // --- Helper para atualizar um param da URL sem perder os outros ---
   const setParam = useCallback((key: string, value: string) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      if (value === '' || value === 'todos' || value === '0' || (key === 'sort' && value === 'title') || (key === 'dir' && value === 'asc') || (key === 'view' && value === 'table') || (key === 'filters' && value === '0') || (key === 'dash' && value === '0') || (key === 'page' && value === '1')) {
+      if (value === '' || value === 'todos' || value === '0' || (key === 'sort' && value === 'title') || (key === 'dir' && value === 'asc') || (key === 'view' && value === 'table') || (key === 'filters' && value === '0') || (key === 'dash' && value === '0') || (key === 'page' && value === '1') || (key === 'section' && value === 'musicas')) {
         next.delete(key);
       } else {
         next.set(key, value);
       }
       // Resetar página ao mudar qualquer filtro (exceto a própria página)
-      if (key !== 'page' && key !== 'view' && key !== 'filters' && key !== 'dash') {
+      if (key !== 'page' && key !== 'view' && key !== 'filters' && key !== 'dash' && key !== 'section') {
         next.delete('page');
       }
       return next;
@@ -489,7 +491,7 @@ export function Repertorio() {
     setPreviewSong(song)
   };
 
-  if (loading) {
+  if (section === 'musicas' && loading) {
     return (
       <div className="flex items-center justify-center h-64 gap-2 text-text2">
         <SpinnerGap size={20} className="animate-spin" /> Carregando repertório...
@@ -497,7 +499,7 @@ export function Repertorio() {
     );
   }
 
-  if (error) {
+  if (section === 'musicas' && error) {
     return (
       <div className="flex items-center justify-center h-64 gap-2 text-red-400">
         <Warning size={20} /> Erro ao carregar repertório: {error}
@@ -515,47 +517,76 @@ export function Repertorio() {
             <em className="not-italic text-accent">Repertório</em>
           </h1>
           <p className="text-text2 text-[13.5px] mt-1.5">
-            Curadoria de músicas para aulas · {kpis.total} cadastrada{kpis.total !== 1 ? 's' : ''}
+            {section === 'cadernos'
+              ? 'Cadernos de repertório'
+              : `Curadoria de músicas para aulas · ${kpis.total} cadastrada${kpis.total !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Toggle Dashboard */}
-          <button
-            onClick={() => setParam('dash', showDashboard ? '0' : '1')}
-            className={`px-3 py-1.5 text-xs flex items-center gap-1.5 rounded-lg border transition-colors ${
-              showDashboard
-                ? 'bg-accent/10 text-accent border-accent/30 font-semibold'
-                : 'text-text3 hover:text-text2 border-border'
-            }`}
-          >
-            <ChartDonut size={14} /> Dashboard
-          </button>
-          {/* Toggle Tabela/Cards */}
           <div className="flex rounded-lg border border-border overflow-hidden">
             <button
-              onClick={() => setViewMode('table')}
+              type="button"
+              onClick={() => setParam('section', 'musicas')}
               className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${
-                viewMode === 'table' ? 'bg-[var(--azul-escuro)] text-white' : 'text-text3 hover:text-text2'
+                section === 'musicas' ? 'bg-[var(--azul-escuro)] text-white' : 'text-text3 hover:text-text2'
               }`}
             >
-              <TableIcon size={14} /> Tabela
+              Músicas
             </button>
             <button
-              onClick={() => setViewMode('cards')}
+              type="button"
+              onClick={() => setParam('section', 'cadernos')}
               className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${
-                viewMode === 'cards' ? 'bg-[var(--azul-escuro)] text-white' : 'text-text3 hover:text-text2'
+                section === 'cadernos' ? 'bg-[var(--azul-escuro)] text-white' : 'text-text3 hover:text-text2'
               }`}
             >
-              <Rows size={14} /> Cards
+              Cadernos
             </button>
           </div>
-          <Button onClick={() => setUnifiedModalOpen(true)}>
-            <Plus size={16} /> Adicionar Música
-          </Button>
+          {section === 'musicas' && (
+            <>
+              {/* Toggle Dashboard */}
+              <button
+                onClick={() => setParam('dash', showDashboard ? '0' : '1')}
+                className={`px-3 py-1.5 text-xs flex items-center gap-1.5 rounded-lg border transition-colors ${
+                  showDashboard
+                    ? 'bg-accent/10 text-accent border-accent/30 font-semibold'
+                    : 'text-text3 hover:text-text2 border-border'
+                }`}
+              >
+                <ChartDonut size={14} /> Dashboard
+              </button>
+              {/* Toggle Tabela/Cards */}
+              <div className="flex rounded-lg border border-border overflow-hidden">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${
+                    viewMode === 'table' ? 'bg-[var(--azul-escuro)] text-white' : 'text-text3 hover:text-text2'
+                  }`}
+                >
+                  <TableIcon size={14} /> Tabela
+                </button>
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${
+                    viewMode === 'cards' ? 'bg-[var(--azul-escuro)] text-white' : 'text-text3 hover:text-text2'
+                  }`}
+                >
+                  <Rows size={14} /> Cards
+                </button>
+              </div>
+              <Button onClick={() => setUnifiedModalOpen(true)}>
+                <Plus size={16} /> Adicionar Música
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* ====== DASHBOARD ou KPIs ====== */}
+      {section === 'cadernos' && <RepertoireNotebookTab />}
+
+      {section === 'musicas' && (
+        <>
       {showDashboard ? (
         <RepertorioDashboard
           songs={songs ?? []}
@@ -1079,6 +1110,8 @@ export function Repertorio() {
             </div>
           )}
         </div>
+      )}
+        </>
       )}
 
       {/* ====== MODAIS ====== */}
