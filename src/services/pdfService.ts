@@ -56,6 +56,27 @@ export function drawRunningHeader(
   pdf.line(margin, headerY + 2.5, pageWidth - margin, headerY + 2.5)
 }
 
+export async function addCoverPage(
+  pdf: jsPDF,
+  element: HTMLElement,
+  options: { startOnNewPage?: boolean; scale?: number } = {},
+): Promise<void> {
+  const { startOnNewPage = false, scale = 3 } = options
+  const canvas = await html2canvas(element, {
+    scale,
+    useCORS: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    width: element.offsetWidth || 794,
+    height: element.offsetHeight || 1123,
+  })
+
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  if (startOnNewPage) pdf.addPage()
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidth, pageHeight)
+}
+
 export async function addRepertoirePages(
   pdf: jsPDF,
   element: HTMLElement,

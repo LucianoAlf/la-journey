@@ -907,6 +907,7 @@ export type Database = {
           cifra_source: string | null
           country: string | null
           created_at: string | null
+          curated_by: string | null
           curation_status: Database["public"]["Enums"]["curation_status"] | null
           difficulty: number | null
           embedding: string | null
@@ -937,6 +938,7 @@ export type Database = {
           cifra_source?: string | null
           country?: string | null
           created_at?: string | null
+          curated_by?: string | null
           curation_status?:
             | Database["public"]["Enums"]["curation_status"]
             | null
@@ -969,6 +971,7 @@ export type Database = {
           cifra_source?: string | null
           country?: string | null
           created_at?: string | null
+          curated_by?: string | null
           curation_status?:
             | Database["public"]["Enums"]["curation_status"]
             | null
@@ -991,6 +994,13 @@ export type Database = {
           youtube_url?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "repertoire_curated_by_fkey"
+            columns: ["curated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "repertoire_school_id_fkey"
             columns: ["school_id"]

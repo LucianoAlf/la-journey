@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** capa ilustrada no PDF unificado + nome do professor no carimbo de curadoria.
+**Próximo corte:** auditoria do motor de repertório (Cifra Club, Songsterr e outras fontes).
 
 ## Como retomar
 
@@ -16,12 +16,12 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Caderno de repertório + PDF da folha estão **no ar** em produção.
+Caderno + PDF da folha + capa + carimbo do professor estão no código deste corte.
 
 - App: https://la-journey.vercel.app
-- PRs: [#1](https://github.com/LucianoAlf/la-journey/pull/1) motor da folha no caderno, [#2](https://github.com/LucianoAlf/la-journey/pull/2) fix do build (`resolvePianoChordFromLibrary`)
-- Branch de trabalho: `feat/caderno-repertorio-montador` (já mergeada em `main`)
-- Conferir: `/biblioteca` → Exercícios → Cadernos de Repertório → Caderno do Chiquinho
+- PRs: [#1](https://github.com/LucianoAlf/la-journey/pull/1) motor, [#2](https://github.com/LucianoAlf/la-journey/pull/2) build, [#3](https://github.com/LucianoAlf/la-journey/pull/3) mapa
+- Branch: `feat/caderno-repertorio-montador`
+- Conferir: `/biblioteca` → Exercícios → Cadernos → Caderno do Chiquinho — carimbo CURADA + nome; Gerar PDF começa na capa ilustrada
 
 ---
 
@@ -33,7 +33,7 @@ Caderno de repertório + PDF da folha estão **no ar** em produção.
 - Montador: capa + `page_break` + uma música por página. Cada Gerar PDF cria **rascunho novo** `repertoire_sheet`.
 - Ajeitar abre o mesmo overlay `RepertoireSheet`. Save grava na linha `repertoire` (caderno não clona cifra).
 - Receita de impressão no caderno inteiro (violão / piano / ukulele / tab), tag `print-recipe:…`. Override por música = radar.
-- Carimbo de curadoria na lista (`draft`/`null` = Sem curadoria). **Nome do professor ainda não entra** — `CurationStamp` aceita `curatorName`, o modal não passa `curated_by`.
+- Carimbo na lista: `draft`/`null` = Sem curadoria; `approved`/`published` = Curada + nome do professor (`repertoire.curated_by` → `users.name`). Grava `curated_by` no save da folha quando o status é curado. Migration `20260814120000_repertoire_curated_by.sql` (já aplicada no projeto `rkfszavfqplhorvfpkcq`).
 
 ### PDF unificado (folha = caderno = Download do editor em songbook)
 
@@ -46,9 +46,9 @@ Chrome travado com o usuário:
 - Rodapé: **LA Music** à esquerda, **`n / n`** à direita. Sem “X de Y”, sem “Material exclusivo”.
 - Acorde + letra juntos (`data-pdf-break`). Cifras `#3b5998` / `#1a1a1a` via `SongbookCifra`.
 
-**Capa ilustrada ainda não entra nesse PDF.** Vive só no rascunho do editor. O PDF hoje é pilha de folhas.
+Capa ilustrada entra como **página 1 do PDF** (full-bleed, sem chrome da folha). Mesmo `render_data` do rascunho: template, imagem, título, instrumento, nível, professor, escola, logo. Folha avulsa (uma música) continua sem capa.
 
-Arquivo de referência local: `C:\Users\Texeira\Downloads\Caderno do Chiquinho  teste browser.pdf`
+Arquivo de referência local (folhas, pré-capa): `C:\Users\Texeira\Downloads\Caderno do Chiquinho  teste browser.pdf`
 
 ### Specs deste corte
 
@@ -60,12 +60,10 @@ Arquivo de referência local: `C:\Users\Texeira\Downloads\Caderno do Chiquinho  
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Capa no PDF unificado** — a mesma capa do rascunho (template + imagem) vira página 1 do PDF, antes das folhas.
-2. **Nome do professor no carimbo** — `curated_by` na lista do caderno.
-3. **Auditoria do motor de repertório** — Cifra Club, Songsterr e outras fontes: o que entra, o que quebra, se a edição persiste. Fazer **antes** de receita-por-música / caderno de exercício / apostila. É o que alimenta o caderno.
-4. Receita diferente por música.
-5. Cadernos de exercício (mesma ideia, outro motor).
-6. Apostila / Download do editor quando **não** é songbook (hoje Browserless `generate-pdf` → `/print/:id` com `APP_URL` de produção).
+1. **Auditoria do motor de repertório** — Cifra Club, Songsterr e outras fontes: o que entra, o que quebra, se a edição persiste. Fazer **antes** de receita-por-música / caderno de exercício / apostila. É o que alimenta o caderno. Há edge functions locais untracked (`cifra-club-import`, `cifra-club-batch`).
+2. Receita diferente por música.
+3. Cadernos de exercício (mesma ideia, outro motor).
+4. Apostila / Download do editor quando **não** é songbook (hoje Browserless `generate-pdf` → `/print/:id` com `APP_URL` de produção).
 
 ---
 
@@ -111,6 +109,7 @@ Não entrar no PR de capa/repertório:
 | Caderno UI | `NotebookDetailModal.tsx`, `NotebookPrintRecipeDialog.tsx`, `RepertoireNotebookTab.tsx` |
 | Preview/editor songbook | `SongbookCifra.tsx`, `src/lib/songbookPagination.ts`, `src/pages/Editor.tsx` |
 | Carimbo | `src/components/content/CurationStamp.tsx` |
+| Capa PDF | `src/lib/repertoirePdfCover.ts`, `src/components/repertoire/PrintableCover.tsx` |
 
 Supabase: `rkfszavfqplhorvfpkcq`. Print de apostila ainda aponta `APP_URL` de produção.
 

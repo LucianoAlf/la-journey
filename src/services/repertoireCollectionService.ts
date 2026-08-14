@@ -110,7 +110,35 @@ export async function getCollectionItems(
     .order('sort_order', { ascending: true })
 
   if (error) handleError(error)
-  return data ?? []
+  const items = data ?? []
+  const curatorIds = [...new Set(
+    items
+      .map((item: { repertoire?: { curated_by?: string | null } | null }) => item.repertoire?.curated_by)
+      .filter((id: string | null | undefined): id is string => Boolean(id)),
+  )]
+  if (curatorIds.length === 0) return items
+
+  const { data: curators, error: curatorError } = await db
+    .from('users')
+    .select('id, name')
+    .in('id', curatorIds)
+  if (curatorError) handleError(curatorError)
+
+  const names = new Map<string, string>(
+    (curators ?? []).map((row: { id: string; name: string }) => [row.id, row.name]),
+  )
+
+  return items.map((item: { repertoire?: { curated_by?: string | null } | null }) => {
+    const curatedBy = item.repertoire?.curated_by
+    if (!item.repertoire || !curatedBy) return item
+    return {
+      ...item,
+      repertoire: {
+        ...item.repertoire,
+        curator: { name: names.get(curatedBy) ?? null },
+      },
+    }
+  })
 }
 
 export async function createDraftMaterialFromNotebook(
@@ -120,6 +148,9 @@ export async function createDraftMaterialFromNotebook(
     coverTemplate?: CoverTemplate
     coverImageUrl?: string | null
     recipe?: NotebookPrintRecipe
+    schoolName?: string | null
+    professorName?: string | null
+    logoUrl?: string | null
   }
 ): Promise<{ materialId: string; skippedMissingSongs: number }> {
   const items = await getCollectionItems(collection.id)
@@ -138,6 +169,10 @@ export async function createDraftMaterialFromNotebook(
     coverTemplate: options?.coverTemplate ?? coverTemplateFromTags(collection.tags),
     coverImageUrl: options?.coverImageUrl ?? collection.cover_image_url,
     instrument: collection.instrument,
+    level: collection.difficulty_level,
+    schoolName: options?.schoolName,
+    professorName: options?.professorName,
+    logoUrl: options?.logoUrl,
     recipe,
     songs: items.map((item) => item.repertoire ?? null),
   })

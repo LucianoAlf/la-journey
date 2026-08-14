@@ -26,6 +26,7 @@ import { TablatureEditor } from "@/components/music/TablatureEditor"
 import { getChordsByNames, updateChord, createChord, type Chord } from "@/services/libraryService"
 import { autoFillChordsFound, type AutoFillResult, type PianoPositions } from "@/services/chordAutoFillService"
 import { updateSong } from "@/services/repertoireService"
+import { useAuth } from "@/contexts/AuthContext"
 import { enrichSongWithAI, enrichmentToUpdates, type EnrichmentResult, type EnrichmentPreview } from "@/services/aiEnrichService"
 import { uploadGpFile, deleteGpFile, updateGpFileUrl } from "@/services/gpFileService"
 import { generateRepertoireBookPdf } from "@/services/repertoirePdfEngine"
@@ -391,6 +392,7 @@ interface RepertoireSheetProps {
 }
 
 export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, onSaved }: RepertoireSheetProps) {
+  const { user } = useAuth()
   // Estado local da música — sincroniza com a prop mas pode ser atualizado localmente (ex: enriquecimento IA)
   const [liveSong, setLiveSong] = useState<Repertoire | null>(songProp)
   const justSavedRef = useRef(false)
@@ -958,6 +960,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         .map(c => c.trim())
         .filter(Boolean)
 
+      const curated = form.curation_status === 'approved' || form.curation_status === 'published'
       await updateSong(song.id, {
         title: form.title,
         artist: form.artist || null,
@@ -970,7 +973,8 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         cifra_content: form.cifra_content || null,
         lyrics: form.lyrics || null,
         gp_file_url: form.gp_file_url || null,
-      } as any)
+        ...(curated && user?.id ? { curated_by: user.id } : {}),
+      })
       toast.success('Ficha atualizada com sucesso!')
       onSaved?.()
     } catch (e: any) {
@@ -978,7 +982,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
     } finally {
       setSaving(false)
     }
-  }, [song, form, onSaved])
+  }, [song, form, onSaved, user?.id])
 
   const updateField = useCallback(<K extends keyof EditForm>(field: K, value: EditForm[K]) => {
     setForm(prev => ({ ...prev, [field]: value }))

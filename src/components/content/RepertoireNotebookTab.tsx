@@ -4,11 +4,14 @@ import { Books, MagnifyingGlass, Plus, SpinnerGap, Warning } from '@phosphor-ico
 import { toast } from 'sonner'
 import { useRepertoireCollections } from '@/hooks/useRepertoireCollections'
 import { useSchool } from '@/hooks/useSchool'
+import { useAuth } from '@/contexts/AuthContext'
 import { withCoverTemplateTag, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
 import type { NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
 import { createDraftMaterialFromNotebook, getCollectionItems, type RepertoireCollection } from '@/services/repertoireCollectionService'
 import { generateRepertoireBookPdf } from '@/services/repertoirePdfEngine'
+import { coverFromNotebook } from '@/lib/repertoirePdfCover'
 import { songsFromNotebookItems } from '@/lib/repertoirePdfSongs'
+import { getUserById } from '@/services/userService'
 import { NotebookPrintRecipeDialog } from './NotebookPrintRecipeDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +34,7 @@ const INSTRUMENT_OPTIONS = [
 
 export function RepertoireNotebookTab() {
   const { data: school } = useSchool()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [instrument, setInstrument] = useState('all')
@@ -155,7 +159,25 @@ export function RepertoireNotebookTab() {
 
     setGeneratingId(notebook.id)
     try {
-      const result = await createDraftMaterialFromNotebook(notebook, school.id, options)
+      let professorName = ''
+      if (user?.id) {
+        try {
+          professorName = (await getUserById(user.id))?.name?.trim() || ''
+        } catch {
+          professorName = ''
+        }
+      }
+      const coverExtras = {
+        coverTemplate: options?.coverTemplate,
+        coverImageUrl: options?.coverImageUrl,
+        schoolName: school?.name,
+        professorName,
+        logoUrl: school?.logo_url,
+      }
+      const result = await createDraftMaterialFromNotebook(notebook, school.id, {
+        ...options,
+        ...coverExtras,
+      })
       if (result.skippedMissingSongs > 0) {
         toast.warning(`${result.skippedMissingSongs} música(s) sem dados foram puladas.`)
       }
@@ -167,6 +189,7 @@ export function RepertoireNotebookTab() {
             songs: songsFromNotebookItems(items),
             recipe,
             filename: notebook.name,
+            cover: coverFromNotebook(notebook, coverExtras),
           })
           toast.success('PDF gerado no motor de repertório. Rascunho aberto no editor.')
         } catch (pdfError) {
