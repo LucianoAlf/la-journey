@@ -19,6 +19,9 @@ scripts/olga-import
 # Artefatos locais de auditoria visual/PDF
 docs/audit-assets/
 
+# Git worktrees (isolated feature checkouts)
+.worktrees/
+
 # MCP config (contém tokens)
 .mcp.json
 
