@@ -253,6 +253,7 @@ Edição:
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-montador-design.md`
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-motor-design.md` (aprovada)
 - Plano: `docs/superpowers/plans/2026-08-13-caderno-repertorio-motor.md`
+- Caderno de exercício: `docs/superpowers/specs/2026-08-14-caderno-exercicio-montador-design.md` (brainstorm aprovado; aguarda revisão do arquivo e plano)
 
 ---
 
