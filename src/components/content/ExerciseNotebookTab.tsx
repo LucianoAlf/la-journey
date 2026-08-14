@@ -10,6 +10,7 @@ import { EXERCISE_INSTRUMENTS } from '@/lib/exerciseLibraryOptions'
 import {
   createDraftMaterialFromExerciseNotebook,
   getExerciseCollectionItems,
+  updateExerciseCollection,
   type ExerciseCollection,
 } from '@/services/exerciseCollectionService'
 import { getUserById } from '@/services/userService'
@@ -37,6 +38,7 @@ export function ExerciseNotebookTab() {
   const [formOpen, setFormOpen] = useState(false)
   const [exerciseCounts, setExerciseCounts] = useState<Record<string, number>>({})
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [coverPersist, setCoverPersist] = useState<Record<string, Pick<ExerciseCollection, 'tags' | 'cover_image_url'>>>({})
 
   const { collections, loading, error, create, update, remove } = useExerciseCollections({
     search,
@@ -78,8 +80,9 @@ export function ExerciseNotebookTab() {
 
   const notebooks = useMemo(() => collections.map((collection) => ({
     ...collection,
+    ...(coverPersist[collection.id] ?? {}),
     exerciseCount: exerciseCounts[collection.id] ?? 0,
-  })), [collections, exerciseCounts])
+  })), [collections, coverPersist, exerciseCounts])
 
   const handleCreate = async (values: {
     name: string
@@ -174,6 +177,10 @@ export function ExerciseNotebookTab() {
       coverTemplate: coverTemplateFromTags(notebook.tags),
       coverImageUrl: notebook.cover_image_url,
     })
+  }
+
+  const handleItemsChange = (notebookId: string, count: number) => {
+    setExerciseCounts((prev) => ({ ...prev, [notebookId]: count }))
   }
 
   return (
@@ -271,6 +278,7 @@ export function ExerciseNotebookTab() {
           setFormOpen(true)
         }}
         onGenerate={handleMontar}
+        onItemsChange={handleItemsChange}
         generating={generatingId === selectedNotebook?.id}
         generateDisabled={Boolean(generatingId)}
       />
@@ -285,10 +293,17 @@ export function ExerciseNotebookTab() {
         schoolId={school?.id}
         onSave={formNotebook ? handleUpdate : handleCreate}
         onPersistCover={async (notebook, cover) => {
-          const updated = await update(notebook.id, {
+          const updated = await updateExerciseCollection(notebook.id, {
             cover_image_url: cover.coverImageUrl,
             tags: withCoverTemplateTag(notebook.tags, cover.coverTemplate),
           })
+          setCoverPersist((prev) => ({
+            ...prev,
+            [updated.id]: {
+              tags: updated.tags,
+              cover_image_url: updated.cover_image_url,
+            },
+          }))
           setSelectedNotebook(updated)
         }}
       />

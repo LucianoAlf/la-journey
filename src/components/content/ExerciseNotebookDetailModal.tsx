@@ -25,6 +25,7 @@ interface ExerciseNotebookDetailModalProps {
   onOpenChange: (open: boolean) => void
   onEdit: (notebook: ExerciseCollection) => void
   onGenerate: (notebook: ExerciseCollection) => void
+  onItemsChange?: (notebookId: string, count: number) => void
   generating?: boolean
   generateDisabled?: boolean
 }
@@ -44,6 +45,7 @@ export function ExerciseNotebookDetailModal({
   onOpenChange,
   onEdit,
   onGenerate,
+  onItemsChange,
   generating,
   generateDisabled,
 }: ExerciseNotebookDetailModalProps) {
@@ -56,6 +58,7 @@ export function ExerciseNotebookDetailModal({
     try {
       const data = await getExerciseCollectionItems(collectionId)
       setItems(data)
+      onItemsChange?.(collectionId, data.length)
     } catch (err) {
       console.error('Erro ao carregar exercícios do caderno:', err)
     } finally {
@@ -76,19 +79,33 @@ export function ExerciseNotebookDetailModal({
 
   const handleAddExercises = async (exerciseIds: string[]) => {
     if (!notebook) return
-    try {
-      await Promise.all(exerciseIds.map((id) => addExerciseToCollection(notebook.id, id)))
-      toast.success(
-        exerciseIds.length === 1
-          ? 'Exercício adicionado ao caderno!'
-          : `${exerciseIds.length} exercícios adicionados ao caderno!`,
-      )
-      await loadItems(notebook.id)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Não foi possível adicionar ao caderno. Tente de novo.'
-      toast.error(message)
-      throw err
+
+    let added = 0
+    let failed: unknown = null
+
+    for (const id of exerciseIds) {
+      try {
+        await addExerciseToCollection(notebook.id, id)
+        added += 1
+      } catch (err) {
+        failed = err
+        break
+      }
     }
+
+    await loadItems(notebook.id)
+
+    if (failed) {
+      const message = failed instanceof Error ? failed.message : 'Não foi possível adicionar ao caderno. Tente de novo.'
+      toast.error(message)
+      throw failed
+    }
+
+    toast.success(
+      added === 1
+        ? 'Exercício adicionado ao caderno!'
+        : `${added} exercícios adicionados ao caderno!`,
+    )
   }
 
   const handleRemoveItem = async (itemId: string) => {
