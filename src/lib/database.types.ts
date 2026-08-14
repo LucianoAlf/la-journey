@@ -923,10 +923,24 @@ export type Database = {
           songsterr_id: number | null
           source_url: string | null
           spotify_url: string | null
+          spotify_track_id: string | null
+          spotify_track_name: string | null
+          spotify_artist_name: string | null
+          spotify_album_name: string | null
+          spotify_album_year: string | null
+          spotify_duration_ms: number | null
+          spotify_cover_url_large: string | null
+          spotify_cover_url_medium: string | null
+          spotify_cover_url_small: string | null
           time_signature: string | null
           title: string
           updated_at: string | null
           youtube_url: string | null
+          youtube_video_id: string | null
+          youtube_title: string | null
+          youtube_channel: string | null
+          youtube_duration: string | null
+          youtube_thumbnail_url: string | null
         }
         Insert: {
           artist?: string | null
@@ -957,10 +971,24 @@ export type Database = {
           songsterr_id?: number | null
           source_url?: string | null
           spotify_url?: string | null
+          spotify_track_id?: string | null
+          spotify_track_name?: string | null
+          spotify_artist_name?: string | null
+          spotify_album_name?: string | null
+          spotify_album_year?: string | null
+          spotify_duration_ms?: number | null
+          spotify_cover_url_large?: string | null
+          spotify_cover_url_medium?: string | null
+          spotify_cover_url_small?: string | null
           time_signature?: string | null
           title: string
           updated_at?: string | null
           youtube_url?: string | null
+          youtube_video_id?: string | null
+          youtube_title?: string | null
+          youtube_channel?: string | null
+          youtube_duration?: string | null
+          youtube_thumbnail_url?: string | null
         }
         Update: {
           artist?: string | null
@@ -991,10 +1019,24 @@ export type Database = {
           songsterr_id?: number | null
           source_url?: string | null
           spotify_url?: string | null
+          spotify_track_id?: string | null
+          spotify_track_name?: string | null
+          spotify_artist_name?: string | null
+          spotify_album_name?: string | null
+          spotify_album_year?: string | null
+          spotify_duration_ms?: number | null
+          spotify_cover_url_large?: string | null
+          spotify_cover_url_medium?: string | null
+          spotify_cover_url_small?: string | null
           time_signature?: string | null
           title?: string
           updated_at?: string | null
           youtube_url?: string | null
+          youtube_video_id?: string | null
+          youtube_title?: string | null
+          youtube_channel?: string | null
+          youtube_duration?: string | null
+          youtube_thumbnail_url?: string | null
         }
         Relationships: [
           {

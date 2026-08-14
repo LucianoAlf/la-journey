@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { SongbookCifra } from '@/components/music/SongbookCifra'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
+import type { RepertoirePdfMedia, RepertoirePdfMediaCard } from '@/lib/repertoirePdfMedia'
 import type { Chord } from '@/services/libraryService'
 
 interface PrintableCifraProps {
@@ -15,6 +16,116 @@ interface PrintableCifraProps {
   showGuitar: boolean
   showPiano: boolean
   showTab: boolean
+  media?: RepertoirePdfMedia
+}
+
+function MediaCoverCard({
+  card,
+  kind,
+}: {
+  card: RepertoirePdfMediaCard
+  kind: 'youtube' | 'spotify'
+}) {
+  const isYouTube = kind === 'youtube'
+  const coverSize = 88
+  const coverWidth = isYouTube ? 156 : coverSize
+
+  return (
+    <div
+      data-pdf-hotspot=""
+      data-pdf-href={card.href}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        minWidth: 0,
+        flex: 1,
+        padding: '8px 10px',
+        border: '1px solid #e5e7eb',
+        borderRadius: '10px',
+        backgroundColor: '#fafafa',
+      }}
+    >
+      <div style={{ position: 'relative', width: coverWidth, height: coverSize, flexShrink: 0 }}>
+        <img
+          src={card.coverUrl}
+          alt=""
+          crossOrigin="anonymous"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: '6px',
+            display: 'block',
+            backgroundColor: '#111',
+          }}
+        />
+        {isYouTube && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: 28,
+                height: 20,
+                borderRadius: 6,
+                backgroundColor: '#ff0000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderTop: '5px solid transparent',
+                  borderBottom: '5px solid transparent',
+                  borderLeft: '8px solid #fff',
+                  marginLeft: 2,
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '0.4px',
+            color: isYouTube ? '#cc0000' : '#1aa34a',
+            textTransform: 'uppercase',
+          }}
+        >
+          {card.label}
+        </div>
+        {card.caption && (
+          <div
+            style={{
+              marginTop: 2,
+              fontSize: '12px',
+              color: '#444',
+              lineHeight: 1.35,
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+            }}
+          >
+            {card.caption}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -22,7 +133,7 @@ interface PrintableCifraProps {
  * Usa estilos inline/classes print-friendly (fundo branco, texto preto).
  */
 export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
-  ({ title, artist, tom, chords, guitarChordMap, pianoChordMap, cifraContent, showGuitar, showPiano, showTab }, ref) => {
+  ({ title, artist, tom, chords, guitarChordMap, pianoChordMap, cifraContent, showGuitar, showPiano, showTab, media }, ref) => {
 
     return (
       <div
@@ -55,6 +166,16 @@ export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
             crossOrigin="anonymous"
           />
         </div>
+
+        {(media?.youtube || media?.spotify) && (
+          <div
+            data-pdf-break="media"
+            style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}
+          >
+            {media.youtube && <MediaCoverCard kind="youtube" card={media.youtube} />}
+            {media.spotify && <MediaCoverCard kind="spotify" card={media.spotify} />}
+          </div>
+        )}
 
         {/* Acordes badges */}
         {chords.length > 0 && (
@@ -102,7 +223,7 @@ export const PrintableCifra = forwardRef<HTMLDivElement, PrintableCifraProps>(
                         muted: pos.muted ?? [],
                       }}
                       position={pos.position ?? 1}
-                      size="compact"
+                      size="dense"
                       forceTheme="light"
                     />
                   </div>

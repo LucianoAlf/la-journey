@@ -2,6 +2,7 @@ import { extractCifraPlainText, isCifraHtml } from '@/lib/cifraBlocks'
 import { groupSongbookSongs, type SongbookSongGroup } from '@/lib/songbookPagination'
 import type { SharedPaginationBlock } from '@/lib/sharedPagination'
 import type { NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
+import { mediaFromRepertoire, type RepertoireMediaSource, type RepertoirePdfMedia } from '@/lib/repertoirePdfMedia'
 
 export interface RepertoirePdfSong {
   title: string
@@ -9,6 +10,7 @@ export interface RepertoirePdfSong {
   key?: string
   chords: string[]
   cifraContent: string | null
+  media?: RepertoirePdfMedia
 }
 
 function stripTags(html: string) {
@@ -54,7 +56,7 @@ export function recipeFromSongbookBlocks(
 }
 
 export function songsFromNotebookItems(
-  items: Array<{ repertoire?: { title?: string | null; artist?: string | null; key?: string | null; chords?: string[] | null; cifra_content?: string | null } | null }>,
+  items: Array<{ repertoire?: ({ title?: string | null; artist?: string | null; key?: string | null; chords?: string[] | null; cifra_content?: string | null } & RepertoireMediaSource) | null }>,
 ): RepertoirePdfSong[] {
   return items
     .map((item) => item.repertoire)
@@ -65,6 +67,7 @@ export function songsFromNotebookItems(
       key: song.key?.trim() || undefined,
       chords: (song.chords ?? []).filter(Boolean),
       cifraContent: song.cifra_content?.trim() || null,
+      media: mediaFromRepertoire(song),
     }))
 }
 

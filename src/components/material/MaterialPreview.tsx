@@ -39,6 +39,7 @@ import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
 import { SongbookCifra } from '@/components/music/SongbookCifra'
 import { extractCifraPlainText, isCifraHtml } from '@/lib/cifraBlocks'
+import { youtubeEmbedSrc } from '@/lib/youtubeEmbed'
 import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer, getLegacyNotationAlphaTexDisplayTex, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
@@ -989,7 +990,7 @@ function extractVideoEmbed(url: string): { type: 'youtube' | 'vimeo' | 'unknown'
   if (!url) return null
   // YouTube
   const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/)
-  if (ytMatch) return { type: 'youtube', embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` }
+  if (ytMatch) return { type: 'youtube' as const, embedUrl: youtubeEmbedSrc(ytMatch[1], typeof window !== 'undefined' ? window.location.origin : undefined) }
   // Vimeo
   const vimeoMatch = url.match(/vimeo\.com\/(\d+)/)
   if (vimeoMatch) return { type: 'vimeo', embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}` }
@@ -1009,6 +1010,7 @@ function BlockVideo({ block }: { block: MaterialBlock }) {
           <iframe
             src={embed.embedUrl}
             className="absolute inset-0 w-full h-full rounded-lg"
+            referrerPolicy="strict-origin-when-cross-origin"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
             title={block.title ?? 'Vídeo'}
