@@ -232,6 +232,12 @@ export interface SongsterrImportData {
   tuning?: string | null
   chords?: string[]
   cifra_content?: string
+  youtube_url?: string | null
+  youtube_video_id?: string | null
+  youtube_title?: string | null
+  youtube_channel?: string | null
+  youtube_duration?: string | null
+  youtube_thumbnail_url?: string | null
   youtube_videos?: string[]
   tags?: string[]
 }
@@ -331,6 +337,12 @@ export async function enrichFromSongsterr(
     tuning: enrichData.tuning || null,
     chords: enrichData.chords || [],
     cifra_content: enrichData.cifra_content || '',
+    youtube_url: enrichData.youtube_url || null,
+    youtube_video_id: enrichData.youtube_video_id || null,
+    youtube_title: enrichData.youtube_title || null,
+    youtube_channel: enrichData.youtube_channel || null,
+    youtube_duration: enrichData.youtube_duration || null,
+    youtube_thumbnail_url: enrichData.youtube_thumbnail_url || null,
     youtube_videos: enrichData.youtube_videos || [],
     tags: enrichData.tags || [],
   } as SongsterrImportData
@@ -367,10 +379,10 @@ export async function saveSongsterrToRepertoire(data: SongsterrImportData) {
     throw new Error(`"${data.title}" já está no repertório`)
   }
 
-  // Montar youtube_url a partir do primeiro vídeo disponível
-  const youtubeUrl = data.youtube_videos?.length
+  // Montar youtube_url a partir dos dados enriquecidos ou do primeiro vídeo disponível
+  const youtubeUrl = data.youtube_url || (data.youtube_videos?.length
     ? `https://www.youtube.com/watch?v=${data.youtube_videos[0]}`
-    : null
+    : null)
 
   const { data: saved, error } = await supabase
     .from('repertoire')
@@ -389,6 +401,11 @@ export async function saveSongsterrToRepertoire(data: SongsterrImportData) {
       chords: data.chords || [],
       cifra_content: data.cifra_content || null,
       youtube_url: youtubeUrl,
+      youtube_video_id: data.youtube_video_id || null,
+      youtube_title: data.youtube_title || null,
+      youtube_channel: data.youtube_channel || null,
+      youtube_duration: data.youtube_duration || null,
+      youtube_thumbnail_url: data.youtube_thumbnail_url || null,
     })
     .select()
     .single()
