@@ -1,0 +1,14 @@
+---
+description: Retomar o mapa de desenvolvimento em .agent após compactar contexto
+alwaysApply: true
+---
+
+# Mapa de desenvolvimento
+
+Antes de continuar trabalho de produto — e sempre depois de compactar contexto — ler `.agent/development-map.md`.
+
+- Fonte do estado: feito, radar, pendente, próximo corte.
+- Não inventar prioridade contra esse arquivo.
+- No fim de um corte que mude o produto, atualizar o mapa (data, próximo corte, mover itens).
+- Specs longas: `docs/superpowers/`. Não duplicar.
+)
