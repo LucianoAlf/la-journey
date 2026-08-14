@@ -16,11 +16,11 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Caderno + PDF da folha + capa + carimbo do professor estão no código deste corte.
+Caderno + PDF da folha + capa + carimbo do professor estão em produção.
 
 - App: https://la-journey.vercel.app
-- PRs: [#1](https://github.com/LucianoAlf/la-journey/pull/1) motor, [#2](https://github.com/LucianoAlf/la-journey/pull/2) build, [#3](https://github.com/LucianoAlf/la-journey/pull/3) mapa
-- Branch: `feat/caderno-repertorio-montador`
+- PRs: [#1](https://github.com/LucianoAlf/la-journey/pull/1) motor, [#2](https://github.com/LucianoAlf/la-journey/pull/2) build, [#3](https://github.com/LucianoAlf/la-journey/pull/3) mapa, [#4](https://github.com/LucianoAlf/la-journey/pull/4) capa + professor
+- Branch: `feat/caderno-repertorio-montador` (merged)
 - Conferir: `/biblioteca` → Exercícios → Cadernos → Caderno do Chiquinho — carimbo CURADA + nome; Gerar PDF começa na capa ilustrada
 
 ---
