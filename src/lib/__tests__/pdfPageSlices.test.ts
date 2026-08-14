@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { computePdfSlices } from '../pdfPageSlices'
+import { computePdfSlices } from '../pdfPageSlices.ts'
 
 function test(name: string, fn: () => void) {
   try {

@@ -3,7 +3,7 @@ import {
   buildNotebookMaterialBlocks,
   coverTemplateFromTags,
   withCoverTemplateTag,
-} from '../notebookMaterialAssembler'
+} from '../notebookMaterialAssembler.ts'
 
 function test(name: string, fn: () => void) {
   try {

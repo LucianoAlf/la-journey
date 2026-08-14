@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm (Tarefa 2 do Radar).
+**Próximo corte:** Duplicatas na `chord_library` piano (3–4 linhas por nome) (Tarefa 2 do Radar).
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-BPM/tom Songsterr + YouTube embeddable lookup concluídos e deployados (14/08). 4/4 músicas Songsterr re-enriquecidas com BPM real (Wonderwall 88, Sweet Child 123, Champagne 75, Like a Virgin 120), tom diatônico real (Em, G, D, D) e clipes oficiais embeddáveis com metadados completos.
+Backfill YouTube/Spotify nas 11 músicas Cifra Club concluído com 100% de sucesso (14/08). Todas as 11 músicas possuem metadados completos de Spotify (track id, álbum, ano, duração, 3 capas) e YouTube (video id, clipe/áudio oficial, canal, duração, thumb).
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
 - Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
@@ -24,6 +24,24 @@ BPM/tom Songsterr + YouTube embeddable lookup concluídos e deployados (14/08). 
 ---
 
 ## Feito
+
+### Backfill YouTube/Spotify nas 11 Cifra Club (14/08)
+
+- **Backfill no Banco de Dados (11/11 Cifra Club):**
+  - Eduardo e Mônica (`Dois`, 1986 | Legião Urbana - Topic `5RC_buIlexc`)
+  - Pais e Filhos (`As Quatro Estações`, 1989 | LegiaoUrbanaVEVO `bvIMBVBRpJU`)
+  - Quase Sem Querer (`Dois`, 1986 | Legiao Urbana - Topic `lk_EXr9xEr0`)
+  - Eu Te Devoro (`Bicho Solto - O XIII`, 1998 | DjavanVEVO `_dnB4nWckxg`)
+  - Burguesinha (`America Brasil`, 2007 | Seu Jorge - Topic `bWSn9jL1g7I`)
+  - Tempo Perdido (`Dois`, 1986 | Legiao Urbana - Topic `zpzoG5KGaHg`)
+  - Será (`Legião Urbana`, 1985 | LegiaoUrbanaVEVO `hZg1r7BOXVA`)
+  - Fé (`Fé`, 2022 | IZA `Tr7mwAGTdK4`)
+  - Oceano (`Djavan`, 1989 | DjavanOficial `MWh78SM5G7k`)
+  - Sweet Dreams (`Smells Like Children`, 1995 | MarilynMansonVEVO `QUvVdTlA23w`)
+  - Sina (`Luz`, 1982 | DjavanVEVO `5siQ-ml5lqY`)
+- **Extração Automática no Import (`cifra-club-batch` e `saveCifraToRepertoire`):**
+  - `saveCifraToRepertoire` e `cifra-club-batch` agora extraem e persistem `youtube_video_id` automaticamente ao salvar novas cifras.
+  - Edge Function `cifra-club-batch` atualizada e redeployada no Supabase.
 
 ### Songsterr BPM Real + Tom Diatônico + YouTube Embeddable (14/08)
 
@@ -203,12 +221,11 @@ Edição:
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm.**
-2. Duplicatas na `chord_library` piano (3–4 linhas por nome).
-3. Receita diferente por música.
-4. Cadernos de exercício.
-5. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **Duplicatas na `chord_library` piano (3–4 linhas por nome).**
+2. Receita diferente por música.
+3. Cadernos de exercício.
+4. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 
