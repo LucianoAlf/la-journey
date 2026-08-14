@@ -36,12 +36,13 @@ interface PaginationGroup<TBlock extends SharedPaginationBlock> {
 
 export const A4_TOTAL_HEIGHT = 1123
 export const HEADER_HEIGHT = 60
-export const FOOTER_HEIGHT = 48
+export const FOOTER_HEIGHT = 72
 export const CONTENT_VERTICAL_PADDING = 40
-export const PRINT_SAFE_AREA = 96
+export const PRINT_SAFE_AREA = 56
 export const A4_CONTENT_HEIGHT = A4_TOTAL_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - CONTENT_VERTICAL_PADDING - PRINT_SAFE_AREA
 export const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
-export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.34
+export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.22
+export const PRE_LINE_HEIGHT = 22
 export const PAGINATION_FRAGMENT_ID_SEPARATOR = '__pagination_fragment_'
 
 const BREAKABLE_TEXT_BLOCK_TYPES = new Set(['text', 'tip', 'exercise'])
@@ -52,13 +53,13 @@ export const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   text: 200,
   exercise: 220,
   tip: 120,
-  notation: 320,
+  notation: 340,
   rhythm: 260,
-  keyboard: 280,
-  keyboard_grid: 400,
-  chord_grid: 380,
-  chord_diagram: 220,
-  tablature: 300,
+  keyboard: 340,
+  keyboard_grid: 420,
+  chord_grid: 440,
+  chord_diagram: 240,
+  tablature: 320,
   image: 350,
   page_break: 0,
   separator: 30,
@@ -73,9 +74,44 @@ export function stripHtmlTags(value: string) {
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+function countPreLines(html: string) {
+  const pres = html.match(/<pre\b[\s\S]*?<\/pre>/gi) ?? []
+  return pres.reduce((sum, pre) => {
+    const inner = pre.replace(/^<pre\b[^>]*>/i, '').replace(/<\/pre>$/i, '')
+    return sum + Math.max(1, inner.replace(/\r\n/g, '\n').split('\n').length)
+  }, 0)
+}
+
+function explodePreSegment(segment: string) {
+  const match = segment.match(/^<pre\b[^>]*>([\s\S]*)<\/pre>$/i)
+  if (!match) return [segment]
+
+  const lines = match[1].replace(/\r\n/g, '\n').split('\n')
+  const stanzas: string[][] = [[]]
+  for (const line of lines) {
+    if (line.trim() === '' && stanzas[stanzas.length - 1].length > 0) {
+      stanzas.push([])
+    } else {
+      stanzas[stanzas.length - 1].push(line)
+    }
+  }
+
+  const maxLines = Math.max(8, Math.floor(
+    (A4_CONTENT_HEIGHT * TEXT_FRAGMENT_TARGET_HEIGHT_RATIO - 48) / PRE_LINE_HEIGHT,
+  ))
+  const exploded: string[] = []
+  for (const stanza of stanzas) {
+    if (!stanza.some((line) => line.trim())) continue
+    for (let index = 0; index < stanza.length; index += maxLines) {
+      exploded.push(`<pre>${stanza.slice(index, index + maxLines).join('\n')}</pre>`)
+    }
+  }
+  return exploded.length > 0 ? exploded : [segment]
+}
+
 function splitHtmlIntoTopLevelSegments(html: string) {
   const matches = html.match(/<(p|h[1-6]|ul|ol|blockquote|table|pre)[\s\S]*?<\/\1>/gi)
-  if (matches && matches.length > 1) return matches
+  if (matches && matches.length >= 1) return matches.flatMap(explodePreSegment)
 
   const fallbackText = html
     .replace(/<br\s*\/?>/gi, '\n')
@@ -134,11 +170,15 @@ function splitTextIntoSegments(text: string) {
 }
 
 function estimateTextFragmentHeight(block: SharedPaginationBlock, segments: string[], includeTitle: boolean) {
-  const textLength = stripHtmlTags(segments.join(' '))
-  const lineCount = Math.max(1, Math.ceil(textLength.length / 78))
+  const html = segments.join('')
+  const preLines = countPreLines(html)
+  const otherText = stripHtmlTags(html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' '))
+  const otherLines = otherText ? Math.ceil(otherText.length / 78) : 0
+  const lineCount = Math.max(1, preLines + otherLines)
   const titleHeight = includeTitle && block.title ? 28 : 0
   const shellHeight = block.block_type === 'exercise' ? 72 : block.block_type === 'tip' ? 56 : 20
-  return titleHeight + shellHeight + lineCount * 24
+  const lineHeight = preLines > 0 ? PRE_LINE_HEIGHT : 24
+  return titleHeight + shellHeight + lineCount * lineHeight
 }
 
 export function getPaginationFragmentData(block: SharedPaginationBlock): PaginationFragmentData | null {
@@ -258,8 +298,13 @@ export function estimateBlockHeight(block: SharedPaginationBlock): number {
       return BLOCK_HEIGHT_ESTIMATES.cover
     case 'title':
       return BLOCK_HEIGHT_ESTIMATES.title
-    case 'text':
-      return Math.max(96, Math.min(320, 42 + textLines * 20))
+    case 'text': {
+      const html = typeof content.html === 'string' ? content.html : ''
+      if (html && (html.includes('<pre') || block.title)) {
+        return Math.max(96, estimateTextFragmentHeight(block, [html], Boolean(block.title)))
+      }
+      return Math.max(96, 42 + textLines * 20)
+    }
     case 'tip':
       return Math.max(BLOCK_HEIGHT_ESTIMATES.tip, Math.min(260, 54 + textLines * 18))
     case 'exercise':
@@ -278,8 +323,8 @@ export function estimateBlockHeight(block: SharedPaginationBlock): number {
     }
     case 'chord_grid': {
       const count = Array.isArray(renderData.chords) ? renderData.chords.length : 1
-      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 4))
-      return 80 + Math.ceil(count / columns) * 250
+      const columns = Math.max(1, Math.min(Number(renderData.columns ?? 3), 7))
+      return 48 + Math.ceil(count / columns) * 168
     }
     case 'chord_diagram':
       return BLOCK_HEIGHT_ESTIMATES.chord_diagram
@@ -309,6 +354,7 @@ export function shouldKeepBlocksTogether(current: SharedPaginationBlock, next: S
   if (!next || next.block_type === 'page_break' || next.block_type === 'cover') return false
   const policy = getBlockPaginationPolicy(current)
   if (policy.keepWithNext) return true
+  if (current.block_type === 'text' && ['chord_grid', 'chord_diagram'].includes(next.block_type)) return true
   return current.block_type === 'exercise' &&
     ['notation', 'rhythm', 'tablature', 'keyboard', 'keyboard_grid', 'chord_grid'].includes(next.block_type)
 }

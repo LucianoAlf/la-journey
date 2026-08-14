@@ -42,6 +42,7 @@ const INSTRUMENT_OPTIONS = [
   { value: 'baixo', label: 'Baixo' },
   { value: 'piano', label: 'Piano' },
   { value: 'canto', label: 'Canto' },
+  { value: 'ukulele', label: 'Ukulele' },
 ]
 
 const LEVEL_OPTIONS = [

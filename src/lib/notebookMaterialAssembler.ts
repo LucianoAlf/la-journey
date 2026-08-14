@@ -1,4 +1,5 @@
 import { adaptRepertoireItem, type PreparedMaterialBlock } from './contentBrowserAdapters'
+import { recipeFromNotebookInstrument, type NotebookPrintRecipe } from './notebookPrintRecipe'
 
 export const COVER_TEMPLATES = [
   'modern',
@@ -37,6 +38,8 @@ export interface BuildNotebookMaterialBlocksInput {
   songs: Array<NotebookSongInput | null | undefined>
   coverTemplate?: CoverTemplate
   coverImageUrl?: string | null
+  recipe?: NotebookPrintRecipe
+  instrument?: string | null
 }
 
 export interface BuildNotebookMaterialBlocksResult {
@@ -80,7 +83,10 @@ export function buildNotebookMaterialBlocks(
       content: null,
       renderData: null,
     })
-    blocks.push(...adaptRepertoireItem(song, { includeChordGrid: true }))
+    blocks.push(...adaptRepertoireItem(song, {
+      includeChordGrid: true,
+      recipe: input.recipe ?? recipeFromNotebookInstrument(input.instrument),
+    }))
   }
 
   return {

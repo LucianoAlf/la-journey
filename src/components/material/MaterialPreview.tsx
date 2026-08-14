@@ -37,6 +37,8 @@ import {
 import { type SeparatorStyle, DEFAULT_SEPARATOR_STYLE, getSeparatorDecoration } from '@/lib/blockStyles'
 import { PianoKeyboard } from '@/components/music/PianoKeyboard'
 import { ChordDiagram } from '@/components/music/ChordDiagram'
+import { SongbookCifra } from '@/components/music/SongbookCifra'
+import { extractCifraPlainText, isCifraHtml } from '@/lib/cifraBlocks'
 import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer, getLegacyNotationAlphaTexDisplayTex, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
@@ -50,6 +52,7 @@ import { getMaterialBlockEmptyState } from '@/lib/materialBlockEmptyState'
 import {
   notFoundGridChord,
   resolveGuitarChordFromLibrary,
+  resolvePianoChordFromLibrary,
   shouldAllowLocalChordFallback,
   type ResolvedGridChord,
 } from '@/services/chordLibraryResolver'
@@ -255,6 +258,9 @@ function renderTitle(block: MaterialBlock, className = 'font-bold text-[14px] te
 function renderContent(content?: { text?: string; html?: string; [key: string]: any }) {
   const html = content?.html
   const text = content?.text ?? ''
+  if (html && isCifraHtml(html)) {
+    return <SongbookCifra content={extractCifraPlainText(html)} />
+  }
   if (html) {
     return (
       <div
@@ -616,6 +622,7 @@ function BlockChordDiagram({ block }: { block: MaterialBlock }) {
         positions={positions}
         position={position}
         size="full"
+        forceTheme="light"
       />
     </div>
   )
@@ -706,7 +713,7 @@ function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: 
   ))
   const canRenderAsDiagrams = normalizedChords.length > 0 && normalizedChords.some((chord: any) => Array.isArray(chord?.fingers) && chord.fingers.length > 0)
   const configuredColumns = (renderData.columns as number) ?? 3
-  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), Math.max(configuredColumns, 1), 5)
+  const chordColumns = Math.min(Math.max(normalizedChords.length, 1), Math.max(configuredColumns, 1), 7)
   const useDenseChordGrid = chordColumns >= 5
 
   return (
@@ -749,7 +756,9 @@ function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: 
                   muted: chord.muted ?? [],
                 }}
                 position={chord.position ?? 1}
-                size={useDenseChordGrid ? 'dense' : 'full'}
+                size={useDenseChordGrid ? 'dense' : normalizedChords.length >= 4 ? 'dense' : 'full'}
+                forceTheme="light"
+                strings={typeof renderData.strings === 'number' ? renderData.strings : 6}
               />
               </button>
               {onChordGridItemRemove && normalizedChords.length > 1 && (
@@ -2298,9 +2307,41 @@ function BlockKeyboard({ block }: { block: MaterialBlock }) {
 
 function BlockKeyboardGrid({ block, onKeyboardGridItemClick }: { block: MaterialBlock; onKeyboardGridItemClick?: (block: MaterialBlock, keyboard: any, index: number) => void }) {
   const rd = getBlockRenderData(block)
-  const keyboards = (rd.keyboards as any[]) ?? []
+  const sourceKeyboards = (rd.keyboards as any[]) ?? []
+  const [resolvedKeyboards, setResolvedKeyboards] = useState<any[]>(sourceKeyboards)
   const configuredColumns = (rd.columns as number) ?? 3
-  const keyboardColumns = Math.min(Math.max(keyboards.length, 1), Math.max(configuredColumns, 1), 2)
+  const keyboards = resolvedKeyboards.length ? resolvedKeyboards : sourceKeyboards
+  const keyboardColumns = Math.min(Math.max(keyboards.length, 1), Math.max(configuredColumns, 1), 3)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function resolveKeyboards() {
+      const next = []
+      for (const entry of sourceKeyboards) {
+        const name = String(entry?.chord_name ?? entry?.name ?? '')
+        const existingKeys = Array.isArray(entry?.keys) ? entry.keys : []
+        if (existingKeys.length > 0 || !name) {
+          next.push(entry)
+          continue
+        }
+        try {
+          const resolved = await resolvePianoChordFromLibrary(name)
+          next.push(resolved
+            ? { ...entry, chord_name: name, name, keys: resolved.keys, fingering_rh: resolved.fingering_rh }
+            : entry)
+        } catch {
+          next.push(entry)
+        }
+      }
+      if (!cancelled) setResolvedKeyboards(next)
+    }
+
+    resolveKeyboards()
+    return () => {
+      cancelled = true
+    }
+  }, [sourceKeyboards])
   const emptyState = getMaterialBlockEmptyState({
     blockType: block.block_type,
     title: block.title,
@@ -2333,7 +2374,17 @@ function BlockKeyboardGrid({ block, onKeyboardGridItemClick }: { block: Material
         {keyboards.map((kb: any, i: number) => (
           (() => {
             const display = keyboardEntryToDisplayData(kb, kb.chord_name ?? kb.name ?? '')
-            if (!display) return null
+            if (!display) {
+              return (
+                <div
+                  key={i}
+                  className="rounded-[12px] border border-dashed border-border px-3 py-6 text-center text-[11px] text-text3"
+                >
+                  Sem diagrama
+                  <div className="mt-1 font-semibold text-text">{kb.chord_name ?? kb.name ?? '?'}</div>
+                </div>
+              )
+            }
             return (
               <button
                 key={i}

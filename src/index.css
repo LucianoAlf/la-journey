@@ -314,6 +314,8 @@
   width:794px;
   height:1123px;
   background:#fff;
+  padding-bottom:22px;
+  box-sizing:border-box;
   --text:#0f172a;
   --text2:#475569;
   --text3:#64748b;
@@ -369,10 +371,37 @@
   overflow:hidden;
 }
 .a4-page-footer{
-  padding:8px 60px 12px;
+  padding:14px 56px 28px;
   border-top:1px solid #e2e8f0;
   text-align:right;
   flex-shrink:0;
+  min-height:56px;
+  box-sizing:border-box;
+}
+.a4-page,
+.a4-page .rich-content,
+.a4-page .rich-content p,
+.a4-page .rich-content strong,
+.a4-page .songbook-cifra,
+.a4-page pre{
+  color:#1a1a1a;
+}
+.a4-page .songbook-cifra [data-cifra="chord"],
+.a4-page .songbook-cifra [data-cifra="section"],
+.print-view .songbook-cifra [data-cifra="chord"],
+.print-view .songbook-cifra [data-cifra="section"]{
+  color:#3b5998 !important;
+  font-weight:700 !important;
+}
+.a4-page .songbook-cifra [data-cifra="lyric"],
+.print-view .songbook-cifra [data-cifra="lyric"]{
+  color:#1a1a1a !important;
+}
+.a4-page .rich-content,
+.a4-page .text-text,
+.a4-page .text-text2,
+.a4-page .text-text3{
+  color:#1a1a1a !important;
 }
 .a4-page .canvas-block{
   border-color:transparent;
@@ -784,15 +813,18 @@
   .a4-canvas-wrapper { transform:none !important; min-height:0 !important; gap:0 !important; padding:0 !important; overflow:visible !important }
 
   /* 4. Páginas A4: manter flex column com height fixo para header/footer funcionar */
-  .a4-page { width:210mm !important; height:297mm !important; min-height:297mm !important; max-height:297mm !important; overflow:hidden !important; box-shadow:none !important; border-radius:0 !important; display:flex !important; flex-direction:column !important; position:relative !important; page-break-after:always; break-after:page; background:white !important; margin:0 !important; padding:0 !important }
+  .a4-page { width:210mm !important; height:297mm !important; min-height:297mm !important; max-height:297mm !important; overflow:hidden !important; box-shadow:none !important; border-radius:0 !important; display:flex !important; flex-direction:column !important; position:relative !important; page-break-after:always; break-after:page; background:white !important; margin:0 !important; padding:0 0 8mm !important; box-sizing:border-box !important; color:#1a1a1a !important }
   .a4-page:last-child { page-break-after:auto; break-after:auto }
   /* Capa: transparent + sem padding — o .block-cover tem o background real e preenche 100% */
   .a4-page--cover { background:transparent !important; height:297mm !important; min-height:297mm !important; page-break-before:auto !important; break-before:auto !important; padding:0 !important; margin:0 !important }
   .a4-page--cover .a4-page-content { padding:0 !important; overflow:hidden !important }
   .a4-page--cover .block-cover { min-height:297mm !important; width:100% !important; height:100% !important }
   .a4-page-header { flex-shrink:0 !important; box-sizing:border-box !important }
-  .a4-page-content { padding:12px 40px !important; flex:1 !important; overflow:hidden !important }
-  .a4-page-footer { flex-shrink:0 !important; box-sizing:border-box !important }
+  .a4-page-content { padding:12px 40px !important; flex:1 !important; overflow:hidden !important; color:#1a1a1a !important }
+  .songbook-cifra [data-cifra="chord"],
+  .songbook-cifra [data-cifra="section"] { color:#3b5998 !important; font-weight:700 !important }
+  .songbook-cifra [data-cifra="lyric"] { color:#1a1a1a !important }
+  .a4-page-footer { flex-shrink:0 !important; box-sizing:border-box !important; padding:14px 40px 24px !important; min-height:56px !important }
   .print-footer {
     display:flex !important;
     justify-content:space-between !important;
@@ -802,7 +834,7 @@
     line-height:1 !important;
     color:#64748b !important;
     border-top:1px solid #e5e7eb !important;
-    padding:8px 40px 12px !important;
+    padding:14px 40px 24px !important;
     margin-top:0 !important;
   }
 

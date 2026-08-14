@@ -36,6 +36,7 @@ test('skips missing songs and still builds the rest', () => {
   assert.equal(result.blocks[1].blockType, 'page_break')
   assert.equal(result.blocks[2].blockType, 'text')
   assert.equal(result.blocks[3].blockType, 'chord_grid')
+  assert.equal(result.blocks.length, 4)
 })
 
 test('cover uses title, template and optional image', () => {
@@ -76,6 +77,16 @@ test('withCoverTemplateTag replaces only the cover-template tag', () => {
   assert.deepEqual(withCoverTemplateTag(null, 'classic'), ['cover-template:classic'])
 })
 
+test('piano recipe emits keyboard_grid instead of chord_grid', () => {
+  const result = buildNotebookMaterialBlocks({
+    title: 'Teclado',
+    instrument: 'piano',
+    songs: [{ title: 'Yesterday', chords: ['F', 'Em7'], cifra_content: 'F\nYesterday' }],
+  })
+  const types = result.blocks.map((block) => block.blockType)
+  assert.deepEqual(types, ['cover', 'page_break', 'text', 'keyboard_grid', 'text'])
+})
+
 test('two songs each start after a page_break', () => {
   const result = buildNotebookMaterialBlocks({
     title: 'Clássicos',
@@ -90,6 +101,7 @@ test('two songs each start after a page_break', () => {
     'page_break',
     'text',
     'chord_grid',
+    'text',
     'page_break',
     'text',
     'chord_grid',

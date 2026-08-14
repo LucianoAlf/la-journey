@@ -32,7 +32,9 @@ function renderZone(zone: HeaderFooterZone, context: PlaceholderContext) {
   }
 
   if (zone.type === 'placeholder' && zone.placeholder) {
-    return <span style={style}>{resolvePlaceholder(zone.placeholder, context)}</span>
+    const value = resolvePlaceholder(zone.placeholder, context)
+    if (!value) return <div />
+    return <span style={style}>{value}</span>
   }
 
   if (zone.type === 'image' && zone.imageUrl) {
@@ -72,11 +74,12 @@ export function HeaderFooterBar({ config, type, context, pageIndex, className }:
     <div
       className={className}
       style={{
-        height: `${config.height}px`,
+        minHeight: `${config.height}px`,
+        height: type === 'footer' ? undefined : `${config.height}px`,
         backgroundColor: config.backgroundColor || 'transparent',
         borderBottom: type === 'header' ? config.borderBottom : undefined,
         borderTop: type === 'footer' ? config.borderTop : undefined,
-        padding: `0 ${config.paddingX}px`,
+        padding: type === 'footer' ? `10px ${config.paddingX}px 4px` : `0 ${config.paddingX}px`,
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 20%) minmax(0, 60%) minmax(0, 20%)',
         columnGap: '8px',

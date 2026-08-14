@@ -1,4 +1,5 @@
 import { buildNotebookMaterialBlocks, coverTemplateFromTags, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import { printRecipeFromTags, withPrintRecipeTag, type NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
 import { createDraftMaterialWithBlocks } from './materialService'
@@ -118,13 +119,26 @@ export async function createDraftMaterialFromNotebook(
   options?: {
     coverTemplate?: CoverTemplate
     coverImageUrl?: string | null
+    recipe?: NotebookPrintRecipe
   }
 ): Promise<{ materialId: string; skippedMissingSongs: number }> {
   const items = await getCollectionItems(collection.id)
+  const recipe = options?.recipe ?? printRecipeFromTags(collection.tags, collection.instrument)
+  if (options?.recipe) {
+    try {
+      await updateCollection(collection.id, {
+        tags: withPrintRecipeTag(collection.tags, options.recipe),
+      })
+    } catch {
+      // receita ainda entra no rascunho mesmo se o tag do caderno falhar
+    }
+  }
   const assembled = buildNotebookMaterialBlocks({
     title: collection.name,
     coverTemplate: options?.coverTemplate ?? coverTemplateFromTags(collection.tags),
     coverImageUrl: options?.coverImageUrl ?? collection.cover_image_url,
+    instrument: collection.instrument,
+    recipe,
     songs: items.map((item) => item.repertoire ?? null),
   })
 

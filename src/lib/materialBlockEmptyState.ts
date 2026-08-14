@@ -106,6 +106,7 @@ function hasKeyboardEntryPreviewData(entry: unknown) {
   const leftKeys = item.keys_lh
   return (Array.isArray(rightKeys) && rightKeys.length > 0)
     || (Array.isArray(leftKeys) && leftKeys.length > 0)
+    || Boolean(String(item.chord_name ?? item.name ?? '').trim())
 }
 
 export function hasKeyboardPreviewData(renderData?: Record<string, unknown> | null) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Books, NotePencil, Plus, X } from '@phosphor-icons/react'
+import { Books, NotePencil, Plus, Wrench, X } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import {
   addItemToCollection,
@@ -13,8 +13,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { RepertoireModal } from '@/components/modals/RepertoireModal'
+import { RepertoireSheet } from '@/components/repertoire/RepertoireSheet'
 import { UnifiedImportModal } from '@/components/modals/UnifiedImportModal'
 import { AddSongModal } from './AddSongModal'
+import { CurationStamp } from './CurationStamp'
 
 interface NotebookDetailModalProps {
   notebook: RepertoireCollection | null
@@ -41,6 +43,7 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
   const [addSongOpen, setAddSongOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [createSongOpen, setCreateSongOpen] = useState(false)
+  const [sheetSong, setSheetSong] = useState<CollectionItemWithSong['repertoire'] | null>(null)
 
   const loadItems = async (collectionId: string) => {
     setLoading(true)
@@ -65,6 +68,7 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
     setAddSongOpen(false)
     setImportOpen(false)
     setCreateSongOpen(false)
+    setSheetSong(null)
   }, [open])
 
   const handleAddSongs = async (songIds: string[]) => {
@@ -125,7 +129,7 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/40 px-4 py-3">
             <div className="text-[12px] text-text3">
-              Adicione músicas do repertório ou importe uma nova.
+              Ajeite a cifra no motor da folha. Depois escolha violão, teclado ou tab no Gerar PDF.
             </div>
             <Button size="sm" onClick={() => setAddSongOpen(true)}>
               <Plus size={14} />
@@ -141,8 +145,8 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
                   <TableHead>Música</TableHead>
                   <TableHead>Artista</TableHead>
                   <TableHead>Tom</TableHead>
-                  <TableHead>Notas</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead>Curadoria</TableHead>
+                  <TableHead className="w-[140px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -155,37 +159,44 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
                 ) : items.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-text3">
-                      Nenhuma música adicionada ainda.
+                      Nenhuma música adicionada ainda. Adicione e ajeite no motor da folha.
                     </TableCell>
                   </TableRow>
                 ) : items.map((item, index) => (
-                  <TableRow key={item.id}>
+                  <TableRow
+                    key={item.id}
+                    className="cursor-pointer"
+                    onClick={() => item.repertoire && setSheetSong(item.repertoire)}
+                  >
                     <TableCell>{index + 1}</TableCell>
                     <TableCell className="font-medium text-text">{item.repertoire?.title || '—'}</TableCell>
                     <TableCell>{item.repertoire?.artist || '—'}</TableCell>
                     <TableCell>{item.repertoire?.key || '—'}</TableCell>
-                    <TableCell>
-                      {item.notes ? (
-                        <div className="text-[12px] text-text2 whitespace-normal max-w-[260px] line-clamp-2">
-                          {item.notes}
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-text3 flex items-center gap-1">
-                          <NotePencil size={12} />
-                          Sem nota
-                        </span>
-                      )}
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <CurationStamp status={item.repertoire?.curation_status} />
                     </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 hover:text-red-400 hover:bg-red-500/10"
-                        onClick={() => handleRemoveItem(item.id)}
-                        title="Remover música"
-                      >
-                        <X size={14} />
-                      </Button>
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-[11px] gap-1"
+                          disabled={!item.repertoire}
+                          onClick={() => item.repertoire && setSheetSong(item.repertoire)}
+                        >
+                          <Wrench size={12} />
+                          Ajeitar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 hover:text-red-400 hover:bg-red-500/10"
+                          onClick={() => handleRemoveItem(item.id)}
+                          title="Remover música"
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -251,6 +262,16 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
         onSuccess={() => {
           setCreateSongOpen(false)
           toast.message('Música criada. Busque pelo título e adicione ao caderno.')
+        }}
+      />
+      <RepertoireSheet
+        song={sheetSong}
+        open={!!sheetSong}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSheetSong(null)
+        }}
+        onSaved={() => {
+          if (notebook) void loadItems(notebook.id)
         }}
       />
     </>
