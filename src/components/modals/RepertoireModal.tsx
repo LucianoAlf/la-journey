@@ -122,7 +122,9 @@ export function RepertoireModal({ open, onClose, onSuccess, song }: RepertoireMo
         chords: chordsArray,
         instruments: form.instruments.length > 0 ? form.instruments : null,
         cifra_content: form.cifra_content || null,
-        cifra_source: form.cifra_content ? 'manual' : (isEditing ? (song?.cifra_source ?? null) : null),
+        cifra_source: (isEditing && song?.cifra_source)
+          ? song.cifra_source
+          : (form.cifra_content ? 'manual' : null),
         youtube_url: form.youtube_url || null,
         youtube_video_id: nullIfEmpty(form.youtube_video_id),
         youtube_title: nullIfEmpty(form.youtube_title),

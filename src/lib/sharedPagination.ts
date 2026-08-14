@@ -75,8 +75,8 @@ export function stripHtmlTags(value: string) {
 }
 
 function countPreLines(html: string) {
-  const pres = html.match(/<pre\b[\s\S]*?<\/pre>/gi) ?? []
-  return pres.reduce((sum, pre) => {
+  const pres = html.match(/<pre\b[\s\S]*?<\/pre>/gi) ?? ([] as string[])
+  return (pres as string[]).reduce((sum: number, pre: string) => {
     const inner = pre.replace(/^<pre\b[^>]*>/i, '').replace(/<\/pre>$/i, '')
     return sum + Math.max(1, inner.replace(/\r\n/g, '\n').split('\n').length)
   }, 0)

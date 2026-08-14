@@ -96,6 +96,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'materialId is required' }, 400)
     }
 
+    const uuidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (!uuidPattern.test(materialId)) {
+      return jsonResponse({ error: 'materialId must be a valid UUID' }, 400)
+    }
+
     const browserlessToken = Deno.env.get('BROWSERLESS_TOKEN')
     const appUrl = Deno.env.get('APP_URL')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -115,6 +121,18 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
+
+    const { data: material, error: materialError } = await supabase
+      .from('generated_materials')
+      .select('id')
+      .eq('id', materialId)
+      .maybeSingle()
+
+    if (materialError) throw materialError
+    if (!material) {
+      return jsonResponse({ error: 'Material not found' }, 404)
+    }
+
     await ensurePdfTokensTable(databaseUrl)
 
     const token = crypto.randomUUID()
@@ -124,7 +142,7 @@ Deno.serve(async (req) => {
     const printUrl = `${appUrl.replace(/\/$/, '')}/print/${materialId}?token=${token}`
     const pdfEndpoint = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}&timeout=60000`
 
-    console.info('[generate-pdf] request browserless pdf')
+    console.info('[generate-pdf] request browserless pdf', printUrl)
     const pdfResponse = await fetch(pdfEndpoint, {
       method: 'POST',
       headers: {
@@ -135,9 +153,12 @@ Deno.serve(async (req) => {
         url: printUrl,
         gotoOptions: {
           waitUntil: 'domcontentloaded',
-          timeout: 30000,
+          timeout: 20000,
         },
-        waitForTimeout: 18000,
+        waitForSelector: {
+          selector: '.print-ready',
+          timeout: 35000,
+        },
         options: {
           format: 'A4',
           printBackground: true,

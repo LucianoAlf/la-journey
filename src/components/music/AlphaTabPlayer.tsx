@@ -80,7 +80,7 @@ export function AlphaTabPlayer({ fileUrl, tex, minHeight = 400, className = '' }
     settings.player.enablePlayer = true
     settings.player.enableCursor = true
     settings.player.enableAnimatedBeatCursor = true
-    settings.player.soundFont = window.location.origin + '/soundfont/generaluser-gs.sf2'
+    settings.player.soundFont = window.location.origin + '/soundfont/sonivox.sf2'
     settings.player.scrollOffsetY = -30
     settings.player.scrollMode = alphaTabModule.ScrollMode.Continuous
 

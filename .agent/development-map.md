@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Auditoria Songsterr — search/import/GP, o que entra, se a edição persiste.
+**Próximo corte:** BPM/tom Songsterr (72 e 1º acorde) + YouTube do import sem lookup embeddable (Tarefa 3 do Radar).
 
 ## Como retomar
 
@@ -16,15 +16,33 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Corte Spotify/YouTube/PDF da ficha vai no git (sem Iconify/Recraft). Próximo: Songsterr.
+Songsterr GP + edges no git + fix cifra_source concluídos (14/08). 4/4 músicas com tablatura no ar.
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
-- Conferido na Vercel: Fé (IZA) toca no embed HTTPS. HTTP local ainda pode mostrar “Vídeo indisponível”.
 - Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
 
 ---
 
 ## Feito
+
+### Songsterr GP + Edges no Git + Fix Origem (14/08)
+
+- **Edges no git:** `songsterr-search`, `songsterr-import`, `songsterr-enrich`, `songsterr-gp-download` e `cifra-club-search` salvas em `supabase/functions/`.
+- **Edge `songsterr-gp-download` reformulada e deployada (v19):**
+  - Removido AlphaTab/WASM da Edge Function (causava crash `WORKER_ERROR` no Deno Deploy).
+  - URL moderna de CDN mapeada: `https://dqsljvtekg760.cloudfront.net/${songId}/${revisionId}/${image}/${partId}.json` com fallback para CloudFront 2 e formatos legados.
+  - Empacota `SongsterrBundle` JSON completo com todas as tracks e metadados.
+  - Salva em Supabase Storage (`gp-files/songsterr/${songId}/${filename}`) com `contentType: application/json`.
+  - Atualiza automaticamente a coluna `gp_file_url` na tabela `repertoire`.
+  - Invocação via `supabase.functions.invoke` no `repertoireService.ts` com autenticação automática.
+- **Backfill completo das 4 músicas Songsterr:**
+  - Wonderwall (`2`), Sweet Child O' Mine (`23`), Like a Virgin (`10767`), Champagne Supernova (`49284`) — 100% com bundles no storage e `gp_file_url` preenchido.
+- **Correção no `RepertoireModal`:**
+  - Preserva `cifra_source` original ao editar música existente em vez de sobrescrever para `'manual'`.
+- **Soundfont corrigido no `AlphaTabPlayer`:**
+  - Atualizado para `/soundfont/sonivox.sf2`, removendo aviso de "Soundfont is not a valid Soundfont2 file".
+- **Validação visual completa:**
+  - As 4 músicas exibem a aba "Tablatura" com partitura, tablatura, seletor de faixas e player MIDI interativo prontos.
 
 ### Produto caderno
 
@@ -120,6 +138,47 @@ Save grava `youtube_video_id`, título, canal, duração e thumbnail. Limpar a U
 
 Migration `20260814170000_repertoire_spotify_youtube_metadata.sql` aplicada. Helper `src/lib/repertoireMediaFields.ts`. Conferido na Fé: track id, nomes, álbum 2022, 185400 ms, 3 capas Spotify; video id, título, canal IZA, 3:11, thumb YouTube.
 
+### Auditoria Songsterr (14/08)
+
+4 músicas, todas draft de março/2026: Wonderwall, Like a Virgin, Sweet Child O' Mine, Champagne Supernova.
+
+Cano: `UnifiedImportModal` (aba Songsterr) → `search` → `enrich` (import+scrape) → `saveSongsterrToRepertoire` → GP em background. `SongsterrImportModal` existe e **ninguém importa**.
+
+| Peça | Onde | No git? |
+|---|---|---|
+| `songsterr-search` v16 | GET `/api/songs?pattern=` | Não (só Supabase) |
+| `songsterr-import` v16 | GET `/api/song/{id}` metadados | Não |
+| `songsterr-enrich` v22 | scrape `/a/wsa/…-chords-s{id}` Redux ChordPro | Não |
+| `songsterr-gp-download` v17 | HTML state + CDN JSON → GP7 AlphaTab → bucket `gp-files` | Não |
+
+Smoke 14/08: search Wonderwall = 10 hits, id=2. Enrich ainda devolve cifra (2638 chars, 6 acordes).
+
+O que entra no `repertoire`:
+
+| Campo | Nas 4 | Nota |
+|---|---|---|
+| title/artist/`songsterr_id`/`source_url` | sim | URL curta `tab-s{id}` |
+| `cifra_content` + `chords` | sim | ChordPro reconstruído |
+| `lyrics` | vazio | letra só dentro da cifra |
+| `youtube_url` | 1º de `meta.videos` | enrich Wonderwall tem 52 ids; sem checar embed |
+| `youtube_video_id` / Spotify | vazio | import anterior às colunas novas |
+| `key` | 1º acorde | Em7 / Asus2, não o tom |
+| `bpm` | **72 em todas** | Wonderwall real ~87; path `state.tempo.tempo.bpm` |
+| `gp_file_url` | 1/4 | só Sweet Child (`.songsterr.json`) |
+
+Storage `gp-files`: Wonderwall JSON existe (`songsterr/2/…json`, 773 KB) e a coluna na linha está **null**. Like a Virgin e Champagne sem arquivo. Código atual do GP grava `.gp`; o player ainda lê `.songsterr.json` via `convertSongsterrToScore`. Aba Tablatura só aparece se `gp_file_url` está preenchido.
+
+Edição:
+
+| Caminho | Persiste? |
+|---|---|
+| Ficha → Editar → Save | sim (`cifra_content`, `gp_file_url`, mídia). Não mexe em `cifra_source` |
+| Duplo clique em bloco tab ASCII | sim (`updateSong` no `cifra_content`) |
+| Transposição na ficha | não (só preview) |
+| AlphaTab na aba Tablatura | não (view-only) |
+| Modal da tabela (`RepertoireModal`) | save com `cifra_content` **grava `cifra_source: 'manual'`** — apaga o carimbo Songsterr |
+| GP em background no import | erro só no `console.warn`; 3/4 ficaram sem URL |
+
 ### Specs do caderno
 
 - `docs/superpowers/specs/2026-08-13-caderno-repertorio-montador-design.md`
@@ -130,14 +189,13 @@ Migration `20260814170000_repertoire_spotify_youtube_metadata.sql` aplicada. Hel
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Auditoria Songsterr** — search/import/GP, o que entra, se a edição persiste.
-2. Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm (Completar com IA ou re-import).
-3. Duplicatas na `chord_library` piano (3–4 linhas por nome) — a conta na ficha já não infla, os dados ainda estão sujos.
-4. Trazer `cifra-club-search` para o git (hoje só no Supabase).
-5. Receita diferente por música.
-6. Cadernos de exercício.
-7. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-8. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **BPM/tom Songsterr (72 e 1º acorde) + YouTube do import sem lookup embeddable.**
+2. Backfill YouTube/Spotify nas 11 Cifra Club que ainda não têm.
+3. Duplicatas na `chord_library` piano (3–4 linhas por nome).
+4. Receita diferente por música.
+5. Cadernos de exercício.
+6. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+7. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 
@@ -194,6 +252,10 @@ Não entrar no PR de repertório/Cifra Club:
 | Preview/editor songbook | `SongbookCifra.tsx`, `src/lib/songbookPagination.ts`, `src/pages/Editor.tsx` |
 | Carimbo | `src/components/content/CurationStamp.tsx` |
 | Capa PDF | `src/lib/repertoirePdfCover.ts`, `src/components/repertoire/PrintableCover.tsx` |
+| Songsterr UI | `UnifiedImportModal.tsx` (aba Songsterr). `SongsterrImportModal.tsx` morto. |
+| Songsterr client | `src/services/repertoireService.ts` (`search`/`enrich`/`save`/`downloadGp`) |
+| Songsterr edges | só no Supabase: `songsterr-search`, `songsterr-import`, `songsterr-enrich`, `songsterr-gp-download` |
+| AlphaTab | `src/components/music/AlphaTabPlayer.tsx`, `src/lib/songsterr-converter/` |
 
 Supabase: `rkfszavfqplhorvfpkcq`. Print de apostila ainda aponta `APP_URL` de produção.
 
