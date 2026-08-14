@@ -188,6 +188,57 @@ export async function resolveGuitarChordFromLibrary(chordName: string): Promise<
   return null
 }
 
+export interface ResolvedPianoChord {
+  chord_name: string
+  name: string
+  keys: string[]
+  fingering_rh: number[]
+  source: 'chord_library' | 'not-found'
+}
+
+export async function resolvePianoChordFromLibrary(chordName: string): Promise<ResolvedPianoChord | null> {
+  const candidates = buildChordLibraryLookupNames(chordName)
+  if (!candidates.length) return null
+
+  const { supabase } = await import('@/lib/supabase')
+  const [byName, byCanonicalName] = await Promise.all([
+    supabase
+      .from('chord_library')
+      .select('id,name,canonical_name,instrument,positions,svg_config')
+      .eq('instrument', 'piano')
+      .in('name', candidates),
+    supabase
+      .from('chord_library')
+      .select('id,name,canonical_name,instrument,positions,svg_config')
+      .eq('instrument', 'piano')
+      .in('canonical_name', candidates),
+  ])
+
+  if (byName.error) throw byName.error
+  if (byCanonicalName.error) throw byCanonicalName.error
+
+  const data = uniqueRowsById([...(byName.data ?? []), ...(byCanonicalName.data ?? [])])
+  if (!data.length) return null
+
+  for (const candidate of candidates) {
+    const row = data.find(chord => chord.name === candidate || chord.canonical_name === candidate)
+    const positions = row?.positions && typeof row.positions === 'object'
+      ? row.positions as { keys?: string[]; fingering_rh?: number[] }
+      : null
+    const keys = Array.isArray(positions?.keys) ? positions.keys.filter(Boolean) : []
+    if (!row || keys.length === 0) continue
+    return {
+      chord_name: chordName.trim(),
+      name: chordName.trim(),
+      keys,
+      fingering_rh: Array.isArray(positions?.fingering_rh) ? positions.fingering_rh : [],
+      source: 'chord_library',
+    }
+  }
+
+  return null
+}
+
 function uniqueRowsById(rows: ChordLibraryRow[]): ChordLibraryRow[] {
   const seen = new Set<string>()
   const out: ChordLibraryRow[] = []
