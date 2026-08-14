@@ -124,3 +124,51 @@ test('two songs each start after a page_break', () => {
     'chord_grid',
   ])
 })
+
+test('per-song recipe override applies distinct layout per song', () => {
+  const result = buildNotebookMaterialBlocks({
+    title: 'Mix de Instrumentos',
+    instrument: 'violão',
+    recipe: { guitar: true, piano: false, ukulele: false, tab: true },
+    songs: [
+      {
+        title: 'Song 1 - Guitar',
+        chords: ['Am', 'C'],
+        cifra_content: 'Am\nLetra 1',
+      },
+      {
+        title: 'Song 2 - Piano',
+        chords: ['Dm', 'G'],
+        cifra_content: 'Dm\nLetra 2',
+        recipe: { guitar: false, piano: true, ukulele: false, tab: true },
+      },
+      {
+        title: 'Song 3 - Ukulele via tags',
+        chords: ['C', 'F'],
+        cifra_content: 'C\nLetra 3',
+        tags: ['print-recipe:ukulele+tab'],
+      },
+    ],
+  })
+
+  // Cover
+  assert.equal(result.blocks[0].blockType, 'cover')
+
+  // Song 1: guitar (default)
+  assert.equal(result.blocks[1].blockType, 'page_break')
+  assert.equal(result.blocks[2].blockType, 'text')
+  assert.equal(result.blocks[3].blockType, 'chord_grid')
+  assert.equal(result.blocks[3].renderData?.instrument, 'guitar')
+
+  // Song 2: piano override
+  assert.equal(result.blocks[5].blockType, 'page_break')
+  assert.equal(result.blocks[6].blockType, 'text')
+  assert.equal(result.blocks[7].blockType, 'keyboard_grid')
+  assert.equal(result.blocks[7].content?.text, 'Teclado de Song 2 - Piano')
+
+  // Song 3: ukulele tag override
+  assert.equal(result.blocks[9].blockType, 'page_break')
+  assert.equal(result.blocks[10].blockType, 'text')
+  assert.equal(result.blocks[11].blockType, 'chord_grid')
+  assert.equal(result.blocks[11].renderData?.instrument, 'ukulele')
+})

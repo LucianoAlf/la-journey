@@ -80,7 +80,17 @@ export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): 
   if (songs.length === 0) throw new Error('Nenhuma música para gerar o PDF.')
 
   const allChords = songs.flatMap((song) => song.chords)
-  const maps = await buildPdfChordMaps(allChords, input.recipe, {
+  const anyGuitar = input.recipe.guitar || input.recipe.ukulele || songs.some(s => s.recipe?.guitar || s.recipe?.ukulele)
+  const anyPiano = input.recipe.piano || songs.some(s => s.recipe?.piano)
+  const anyUkulele = input.recipe.ukulele || songs.some(s => s.recipe?.ukulele)
+  const anyTab = input.recipe.tab || songs.some(s => s.recipe?.tab)
+
+  const maps = await buildPdfChordMaps(allChords, {
+    guitar: anyGuitar,
+    piano: anyPiano,
+    ukulele: anyUkulele,
+    tab: anyTab,
+  }, {
     guitar: input.guitarChordMap,
     piano: input.pianoChordMap,
   })
@@ -108,21 +118,24 @@ export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): 
           ref: coverRef as RefObject<HTMLDivElement>,
           cover,
         }) : null,
-        ...songs.map((song, index) => createElement(PrintableCifra, {
-          key: `${song.title}-${index}`,
-          ref: refs[index] as RefObject<HTMLDivElement>,
-          title: song.title,
-          artist: song.artist,
-          tom: song.key,
-          chords: song.chords,
-          guitarChordMap: maps.guitar,
-          pianoChordMap: maps.piano,
-          cifraContent: song.cifraContent,
-          media: song.media,
-          showGuitar: input.recipe.guitar || input.recipe.ukulele,
-          showPiano: input.recipe.piano,
-          showTab: input.recipe.tab,
-        })),
+        ...songs.map((song, index) => {
+          const songRecipe = song.recipe ?? input.recipe
+          return createElement(PrintableCifra, {
+            key: `${song.title}-${index}`,
+            ref: refs[index] as RefObject<HTMLDivElement>,
+            title: song.title,
+            artist: song.artist,
+            tom: song.key,
+            chords: song.chords,
+            guitarChordMap: maps.guitar,
+            pianoChordMap: maps.piano,
+            cifraContent: song.cifraContent,
+            media: song.media,
+            showGuitar: songRecipe.guitar || songRecipe.ukulele,
+            showPiano: songRecipe.piano,
+            showTab: songRecipe.tab,
+          })
+        }),
       ),
     )
 

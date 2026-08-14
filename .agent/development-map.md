@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Receita diferente por música (Tarefa 1 do Radar).
+**Próximo corte:** Cadernos de exercício (Tarefa 2 do Radar).
 
 ## Como retomar
 
@@ -16,11 +16,10 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Tratamento e saneamento de acordes de piano na `chord_library` concluído com 100% de cobertura (14/08).
-- Todas as linhas de piano saneadas no banco (20 nulos preenchidos com sua respectiva inversão).
-- Resolução de diagramas prioriza a posição fundamental (`root_position`).
-- UI da Biblioteca (`Biblioteca.tsx`) exibe badges pedagógicos de inversão nos cards e swimlanes de voicing.
-- Build de produção e 51 testes unitários passando.
+Receita diferente por música no montador de caderno e motor de PDF concluída com 100% de cobertura (14/08).
+- Modal `NotebookPrintRecipeDialog.tsx` expandido com seção de personalização individual por faixa (chips rápidos de Violão, Teclado, Ukulele, Tablatura por música e botão de restaurar padrão).
+- Montador de blocos (`notebookMaterialAssembler.ts`) e motor de PDF (`repertoirePdfEngine.ts`, `repertoirePdfSongs.ts`) respeitam o override de receita de cada música independente do padrão do caderno.
+- 51/51 testes unitários passando e build de produção validado.
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
 - Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
@@ -28,6 +27,24 @@ Tratamento e saneamento de acordes de piano na `chord_library` concluído com 10
 ---
 
 ## Feito
+
+### Receita Diferente por Música no Caderno e Motor de PDF (14/08)
+
+- **Personalização Individual no Diálogo de Impressão (`NotebookPrintRecipeDialog.tsx`):**
+  - Mantém toggles globais do caderno (Violão, Teclado, Ukulele, Tablatura) com resumo no topo.
+  - Carrega as faixas do caderno e fornece seção expansível para customizar faixas individualmente.
+  - Cada música exibe título, artista, tom e 4 chips de ação rápida (🎸 Violão, 🎹 Teclado, 🪕 Ukulele, 📑 Tab), permitindo ligar/desligar elementos específicos por faixa.
+  - Botão de restauração rápida para o padrão do caderno e contador de faixas customizadas.
+- **Montador de Materiais e Rascunhos (`notebookMaterialAssembler.ts` / `repertoireCollectionService.ts`):**
+  - `NotebookSongInput` suporta `recipe?: NotebookPrintRecipe` e `tags?: string[]` (com suporte a tags `print-recipe:...`).
+  - `buildNotebookMaterialBlocks` e `createDraftMaterialFromNotebook` aplicam a receita individual da faixa com fallback suave para a receita do caderno.
+- **Motor de Renderização e PDF (`repertoirePdfEngine.ts` / `repertoirePdfSongs.ts`):**
+  - `generateRepertoireBookPdf` analisa todas as receitas individuais e do caderno para carregar os mapas de acordes corretos (violão e teclado) e renderiza cada `PrintableCifra` com seu layout instrumental individual (`showGuitar`, `showPiano`, `showTab`).
+  - `songsFromNotebookItems` extrai e propaga as receitas individuais das faixas.
+  - `isSameRecipe` e `formatRecipeSummary` adicionados em `notebookPrintRecipe.ts` com testes unitários.
+- **Testes e Build:**
+  - Testes unitários em `notebookMaterialAssembler.test.ts`, `notebookPrintRecipe.test.ts` e `repertoirePdfSongs.test.ts`.
+  - 51 testes passando em `npx tsx --test` e build Vite de produção sem erros.
 
 ### Saneamento e Voicings de Piano na `chord_library` (14/08)
 
@@ -241,10 +258,9 @@ Edição:
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Receita diferente por música.**
-2. Cadernos de exercício.
-3. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-4. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **Cadernos de exercício.**
+2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+3. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 
