@@ -15,6 +15,7 @@ export interface EnrichmentResult {
   cifra_content?: string | null
   bpm?: number | null
   youtube_url?: string | null
+  spotify_url?: string | null
   time_signature?: string | null
   country?: string | null
 }
@@ -39,6 +40,7 @@ function detectMissingFields(song: Repertoire): string[] {
   if (!song.cifra_content || song.cifra_content.length < 30) missing.push('cifra_content')
   if (!song.bpm) missing.push('bpm')
   if (!song.youtube_url) missing.push('youtube_url')
+  if (!song.spotify_url) missing.push('spotify_url')
   if (!song.difficulty || song.difficulty === 1) missing.push('difficulty')
   if (!song.time_signature || song.time_signature === '4/4') missing.push('time_signature')
   if (!song.country) missing.push('country')
@@ -67,6 +69,7 @@ function buildEnrichPrompt(song: Repertoire, missingFields: string[]): string {
     cifra_content: '"cifra_content": cifra completa no formato ChordsOverWords (acordes na linha de cima, letra na linha de baixo)',
     bpm: '"bpm": tempo em batidas por minuto (número inteiro)',
     youtube_url: '"youtube_url": URL do YouTube do vídeo oficial ou versão mais popular (formato https://www.youtube.com/watch?v=XXXXX)',
+    spotify_url: '"spotify_url": URL do Spotify da faixa oficial (formato https://open.spotify.com/track/XXXXX). Não use link de busca.',
     time_signature: '"time_signature": compasso (ex: "4/4", "3/4", "6/8")',
     country: '"country": "BR" se o artista é brasileiro, "INT" se internacional. BR = artista brasileiro ou banda brasileira. INT = qualquer artista que NÃO seja brasileiro.',
   }
@@ -88,6 +91,7 @@ REGRAS IMPORTANTES:
 - Para "cifra_content": use o formato ChordsOverWords onde os acordes ficam na linha ACIMA da letra correspondente
 - Para "lyrics": apenas a letra sem acordes
 - Para "youtube_url": use a URL do vídeo OFICIAL ou o mais popular no YouTube
+- Para "spotify_url": use a URL da faixa OFICIAL no Spotify (open.spotify.com/track/...). Se não tiver certeza, omita
 - Para "chords": liste TODOS os acordes da música, não apenas os principais
 - Retorne APENAS um objeto JSON válido, sem markdown, sem explicação
 - Se não souber um campo com certeza, omita-o do JSON (não invente)`
@@ -195,6 +199,7 @@ export async function enrichSongWithAI(song: Repertoire): Promise<{
     cifra_content: 'Cifra Completa',
     bpm: 'BPM',
     youtube_url: 'YouTube',
+    spotify_url: 'Spotify',
     time_signature: 'Compasso',
     country: 'País',
   }

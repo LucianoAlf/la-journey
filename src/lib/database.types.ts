@@ -922,6 +922,7 @@ export type Database = {
           sections: Json | null
           songsterr_id: number | null
           source_url: string | null
+          spotify_url: string | null
           time_signature: string | null
           title: string
           updated_at: string | null
@@ -955,6 +956,7 @@ export type Database = {
           sections?: Json | null
           songsterr_id?: number | null
           source_url?: string | null
+          spotify_url?: string | null
           time_signature?: string | null
           title: string
           updated_at?: string | null
@@ -988,6 +990,7 @@ export type Database = {
           sections?: Json | null
           songsterr_id?: number | null
           source_url?: string | null
+          spotify_url?: string | null
           time_signature?: string | null
           title?: string
           updated_at?: string | null

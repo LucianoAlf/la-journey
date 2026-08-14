@@ -453,6 +453,17 @@ export async function saveChordProToRepertoire(parsed: {
 }
 
 export async function saveCifraToRepertoire(cifra: CifraData, instruments: string[] = []) {
+  if (cifra.source_url) {
+    const { data: existing } = await supabase
+      .from('repertoire')
+      .select('id')
+      .eq('source_url', cifra.source_url)
+      .maybeSingle()
+    if (existing) {
+      throw new Error('Essa cifra já está no repertório')
+    }
+  }
+
   const { data, error } = await supabase
     .from('repertoire')
     .insert({
