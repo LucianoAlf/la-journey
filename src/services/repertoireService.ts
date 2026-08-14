@@ -344,21 +344,15 @@ export async function downloadGpFromSongsterr(
   songId: number,
   repertoireId?: string
 ): Promise<{ publicUrl: string; tracksCount: number }> {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-
-  const response = await fetch(`${supabaseUrl}/functions/v1/songsterr-gp-download`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ songId, repertoireId }),
+  const { data, error } = await supabase.functions.invoke('songsterr-gp-download', {
+    body: { songId, repertoireId },
   })
 
-  const result = await response.json()
-
-  if (!response.ok) {
-    throw new Error(result.error || `Erro ${response.status} ao baixar GP do Songsterr`)
+  if (error) {
+    throw new Error(error.message || 'Erro ao baixar GP do Songsterr')
   }
 
-  return { publicUrl: result.publicUrl, tracksCount: result.tracksCount }
+  return { publicUrl: data.publicUrl, tracksCount: data.tracksCount }
 }
 
 export async function saveSongsterrToRepertoire(data: SongsterrImportData) {

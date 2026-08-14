@@ -1,6 +1,7 @@
 export const YOUTUBE_EMBED_HOST = 'https://www.youtube-nocookie.com'
 export const YOUTUBE_PLAYER_HOST = 'https://www.youtube.com'
-export const YOUTUBE_PLAYER_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+export const YOUTUBE_PLAYER_REFERRER_POLICY: React.HTMLAttributeReferrerPolicy =
+  'strict-origin-when-cross-origin'
 export const YOUTUBE_PLAYER_ALLOW =
   'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
 

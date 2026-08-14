@@ -48,7 +48,7 @@ test('does not slice through a chord-lyric pair', () => {
     ],
   })
   assert.equal(slices[0].end, 160)
-  assert.ok(slices[0].end !== 200, 'must not cut at the raw page budget')
+  assert.notEqual(slices[0].end, 200, 'must not cut at the raw page budget')
   assert.ok(slices.every((slice) => slice.end > slice.start))
 })
 

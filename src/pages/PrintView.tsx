@@ -111,6 +111,16 @@ export function PrintView() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const root = document.documentElement
+    const previousTheme = root.getAttribute('data-theme')
+    root.setAttribute('data-theme', 'light')
+    root.classList.remove('dark')
+    return () => {
+      if (previousTheme) root.setAttribute('data-theme', previousTheme)
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
 
     async function loadPrintMaterial() {
@@ -169,7 +179,7 @@ export function PrintView() {
     const parsed = parsePrintMaterialRows(data ?? [])
     return {
       ...parsed,
-      pages: paginatePrintBlocks(parsed.blocks),
+      pages: paginatePrintBlocks(parsed.blocks, parsed.material?.type),
     }
   }, [data])
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -256,6 +266,7 @@ export function PrintView() {
 
   const schoolName = material.schoolName || 'LA Music School'
   const pageConfig = normalizePrintPageConfig(material.pageConfig)
+  const coverRenderData = (blocks.find((block) => block.block_type === 'cover')?.render_data ?? {}) as Record<string, unknown>
 
   return (
     <main className="print-view" data-print-root>
@@ -267,7 +278,9 @@ export function PrintView() {
           pageNumber: pageIndex + 1,
           totalPages: canvasPages.length,
           schoolName,
-          professorName: '',
+          professorName: String(coverRenderData.professor ?? ''),
+          instrument: String(coverRenderData.instrumento ?? ''),
+          level: String(coverRenderData.nivel ?? ''),
         }
         const pageLayerStyle = canvasPageLayerToCSS({
           hasSelectedBlock: false,
