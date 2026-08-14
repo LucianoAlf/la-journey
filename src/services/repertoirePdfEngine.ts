@@ -2,9 +2,11 @@ import { createRoot, type Root } from 'react-dom/client'
 import { createElement, createRef, type RefObject } from 'react'
 import { jsPDF } from 'jspdf'
 import { PrintableCifra } from '@/components/repertoire/PrintableCifra'
+import { PrintableCover } from '@/components/repertoire/PrintableCover'
 import type { NotebookPrintRecipe } from '@/lib/notebookPrintRecipe'
+import { coverAssetUrls, type RepertoirePdfCover } from '@/lib/repertoirePdfCover'
 import type { RepertoirePdfSong } from '@/lib/repertoirePdfSongs'
-import { addRepertoirePages } from '@/services/pdfService'
+import { addCoverPage, addRepertoirePages } from '@/services/pdfService'
 import { resolveGuitarChordFromLibrary, resolvePianoChordFromLibrary } from '@/services/chordLibraryResolver'
 import type { Chord } from '@/services/libraryService'
 
@@ -12,6 +14,7 @@ export interface RepertoireBookPdfInput {
   songs: RepertoirePdfSong[]
   recipe: NotebookPrintRecipe
   filename: string
+  cover?: RepertoirePdfCover | null
   guitarChordMap?: Map<string, Chord>
   pianoChordMap?: Map<string, Chord>
 }
@@ -61,6 +64,16 @@ function waitForPaint(ms = 1000) {
   })
 }
 
+function waitForImages(urls: string[]) {
+  return Promise.all(urls.map((src) => new Promise<void>((resolve) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve()
+    image.onerror = () => resolve()
+    image.src = src
+  })))
+}
+
 export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): Promise<void> {
   const songs = input.songs.filter((song) => song.title || song.cifraContent || song.chords.length)
   if (songs.length === 0) throw new Error('Nenhuma música para gerar o PDF.')
@@ -76,14 +89,23 @@ export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): 
   host.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
   document.body.appendChild(host)
 
+  const cover = input.cover ?? null
+  const coverRef = createRef<HTMLDivElement>()
   const refs = songs.map(() => createRef<HTMLDivElement>())
   const root: Root = createRoot(host)
 
   try {
+    if (cover) await waitForImages(coverAssetUrls(cover))
+
     root.render(
       createElement(
         'div',
         null,
+        cover ? createElement(PrintableCover, {
+          key: 'cover',
+          ref: coverRef as RefObject<HTMLDivElement>,
+          cover,
+        }) : null,
         ...songs.map((song, index) => createElement(PrintableCifra, {
           key: `${song.title}-${index}`,
           ref: refs[index] as RefObject<HTMLDivElement>,
@@ -101,10 +123,17 @@ export async function generateRepertoireBookPdf(input: RepertoireBookPdfInput): 
       ),
     )
 
-    await waitForPaint(1100)
+    await waitForPaint(cover ? 1400 : 1100)
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     let started = false
+
+    if (cover) {
+      const coverElement = coverRef.current
+      if (!coverElement) throw new Error('Não foi possível renderizar a capa.')
+      await addCoverPage(pdf, coverElement)
+      started = true
+    }
 
     for (let index = 0; index < songs.length; index += 1) {
       const element = refs[index].current

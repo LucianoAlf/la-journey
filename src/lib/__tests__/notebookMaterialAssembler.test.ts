@@ -50,6 +50,7 @@ test('cover uses title, template and optional image', () => {
   assert.equal(cover.blockType, 'cover')
   assert.equal(cover.title, 'Caderno do Chiquinho')
   assert.equal(cover.renderData?.template, 'bold')
+  assert.equal(cover.renderData?.titulo, 'Caderno do Chiquinho')
   assert.equal(cover.renderData?.cover_image_url, 'https://cdn.example/capa.jpg')
 })
 
@@ -60,6 +61,22 @@ test('song without chords and without cifra has no chord_grid', () => {
   })
   const types = result.blocks.map((block) => block.blockType)
   assert.deepEqual(types, ['cover', 'page_break', 'text'])
+})
+
+test('cover includes school and professor when provided', () => {
+  const result = buildNotebookMaterialBlocks({
+    title: 'Caderno do Chiquinho',
+    instrument: 'violão',
+    level: 'grow',
+    schoolName: 'LA Music',
+    professorName: 'Alf',
+    songs: [{ title: 'Hey Jude', chords: ['F'] }],
+  })
+  const cover = result.blocks[0]
+  assert.equal(cover.renderData?.professor, 'Alf')
+  assert.equal(cover.renderData?.escola, 'LA Music')
+  assert.equal(cover.renderData?.nivel, 'Grow')
+  assert.equal(cover.renderData?.instrumento, 'violão')
 })
 
 test('coverTemplateFromTags reads a valid tagged template', () => {

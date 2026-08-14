@@ -173,7 +173,10 @@ export function NotebookDetailModal({ notebook, open, onOpenChange, onEdit, onGe
                     <TableCell>{item.repertoire?.artist || '—'}</TableCell>
                     <TableCell>{item.repertoire?.key || '—'}</TableCell>
                     <TableCell onClick={(event) => event.stopPropagation()}>
-                      <CurationStamp status={item.repertoire?.curation_status} />
+                      <CurationStamp
+                        status={item.repertoire?.curation_status}
+                        curatorName={item.repertoire?.curator?.name}
+                      />
                     </TableCell>
                     <TableCell onClick={(event) => event.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">

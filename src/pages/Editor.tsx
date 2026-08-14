@@ -46,6 +46,7 @@ import {
 import type { MaterialWithBlocks, MaterialListItem } from "@/services/materialService";
 import { generateRepertoireBookPdf } from "@/services/repertoirePdfEngine";
 import { recipeFromSongbookBlocks, songsFromSongbookBlocks } from "@/lib/repertoirePdfSongs";
+import { coverFromSongbookBlocks } from "@/lib/repertoirePdfCover";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { TitleTemplateRenderer } from "@/components/material/TitleTemplateRenderer";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
@@ -6470,6 +6471,7 @@ ${pagesHtml}
           songs,
           recipe: recipeFromSongbookBlocks(blocks),
           filename: materialTitle || 'caderno',
+          cover: coverFromSongbookBlocks(blocks, materialTitle),
         })
         toast.success('PDF gerado com sucesso.', { id: toastId })
       } catch (error) {

@@ -33,6 +33,42 @@ export interface NotebookSongInput {
   cifra_content?: string | null
 }
 
+export const NOTEBOOK_LEVEL_LABELS: Record<string, string> = {
+  foundation: 'Foundation',
+  grow: 'Grow',
+  advance: 'Advance',
+  master: 'Master',
+}
+
+export function notebookLevelLabel(level?: string | null): string {
+  if (!level?.trim()) return ''
+  return NOTEBOOK_LEVEL_LABELS[level] ?? level
+}
+
+export function buildCoverRenderData(input: {
+  title: string
+  coverTemplate?: CoverTemplate
+  coverImageUrl?: string | null
+  instrument?: string | null
+  level?: string | null
+  schoolName?: string | null
+  professorName?: string | null
+  logoUrl?: string | null
+}): Record<string, unknown> {
+  const coverImageUrl = input.coverImageUrl?.trim() || null
+  const logoUrl = input.logoUrl?.trim() || null
+  return {
+    template: input.coverTemplate ?? 'modern',
+    titulo: input.title,
+    instrumento: input.instrument?.trim() || '',
+    nivel: notebookLevelLabel(input.level),
+    escola: input.schoolName?.trim() || '',
+    professor: input.professorName?.trim() || '',
+    ...(logoUrl ? { logo_url: logoUrl } : {}),
+    ...(coverImageUrl ? { cover_image_url: coverImageUrl } : {}),
+  }
+}
+
 export interface BuildNotebookMaterialBlocksInput {
   title: string
   songs: Array<NotebookSongInput | null | undefined>
@@ -40,6 +76,10 @@ export interface BuildNotebookMaterialBlocksInput {
   coverImageUrl?: string | null
   recipe?: NotebookPrintRecipe
   instrument?: string | null
+  level?: string | null
+  schoolName?: string | null
+  professorName?: string | null
+  logoUrl?: string | null
 }
 
 export interface BuildNotebookMaterialBlocksResult {
@@ -63,17 +103,20 @@ export function buildNotebookMaterialBlocks(
     return { blocks: [], skippedMissingSongs, includedSongs: 0 }
   }
 
-  const template = input.coverTemplate ?? 'modern'
-  const coverImageUrl = input.coverImageUrl?.trim() || null
-
   const blocks: PreparedMaterialBlock[] = [{
     blockType: 'cover',
     title: input.title,
     content: { text: input.title },
-    renderData: {
-      template,
-      ...(coverImageUrl ? { cover_image_url: coverImageUrl } : {}),
-    },
+    renderData: buildCoverRenderData({
+      title: input.title,
+      coverTemplate: input.coverTemplate,
+      coverImageUrl: input.coverImageUrl,
+      instrument: input.instrument,
+      level: input.level,
+      schoolName: input.schoolName,
+      professorName: input.professorName,
+      logoUrl: input.logoUrl,
+    }),
   }]
 
   for (const song of songs) {
