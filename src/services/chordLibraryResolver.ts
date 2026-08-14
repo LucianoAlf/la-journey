@@ -204,12 +204,12 @@ export async function resolvePianoChordFromLibrary(chordName: string): Promise<R
   const [byName, byCanonicalName] = await Promise.all([
     supabase
       .from('chord_library')
-      .select('id,name,canonical_name,instrument,positions,svg_config')
+      .select('id,name,canonical_name,instrument,positions,svg_config,voicing_position')
       .eq('instrument', 'piano')
       .in('name', candidates),
     supabase
       .from('chord_library')
-      .select('id,name,canonical_name,instrument,positions,svg_config')
+      .select('id,name,canonical_name,instrument,positions,svg_config,voicing_position')
       .eq('instrument', 'piano')
       .in('canonical_name', candidates),
   ])
@@ -221,7 +221,14 @@ export async function resolvePianoChordFromLibrary(chordName: string): Promise<R
   if (!data.length) return null
 
   for (const candidate of candidates) {
-    const row = data.find(chord => chord.name === candidate || chord.canonical_name === candidate)
+    const matchingRows = data.filter(chord => chord.name === candidate || chord.canonical_name === candidate)
+    if (!matchingRows.length) continue
+
+    // Priorizar posição fundamental (root_position)
+    const row = matchingRows.find(
+      r => r.voicing_position === 'root_position' || (r.positions as any)?.voicing_position === 'root_position'
+    ) || matchingRows[0]
+
     const positions = row?.positions && typeof row.positions === 'object'
       ? row.positions as { keys?: string[]; fingering_rh?: number[] }
       : null

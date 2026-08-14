@@ -3,7 +3,7 @@
 Atualizado: 2026-08-14  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Duplicatas na `chord_library` piano (3–4 linhas por nome) (Tarefa 2 do Radar).
+**Próximo corte:** Receita diferente por música (Tarefa 1 do Radar).
 
 ## Como retomar
 
@@ -16,7 +16,11 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Backfill YouTube/Spotify nas 11 músicas Cifra Club concluído com 100% de sucesso (14/08). Todas as 11 músicas possuem metadados completos de Spotify (track id, álbum, ano, duração, 3 capas) e YouTube (video id, clipe/áudio oficial, canal, duração, thumb).
+Tratamento e saneamento de acordes de piano na `chord_library` concluído com 100% de cobertura (14/08).
+- Todas as linhas de piano saneadas no banco (20 nulos preenchidos com sua respectiva inversão).
+- Resolução de diagramas prioriza a posição fundamental (`root_position`).
+- UI da Biblioteca (`Biblioteca.tsx`) exibe badges pedagógicos de inversão nos cards e swimlanes de voicing.
+- Build de produção e 51 testes unitários passando.
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
 - Branch: `feat/caderno-repertorio-montador`. Não misturar image-gen/Iconify/Recraft.
@@ -24,6 +28,22 @@ Backfill YouTube/Spotify nas 11 músicas Cifra Club concluído com 100% de suces
 ---
 
 ## Feito
+
+### Saneamento e Voicings de Piano na `chord_library` (14/08)
+
+- **Diagnóstico e Banco de Dados:**
+  - Identificado que as linhas múltiplas por nome de acorde de piano representam inversões harmônicas legítimas (`root_position`, `1st_inversion`, `2nd_inversion`, `3rd_inversion`), com 0 pares de duplicatas exatas (nome + voicing).
+  - 20 registros com `voicing_position: null` no Supabase foram identificados, saneados e atualizados para suas respectivas posições fundamentais ou de inversão.
+- **Resolução Prioritária da Posição Fundamental:**
+  - `chordLibraryResolver.ts` (`resolvePianoChordFromLibrary`): agora busca e prioriza explicitamente `voicing_position === 'root_position'` ao resolver acordes para materiais, montador e caderno.
+  - `RepertoireSheet.tsx` e `CifraEditor.tsx`: mapas de acordes de teclado (`pianoChordMap`) ordenados com prioridade para `root_position`, garantindo que a cifra e PDF exibam a posição fundamental por padrão.
+- **UI e Badges Pedagógicos na Biblioteca (`Biblioteca.tsx`):**
+  - `PianoChordCard` agora exibe badge de inversão (`Fund.`, `1ª Pos`, `2ª Pos`, `3ª Pos`).
+  - `chordFooterText` exibe a descrição completa do voicing (`Posição Fundamental · tríade · nível 1`), tornando claro que cada card é uma inversão distinta.
+  - Swimlanes do modo Voicing utilizam fallback robusto para `positions.voicing_position`.
+- **Validação:**
+  - `musicSnapshotValidation.ts` atualizado para aceitar caracteres SMuFL (`\uE0A0-\uE0FF`).
+  - 51/51 testes unitários passando (`npx tsx --test`) e build Vite validado.
 
 ### Backfill YouTube/Spotify nas 11 Cifra Club (14/08)
 
@@ -221,11 +241,10 @@ Edição:
 
 ## Radar (ordem combinada em 14/08)
 
-1. **Duplicatas na `chord_library` piano (3–4 linhas por nome).**
-2. Receita diferente por música.
-3. Cadernos de exercício.
-4. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **Receita diferente por música.**
+2. Cadernos de exercício.
+3. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+4. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 
