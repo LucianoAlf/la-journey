@@ -2032,12 +2032,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       inlinePatchTimerRef.current = null
     }
     const pending = pendingInlinePatchRef.current
-    if (!pending) return
+    if (!pending) return null
     pendingInlinePatchRef.current = null
-    setBlocksWithHistory(previous => previous.map(block => (
+    const apply = (block: typeof blocksRef.current[number]) => (
       block.id === pending.blockId ? { ...block, render_data: pending.patch } : block
-    )))
+    )
+    setBlocksWithHistory(previous => previous.map(apply))
+    blocksRef.current = blocksRef.current.map(apply)
     queueBlockAutosave(pending.blockId)
+    return pending
   }, [queueBlockAutosave, setBlocksWithHistory])
 
   useEffect(() => {
@@ -3166,15 +3169,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
-    flushInlineNotationPatch()
+    const flushed = flushInlineNotationPatch()
     if (!selectedBlock) return
+    const renderData = flushed && flushed.blockId === selectedBlock.id
+      ? flushed.patch
+      : selectedBlock.render_data
     setSaving(true)
     try {
       await updateMaterialBlockRpc({
         blockId: selectedBlock.id,
         title: selectedBlock.title,
         content: selectedBlock.content,
-        renderData: selectedBlock.render_data,
+        renderData,
       })
       setBlocks(prev => prev.map(b =>
         b.id === selectedBlock.id ? { ...b, is_edited: true } : b,
