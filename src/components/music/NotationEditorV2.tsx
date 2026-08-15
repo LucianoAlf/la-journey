@@ -1,25 +1,20 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { FloppyDisk, Trash, X, ArrowCounterClockwise, ArrowClockwise, Timer, ArrowUp, ArrowDown, Play, Pause, Export, MusicNote, PianoKeys } from '@phosphor-icons/react'
+import { FloppyDisk, Trash, X, Export, MusicNote } from '@phosphor-icons/react'
 import * as Tone from 'tone'
 import MidiWriter from 'midi-writer-js'
 import { AlphaTabViewer } from './AlphaTabViewer'
 import { NotationSvgEditor, type Beat as SvgBeat, type BeatDuration, type PitchData } from './NotationSvgEditor'
 import { NotationAlphaTabSurface } from './NotationAlphaTabSurface'
 import { NotationDurationStrip } from './NotationDurationStrip'
+import { NotationToolsSidebar } from './NotationToolsSidebar'
 import { readNotationSurface } from '@/lib/notationSurface'
 import type { Beat as AlphaTexBeat } from '@/lib/beatsToAlphaTex'
 import { beatsToAlphaTexWithMap } from '@/lib/beatsToAlphaTex'
-import {
-  CLEF_OPTIONS,
-  KEY_SIGNATURE_OPTIONS,
-  TIME_SIGNATURE_OPTIONS,
-  TUPLET_OPTIONS,
-} from '@/lib/notationEditorChrome'
+import { TUPLET_OPTIONS } from '@/lib/notationEditorChrome'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -1186,67 +1181,46 @@ export function NotationEditorV2({
           </DialogTitle>
         </DialogHeader>
 
-        {/* ── Linha 1: Config principal ── */}
+        {/* ── Linha 1: Ferramentas e metadados ── */}
         <div className="flex gap-2 flex-wrap items-end mb-2.5">
-          {/* Modo */}
-          <div className="space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Modo</span>
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              <button
-                onClick={() => setTimeSignature('free')}
-                className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                  timeSignature === 'free' ? 'bg-accent text-white' : 'text-text3 hover:bg-accent/10 hover:text-accent'
-                }`}
-              >
-                Livre
-              </button>
-              <button
-                onClick={() => setTimeSignature('4/4')}
-                className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                  timeSignature !== 'free' ? 'bg-accent text-white' : 'text-text3 hover:bg-accent/10 hover:text-accent'
-                }`}
-              >
-                Compasso
-              </button>
-            </div>
-          </div>
-
-          {/* Fórmula de Compasso (só aparece em modo Compasso) */}
-          {timeSignature !== 'free' && (
-            <div className="space-y-1 min-w-[140px]">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Compasso</span>
-              <Select value={timeSignature} onValueChange={setTimeSignature}>
-                <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TIME_SIGNATURE_OPTIONS.filter(o => o.value !== 'free').map(o => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Clave */}
-          <div className="space-y-1 min-w-[80px]">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Clave</span>
-            <Select value={clef} onValueChange={setClef}>
-              <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CLEF_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Armadura */}
-          <div className="space-y-1 min-w-[160px]">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Armadura</span>
-            <Select value={keySignature} onValueChange={setKeySignature}>
-              <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {KEY_SIGNATURE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          <NotationToolsSidebar
+            layout="row"
+            timeSignature={timeSignature}
+            clef={clef}
+            keySignature={keySignature}
+            currentTuplet={currentTuplet}
+            bpm={bpm}
+            grandStaffMode={grandStaffMode}
+            activeStaff={activeStaff}
+            canUndo={historyIdx > 0}
+            canRedo={historyIdx < history.length - 1}
+            isPlaying={isPlaying}
+            onTimeSignature={setTimeSignature}
+            onClef={setClef}
+            onKeySignature={setKeySignature}
+            onTuplet={(value) => {
+              setCurrentTuplet(value)
+              if (value !== 'none') {
+                const option = TUPLET_OPTIONS.find(tuplet => tuplet.value === value)
+                if (option) {
+                  tupletCounterRef.current = option.numNotes
+                  tupletGroupIdRef.current = `tup-${Date.now()}`
+                }
+              } else {
+                tupletCounterRef.current = 0
+                tupletGroupIdRef.current = ''
+              }
+              focusInput()
+            }}
+            onBpm={setBpm}
+            onGrandStaff={() => setGrandStaffMode(prev => !prev)}
+            onFocusStaff={focusStaff}
+            onTransposeUp={handleTransposeUp}
+            onTransposeDown={handleTransposeDown}
+            onUndo={undo}
+            onRedo={redo}
+            onTogglePlay={isPlaying ? stopPlayback : startPlayback}
+          />
 
           {/* Categoria */}
           <div className="space-y-1 min-w-[100px]">
@@ -1271,51 +1245,8 @@ export function NotationEditorV2({
           </div>
         </div>
 
-        {/* ── Toolbar: Tudo em uma linha ── */}
+        {/* ── Duração e acidentes ── */}
         <div className="flex flex-wrap items-center gap-1 mb-3">
-          {/* Grande Pauta (Piano) */}
-          <button
-            onClick={() => setGrandStaffMode(prev => !prev)}
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
-              ${grandStaffMode
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-            title="Grande Pauta (Piano)"
-          >
-            <PianoKeys className="h-4 w-4" />
-          </button>
-
-          {/* Botões de seleção de pauta (mão direita/esquerda) */}
-          {grandStaffMode && (
-            <>
-              <button
-                onClick={() => { focusStaff('treble') }}
-                className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 transition-colors ${
-                  activeStaff === 'treble'
-                    ? 'border-accent bg-accent/20 text-accent'
-                    : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-                }`}
-                title="Pauta Sol - Mão Direita (Tab para alternar)"
-              >
-                𝄞 Sol (MD)
-              </button>
-              <button
-                onClick={() => { focusStaff('bass') }}
-                className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 transition-colors ${
-                  activeStaff === 'bass'
-                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-500'
-                    : 'border-border text-text3 hover:border-indigo-500/50 hover:text-indigo-500'
-                }`}
-                title="Pauta Fá - Mão Esquerda (Tab para alternar)"
-              >
-                𝄢 Fá (ME)
-              </button>
-            </>
-          )}
-
-          <div className="w-px h-5 bg-border mx-0.5" />
-
           <NotationDurationStrip
             currentDuration={currentDuration}
             currentAccidental={currentAccidental}
@@ -1341,109 +1272,6 @@ export function NotationEditorV2({
             }}
           />
 
-          {/* Quiálteras/Tuplets */}
-          <Select value={currentTuplet} onValueChange={(v) => {
-            setCurrentTuplet(v)
-            if (v !== 'none') {
-              const opt = TUPLET_OPTIONS.find(o => o.value === v)
-              if (opt) {
-                tupletCounterRef.current = opt.numNotes
-                tupletGroupIdRef.current = `tup-${Date.now()}`
-              }
-            } else {
-              tupletCounterRef.current = 0
-              tupletGroupIdRef.current = ''
-            }
-            focusInput()
-          }}>
-            <SelectTrigger className={`h-7 w-auto min-w-[70px] text-[11px] px-2 gap-0.5 ${currentTuplet !== 'none' ? 'border-orange-500/50 text-orange-500' : 'border-border text-text3'}`}>
-              <SelectValue>
-                <span className="font-mono text-[10px]">┌ {currentTuplet !== 'none' ? currentTuplet : '3:2'} ┐</span>
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {TUPLET_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value} className="text-[12px]">{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="w-px h-5 bg-border mx-0.5" />
-
-          <div className="w-px h-5 bg-border mx-0.5" />
-
-          {/* Transposição */}
-          <button
-            onClick={handleTransposeDown}
-            title="Transpor ½ tom abaixo (↓)"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-text3 hover:border-accent/50 hover:text-accent transition-colors"
-          >
-            <ArrowDown className="h-4 w-4" />
-          </button>
-          <button
-            onClick={handleTransposeUp}
-            title="Transpor ½ tom acima (↑)"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-text3 hover:border-accent/50 hover:text-accent transition-colors"
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
-
-          <div className="w-px h-5 bg-border mx-0.5" />
-
-          {/* Undo/Redo */}
-          <button
-            onClick={undo}
-            disabled={historyIdx <= 0}
-            title="Desfazer (Ctrl+Z)"
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
-              ${historyIdx <= 0
-                ? 'border-border/50 text-text3/30 cursor-not-allowed'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-          >
-            <ArrowCounterClockwise className="h-4 w-4" />
-          </button>
-          <button
-            onClick={redo}
-            disabled={historyIdx >= history.length - 1}
-            title="Refazer (Ctrl+Y)"
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
-              ${historyIdx >= history.length - 1
-                ? 'border-border/50 text-text3/30 cursor-not-allowed'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-          >
-            <ArrowClockwise className="h-4 w-4" />
-          </button>
-
-          <div className="w-px h-5 bg-border mx-0.5" />
-
-          {/* Playback */}
-          <button
-            onClick={isPlaying ? stopPlayback : startPlayback}
-            title={isPlaying ? 'Parar' : 'Tocar (Espaço)'}
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors
-              ${isPlaying
-                ? 'border-accent bg-accent text-white'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-          >
-            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </button>
-
-          {/* BPM */}
-          <div className="flex items-center gap-1 ml-1">
-            <Timer className="h-3.5 w-3.5 text-text3" />
-            <Slider
-              value={[bpm]}
-              onValueChange={([v]) => setBpm(v)}
-              min={40}
-              max={220}
-              step={1}
-              className="w-16"
-            />
-            <span className="text-[10px] text-text3 min-w-[24px]">{bpm}</span>
-          </div>
         </div>
 
         {/* ── Layout principal: Editor + Info ── */}
