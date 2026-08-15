@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import * as Tone from 'tone'
 import type { NotationDurationStripProps } from './NotationDurationStrip'
 import { DURATION_OPTIONS } from '@/lib/notationEditorChrome'
-import { playNotePreview } from '@/lib/notationInlineAudio'
+import { playNotePreview, soundingPitch } from '@/lib/notationInlineAudio'
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
 import { resolveNotationKeyAction } from '@/lib/notationInlineKeyboard'
 import {
@@ -183,7 +183,7 @@ export function useNotationInlineSession({
     if (beat?.staff) setActiveStaff(beat.staff)
     if (beat && !beat.isRest && beat.pitches[0]) {
       lastPitchRef.current = beat.pitches[0].pitch
-      void playNotePreview(beat.pitches.map(({ pitch }) => pitch))
+      void playNotePreview(beat.pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     }
     focusInput()
   }, [beats, focusInput])
@@ -197,7 +197,7 @@ export function useNotationInlineSession({
     commit(result.beats)
     setSelectedBeatIdx(result.selectedBeatIdx)
     lastPitchRef.current = pitch
-    void playNotePreview([pitch])
+    void playNotePreview([soundingPitch(pitch, currentAccidental)])
     if (staff) setActiveStaff(staff)
     focusInput()
   }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx])
@@ -206,7 +206,7 @@ export function useNotationInlineSession({
     const result = replaceNote({ beats, atIdx, pitch, accidental: currentAccidental })
     commit(result.beats)
     lastPitchRef.current = pitch
-    void playNotePreview([pitch])
+    void playNotePreview([soundingPitch(pitch, currentAccidental)])
     focusInput()
   }, [beats, commit, currentAccidental, focusInput])
 
@@ -233,7 +233,7 @@ export function useNotationInlineSession({
     if (beat?.staff) setActiveStaff(beat.staff)
     if (beat && !beat.isRest && beat.pitches[0]) {
       lastPitchRef.current = beat.pitches[0].pitch
-      void playNotePreview(beat.pitches.map(({ pitch }) => pitch))
+      void playNotePreview(beat.pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     }
     focusInput()
   }, [beats, focusInput, selectedBeatIdx])
@@ -257,7 +257,7 @@ export function useNotationInlineSession({
     })
     updateBeat(selectedBeatIdx, { pitches: nextPitches })
     lastPitchRef.current = nextPitches[0].pitch
-    void playNotePreview(nextPitches.map(({ pitch }) => pitch))
+    void playNotePreview(nextPitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
   }, [beats, selectedBeatIdx, updateBeat])
 
   const addChordNote = useCallback((note: string) => {
@@ -269,7 +269,7 @@ export function useNotationInlineSession({
     const nextPitches = [...beat.pitches, { pitch, accidental: currentAccidental || undefined }]
     updateBeat(selectedBeatIdx, { pitches: nextPitches })
     lastPitchRef.current = pitch
-    void playNotePreview(nextPitches.map(({ pitch: chordPitch }) => chordPitch))
+    void playNotePreview(nextPitches.map(({ pitch: chordPitch, accidental }) => soundingPitch(chordPitch, accidental)))
   }, [activeStaff, beats, clef, currentAccidental, grandStaff, selectedBeatIdx, updateBeat])
 
   const insertNoteByName = useCallback((note: string) => {
@@ -408,6 +408,7 @@ export function useNotationInlineSession({
       const pitches = beat.pitches.map(pitch => ({ ...pitch, pitch: transposePitch(pitch.pitch, 1), accidental: undefined }))
       updateBeat(selectedBeatIdx, { pitches })
       lastPitchRef.current = pitches[0]?.pitch ?? null
+      void playNotePreview(pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     },
     onTransposeDown: () => {
       const beat = beats[selectedBeatIdx]
@@ -415,6 +416,7 @@ export function useNotationInlineSession({
       const pitches = beat.pitches.map(pitch => ({ ...pitch, pitch: transposePitch(pitch.pitch, -1), accidental: undefined }))
       updateBeat(selectedBeatIdx, { pitches })
       lastPitchRef.current = pitches[0]?.pitch ?? null
+      void playNotePreview(pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     },
     onUndo: undo, onRedo: redo, onTogglePlay: isPlaying ? stopPlayback : startPlayback,
     handleKeyDown,
