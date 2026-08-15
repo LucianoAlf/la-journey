@@ -75,10 +75,22 @@ export function StaffNotation({
 
       new Formatter().joinVoices([voice]).format([voice], staveWidth - 80)
       voice.draw(context, stave)
+
+      const svg = ref.current.querySelector('svg')
+      if (svg) {
+        svg.removeAttribute('width')
+        svg.removeAttribute('height')
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+        svg.setAttribute('preserveAspectRatio', 'xMinYMid meet')
+        svg.style.width = '100%'
+        svg.style.height = 'auto'
+        svg.style.maxWidth = '100%'
+        svg.style.display = 'block'
+      }
     } catch (e) {
       console.error('StaffNotation render error:', e)
     }
   }, [notes, clef, timeSignature, keySignature, width, height])
 
-  return <div ref={ref} className="overflow-x-auto notation-container bg-white rounded-lg" />
+  return <div ref={ref} className="w-full min-w-0 overflow-x-auto notation-container bg-white rounded-lg" />
 }

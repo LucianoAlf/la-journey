@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict'
+import { A4_NOTATION_CONTENT_WIDTH, resolveNotationPreviewWidth } from '../notationPreviewWidth'
+
+function test(name: string, fn: () => void) {
+  try {
+    fn()
+    console.log(`ok - ${name}`)
+  } catch (error) {
+    console.error(`not ok - ${name}`)
+    throw error
+  }
+}
+
+test('uses stored width when it is a positive number', () => {
+  assert.equal(resolveNotationPreviewWidth({ width: 620 }), 620)
+})
+
+test('falls back to A4 content width when width is missing', () => {
+  assert.equal(resolveNotationPreviewWidth({}), A4_NOTATION_CONTENT_WIDTH)
+  assert.equal(resolveNotationPreviewWidth(null), A4_NOTATION_CONTENT_WIDTH)
+  assert.equal(resolveNotationPreviewWidth(undefined), A4_NOTATION_CONTENT_WIDTH)
+})
+
+test('ignores invalid stored widths', () => {
+  assert.equal(resolveNotationPreviewWidth({ width: 0 }), A4_NOTATION_CONTENT_WIDTH)
+  assert.equal(resolveNotationPreviewWidth({ width: -12 }), A4_NOTATION_CONTENT_WIDTH)
+  assert.equal(resolveNotationPreviewWidth({ width: '450' }), A4_NOTATION_CONTENT_WIDTH)
+})
+
+test('A4 content width is the printable page minus the usual 40px side padding', () => {
+  assert.equal(A4_NOTATION_CONTENT_WIDTH, 794 - 80)
+})
