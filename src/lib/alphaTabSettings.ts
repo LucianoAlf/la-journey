@@ -20,6 +20,9 @@ export interface BuildAlphaTabSettingsOptions {
   systemPaddingBottom?: number
 }
 
+/** Escala da gravura de notação para material didático (canvas, modal e preview). */
+export const NOTATION_DIDACTIC_SCALE = 1.35
+
 function isTabPurpose(purpose: AlphaTabPurpose) {
   return purpose === 'editor-tablature-tab'
     || purpose === 'canvas-tablature-tab'

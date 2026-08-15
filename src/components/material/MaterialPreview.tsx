@@ -61,6 +61,7 @@ import {
 } from '@/services/chordLibraryResolver'
 import { TitleTemplateRenderer } from '@/components/material/TitleTemplateRenderer'
 import { resolveNotationPreviewWidth } from '@/lib/notationPreviewWidth'
+import { NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
 
 export interface MaterialBlock {
   id?: string
@@ -854,7 +855,7 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
         <AlphaTabViewer
           tex={displayAlphaTex}
           minHeight={130}
-          scale={1}
+          scale={NOTATION_DIDACTIC_SCALE}
           staveProfile="score"
           purpose="canvas-notation-score"
           layout="page"

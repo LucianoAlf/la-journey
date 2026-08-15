@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { AlphaTabViewer, type AlphaTabViewerHandle } from './AlphaTabViewer'
 import { A4_CANVAS_NOTATION_WIDTH } from '@/lib/notationPreviewWidth'
+import { NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
 import { emptyStaffAlphaTex, ledgerLineYs, pitchFromStaffY, staffYFromPitch } from '@/lib/notationStaffPitch'
 import { resolveInsertAfterIndex, resolveModelBeatIndex } from '@/lib/notationBeatHit'
 
@@ -201,10 +202,10 @@ export function NotationAlphaTabSurface({
         purpose={variant === 'canvas' || !grandStaffMode ? 'canvas-notation-score' : 'editor-notation-grand-staff'}
         staveProfile="score"
         layout={grandStaffMode ? 'horizontal' : 'page'}
-        scale={1}
+        scale={NOTATION_DIDACTIC_SCALE}
         showTimeSignature={timeSignature != null}
         includeNoteBounds
-        minHeight={160}
+        minHeight={200}
         grandStaffMode={grandStaffMode}
         onBeatMouseDown={handleBeatMouseDown}
         onRenderFinished={handleRenderFinished}
