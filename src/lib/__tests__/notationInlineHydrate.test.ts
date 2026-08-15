@@ -34,6 +34,21 @@ test('pointed stave hydrates only that stave', () => {
   assert.equal(session.beats[0].pitches[0].pitch, 'E/4')
 })
 
+test('pointed stave ignores notation_data on multi-stave blocks', () => {
+  const session = hydrateNotationFromBlock({
+    render_data: {
+      ...twoStaves,
+      notation_data: {
+        beats: [{ pitches: [{ pitch: 'A/4' }], duration: 'q', isRest: false }],
+      },
+    },
+    content: {},
+    staveIndex: 1,
+  })
+  assert.equal(session.beats.length, 3)
+  assert.equal(session.beats[0].pitches[0].pitch, 'E/4')
+})
+
 test('notation_data beats win over legacy staves', () => {
   const session = hydrateNotationFromBlock({
     render_data: {
