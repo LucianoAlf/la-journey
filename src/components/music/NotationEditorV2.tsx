@@ -5,9 +5,16 @@ import MidiWriter from 'midi-writer-js'
 import { AlphaTabViewer } from './AlphaTabViewer'
 import { NotationSvgEditor, type Beat as SvgBeat, type BeatDuration, type PitchData } from './NotationSvgEditor'
 import { NotationAlphaTabSurface } from './NotationAlphaTabSurface'
+import { NotationDurationStrip } from './NotationDurationStrip'
 import { readNotationSurface } from '@/lib/notationSurface'
 import type { Beat as AlphaTexBeat } from '@/lib/beatsToAlphaTex'
 import { beatsToAlphaTexWithMap } from '@/lib/beatsToAlphaTex'
+import {
+  CLEF_OPTIONS,
+  KEY_SIGNATURE_OPTIONS,
+  TIME_SIGNATURE_OPTIONS,
+  TUPLET_OPTIONS,
+} from '@/lib/notationEditorChrome'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,60 +34,7 @@ import { editorDurationFromRaw } from '@/lib/notationBeatNormalize'
 export type { BeatDuration, PitchData }
 export type Beat = SvgBeat
 
-// ─── Durações ───────────────────────────────────────────────────────
-
-const DURATION_OPTIONS: { value: BeatDuration; label: string; symbol: string; beats: number; key: string }[] = [
-  { value: 'w', label: 'Semibreve', symbol: '𝅝', beats: 4, key: '7' },
-  { value: 'h', label: 'Mínima', symbol: '𝅗𝅥', beats: 2, key: '6' },
-  { value: 'q', label: 'Semínima', symbol: '♩', beats: 1, key: '5' },
-  { value: '8', label: 'Colcheia', symbol: '♪', beats: 0.5, key: '4' },
-  { value: '16', label: 'Semicolcheia', symbol: '𝅘𝅥𝅯', beats: 0.25, key: '3' },
-  { value: '32', label: 'Fusa', symbol: '𝅘𝅥𝅰', beats: 0.125, key: '2' },
-  { value: '64', label: 'Semifusa', symbol: '𝅘𝅥𝅱', beats: 0.0625, key: '1' },
-]
-
 const DURATION_BEATS: Record<BeatDuration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
-
-// ─── Claves ─────────────────────────────────────────────────────────
-
-const CLEF_OPTIONS = [
-  { value: 'treble', label: 'Sol (Treble)' },
-  { value: 'bass', label: 'Fá (Bass)' },
-  { value: 'alto', label: 'Dó (Alto)' },
-  { value: 'percussion', label: 'Percussão' },
-]
-
-// ─── Armaduras ──────────────────────────────────────────────────────
-
-const KEY_SIGNATURE_OPTIONS = [
-  { value: 'C', label: 'C / Am (sem alteração)' },
-  { value: 'G', label: 'G / Em (1♯)' },
-  { value: 'D', label: 'D / Bm (2♯)' },
-  { value: 'A', label: 'A / F♯m (3♯)' },
-  { value: 'E', label: 'E / C♯m (4♯)' },
-  { value: 'B', label: 'B / G♯m (5♯)' },
-  { value: 'F#', label: 'F♯ / D♯m (6♯)' },
-  { value: 'F', label: 'F / Dm (1♭)' },
-  { value: 'Bb', label: 'B♭ / Gm (2♭)' },
-  { value: 'Eb', label: 'E♭ / Cm (3♭)' },
-  { value: 'Ab', label: 'A♭ / Fm (4♭)' },
-  { value: 'Db', label: 'D♭ / B♭m (5♭)' },
-  { value: 'Gb', label: 'G♭ / E♭m (6♭)' },
-]
-
-// ─── Fórmulas de compasso ───────────────────────────────────────────
-
-const TIME_SIGNATURE_OPTIONS = [
-  { value: 'free', label: 'Livre (sem compasso)' },
-  { value: '2/4', label: '2/4' },
-  { value: '3/4', label: '3/4 — Valsa' },
-  { value: '4/4', label: '4/4 — Quaternário' },
-  { value: '5/4', label: '5/4' },
-  { value: '6/4', label: '6/4' },
-  { value: '6/8', label: '6/8 — Balada' },
-  { value: '9/8', label: '9/8' },
-  { value: '12/8', label: '12/8 — Blues' },
-]
 
 // ─── Categorias ─────────────────────────────────────────────────────
 
@@ -93,16 +47,6 @@ const CATEGORY_OPTIONS = [
   { value: 'Exercício', label: 'Exercício' },
   { value: 'Melodia', label: 'Melodia' },
   { value: 'Outro', label: 'Outro' },
-]
-
-// ─── Quiálteras/Tuplets ─────────────────────────────────────────────
-
-const TUPLET_OPTIONS = [
-  { value: 'none', label: 'Sem quiáltera', numNotes: 0, notesOccupied: 0 },
-  { value: '3:2', label: 'Tercina (3:2)', numNotes: 3, notesOccupied: 2 },
-  { value: '5:4', label: 'Quintina (5:4)', numNotes: 5, notesOccupied: 4 },
-  { value: '6:4', label: 'Sextina (6:4)', numNotes: 6, notesOccupied: 4 },
-  { value: '7:4', label: 'Septina (7:4)', numNotes: 7, notesOccupied: 4 },
 ]
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -1372,25 +1316,20 @@ export function NotationEditorV2({
 
           <div className="w-px h-5 bg-border mx-0.5" />
 
-          {/* Durações */}
-          {DURATION_OPTIONS.map(d => (
-            <button
-              key={d.value}
-              onClick={() => { setCurrentDuration(d.value); focusInput() }}
-              title={`${d.label} (${d.key})`}
-              className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[15px] transition-colors
-                ${currentDuration === d.value
-                  ? 'border-accent bg-accent text-white'
-                  : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-                }`}
-            >
-              {d.symbol}
-            </button>
-          ))}
-
-          {/* Pausa */}
-          <button
-            onClick={() => {
+          <NotationDurationStrip
+            currentDuration={currentDuration}
+            currentAccidental={currentAccidental}
+            dotted={dotted}
+            doubleDotted={doubleDotted}
+            onDuration={(duration) => { setCurrentDuration(duration); focusInput() }}
+            onAccidental={(accidental) => { setCurrentAccidental(accidental); focusInput() }}
+            onToggleDot={() => {
+              if (doubleDotted) { setDotted(false); setDoubleDotted(false) }
+              else if (dotted) { setDotted(false); setDoubleDotted(true) }
+              else { setDotted(true) }
+              focusInput()
+            }}
+            onInsertRest={() => {
               const newBeat: SvgBeat = { pitches: [], duration: currentDuration, isRest: true, dotted, doubleDotted }
               const insertIdx = selectedBeatIdx >= 0 ? selectedBeatIdx + 1 : beats.length
               const newBeats = [...beats]
@@ -1400,29 +1339,7 @@ export function NotationEditorV2({
               setSelectedBeatIdx(insertIdx)
               focusInput()
             }}
-            title="Pausa (0)"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
-          >
-            🔇
-          </button>
-
-          {/* Ponto */}
-          <button
-            onClick={() => {
-              if (doubleDotted) { setDotted(false); setDoubleDotted(false) }
-              else if (dotted) { setDotted(false); setDoubleDotted(true) }
-              else { setDotted(true) }
-              focusInput()
-            }}
-            title="Ponto de aumento (.)"
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[15px] font-bold transition-colors
-              ${dotted || doubleDotted
-                ? 'border-accent bg-accent text-white'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-          >
-            •{doubleDotted && '•'}
-          </button>
+          />
 
           {/* Quiálteras/Tuplets */}
           <Select value={currentTuplet} onValueChange={(v) => {
@@ -1452,30 +1369,6 @@ export function NotationEditorV2({
           </Select>
 
           <div className="w-px h-5 bg-border mx-0.5" />
-
-          {/* Acidentes */}
-          <button
-            onClick={() => { setCurrentAccidental('#'); focusInput() }}
-            title="Sustenido (#)"
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[14px] transition-colors
-              ${currentAccidental === '#'
-                ? 'border-accent bg-accent text-white'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-          >
-            ♯
-          </button>
-          <button
-            onClick={() => { setCurrentAccidental('b'); focusInput() }}
-            title="Bemol (B)"
-            className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[14px] transition-colors
-              ${currentAccidental === 'b'
-                ? 'border-accent bg-accent text-white'
-                : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-              }`}
-          >
-            ♭
-          </button>
 
           <div className="w-px h-5 bg-border mx-0.5" />
 
