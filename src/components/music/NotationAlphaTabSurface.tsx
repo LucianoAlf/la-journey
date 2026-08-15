@@ -36,12 +36,20 @@ function resolveAlphaBeatIndex(modelIdx: number, indexMap: number[]): number {
   return -1
 }
 
+function localScale(el: HTMLElement) {
+  const box = el.getBoundingClientRect()
+  const sx = el.offsetWidth === 0 ? 1 : box.width / el.offsetWidth
+  const sy = el.offsetHeight === 0 ? 1 : box.height / el.offsetHeight
+  return { sx: sx || 1, sy: sy || 1 }
+}
+
 function overlayOffset(wrapper: HTMLElement, container: HTMLElement) {
   const wrap = wrapper.getBoundingClientRect()
   const host = container.getBoundingClientRect()
+  const { sx, sy } = localScale(wrapper)
   return {
-    x: host.left - wrap.left + container.scrollLeft,
-    y: host.top - wrap.top + container.scrollTop,
+    x: (host.left - wrap.left) / sx + container.scrollLeft,
+    y: (host.top - wrap.top) / sy + container.scrollTop,
   }
 }
 
@@ -134,9 +142,10 @@ export function NotationAlphaTabSurface({
     setOrigin(offset)
     const wrap = wrapper.getBoundingClientRect()
     const host = container.getBoundingClientRect()
-    const wrapX = event.clientX - wrap.left
-    const atX = event.clientX - host.left + container.scrollLeft
-    const atY = event.clientY - host.top + container.scrollTop
+    const { sx, sy } = localScale(wrapper)
+    const wrapX = (event.clientX - wrap.left) / sx
+    const atX = (event.clientX - host.left) / sx + container.scrollLeft
+    const atY = (event.clientY - host.top) / sy + container.scrollTop
     const box = staffBox ?? readStaffBox()
     if (!box) return
     const pitch = pitchFromStaffY(atY, box.top, box.bottom, staffClef(clef))
