@@ -1,6 +1,6 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-14  
+Atualizado: 2026-08-15  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
 **Próximo corte:** Apostila / Download do editor quando não é songbook.
@@ -22,13 +22,13 @@ Caderno de exercício no ar (tabelas, montador, UI, repertório movido).
 - `npx tsx --test`: 50 arquivos, 0 falhas. `npm run build` ok neste worktree.
 
 - App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
-- Branch deste corte: `feat/caderno-exercicio-montador` (worktree `.worktrees/caderno-exercicio`). Não misturar image-gen/Iconify/Recraft.
+- Branch: `feat/caderno-exercicio-montador` (worktree `.worktrees/caderno-exercicio`) → `main`. Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
 
 ---
 
 ## Feito
 
-### Cadernos de exercício (14/08)
+### Cadernos de exercício (15/08)
 
 - Tabelas dedicadas `exercise_collections` + `exercise_collection_items` (migration `20260814200000_exercise_collections.sql`, aplicada em `rkfszavfqplhorvfpkcq`). Só `exercise_library`. Sem unificar com repertório.
 - Montador `buildExerciseNotebookBlocks`: capa + `page_break` + cabeçalho (título, categoria, nível, minutos) + blocos da biblioteca.
