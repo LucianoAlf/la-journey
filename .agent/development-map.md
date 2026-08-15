@@ -3,7 +3,7 @@
 Atualizado: 2026-08-15  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Notação in-place na A4 (ferramentas do modal na lateral + duração perto da pauta).
+**Próximo corte:** Mapas de acorde e cifra na pauta (lead sheet).
 
 ## Como retomar
 
@@ -16,19 +16,22 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Corte: **escrever na pauta da A4**, gesto MuseScore/Finale/Sibelius. Biblioteca → Notação (modal) **continua**.
-- Clica no bloco de notação: edita na folha. Duração/acidente perto da pauta. Resto das ferramentas atuais na **lateral direita** (no lugar do painel de bloco / configuração da página).
-- Motor: **AlphaTab** (já no produto). MuseScore 3.x é app Qt/QML de desktop ([repo 3.x](https://github.com/musescore/MuseScore/tree/3.x), [API de plugin](https://musescore.github.io/MuseScore_PluginAPI_Docs/plugins/html/index.html)) — **não** entra como SDK web tipo `@coderline/alphatab`.
-- Primeiro corte: só o que o modal já tem. Ligadura, cifra-na-pauta, folha deitada, playhead → Radar.
-- Spec deste corte: `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
-- Plano: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
-- Caderninho (respiro dos dois lados, worker Vite, partitura inteira no modal): worktree `feat/notacao-caderninho`.
-- Simple Browser: **http://localhost:3002**. Produção: https://la-journey.vercel.app
-- Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
+Notação in-place na A4 conferida no browser (15/08). Biblioteca → Notação continua no modal. Rollback `?notationInline=off`.
+- App local: **http://localhost:3002** — produção: https://la-journey.vercel.app
+- Branch: `feat/notacao-caderninho` no worktree `.worktrees/notacao-alphatab-folha`. Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
+- Plano do corte fechado: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
 
 ---
 
 ## Feito
+
+### Notação in-place na A4 (15/08)
+
+- Clique no bloco de notação seleciona e mostra fileira de duração acima da pauta + ferramentas na lateral direita. Não abre modal. Segundo clique / A–G escreve na folha.
+- Motor AlphaTab; modelo `beats` → `beatsToAlphaTex`; `render_data` local + autosave / Salvar Alterações persiste.
+- Biblioteca → Notação continua no `NotationEditorV2`. Rollback: `?notationInline=off` (botão Editar Notação volta).
+- Spec: `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+- Plano: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
 
 ### Modal Editar notação = AlphaTab do canvas (15/08)
 
