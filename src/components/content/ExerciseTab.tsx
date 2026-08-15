@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowSquareOut, Copy, MagnifyingGlass, PencilSimple, SpinnerGap, Trash, Warning } from '@phosphor-icons/react'
 import { ExerciseCard } from './ExerciseCard'
-import { RepertoireNotebookTab } from './RepertoireNotebookTab'
+import { ExerciseNotebookTab } from './ExerciseNotebookTab'
 import { MaterialPreview, type MaterialBlock } from '@/components/material/MaterialPreview'
 import { useExerciseCounts, useExerciseLibrary } from '@/hooks/useExerciseLibrary'
 import type { ExerciseLibraryFilters, ExerciseLibraryItem } from '@/services/exerciseLibraryService'
@@ -23,7 +23,7 @@ const SUB_TABS = [
   { id: 'scales', label: 'Escalas', filter: { category: 'scales' } },
   { id: 'intervals', label: 'Intervalos', filter: { category: 'intervals' } },
   { id: 'pieces', label: 'Peças', filter: { category: 'piece' } },
-  { id: 'notebooks', label: '📚 Cadernos de Repertório', filter: {} },
+  { id: 'notebooks', label: 'Cadernos', filter: {} },
 ]
 
 const INSTRUMENTS = [
@@ -177,7 +177,7 @@ export function ExerciseTab() {
           {isNotebookTab ? (
             <div className="w-full">
               <p className="text-[12px] text-text3">
-                Explore e organize cadernos de repertório sem misturar a lógica da biblioteca de exercícios.
+                Monte cadernos de exercício a partir da biblioteca. Cada caderno vira um material no editor.
               </p>
             </div>
           ) : (
@@ -246,7 +246,7 @@ export function ExerciseTab() {
       </div>
 
       {isNotebookTab ? (
-        <RepertoireNotebookTab />
+        <ExerciseNotebookTab />
       ) : error ? (
         <div className="rounded-[14px] bg-red-500/10 border border-red-500/20 p-6 text-center">
           <Warning size={24} className="mx-auto mb-2 text-red-400" />

@@ -1,0 +1,240 @@
+import { useEffect, useState } from 'react'
+import { Books, FloppyDisk } from '@phosphor-icons/react'
+import { CoverTemplatePicker } from '@/components/content/CoverTemplatePicker'
+import { COVER_TEMPLATES, type CoverTemplate } from '@/lib/notebookMaterialAssembler'
+import { EXERCISE_INSTRUMENTS } from '@/lib/exerciseLibraryOptions'
+import type { ExerciseCollection } from '@/services/exerciseCollectionService'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+
+interface ExerciseNotebookFormValues {
+  name: string
+  description: string
+  instrument: string
+  difficulty_level: string
+}
+
+interface ExerciseNotebookFormDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (values: ExerciseNotebookFormValues) => Promise<ExerciseCollection | void>
+  onPersistCover?: (
+    notebook: ExerciseCollection,
+    cover: { coverTemplate: CoverTemplate; coverImageUrl: string | null }
+  ) => Promise<void>
+  loading?: boolean
+  notebook?: ExerciseCollection | null
+  schoolId?: string
+}
+
+const LEVEL_OPTIONS = [
+  { value: 'foundation', label: 'Foundation' },
+  { value: 'grow', label: 'Grow' },
+  { value: 'advance', label: 'Advance' },
+  { value: 'master', label: 'Master' },
+]
+
+export function ExerciseNotebookFormDialog({
+  open,
+  onOpenChange,
+  onSave,
+  onPersistCover,
+  loading = false,
+  notebook = null,
+  schoolId,
+}: ExerciseNotebookFormDialogProps) {
+  const [values, setValues] = useState<ExerciseNotebookFormValues>({
+    name: '',
+    description: '',
+    instrument: 'universal',
+    difficulty_level: 'foundation',
+  })
+  const [step, setStep] = useState<'form' | 'cover'>('form')
+  const [created, setCreated] = useState<ExerciseCollection | null>(null)
+  const [coverTemplate, setCoverTemplate] = useState<CoverTemplate>(COVER_TEMPLATES[0])
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) {
+      setStep('form')
+      setCreated(null)
+      setCoverTemplate(COVER_TEMPLATES[0])
+      setCoverImageUrl(null)
+      setSaving(false)
+      return
+    }
+
+    setValues({
+      name: notebook?.name ?? '',
+      description: notebook?.description ?? '',
+      instrument: notebook?.instrument ?? 'universal',
+      difficulty_level: notebook?.difficulty_level ?? 'foundation',
+    })
+  }, [notebook, open])
+
+  const handleSubmit = async () => {
+    if (!values.name.trim() || saving) return
+    setSaving(true)
+    try {
+      const result = await onSave({
+        ...values,
+        name: values.name.trim(),
+        description: values.description.trim(),
+      })
+      if (!notebook && result && 'id' in result) {
+        setCreated(result)
+        setStep('cover')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const busy = loading || saving
+  const showCover = step === 'cover' && !notebook
+
+  const persistCover = async () => {
+    if (!created || !onPersistCover) return
+    await onPersistCover(created, {
+      coverTemplate,
+      coverImageUrl,
+    })
+  }
+
+  const persistCoverAndClose = async () => {
+    if (busy) return
+    setSaving(true)
+    try {
+      await persistCover()
+      onOpenChange(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && step === 'cover' && created) {
+      void persistCoverAndClose()
+      return
+    }
+    onOpenChange(nextOpen)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent className="max-w-xl bg-surface border-border">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-serif text-[20px]">
+            <Books size={18} className="text-accent" />
+            {notebook ? 'Editar Caderno' : showCover ? 'Capa do caderno' : 'Novo Caderno de Exercício'}
+          </DialogTitle>
+        </DialogHeader>
+
+        {showCover ? (
+          <div className="space-y-3 py-1">
+            <p className="text-[12px] text-text3">
+              Escolha um layout e, se quiser, uma imagem da biblioteca.
+            </p>
+            <CoverTemplatePicker
+              schoolId={schoolId}
+              template={coverTemplate}
+              imageUrl={coverImageUrl}
+              onTemplateChange={setCoverTemplate}
+              onImageUrlChange={setCoverImageUrl}
+            />
+            <p className="text-[11px] text-text3">
+              Adicione exercícios ao caderno para montar o rascunho.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label className="text-[11px]">Nome *</Label>
+              <Input
+                value={values.name}
+                onChange={(e) => setValues((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Ex: Técnica Grow — Violão"
+                className="h-9 text-[13px]"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[11px]">Descrição</Label>
+              <Textarea
+                value={values.description}
+                onChange={(e) => setValues((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Resumo pedagógico do caderno"
+                className="min-h-[88px] text-[13px]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-[11px]">Instrumento</Label>
+                <Select
+                  value={values.instrument}
+                  onValueChange={(value) => setValues((prev) => ({ ...prev, instrument: value }))}
+                >
+                  <SelectTrigger className="h-9 text-[12px] w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXERCISE_INSTRUMENTS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[11px]">Nível</Label>
+                <Select
+                  value={values.difficulty_level}
+                  onValueChange={(value) => setValues((prev) => ({ ...prev, difficulty_level: value }))}
+                >
+                  <SelectTrigger className="h-9 text-[12px] w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LEVEL_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          {showCover ? (
+            <>
+              <Button variant="outline" onClick={persistCoverAndClose} disabled={busy}>
+                Agora não
+              </Button>
+              <Button onClick={persistCoverAndClose} disabled={busy}>
+                <FloppyDisk size={14} />
+                {saving ? 'Salvando...' : 'Concluir'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSubmit} disabled={!values.name.trim() || busy}>
+                <FloppyDisk size={14} />
+                {saving ? 'Salvando...' : 'Salvar Caderno'}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

@@ -1,4 +1,4 @@
-import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass, Star, UploadSimple, Shapes } from "@phosphor-icons/react";
+import { Plus, SpinnerGap, Warning, Guitar, PianoKeys, MusicNotes, MusicNotesSimple, ListBullets, ImageSquare, Trash, Database, Funnel, MagnifyingGlass, Star } from "@phosphor-icons/react";
 import { useState, useMemo, useEffect, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from 'sonner';
@@ -37,7 +37,6 @@ import { createTablature, updateTablature, deleteTablature, type TablatureLibrar
 import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
-import { IconifyLibrary } from "@/components/music/IconifyLibrary";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
 import { beatsToAlphaTex } from "@/lib/beatsToAlphaTex";
 import { normalizeTimeSignature } from "@/lib/timeSignature";
@@ -258,7 +257,6 @@ export function Biblioteca() {
 
   // Estado da galeria de imagens IA
   const [imageGenOpen, setImageGenOpen] = useState(false);
-  const [imageImportOpen, setImageImportOpen] = useState(false);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<ImageLibraryItem | null>(null);
   const [chordSearch, setChordSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -580,12 +578,6 @@ export function Biblioteca() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-        {activeTab === 'imagens' && (
-          <Button variant="outline" onClick={() => setImageImportOpen(true)}>
-            <UploadSimple size={16} /> Importar
-          </Button>
-        )}
-        {activeTab !== 'icones' && (
         <Button onClick={() => {
           if (activeTab === 'imagens') {
             setImageGenOpen(true);
@@ -612,7 +604,6 @@ export function Biblioteca() {
         }}>
           <Plus size={16} /> {activeTab === 'imagens' ? 'Gerar Imagem' : activeTab === 'notacao' ? 'Nova Notação' : activeTab === 'tablatura' ? 'Nova Tablatura' : (activeTab === 'electric_guitar' || activeTab === 'bass') ? 'Nova Escala/Acorde' : activeTab === 'exercises' ? 'Novo Conteúdo' : 'Novo Acorde'}
         </Button>
-        )}
         </div>
       </div>
 
@@ -627,7 +618,6 @@ export function Biblioteca() {
             <TabsTrigger value="notacao"><MusicNotesSimple size={15} /> Notação ({(notations ?? []).length})</TabsTrigger>
             <TabsTrigger value="tablatura"><ListBullets size={15} /> Tablatura ({(tablatures ?? []).length})</TabsTrigger>
             <TabsTrigger value="imagens"><ImageSquare size={15} /> Imagens IA</TabsTrigger>
-            <TabsTrigger value="icones"><Shapes size={15} /> Ícones</TabsTrigger>
             <TabsTrigger value="exercises"><Star size={15} /> Exercícios</TabsTrigger>
           </TabsList>
           {isInstrumentTab && (
@@ -1523,13 +1513,7 @@ export function Biblioteca() {
           <ImageGallery
             onOpenGenerator={() => setImageGenOpen(true)}
             newImage={lastGeneratedImage}
-            importOpen={imageImportOpen}
-            onImportOpenChange={setImageImportOpen}
           />
-        </TabsContent>
-
-        <TabsContent value="icones">
-          <IconifyLibrary />
         </TabsContent>
 
         <TabsContent value="exercises">

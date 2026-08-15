@@ -24,6 +24,15 @@ export function looksLikeSongbook(blocks: SharedPaginationBlock[]): boolean {
   return types.has('cover') && types.has('page_break') && (types.has('chord_grid') || types.has('text'))
 }
 
+/** Caderno de exercício usa capa + page_break + texto, mas nunca o cano da folha. */
+export function isSongbookMaterial(
+  materialType: string | null | undefined,
+  blocks: SharedPaginationBlock[],
+): boolean {
+  if (materialType === 'exercise_sheet') return false
+  return materialType === 'repertoire_sheet' || looksLikeSongbook(blocks)
+}
+
 export function groupSongbookSongs<TBlock extends SharedPaginationBlock>(
   blocks: TBlock[],
 ): { cover: TBlock | null; songs: SongbookSongGroup<TBlock>[] } {

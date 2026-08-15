@@ -4,7 +4,7 @@ import {
   paginateBlocks,
   type SharedPaginationBlock,
 } from '@/lib/sharedPagination'
-import { looksLikeSongbook, paginateSongbookBlocks } from '@/lib/songbookPagination'
+import { isSongbookMaterial, paginateSongbookBlocks } from '@/lib/songbookPagination'
 
 export interface PrintBlock extends SharedPaginationBlock {
   id: string
@@ -61,7 +61,7 @@ export function parsePrintMaterialRows(rows: MaterialWithBlocks[]): {
 }
 
 export function paginatePrintBlocks(blocks: PrintBlock[], materialType?: string | null) {
-  if (materialType === 'repertoire_sheet' || looksLikeSongbook(blocks)) {
+  if (isSongbookMaterial(materialType, blocks)) {
     return paginateSongbookBlocks(blocks).pages
   }
   return paginateBlocks(blocks).pages
