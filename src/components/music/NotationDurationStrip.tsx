@@ -1,3 +1,4 @@
+import { CaretLeft, CaretRight } from '@phosphor-icons/react'
 import type { BeatDuration } from './NotationSvgEditor'
 import { DURATION_OPTIONS } from '@/lib/notationEditorChrome'
 
@@ -15,6 +16,10 @@ export interface NotationDurationStripProps {
   onNavigate?: (delta: -1 | 1) => void
 }
 
+const BASE_BUTTON = 'inline-flex items-center justify-center h-9 w-9 rounded-md border text-[17px] transition-colors'
+const IDLE_BUTTON = 'border-border text-text3 hover:border-accent/50 hover:text-accent'
+const ACTIVE_BUTTON = 'border-accent bg-accent text-white'
+
 export function NotationDurationStrip({
   currentDuration,
   currentAccidental,
@@ -24,68 +29,86 @@ export function NotationDurationStrip({
   onAccidental,
   onToggleDot,
   onInsertRest,
+  selectedInfo,
+  onNavigate,
 }: NotationDurationStripProps) {
   return (
-    <>
-      {DURATION_OPTIONS.map(d => (
+    <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-2 py-1.5">
+      <div className="flex items-center gap-1">
+        {DURATION_OPTIONS.map(d => (
+          <button
+            key={d.value}
+            onClick={() => onDuration(d.value)}
+            title={`${d.label} (${d.key})`}
+            className={`${BASE_BUTTON} ${currentDuration === d.value ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+          >
+            {d.symbol}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1">
         <button
-          key={d.value}
-          onClick={() => onDuration(d.value)}
-          title={`${d.label} (${d.key})`}
-          className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[15px] transition-colors
-            ${currentDuration === d.value
-              ? 'border-accent bg-accent text-white'
-              : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-            }`}
+          onClick={onInsertRest}
+          title="Pausa (0)"
+          className={`${BASE_BUTTON} border-orange-500/30 text-orange-500 hover:bg-orange-500/10`}
         >
-          {d.symbol}
+          𝄽
         </button>
-      ))}
+        <button
+          onClick={onToggleDot}
+          title="Ponto de aumento (.)"
+          className={`${BASE_BUTTON} font-bold ${dotted || doubleDotted ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+        >
+          •{doubleDotted && '•'}
+        </button>
+        <div className="mx-0.5 h-5 w-px bg-border" />
+        <button
+          onClick={() => onAccidental('#')}
+          title="Sustenido (#)"
+          className={`${BASE_BUTTON} ${currentAccidental === '#' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+        >
+          ♯
+        </button>
+        <button
+          onClick={() => onAccidental('b')}
+          title="Bemol (-)"
+          className={`${BASE_BUTTON} ${currentAccidental === 'b' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+        >
+          ♭
+        </button>
+        <button
+          onClick={() => onAccidental('n')}
+          title="Bequadro (=)"
+          className={`${BASE_BUTTON} ${currentAccidental === 'n' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+        >
+          ♮
+        </button>
+      </div>
 
-      <button
-        onClick={onInsertRest}
-        title="Pausa (0)"
-        className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
-      >
-        🔇
-      </button>
-
-      <button
-        onClick={onToggleDot}
-        title="Ponto de aumento (.)"
-        className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[15px] font-bold transition-colors
-          ${dotted || doubleDotted
-            ? 'border-accent bg-accent text-white'
-            : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-          }`}
-      >
-        •{doubleDotted && '•'}
-      </button>
-
-      <div className="w-px h-5 bg-border mx-0.5" />
-
-      <button
-        onClick={() => onAccidental('#')}
-        title="Sustenido (#)"
-        className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[14px] transition-colors
-          ${currentAccidental === '#'
-            ? 'border-accent bg-accent text-white'
-            : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-          }`}
-      >
-        ♯
-      </button>
-      <button
-        onClick={() => onAccidental('b')}
-        title="Bemol (B)"
-        className={`inline-flex items-center justify-center h-7 w-7 rounded-md border text-[14px] transition-colors
-          ${currentAccidental === 'b'
-            ? 'border-accent bg-accent text-white'
-            : 'border-border text-text3 hover:border-accent/50 hover:text-accent'
-          }`}
-      >
-        ♭
-      </button>
-    </>
+      <div className="flex items-center justify-end gap-1">
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate(-1)}
+            title="Nota anterior (←)"
+            className={`${BASE_BUTTON} h-7 w-7 ${IDLE_BUTTON}`}
+          >
+            <CaretLeft size={13} weight="bold" />
+          </button>
+        )}
+        <span className="whitespace-nowrap rounded-md bg-azul-soft px-2.5 py-1 text-[11px] font-semibold text-master">
+          {selectedInfo ? `${selectedInfo.label} · ${selectedInfo.position}` : 'Clique na pauta ou tecle A–G'}
+        </span>
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate(1)}
+            title="Próxima nota (→)"
+            className={`${BASE_BUTTON} h-7 w-7 ${IDLE_BUTTON}`}
+          >
+            <CaretRight size={13} weight="bold" />
+          </button>
+        )}
+      </div>
+    </div>
   )
 }

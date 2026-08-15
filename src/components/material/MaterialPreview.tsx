@@ -829,7 +829,7 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
       {isInteractive && notationInteractive ? (
         <>
-          <div className="mb-2 flex flex-wrap items-center gap-1">
+          <div className="mb-2">
             <NotationDurationStrip {...notationInteractive.durationStrip} />
           </div>
           <NotationAlphaTabSurface
