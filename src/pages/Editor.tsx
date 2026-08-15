@@ -2023,6 +2023,23 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     initialLoadDone,
   })
 
+  const pendingInlinePatchRef = useRef<{ blockId: string; patch: Record<string, any> } | null>(null)
+  const inlinePatchTimerRef = useRef<number | null>(null)
+
+  const flushInlineNotationPatch = useCallback(() => {
+    if (inlinePatchTimerRef.current !== null) {
+      window.clearTimeout(inlinePatchTimerRef.current)
+      inlinePatchTimerRef.current = null
+    }
+    const pending = pendingInlinePatchRef.current
+    if (!pending) return
+    pendingInlinePatchRef.current = null
+    setBlocksWithHistory(previous => previous.map(block => (
+      block.id === pending.blockId ? { ...block, render_data: pending.patch } : block
+    )))
+    queueBlockAutosave(pending.blockId)
+  }, [queueBlockAutosave, setBlocksWithHistory])
+
   useEffect(() => {
     const patch = inlineNotationSession.patchRenderData
     if (!notationInlineEnabled || !inlineNotationBlock || !inlineNotationSession.isHydrated || !patch) return
@@ -2030,13 +2047,17 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!current) return
     const currentNotation = JSON.stringify((current.render_data ?? {}).notation_data ?? null)
     const nextNotation = JSON.stringify(patch.notation_data ?? null)
-    if (currentNotation === nextNotation) return
+    if (currentNotation === nextNotation) {
+      pendingInlinePatchRef.current = null
+      return
+    }
 
-    setBlocksWithHistory(previous => previous.map(block => (
-      block.id === inlineNotationBlock.id ? { ...block, render_data: patch } : block
-    )))
-    queueBlockAutosave(inlineNotationBlock.id)
-  }, [inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled, queueBlockAutosave, setBlocksWithHistory])
+    pendingInlinePatchRef.current = { blockId: inlineNotationBlock.id, patch }
+    if (inlinePatchTimerRef.current !== null) window.clearTimeout(inlinePatchTimerRef.current)
+    inlinePatchTimerRef.current = window.setTimeout(flushInlineNotationPatch, 400)
+  }, [flushInlineNotationPatch, inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled])
+
+  useEffect(() => () => { flushInlineNotationPatch() }, [flushInlineNotationPatch, inlineNotationBlock?.id])
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -3145,6 +3166,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
+    flushInlineNotationPatch()
     if (!selectedBlock) return
     setSaving(true)
     try {
@@ -3171,7 +3193,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } finally {
       setSaving(false)
     }
-  }, [selectedBlock, school, materialId, pageConfig])
+  }, [flushInlineNotationPatch, selectedBlock, school, materialId, pageConfig])
 
   // Reverter bloco ao original
   const handleRevertBlock = useCallback(async () => {
