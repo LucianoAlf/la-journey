@@ -16,14 +16,25 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Notação in-place na A4 conferida no browser (15/08). Biblioteca → Notação continua no modal. Rollback `?notationInline=off`.
+Próximo corte: mapas de acorde e cifra na pauta (lead sheet).
 - App local: **http://localhost:3002** — produção: https://la-journey.vercel.app
 - Branch: `feat/notacao-caderninho` no worktree `.worktrees/notacao-alphatab-folha`. Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
-- Plano do corte fechado: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
+- Spec do próximo corte: ainda não escrita. Escrita fluida fechada abaixo.
 
 ---
 
 ## Feito
+
+### Escrita fluida na pauta A4 (15/08)
+
+- Teclado completo via `notationInlineKeyboard`: A–G, Shift+acorde, 1–7/numpad, setas, Ctrl+oitava, R, 0, ponto, `#`/`-`/`=`, Esc em dois tempos. Foco no input ao hidratar o bloco.
+- Feedback: destaque accent no beat (`boundsLookup`, last-index para grace, offset+zoom), nota-fantasma com ledger/badge, som `playNotePreview` com acidente.
+- Fileira em três grupos (durações | pausa/ponto/acidentes+♮ | indicador `C4 · Semínima · n/m` + ‹ ›).
+- Gravura `NOTATION_DIDACTIC_SCALE = 1.35` em canvas, modal e preview. Ritmo/tab não mudam.
+- Render sem spinner nos updates + `TexRenderQueue`. Patch de `render_data` com debounce 400 ms; flush no save/duplicar/biblioteca; undo global cancela o pendente.
+- Conferência local em `/editor/5e17a085-aa14-4e71-b348-362811935ae7`: fileira + indicador + insert A–G + highlight + rollback `?notationInline=off` (volta Editar notação). Validar no ouvido o som e o tamanho 1.35 na folha.
+- Spec: `docs/superpowers/specs/2026-08-15-escrita-fluida-pauta-design.md`
+- Plano: `docs/superpowers/plans/2026-08-15-escrita-fluida-pauta.md`
 
 ### Notação in-place na A4 (15/08)
 
