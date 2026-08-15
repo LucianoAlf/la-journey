@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,7 +16,10 @@ import type { ExerciseLibraryItem } from '@/services/exerciseLibraryService'
 
 interface ExerciseCardProps {
   exercise: ExerciseLibraryItem
+  opening?: boolean
   onPreview: (exercise: ExerciseLibraryItem) => void
+  onUseInMaterial: (exercise: ExerciseLibraryItem) => void
+  onEdit: (exercise: ExerciseLibraryItem) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
 }
@@ -95,8 +97,15 @@ function getBlocksArray(blocks: unknown): any[] {
   return []
 }
 
-export function ExerciseCard({ exercise, onPreview, onDuplicate, onDelete }: ExerciseCardProps) {
-  const navigate = useNavigate()
+export function ExerciseCard({
+  exercise,
+  opening = false,
+  onPreview,
+  onUseInMaterial,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}: ExerciseCardProps) {
   const blocks = useMemo(() => getBlocksArray(exercise.blocks), [exercise.blocks])
 
   // Contar blocos por tipo
@@ -184,21 +193,6 @@ export function ExerciseCard({ exercise, onPreview, onDuplicate, onDelete }: Exe
 
   const totalBlocks = exercise.block_count || blocks.length
 
-  const handleUseInMaterial = () => {
-    // v1 simples: navegar pro editor passando os blocos no state
-    navigate('/editor', { state: { insertBlocks: blocks } })
-  }
-
-  const handleEdit = () => {
-    // Navegar pro editor com os blocos para editar
-    navigate('/editor', {
-      state: {
-        insertBlocks: blocks,
-        editingExerciseId: exercise.id
-      }
-    })
-  }
-
   const handleDuplicate = () => {
     onDuplicate(exercise.id)
   }
@@ -285,22 +279,24 @@ export function ExerciseCard({ exercise, onPreview, onDuplicate, onDelete }: Exe
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-[11px] gap-1"
+          disabled={opening}
           onClick={(e) => {
             e.stopPropagation()
-            handleUseInMaterial()
+            onUseInMaterial(exercise)
           }}
           title="Usar no Material"
         >
           <ArrowSquareOut size={14} />
-          Usar
+          {opening ? 'Abrindo...' : 'Usar'}
         </Button>
         <Button
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-[11px] gap-1"
+          disabled={opening}
           onClick={(e) => {
             e.stopPropagation()
-            handleEdit()
+            onEdit(exercise)
           }}
           title="Editar"
         >

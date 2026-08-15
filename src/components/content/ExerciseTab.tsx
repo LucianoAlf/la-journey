@@ -1,12 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { MagnifyingGlass, SpinnerGap, Warning } from '@phosphor-icons/react'
 import { ExerciseCard } from './ExerciseCard'
 import { ExerciseNotebookTab } from './ExerciseNotebookTab'
 import { ExercisePreviewDialog } from './ExercisePreviewDialog'
 import { type MaterialBlock } from '@/components/material/MaterialPreview'
 import { useExerciseCounts, useExerciseLibrary } from '@/hooks/useExerciseLibrary'
-import type { ExerciseLibraryFilters, ExerciseLibraryItem } from '@/services/exerciseLibraryService'
+import { useSchool } from '@/hooks/useSchool'
+import { exerciseCanvasPath } from '@/lib/exerciseCanvasPath'
+import {
+  createDraftMaterialFromExercise,
+  type ExerciseLibraryFilters,
+  type ExerciseLibraryItem,
+} from '@/services/exerciseLibraryService'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -58,11 +65,13 @@ function getBlocksArray(blocks: unknown): MaterialBlock[] {
 
 export function ExerciseTab() {
   const navigate = useNavigate()
+  const { data: school } = useSchool()
   const [activeSubTab, setActiveSubTab] = useState('all')
   const [search, setSearch] = useState('')
   const [instrument, setInstrument] = useState('all')
   const [level, setLevel] = useState('all')
   const [previewExercise, setPreviewExercise] = useState<ExerciseLibraryItem | null>(null)
+  const [openingId, setOpeningId] = useState<string | null>(null)
 
   const { counts } = useExerciseCounts()
   const isNotebookTab = activeSubTab === 'notebooks'
@@ -104,21 +113,28 @@ export function ExerciseTab() {
     }
   }
 
-  const handleUseInMaterial = (exercise: ExerciseLibraryItem) => {
-    const blocks = getBlocksArray(exercise.blocks)
-    navigate('/editor', { state: { insertBlocks: blocks } })
-    setPreviewExercise(null)
-  }
+  const openExerciseAsDraft = async (exercise: ExerciseLibraryItem, mode: 'use' | 'edit') => {
+    if (openingId) return
+    if (!school?.id) {
+      toast.error('Não foi possível identificar a escola para criar o rascunho.')
+      return
+    }
 
-  const handleEditExercise = (exercise: ExerciseLibraryItem) => {
-    const blocks = getBlocksArray(exercise.blocks)
-    navigate('/editor', {
-      state: {
-        insertBlocks: blocks,
-        editingExerciseId: exercise.id,
-      },
-    })
-    setPreviewExercise(null)
+    setOpeningId(exercise.id)
+    try {
+      const materialId = await createDraftMaterialFromExercise(exercise, school.id)
+      setPreviewExercise(null)
+      toast.success(
+        mode === 'edit'
+          ? 'Aberto no editor. Imprima quando estiver pronto — salvar de volta na biblioteca vem no próximo passo.'
+          : 'Rascunho criado. Ajuste se quiser e use Imprimir / PDF.'
+      )
+      navigate(exerciseCanvasPath(materialId))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível abrir o exercício no editor.')
+    } finally {
+      setOpeningId(null)
+    }
   }
 
   const previewBlocks = useMemo(() => getBlocksArray(previewExercise?.blocks), [previewExercise])
@@ -250,7 +266,10 @@ export function ExerciseTab() {
             <ExerciseCard
               key={exercise.id}
               exercise={exercise}
+              opening={openingId === exercise.id}
               onPreview={setPreviewExercise}
+              onUseInMaterial={(item) => openExerciseAsDraft(item, 'use')}
+              onEdit={(item) => openExerciseAsDraft(item, 'edit')}
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
             />
@@ -262,8 +281,9 @@ export function ExerciseTab() {
         <ExercisePreviewDialog
           exercise={previewExercise}
           blocks={previewBlocks}
+          opening={!!previewExercise && openingId === previewExercise.id}
           onClose={() => setPreviewExercise(null)}
-          onEdit={handleEditExercise}
+          onEdit={(item) => openExerciseAsDraft(item, 'edit')}
           onDuplicate={async (id) => {
             await handleDuplicate(id)
             setPreviewExercise(null)
@@ -272,7 +292,7 @@ export function ExerciseTab() {
             await handleDelete(id)
             setPreviewExercise(null)
           }}
-          onUseInMaterial={handleUseInMaterial}
+          onUseInMaterial={(item) => openExerciseAsDraft(item, 'use')}
         />
       )}
     </div>
