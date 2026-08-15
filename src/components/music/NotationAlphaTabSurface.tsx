@@ -23,17 +23,43 @@ export interface NotationAlphaTabSurfaceProps {
 
 interface BeatRect { x: number; y: number; w: number; h: number }
 interface GhostNote { x: number; y: number; label: string; ledger: number[] }
+interface OverlayOrigin { x: number; y: number }
 
 function staffClef(clef: string): 'treble' | 'bass' {
   return clef === 'bass' ? 'bass' : 'treble'
 }
 
-function collectBeatRects(api: { boundsLookup?: any } | null): BeatRect[] {
+function resolveAlphaBeatIndex(modelIdx: number, indexMap: number[]): number {
+  for (let i = indexMap.length - 1; i >= 0; i -= 1) {
+    if (indexMap[i] === modelIdx) return i
+  }
+  return -1
+}
+
+function overlayOffset(wrapper: HTMLElement, container: HTMLElement) {
+  const wrap = wrapper.getBoundingClientRect()
+  const host = container.getBoundingClientRect()
+  return {
+    x: host.left - wrap.left + container.scrollLeft,
+    y: host.top - wrap.top + container.scrollTop,
+  }
+}
+
+function collectBeatRects(
+  api: { boundsLookup?: any } | null,
+  grandStaffMode = false,
+): BeatRect[] {
   const rects: BeatRect[] = []
   const systems = api?.boundsLookup?.staffSystems ?? []
   for (const system of systems) {
     for (const masterBar of system.bars ?? []) {
-      for (const bar of masterBar.bars ?? []) {
+      // Grand staff: beatsToAlphaTexWithMap returns an identity map of model length
+      // and does not merge staves. Walking both staves would ~2× the rects vs indexMap.
+      // Keep the first bar (typically treble). Bass-staff highlight stays imperfect.
+      const bars = grandStaffMode
+        ? masterBar.bars?.slice(0, 1) ?? []
+        : masterBar.bars ?? []
+      for (const bar of bars) {
         for (const beat of bar.beats ?? []) {
           const bounds = beat.visualBounds ?? beat.realBounds
           if (bounds) rects.push({ x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h })
@@ -61,9 +87,11 @@ export function NotationAlphaTabSurface({
   onHoverPitch,
 }: NotationAlphaTabSurfaceProps) {
   const viewerRef = useRef<AlphaTabViewerHandle>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const [staffBox, setStaffBox] = useState<{ top: number; bottom: number } | null>(null)
   const [beatRects, setBeatRects] = useState<BeatRect[]>([])
   const [ghost, setGhost] = useState<GhostNote | null>(null)
+  const [origin, setOrigin] = useState<OverlayOrigin>({ x: 0, y: 0 })
 
   const displayTex = tex || emptyStaffAlphaTex({ clef, keySignature, timeSignature })
 
@@ -77,13 +105,16 @@ export function NotationAlphaTabSurface({
   }, [])
 
   const handleRenderFinished = useCallback(() => {
+    const wrapper = wrapperRef.current
+    const container = viewerRef.current?.container
+    if (wrapper && container) setOrigin(overlayOffset(wrapper, container))
     setStaffBox(readStaffBox())
-    setBeatRects(collectBeatRects(viewerRef.current?.api as { boundsLookup?: any } | null))
-  }, [readStaffBox])
+    setBeatRects(collectBeatRects(viewerRef.current?.api as { boundsLookup?: any } | null, grandStaffMode))
+  }, [grandStaffMode, readStaffBox])
 
   const selectedRect = useMemo(() => {
     if (selectedBeatIdx < 0) return null
-    const alphaIdx = indexMap.indexOf(selectedBeatIdx)
+    const alphaIdx = resolveAlphaBeatIndex(selectedBeatIdx, indexMap)
     if (alphaIdx < 0 || alphaIdx >= beatRects.length) return null
     return beatRects[alphaIdx]
   }, [beatRects, indexMap, selectedBeatIdx])
@@ -97,27 +128,32 @@ export function NotationAlphaTabSurface({
   const handlePointer = useCallback((event: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
     const api = viewerRef.current?.api as { boundsLookup?: any } | null
     const container = viewerRef.current?.container
-    if (!api || !container) return
-    const rect = container.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
+    const wrapper = wrapperRef.current
+    if (!api || !container || !wrapper) return
+    const offset = overlayOffset(wrapper, container)
+    setOrigin(offset)
+    const wrap = wrapper.getBoundingClientRect()
+    const host = container.getBoundingClientRect()
+    const wrapX = event.clientX - wrap.left
+    const atX = event.clientX - host.left + container.scrollLeft
+    const atY = event.clientY - host.top + container.scrollTop
     const box = staffBox ?? readStaffBox()
     if (!box) return
-    const pitch = pitchFromStaffY(y, box.top, box.bottom, staffClef(clef))
+    const pitch = pitchFromStaffY(atY, box.top, box.bottom, staffClef(clef))
     onHoverPitch?.(pitch)
     if (!commit) {
       const snappedY = staffYFromPitch(pitch, box.top, box.bottom, staffClef(clef))
       setGhost({
-        x,
-        y: snappedY,
+        x: wrapX,
+        y: snappedY + offset.y,
         label: pitch.replace('/', ''),
-        ledger: ledgerLineYs(snappedY, box.top, box.bottom),
+        ledger: ledgerLineYs(snappedY, box.top, box.bottom).map(lineY => lineY + offset.y),
       })
       return
     }
 
     const lookup = api.boundsLookup
-    const hit = lookup?.getBeatAtPos?.(x, y) ?? null
+    const hit = lookup?.getBeatAtPos?.(atX, atY) ?? null
     if (hit && tex) {
       const voiceBeats = hit.voice?.beats ?? []
       const alphaIdx = voiceBeats.indexOf(hit)
@@ -137,6 +173,7 @@ export function NotationAlphaTabSurface({
 
   return (
     <div
+      ref={wrapperRef}
       className={variant === 'canvas'
         ? 'relative w-full min-w-0'
         : 'relative mx-auto overflow-hidden rounded-xl border border-border bg-white'}
@@ -168,8 +205,8 @@ export function NotationAlphaTabSurface({
         <div
           className="pointer-events-none absolute z-10 rounded-md bg-accent/15 ring-2 ring-accent"
           style={{
-            left: selectedRect.x - 5,
-            top: selectedRect.y - 5,
+            left: selectedRect.x + origin.x - 5,
+            top: selectedRect.y + origin.y - 5,
             width: selectedRect.w + 10,
             height: selectedRect.h + 10,
           }}
