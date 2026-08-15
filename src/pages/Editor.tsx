@@ -2043,6 +2043,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return pending
   }, [queueBlockAutosave, setBlocksWithHistory])
 
+  const cancelInlineNotationPatch = useCallback(() => {
+    if (inlinePatchTimerRef.current !== null) {
+      window.clearTimeout(inlinePatchTimerRef.current)
+      inlinePatchTimerRef.current = null
+    }
+    pendingInlinePatchRef.current = null
+  }, [])
+
   useEffect(() => {
     const patch = inlineNotationSession.patchRenderData
     if (!notationInlineEnabled || !inlineNotationBlock || !inlineNotationSession.isHydrated || !patch) return
@@ -6627,7 +6635,7 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
-        flushInlineNotationPatch()
+        cancelInlineNotationPatch()
         if (
           (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
           undoFloatingElementChange()
@@ -6639,7 +6647,7 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
-        flushInlineNotationPatch()
+        cancelInlineNotationPatch()
         if (
           (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
           redoFloatingElementChange()
@@ -6876,7 +6884,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, flushInlineNotationPatch, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, cancelInlineNotationPatch, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -7012,7 +7020,7 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
-                flushInlineNotationPatch()
+                cancelInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
                   undoFloatingElementChange()
@@ -7029,7 +7037,7 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
-                flushInlineNotationPatch()
+                cancelInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
                   redoFloatingElementChange()
