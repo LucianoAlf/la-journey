@@ -10,6 +10,9 @@ export interface NotationDurationStripProps {
   onAccidental: (a: string | null) => void
   onToggleDot: () => void
   onInsertRest: () => void
+  /** Indicador vivo: nota/pausa selecionada e posição. null = nada selecionado. */
+  selectedInfo?: { label: string; position: string } | null
+  onNavigate?: (delta: -1 | 1) => void
 }
 
 export function NotationDurationStrip({

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import * as Tone from 'tone'
 import type { NotationDurationStripProps } from './NotationDurationStrip'
+import { DURATION_OPTIONS } from '@/lib/notationEditorChrome'
+import { playNotePreview } from '@/lib/notationInlineAudio'
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
+import { resolveNotationKeyAction } from '@/lib/notationInlineKeyboard'
 import {
   applySessionToRenderData,
   deleteBeat,
@@ -34,6 +37,18 @@ function getSmartOctave(noteName: string, lastPitch: string | null, clef: string
   if (difference > 3) return lastOctave - 1
   if (difference < -3) return lastOctave + 1
   return lastOctave
+}
+
+function durationLabel(duration: InlineBeat['duration']): string {
+  return DURATION_OPTIONS.find(option => option.value === duration)?.label ?? ''
+}
+
+function formatPitchLabel(pitches: InlineBeat['pitches']): string {
+  return pitches.map(({ pitch, accidental }) => {
+    const [note, octave] = pitch.split('/')
+    const symbol = accidental === '#' ? '♯' : accidental === 'b' ? '♭' : accidental === 'n' ? '♮' : ''
+    return `${note}${symbol}${octave}`
+  }).join(' ')
 }
 
 function consumeNotationKey(event: KeyboardEvent<HTMLInputElement>) {
@@ -132,6 +147,11 @@ export function useNotationInlineSession({
     setHydratedBlockId(block.id)
   }, [block?.id, enabled])
 
+  useEffect(() => {
+    if (!hydratedBlockId) return
+    focusInput()
+  }, [focusInput, hydratedBlockId])
+
   const pushHistory = useCallback((nextBeats: InlineBeat[]) => {
     setHistory(previous => {
       const trimmed = previous.slice(0, historyIdx + 1)
@@ -161,7 +181,10 @@ export function useNotationInlineSession({
     setSelectedBeatIdx(idx)
     const beat = beats[idx]
     if (beat?.staff) setActiveStaff(beat.staff)
-    if (beat && !beat.isRest && beat.pitches[0]) lastPitchRef.current = beat.pitches[0].pitch
+    if (beat && !beat.isRest && beat.pitches[0]) {
+      lastPitchRef.current = beat.pitches[0].pitch
+      void playNotePreview(beat.pitches.map(({ pitch }) => pitch))
+    }
     focusInput()
   }, [beats, focusInput])
 
@@ -174,6 +197,7 @@ export function useNotationInlineSession({
     commit(result.beats)
     setSelectedBeatIdx(result.selectedBeatIdx)
     lastPitchRef.current = pitch
+    void playNotePreview([pitch])
     if (staff) setActiveStaff(staff)
     focusInput()
   }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx])
@@ -182,6 +206,7 @@ export function useNotationInlineSession({
     const result = replaceNote({ beats, atIdx, pitch, accidental: currentAccidental })
     commit(result.beats)
     lastPitchRef.current = pitch
+    void playNotePreview([pitch])
     focusInput()
   }, [beats, commit, currentAccidental, focusInput])
 
@@ -197,6 +222,67 @@ export function useNotationInlineSession({
     nextBeats[idx] = { ...nextBeats[idx], ...update }
     commit(nextBeats)
   }, [beats, commit])
+
+  const navigateSelection = useCallback((delta: -1 | 1) => {
+    if (beats.length === 0) return
+    const next = selectedBeatIdx < 0
+      ? (delta > 0 ? 0 : beats.length - 1)
+      : Math.min(beats.length - 1, Math.max(0, selectedBeatIdx + delta))
+    setSelectedBeatIdx(next)
+    const beat = beats[next]
+    if (beat?.staff) setActiveStaff(beat.staff)
+    if (beat && !beat.isRest && beat.pitches[0]) {
+      lastPitchRef.current = beat.pitches[0].pitch
+      void playNotePreview(beat.pitches.map(({ pitch }) => pitch))
+    }
+    focusInput()
+  }, [beats, focusInput, selectedBeatIdx])
+
+  const transposeSelected = useCallback((direction: -1 | 1, octave: boolean) => {
+    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) return
+    const beat = beats[selectedBeatIdx]
+    if (beat.isRest || beat.pitches.length === 0) return
+    const nextPitches = beat.pitches.map(pitchData => {
+      const [notePart, octaveText] = pitchData.pitch.split('/')
+      let octaveValue = parseInt(octaveText, 10)
+      let noteIdx = NOTE_NAMES.indexOf(notePart.charAt(0).toUpperCase())
+      if (octave) {
+        octaveValue += direction
+      } else {
+        noteIdx += direction
+        if (noteIdx > 6) { noteIdx = 0; octaveValue += 1 }
+        if (noteIdx < 0) { noteIdx = 6; octaveValue -= 1 }
+      }
+      return { ...pitchData, pitch: `${NOTE_NAMES[noteIdx]}/${octaveValue}` }
+    })
+    updateBeat(selectedBeatIdx, { pitches: nextPitches })
+    lastPitchRef.current = nextPitches[0].pitch
+    void playNotePreview(nextPitches.map(({ pitch }) => pitch))
+  }, [beats, selectedBeatIdx, updateBeat])
+
+  const addChordNote = useCallback((note: string) => {
+    if (selectedBeatIdx < 0 || selectedBeatIdx >= beats.length) return
+    const beat = beats[selectedBeatIdx]
+    if (beat.isRest) return
+    const inputClef = grandStaff && activeStaff === 'bass' ? 'bass' : clef
+    const pitch = `${note}/${getSmartOctave(note, lastPitchRef.current, inputClef)}`
+    const nextPitches = [...beat.pitches, { pitch, accidental: currentAccidental || undefined }]
+    updateBeat(selectedBeatIdx, { pitches: nextPitches })
+    lastPitchRef.current = pitch
+    void playNotePreview(nextPitches.map(({ pitch: chordPitch }) => chordPitch))
+  }, [activeStaff, beats, clef, currentAccidental, grandStaff, selectedBeatIdx, updateBeat])
+
+  const insertNoteByName = useCallback((note: string) => {
+    const inputClef = grandStaff && activeStaff === 'bass' ? 'bass' : clef
+    const pitch = `${note}/${getSmartOctave(note, lastPitchRef.current, inputClef)}`
+    onInsertNote(pitch, selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1)
+  }, [activeStaff, beats.length, clef, grandStaff, onInsertNote, selectedBeatIdx])
+
+  const repeatLastNote = useCallback(() => {
+    const pitch = lastPitchRef.current
+    if (!pitch) return
+    onInsertNote(pitch, selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1)
+  }, [beats.length, onInsertNote, selectedBeatIdx])
 
   const onInsertRest = useCallback(() => {
     const result = insertRest({ beats, selectedBeatIdx, duration: currentDuration, dotted, doubleDotted })
@@ -246,35 +332,36 @@ export function useNotationInlineSession({
   const stopPlayback = useCallback(() => playbackRef.current?.stop(), [])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.ctrlKey && event.key === 'z') { consumeNotationKey(event); undo(); return }
-    if (event.ctrlKey && event.key === 'y') { consumeNotationKey(event); redo(); return }
-    const durationIndex = '1234567'.indexOf(event.key)
-    if (durationIndex >= 0) {
-      consumeNotationKey(event)
-      const duration = (['64', '32', '16', '8', 'q', 'h', 'w'] as InlineBeat['duration'][])[durationIndex]
-      setCurrentDuration(duration)
-      if (selectedBeatIdx >= 0) updateBeat(selectedBeatIdx, { duration })
-      return
+    const action = resolveNotationKeyAction(event, { hasSelection: selectedBeatIdx >= 0 })
+    if (!action) return
+    consumeNotationKey(event)
+    switch (action.type) {
+      case 'undo': undo(); break
+      case 'redo': redo(); break
+      case 'set-duration':
+        setCurrentDuration(action.duration)
+        if (selectedBeatIdx >= 0) updateBeat(selectedBeatIdx, { duration: action.duration })
+        break
+      case 'toggle-dot': toggleDot(); break
+      case 'insert-rest': onInsertRest(); break
+      case 'toggle-play':
+        if (isPlaying) stopPlayback()
+        else void startPlayback()
+        break
+      case 'insert-note': insertNoteByName(action.note); break
+      case 'add-chord-note': addChordNote(action.note); break
+      case 'navigate': navigateSelection(action.delta); break
+      case 'transpose': transposeSelected(action.direction, action.octave); break
+      case 'repeat-last-note': repeatLastNote(); break
+      case 'delete-beat':
+        if (selectedBeatIdx >= 0) onDeleteBeat(selectedBeatIdx)
+        break
+      case 'set-accidental':
+        setCurrentAccidental(value => value === action.accidental ? null : action.accidental)
+        break
+      case 'release-selection': setSelectedBeatIdx(-1); break
     }
-    if (event.key === '.') { consumeNotationKey(event); toggleDot(); return }
-    if (event.key === '0') { consumeNotationKey(event); onInsertRest(); return }
-    if (event.key === ' ') { consumeNotationKey(event); if (isPlaying) stopPlayback(); else void startPlayback(); return }
-    const note = event.key.toUpperCase()
-    if (NOTE_NAMES.includes(note) && !event.ctrlKey && !event.altKey) {
-      consumeNotationKey(event)
-      const pitch = `${note}/${getSmartOctave(note, lastPitchRef.current, grandStaff && activeStaff === 'bass' ? 'bass' : clef)}`
-      onInsertNote(pitch, selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1)
-      return
-    }
-    if (event.key === 'Delete' || event.key === 'Backspace') {
-      consumeNotationKey(event)
-      if (selectedBeatIdx >= 0) onDeleteBeat(selectedBeatIdx)
-      return
-    }
-    if (event.key === '#') { consumeNotationKey(event); setCurrentAccidental(value => value === '#' ? null : '#'); return }
-    if (event.key === '=' ) { consumeNotationKey(event); setCurrentAccidental(value => value === 'n' ? null : 'n'); return }
-    if (event.key === 'b' && event.shiftKey) { consumeNotationKey(event); setCurrentAccidental(value => value === 'b' ? null : 'b') }
-  }, [activeStaff, beats.length, clef, grandStaff, isPlaying, onDeleteBeat, onInsertNote, onInsertRest, redo, selectedBeatIdx, startPlayback, stopPlayback, toggleDot, undo, updateBeat])
+  }, [addChordNote, insertNoteByName, isPlaying, navigateSelection, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
 
   const patchRenderData = useMemo(() => {
     if (!enabled || !block || hydratedBlockId !== block.id) return null
@@ -284,8 +371,18 @@ export function useNotationInlineSession({
   }, [beats, block, bpm, clef, enabled, grandStaff, hydratedBlockId, keySignature, timeSignature])
   const { tex, indexMap } = useMemo(() => sessionToAlphaTex({ beats, clef, keySignature, timeSignature, bpm, grandStaff }), [beats, bpm, clef, grandStaff, keySignature, timeSignature])
 
+  const selectedBeat = selectedBeatIdx >= 0 && selectedBeatIdx < beats.length ? beats[selectedBeatIdx] : null
   const durationStrip: NotationDurationStripProps = {
     currentDuration, currentAccidental, dotted, doubleDotted,
+    selectedInfo: selectedBeat
+      ? {
+          label: selectedBeat.isRest
+            ? `Pausa · ${durationLabel(selectedBeat.duration)}`
+            : `${formatPitchLabel(selectedBeat.pitches)} · ${durationLabel(selectedBeat.duration)}`,
+          position: `${selectedBeatIdx + 1}/${beats.length}`,
+        }
+      : null,
+    onNavigate: navigateSelection,
     onDuration: duration => { setCurrentDuration(duration); focusInput() },
     onAccidental: accidental => { setCurrentAccidental(accidental); focusInput() },
     onToggleDot: toggleDot,
