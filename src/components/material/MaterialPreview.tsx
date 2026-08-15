@@ -58,6 +58,7 @@ import {
   type ResolvedGridChord,
 } from '@/services/chordLibraryResolver'
 import { TitleTemplateRenderer } from '@/components/material/TitleTemplateRenderer'
+import { resolveNotationPreviewWidth } from '@/lib/notationPreviewWidth'
 
 export interface MaterialBlock {
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
@@ -587,7 +588,8 @@ function BlockText({ block, onLegacyNotationStavePointerDown }: { block: Materia
           notation={renderData.notation as any}
           notationData={renderData.notation_data}
           onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
-          className="mt-3"
+          width={resolveNotationPreviewWidth(renderData)}
+          className="mt-3 w-full min-w-0"
         />
       )}
     </div>
@@ -828,7 +830,8 @@ function BlockNotation({ block, onLegacyNotationStavePointerDown, onMusicStableR
           clef={rd.clef ?? 'treble'}
           timeSignature={rd.time_signature}
           keySignature={rd.key_signature}
-          width={rd.width ?? 500}
+          width={resolveNotationPreviewWidth(rd)}
+          className="w-full min-w-0"
           onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
       )}
@@ -878,8 +881,8 @@ function BlockExercise({ block, onLegacyNotationStavePointerDown, onMusicStableR
           clef={rd.clef ?? 'treble'}
           timeSignature={rd.time_signature}
           keySignature={rd.key_signature}
-          width={rd.width ?? 450}
-          className="mb-3"
+          width={resolveNotationPreviewWidth(rd)}
+          className="mb-3 w-full min-w-0"
           onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
       )}
@@ -905,7 +908,8 @@ function BlockTip({ block, onLegacyNotationStavePointerDown, onMusicStableRender
           notation={renderData.notation as any}
           notationData={renderData.notation_data}
           onLegacyStavePointerDown={onLegacyNotationStavePointerDown}
-          className="mt-3"
+          width={resolveNotationPreviewWidth(renderData)}
+          className="mt-3 w-full min-w-0"
           onStableRender={(html) => onMusicStableRender?.(block, html)}
         />
       )}

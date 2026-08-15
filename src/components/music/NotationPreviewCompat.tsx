@@ -56,8 +56,8 @@ export function NotationPreviewCompat({
     const { item: previewItem, source } = resolvedStructuredPreview
 
     return (
-      <div className={`space-y-1.5 ${className}`}>
-        <div onMouseDown={() => source === 'legacy_notation' && onLegacyStavePointerDown?.(0)}>
+      <div className={`w-full min-w-0 space-y-1.5 ${className}`}>
+        <div className="w-full min-w-0 overflow-x-auto" onMouseDown={() => source === 'legacy_notation' && onLegacyStavePointerDown?.(0)}>
           <AlphaTabViewer
             tex={previewItem.tex}
             minHeight={minHeight}
@@ -87,7 +87,7 @@ export function NotationPreviewCompat({
     if (!normalizedNotes.length) return null
 
     return (
-      <div className={className}>
+      <div className={`w-full min-w-0 overflow-x-auto ${className}`}>
         <StaffNotation
           notes={normalizedNotes}
           clef={clef === 'bass' ? 'bass' : 'treble'}

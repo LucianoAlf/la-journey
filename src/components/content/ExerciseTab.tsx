@@ -280,7 +280,7 @@ export function ExerciseTab() {
       )}
 
       <Dialog open={!isNotebookTab && !!previewExercise} onOpenChange={(open) => !open && setPreviewExercise(null)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto rounded-[14px] border-border bg-card">
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-[14px] border-border bg-card">
           <DialogHeader>
             <div className="flex flex-wrap items-center gap-2 pr-8">
               <DialogTitle className="text-[18px] font-semibold text-text">
@@ -308,7 +308,7 @@ export function ExerciseTab() {
                 <p className="text-[13px] text-text2">Este exercício não possui blocos para preview.</p>
               </div>
             ) : (
-              <div className="rounded-[14px] border border-border bg-background/30 p-4">
+              <div className="min-w-0 overflow-x-auto rounded-[14px] border border-border bg-background/30 p-4">
                 <MaterialPreview blocks={previewBlocks} />
               </div>
             )}
