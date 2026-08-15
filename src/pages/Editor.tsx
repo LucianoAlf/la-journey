@@ -5809,19 +5809,10 @@ Regras:
   // Abrir editor de notação para um bloco
   const openNotationEditorForBlock = useCallback((blockId: string) => {
     setNotationEditorBlockId(blockId)
-    const block = blocks.find((b) => b.id === blockId)
-    const staves = ((block?.render_data ?? {}) as any)?.notation?.staves
-    const pointedStave = notationPreviewStaveRef.current?.blockId === blockId
-      ? notationPreviewStaveRef.current.staveIndex
-      : null
-    setNotationEditorStaveIndex(
-      Array.isArray(staves) && staves.length > 1
-        ? (pointedStave ?? null)
-        : null,
-    )
+    setNotationEditorStaveIndex(null)
     notationPreviewStaveRef.current = null
     setNotationEditorOpen(true)
-  }, [blocks])
+  }, [])
 
   // Salvar notação de volta no bloco
   const handleNotationEditorSave = useCallback(async (data: NotationEditorMaterialSaveData) => {
