@@ -21,6 +21,7 @@ Corte: **escrever na pauta da A4**, gesto MuseScore/Finale/Sibelius. Biblioteca 
 - Motor: **AlphaTab** (já no produto). MuseScore 3.x é app Qt/QML de desktop ([repo 3.x](https://github.com/musescore/MuseScore/tree/3.x), [API de plugin](https://musescore.github.io/MuseScore_PluginAPI_Docs/plugins/html/index.html)) — **não** entra como SDK web tipo `@coderline/alphatab`.
 - Primeiro corte: só o que o modal já tem. Ligadura, cifra-na-pauta, folha deitada, playhead → Radar.
 - Spec deste corte: `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+- Plano: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
 - Caderninho (respiro dos dois lados, worker Vite, partitura inteira no modal): worktree `feat/notacao-caderninho`.
 - Simple Browser: **http://localhost:3002**. Produção: https://la-journey.vercel.app
 - Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
@@ -278,6 +279,7 @@ Edição:
 
 - Folha AlphaTab (modal = mesma gravura): `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`
 - In-place A4 (escrever na pauta): `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+- Plano in-place: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
 
 ---
 
