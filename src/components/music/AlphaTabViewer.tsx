@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 're
 import * as alphaTabModule from '@coderline/alphatab'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { buildAlphaTabSettings, type AlphaTabPurpose } from '@/lib/alphaTabSettings'
+import { extendAlphaTabStaffLines } from '@/lib/extendAlphaTabStaffLines'
 import {
   cleanupAlphaTabFreeTimeArtifacts,
   raiseTabSlursInSvg,
@@ -128,22 +129,9 @@ function cleanupAlphaTabDom(
       }
     })
 
-    const svgWidth = parseFloat(svg.getAttribute('width') || '0')
-    if (svgWidth > 0) {
-      const rects = svg.querySelectorAll(':scope > rect')
-      rects.forEach(r => {
-        const x = parseFloat(r.getAttribute('x') || '0')
-        const w = parseFloat(r.getAttribute('width') || '0')
-        const h = parseFloat(r.getAttribute('height') || '0')
-        if (h > 0.3 && h < 2 && w > 30 && x < 100) {
-          const rightEdge = x + w
-          if (rightEdge < svgWidth - 5) {
-            r.setAttribute('width', String(svgWidth - x))
-          }
-        }
-      })
-    }
   })
+
+  extendAlphaTabStaffLines(container, container.clientWidth)
 }
 
 function resolvePurpose(
@@ -191,6 +179,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     const onStableRenderRef = useRef(onStableRender)
     const onStateChangeRef = useRef(onStateChange)
     const configKeyRef = useRef('')
+    const renderTexRef = useRef('')
 
     onBeatMouseDownRef.current = onBeatMouseDown
     onBeatMouseMoveRef.current = onBeatMouseMove
@@ -222,6 +211,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     const effectiveLayout = alphaTabPurpose.includes('tablature') ? 'horizontal' : layout
     const isTablaturePurpose = alphaTabPurpose.includes('tablature')
     const renderTex = getAlphaTabViewerRenderTex(tex, showTimeSignature, isTablaturePurpose)
+    renderTexRef.current = renderTex
     const configKey = `${effectiveLayout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}|${alphaTabPurpose}`
 
     useEffect(() => {
@@ -234,7 +224,9 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
 
       const isTablature = alphaTabPurpose.includes('tablature')
       let cleanupObserver: MutationObserver | null = null
+      let resizeObserver: ResizeObserver | null = null
       let cleanupFrame: number | null = null
+      let lastRenderWidth = 0
       const queueDomCleanup = () => {
         if (cleanupFrame !== null) return
         cleanupFrame = window.requestAnimationFrame(() => {
@@ -262,6 +254,16 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
           childList: true,
           subtree: true,
         })
+        resizeObserver = new ResizeObserver(() => {
+          const width = containerRef.current?.clientWidth ?? 0
+          if (width > 32 && Math.abs(width - lastRenderWidth) >= 4) {
+            lastRenderWidth = width
+            const nextTex = renderTexRef.current
+            if (nextTex) api.tex(nextTex)
+          }
+          queueDomCleanup()
+        })
+        resizeObserver.observe(containerRef.current)
       }
 
       api.scoreLoaded.on((score: any) => {
@@ -320,6 +322,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
         setLoading(true)
         setError(null)
         setPhase('loading')
+        lastRenderWidth = containerRef.current?.clientWidth ?? 0
         api.tex(renderTex)
       } else {
         setPhase('idle')
@@ -329,6 +332,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
 
       return () => {
         cleanupObserver?.disconnect()
+        resizeObserver?.disconnect()
         if (cleanupFrame !== null) {
           window.cancelAnimationFrame(cleanupFrame)
         }

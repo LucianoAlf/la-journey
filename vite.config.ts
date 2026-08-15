@@ -15,9 +15,13 @@ export default defineConfig(({mode}) => {
     },
     server: {
       fs: {
+        // Worktree node_modules is a junction to the repo root. Vite follows the
+        // real path and, with strict:true, blocks alphaTab.worker.mjs.
+        strict: false,
         allow: [
           searchForWorkspaceRoot(process.cwd()),
           path.resolve(__dirname, '../..'),
+          path.resolve(__dirname, '../../node_modules'),
         ],
       },
       allowedHosts: [

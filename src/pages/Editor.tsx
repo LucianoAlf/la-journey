@@ -5779,7 +5779,7 @@ Regras:
     const targetedLegacyStave = notationEditorStaveIndex !== null ? legacyStaves[notationEditorStaveIndex] : legacyStaves[0]
     // Primeiro tenta notation_data salvo (com beats completos do editor)
     // Se não existir, converte notas VexFlow → beats
-    const nd = legacyStaves.length > 1
+    const nd = notationEditorStaveIndex !== null && legacyStaves.length > 1
       ? vexNotesToBeats(targetedLegacyStave ? [targetedLegacyStave] : [])
       : (block.content as any)?.notation_data
         ?? rd.notation_data
@@ -5816,7 +5816,7 @@ Regras:
       : null
     setNotationEditorStaveIndex(
       Array.isArray(staves) && staves.length > 1
-        ? (pointedStave ?? 0)
+        ? (pointedStave ?? null)
         : null,
     )
     notationPreviewStaveRef.current = null

@@ -98,7 +98,7 @@ export function NotationAlphaTabSurface({
   return (
     <div
       className="relative mx-auto rounded-xl border border-border overflow-hidden bg-white"
-      style={{ width: '100%', maxWidth: A4_CANVAS_NOTATION_WIDTH }}
+      style={{ width: A4_CANVAS_NOTATION_WIDTH }}
       onPointerMove={(event) => handlePointer(event, false)}
       onPointerLeave={() => onHoverPitch?.(null)}
       onPointerDown={(event) => {
