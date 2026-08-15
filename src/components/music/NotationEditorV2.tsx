@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner'
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from '@/services/notationService'
 import { getEditorTimeSignature, normalizeTimeSignature } from '@/lib/timeSignature'
+import { editorDurationFromRaw } from '@/lib/notationBeatNormalize'
 
 // ─── Re-export tipos do NotationSvgEditor ───────────────────────────
 export type { BeatDuration, PitchData }
@@ -174,10 +175,7 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
       const rawDuration = String(rawBeat.duration ?? rawDurationFromNotes ?? 'q')
       const doubleDotted = Boolean(rawBeat.doubleDotted) || rawDuration.includes('dd')
       const dotted = doubleDotted ? false : (Boolean(rawBeat.dotted) || rawDuration.includes('d'))
-      const duration = rawDuration.replace(/dd|d|r/g, '') as BeatDuration
-      const safeDuration: BeatDuration = (['w', 'h', 'q', '8', '16', '32', '64'] as string[]).includes(duration)
-        ? duration
-        : 'q'
+      const safeDuration = editorDurationFromRaw(rawDuration)
 
       const isRest = Boolean(rawBeat.isRest) || rawDuration.includes('r') || pitches.length === 0
 
@@ -194,6 +192,7 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
         staff: rawBeat.staff === 'bass' ? 'bass' : rawBeat.staff === 'treble' ? 'treble' : undefined,
         tuplet: rawBeat.tuplet,
         timeSlot: Number.isFinite(rawBeat.timeSlot) ? rawBeat.timeSlot : undefined,
+        barAfter: Boolean(rawBeat.barAfter),
       }
     })
     .filter((beat): beat is SvgBeat => beat !== null)
@@ -412,9 +411,9 @@ export function NotationEditorV2({
       lyric: null,
       staff: b.staff,
       timeSlot: b.timeSlot,
-      barAfter: grandStaffMode
+      barAfter: Boolean(b.barAfter) || (grandStaffMode
         ? barlineSlotSet.has(b.timeSlot ?? idx)
-        : computedBarlines.includes(idx), // Sincronizar barlines
+        : computedBarlines.includes(idx)),
     }))
     const result = beatsToAlphaTexWithMap(alphaTexBeats, {
       clef,

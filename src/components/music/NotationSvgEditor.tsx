@@ -22,6 +22,7 @@ export interface Beat {
   staff?: 'treble' | 'bass'
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
   timeSlot?: number // Posição temporal para sincronização entre pautas na Grande Pauta
+  barAfter?: boolean
 }
 
 export interface NotationSvgEditorProps {

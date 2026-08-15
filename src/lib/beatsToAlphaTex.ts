@@ -101,6 +101,9 @@ const DURATION_MAP: Record<string, string> = {
   '16': '16',  // semicolcheia
   '32': '32',  // fusa
   '64': '64',  // semifusa
+  '1': '1',
+  '2': '2',
+  '4': '4',
 }
 
 // ─── Mapa de armaduras: nosso formato → AlphaTex ───
@@ -302,7 +305,7 @@ export function beatsToAlphaTex(
     (normalizedTimeSignature ? 'metered' : 'free')
   const shouldEmitMeter = timeSignatureMode === 'metered' && Boolean(normalizedTimeSignature)
   const shouldEmitFreeTime = !shouldEmitMeter
-  const includeBarlines = timeSignatureMode === 'metered'
+  const includeBarlines = timeSignatureMode === 'metered' || beats.some(beat => beat.barAfter)
 
   // Header global
   if (options.title) lines.push(`\\title "${options.title}"`)
@@ -511,7 +514,7 @@ export function beatsToAlphaTexWithMap(
     (normalizedTimeSignature ? 'metered' : 'free')
   const shouldEmitMeter = timeSignatureMode === 'metered' && Boolean(normalizedTimeSignature)
   const shouldEmitFreeTime = !shouldEmitMeter
-  const includeBarlines = timeSignatureMode === 'metered'
+  const includeBarlines = timeSignatureMode === 'metered' || beats.some(beat => beat.barAfter)
 
   // Header global
   if (options.title) lines.push(`\\title "${options.title}"`)
