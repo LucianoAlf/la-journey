@@ -6,6 +6,7 @@ import { resolveInsertAfterIndex, resolveModelBeatIndex } from '@/lib/notationBe
 
 export interface NotationAlphaTabSurfaceProps {
   tex: string
+  variant?: 'modal' | 'canvas'
   indexMap: number[]
   selectedBeatIdx: number
   clef: string
@@ -26,6 +27,7 @@ function staffClef(clef: string): 'treble' | 'bass' {
 
 export function NotationAlphaTabSurface({
   tex,
+  variant = 'modal',
   indexMap,
   selectedBeatIdx,
   clef,
@@ -97,11 +99,14 @@ export function NotationAlphaTabSurface({
 
   return (
     <div
-      className="relative mx-auto rounded-xl border border-border overflow-hidden bg-white"
-      style={{ width: A4_CANVAS_NOTATION_WIDTH }}
+      className={variant === 'canvas'
+        ? 'relative w-full min-w-0'
+        : 'relative mx-auto overflow-hidden rounded-xl border border-border bg-white'}
+      style={variant === 'modal' ? { width: A4_CANVAS_NOTATION_WIDTH } : undefined}
       onPointerMove={(event) => handlePointer(event, false)}
       onPointerLeave={() => onHoverPitch?.(null)}
       onPointerDown={(event) => {
+        if (variant === 'canvas') event.stopPropagation()
         handlePointer(event, true)
         if (inputRef && 'current' in inputRef) inputRef.current?.focus()
       }}

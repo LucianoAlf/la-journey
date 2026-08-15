@@ -43,6 +43,8 @@ import { youtubeEmbedSrc } from '@/lib/youtubeEmbed'
 import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer, getLegacyNotationAlphaTexDisplayTex, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
+import { NotationAlphaTabSurface } from '@/components/music/NotationAlphaTabSurface'
+import { NotationDurationStrip, type NotationDurationStripProps } from '@/components/music/NotationDurationStrip'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
 import { COVER_FONT_OPTIONS } from '@/lib/googleFonts'
 import { loadGoogleFonts } from '@/lib/fontLoader'
@@ -61,6 +63,7 @@ import { TitleTemplateRenderer } from '@/components/material/TitleTemplateRender
 import { resolveNotationPreviewWidth } from '@/lib/notationPreviewWidth'
 
 export interface MaterialBlock {
+  id?: string
   block_type: 'title' | 'text' | 'chord_diagram' | 'chord_grid' | 'notation' | 'rhythm' | 'exercise' | 'tip' | 'tablature' | 'image' | 'audio' | 'video' | 'qr_code' | 'badge' | 'cover' | 'keyboard' | 'keyboard_grid' | 'columns' | 'separator' | 'page_break'
   title?: string
   content?: { text?: string; [key: string]: any }
@@ -165,6 +168,22 @@ interface MaterialPreviewProps {
   onTextCloneForDrag?: (id: string) => CoverTextElement | null
   onTextLayerChange?: (id: string, action: 'front' | 'forward' | 'backward' | 'back') => void
   onLegacyTextActivate?: () => void
+  notationInteractive?: {
+    blockId: string
+    tex: string
+    indexMap: number[]
+    selectedBeatIdx: number
+    clef: string
+    keySignature: string
+    timeSignature: string | null
+    grandStaffMode: boolean
+    onSelectBeat: (idx: number) => void
+    onInsertNote: (pitch: string, afterIdx: number) => void
+    onReplaceNote: (pitch: string, atIdx: number) => void
+    onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
+    inputRef?: React.Ref<HTMLInputElement>
+    durationStrip: NotationDurationStripProps
+  } | null
 }
 
 type MusicStableRenderHandler = (block: MaterialBlock, html: string) => void
@@ -786,7 +805,7 @@ function BlockChordGrid({ block, onChordGridItemClick, onChordGridItemRemove }: 
   )
 }
 
-function BlockNotation({ block, onLegacyNotationStavePointerDown, onMusicStableRender }: { block: MaterialBlock; onLegacyNotationStavePointerDown?: (staveIndex: number) => void; onMusicStableRender?: MusicStableRenderHandler }) {
+function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointerDown, onMusicStableRender }: { block: MaterialBlock; notationInteractive?: MaterialPreviewProps['notationInteractive']; onLegacyNotationStavePointerDown?: (staveIndex: number) => void; onMusicStableRender?: MusicStableRenderHandler }) {
   const rd = getBlockRenderData(block)
   const content = getBlockContent(block)
   const alphaTex = typeof rd.alphaTex === 'string' ? rd.alphaTex.trim() : ''
@@ -803,11 +822,33 @@ function BlockNotation({ block, onLegacyNotationStavePointerDown, onMusicStableR
     content,
     renderData: rd,
   })
+  const isInteractive = notationInteractive?.blockId === block.id
 
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      {emptyState ? (
+      {isInteractive ? (
+        <>
+          <div className="mb-2 flex flex-wrap items-center gap-1">
+            <NotationDurationStrip {...notationInteractive.durationStrip} />
+          </div>
+          <NotationAlphaTabSurface
+            variant="canvas"
+            tex={notationInteractive.tex}
+            indexMap={notationInteractive.indexMap}
+            selectedBeatIdx={notationInteractive.selectedBeatIdx}
+            clef={notationInteractive.clef}
+            keySignature={notationInteractive.keySignature}
+            timeSignature={notationInteractive.timeSignature}
+            grandStaffMode={notationInteractive.grandStaffMode}
+            onSelectBeat={notationInteractive.onSelectBeat}
+            onInsertNote={notationInteractive.onInsertNote}
+            onReplaceNote={notationInteractive.onReplaceNote}
+            onKeyDown={notationInteractive.onKeyDown}
+            inputRef={notationInteractive.inputRef}
+          />
+        </>
+      ) : emptyState ? (
         <EmptyBlockPlaceholder state={emptyState} />
       ) : !shouldRenderStructuredNotation && alphaTex ? (
         <AlphaTabViewer
@@ -2546,7 +2587,7 @@ const BLOCK_RENDERERS: Record<string, React.FC<{ block: MaterialBlock }>> = {
   separator: BlockSeparator,
 }
 
-export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onChordGridItemRemove, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate }: MaterialPreviewProps) {
+export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointerDown, onMusicStableRender, onChordGridItemClick, onChordGridItemRemove, onKeyboardGridItemClick, coverEditable, onCoverPositionChange, onCoverRenderDataChange, onCoverLogoDuplicate, coverTitleEditing, onCoverTitleChange, overlayElements, selectedOverlayId, onOverlaySelect, onOverlayUpdate, onOverlayCloneForDrag, textElements, selectedTextId, editingTextId, onTextSelect, onTextUpdate, onTextEditStart, onTextCopy, onTextDuplicate, onTextDelete, onTextCloneForDrag, onTextLayerChange, onLegacyTextActivate, notationInteractive }: MaterialPreviewProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-12 text-text3">
@@ -2574,7 +2615,7 @@ export function MaterialPreview({ blocks, brandKit, onLegacyNotationStavePointer
           return <BlockText key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} />
         }
         if (block.block_type === 'notation') {
-          return <BlockNotation key={i} block={block} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} onMusicStableRender={onMusicStableRender} />
+          return <BlockNotation key={i} block={block} notationInteractive={notationInteractive} onLegacyNotationStavePointerDown={onLegacyNotationStavePointerDown} onMusicStableRender={onMusicStableRender} />
         }
         if (block.block_type === 'rhythm') {
           return <BlockRhythm key={i} block={block} onMusicStableRender={onMusicStableRender} />
