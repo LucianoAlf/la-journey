@@ -20,6 +20,9 @@ export interface BuildAlphaTabSettingsOptions {
   systemPaddingBottom?: number
 }
 
+/** Escala da gravura de notação para material didático (canvas, modal e preview). */
+export const NOTATION_DIDACTIC_SCALE = 1.35
+
 function isTabPurpose(purpose: AlphaTabPurpose) {
   return purpose === 'editor-tablature-tab'
     || purpose === 'canvas-tablature-tab'
@@ -96,7 +99,7 @@ function applyThemeResources(
   } else {
     res.mainGlyphColor = new alphaTabModule.model.Color(30, 30, 40, 255)
     res.secondaryGlyphColor = new alphaTabModule.model.Color(100, 100, 120, 255)
-    res.staffLineColor = new alphaTabModule.model.Color(180, 185, 195, 255)
+    res.staffLineColor = new alphaTabModule.model.Color(55, 58, 64, 255)
     res.scoreInfoColor = new alphaTabModule.model.Color(40, 40, 55, 255)
   }
 }
@@ -131,6 +134,7 @@ export function buildAlphaTabSettings({
     ? (showTimeSignature ? 0.75 : 1.05)
     : (showTimeSignature ? 1.8 : 3.5)
   settings.display.stretchForce = isTab ? 1.0 : stretchForce
+  settings.display.justifyLastSystem = !isHorizontalLayout
   settings.display.staveProfile = isTab
     ? alphaTabModule.StaveProfile.Tab
     : alphaTabModule.StaveProfile.Score

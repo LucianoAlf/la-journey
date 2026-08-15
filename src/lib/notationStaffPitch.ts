@@ -54,3 +54,29 @@ export function emptyStaffAlphaTex(options: {
   lines.push('r.4')
   return lines.join('\n')
 }
+
+export function staffYFromPitch(
+  pitch: string,
+  staffTop: number,
+  staffBottom: number,
+  clef: 'treble' | 'bass',
+): number {
+  const match = pitch.match(/^([A-G])[#bn]?\/(\d+)$/)
+  if (!match) return staffTop
+  const span = staffBottom - staffTop
+  const half = span === 0 ? 1 : span / 8
+  const top = CLEF_TOP[clef]
+  const nameIdx = NOTE_NAMES.indexOf(match[1] as (typeof NOTE_NAMES)[number])
+  const octave = Number(match[2])
+  const steps = (top.octave - octave) * 7 + (top.nameIdx - nameIdx)
+  return staffTop + steps * half
+}
+
+export function ledgerLineYs(noteY: number, staffTop: number, staffBottom: number): number[] {
+  const span = staffBottom - staffTop
+  const lineGap = span === 0 ? 2 : span / 4
+  const ys: number[] = []
+  for (let y = staffTop - lineGap; y >= noteY - lineGap / 4; y -= lineGap) ys.push(y)
+  for (let y = staffBottom + lineGap; y <= noteY + lineGap / 4; y += lineGap) ys.push(y)
+  return ys
+}

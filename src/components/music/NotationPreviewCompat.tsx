@@ -5,6 +5,7 @@ import {
   resolveNotationPreviewItem,
   type LegacyNotationData,
 } from '@/lib/notationCompat'
+import { NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
 
 interface NotationPreviewCompatProps {
   notation?: LegacyNotationData | null
@@ -36,7 +37,7 @@ export function NotationPreviewCompat({
   minHeight = 84,
   className = '',
   showLabels = true,
-  scale = 0.9,
+  scale = NOTATION_DIDACTIC_SCALE,
   onStableRender,
 }: NotationPreviewCompatProps) {
   const hasLegacyNotes = Boolean(notes?.length)

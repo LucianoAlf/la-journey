@@ -91,6 +91,7 @@ interface ContextualToolbarProps {
   onEditKeyboard?: () => void
   onReplaceImage?: () => void
   onExitEdit?: () => void
+  notationInline?: boolean
 }
 
 export function ContextualToolbar({
@@ -100,11 +101,12 @@ export function ContextualToolbar({
   onSaveReusable, saveReusableDisabled = false, onEditInline,
   onEditNotation, onEditTablature, onEditChord, onEditKeyboard, onReplaceImage, onExitEdit,
   mode = 'selected',
+  notationInline,
 }: ContextualToolbarProps) {
   const [showBgPicker, setShowBgPicker] = useState(false)
   const [showPaddingPicker, setShowPaddingPicker] = useState(false)
   const [showLayoutPanel, setShowLayoutPanel] = useState(false)
-  const actions = getCanvasToolbarActions(blockType)
+  const actions = getCanvasToolbarActions(blockType, { notationInline })
   const showLayoutControls = mode === 'selected' && blockStyle && paginationPolicy && onPaginationChange
   const layoutPanelPosition = position.placement === 'below' ? 'bottom-full mb-2' : 'top-full mt-2'
   const hasLayoutAdjustments = hasCanvasBlockLayoutAdjustments(blockStyle, paginationPolicy)

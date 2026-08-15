@@ -50,6 +50,8 @@ import { coverFromSongbookBlocks } from "@/lib/repertoirePdfCover";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { TitleTemplateRenderer } from "@/components/material/TitleTemplateRenderer";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
+import { NotationToolsSidebar } from "@/components/music/NotationToolsSidebar";
+import { useNotationInlineSession } from "@/components/music/useNotationInlineSession";
 import { SaveAsReusableDialog, type SaveAsReusablePayload } from "@/components/content/SaveAsReusableDialog";
 import { ContentBrowser } from "@/components/content/ContentBrowser";
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
@@ -90,6 +92,7 @@ import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
+import { isNotationInlineEnabled } from "@/lib/notationInline";
 import { buildSidebarPageGroups, buildSidebarPagePreviewItems, reorderSidebarBlocks } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
@@ -315,6 +318,7 @@ function parseBlocks(rows: MaterialWithBlocks[]): { material: MaterialWithBlocks
 
 function editorBlockToPreview(b: EditorBlock): MaterialBlock {
   return {
+    id: b.id,
     block_type: b.block_type as MaterialBlock['block_type'],
     title: b.title ?? undefined,
     content: b.content as MaterialBlock['content'],
@@ -1194,6 +1198,7 @@ interface CanvasMaterialPreviewProps {
   onCoverRenderDataChange: (blockId: string, patch: Record<string, any>) => void
   onCoverLogoDuplicate: (blockId: string) => void
   onCoverTitleChange: (value: string) => void
+  notationInteractive?: React.ComponentProps<typeof MaterialPreview>['notationInteractive']
 }
 
 const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
@@ -1227,6 +1232,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   onCoverRenderDataChange,
   onCoverLogoDuplicate,
   onCoverTitleChange,
+  notationInteractive,
 }: CanvasMaterialPreviewProps) {
   const realRendererRef = useRef<HTMLDivElement | null>(null)
   const previewBlock = useMemo(() => editorBlockToPreview(block), [block])
@@ -1374,6 +1380,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       onTextCloneForDrag={block.block_type === 'cover' ? onTextCloneForDrag : undefined}
       onTextLayerChange={block.block_type === 'cover' ? onTextLayerChange : undefined}
       onLegacyTextActivate={block.block_type === 'cover' ? onLegacyCoverTextActivate : undefined}
+      notationInteractive={notationInteractive}
     />
   )
 
@@ -1421,6 +1428,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
       prev.onCoverPositionChange === next.onCoverPositionChange &&
       prev.onCoverTitleChange === next.onCoverTitleChange &&
+      prev.notationInteractive === next.notationInteractive &&
       prev.musicRendererSnapshotCacheRef === next.musicRendererSnapshotCacheRef &&
       prev.canHydrateMusicRenderer === next.canHydrateMusicRenderer
     )
@@ -1937,6 +1945,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     () => selectedBlock ? mergeBlockStyle(selectedBlock.render_data?.style as Partial<BlockStyle> | undefined, {}) : DEFAULT_BLOCK_STYLE,
     [selectedBlock],
   )
+  const notationInlineEnabled = isNotationInlineEnabled()
+  const inlineNotationBlock = notationInlineEnabled && selectedBlock?.block_type === 'notation'
+    ? selectedBlock
+    : null
+  const inlineNotationSession = useNotationInlineSession({
+    block: inlineNotationBlock,
+    enabled: notationInlineEnabled,
+  })
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialMeta, setMaterialMeta] = useState<MaterialWithBlocks | null>(null)
   const [saving, setSaving] = useState(false)
@@ -2006,6 +2022,60 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     blocksRef,
     initialLoadDone,
   })
+
+  const pendingInlinePatchRef = useRef<{ blockId: string; patch: Record<string, any> } | null>(null)
+  const inlinePatchTimerRef = useRef<number | null>(null)
+
+  const flushInlineNotationPatch = useCallback(() => {
+    if (inlinePatchTimerRef.current !== null) {
+      window.clearTimeout(inlinePatchTimerRef.current)
+      inlinePatchTimerRef.current = null
+    }
+    const pending = pendingInlinePatchRef.current
+    if (!pending) return null
+    pendingInlinePatchRef.current = null
+    const apply = (block: typeof blocksRef.current[number]) => (
+      block.id === pending.blockId ? { ...block, render_data: pending.patch } : block
+    )
+    setBlocksWithHistory(previous => previous.map(apply))
+    blocksRef.current = blocksRef.current.map(apply)
+    queueBlockAutosave(pending.blockId)
+    return pending
+  }, [queueBlockAutosave, setBlocksWithHistory])
+
+  const cancelInlineNotationPatch = useCallback(() => {
+    if (inlinePatchTimerRef.current !== null) {
+      window.clearTimeout(inlinePatchTimerRef.current)
+      inlinePatchTimerRef.current = null
+    }
+    pendingInlinePatchRef.current = null
+  }, [])
+
+  useEffect(() => {
+    const patch = inlineNotationSession.patchRenderData
+    if (!notationInlineEnabled || !inlineNotationBlock || !inlineNotationSession.isHydrated || !patch) return
+    const current = blocksRef.current.find(block => block.id === inlineNotationBlock.id)
+    if (!current) return
+    const currentNotation = JSON.stringify((current.render_data ?? {}).notation_data ?? null)
+    const nextNotation = JSON.stringify(patch.notation_data ?? null)
+    if (currentNotation === nextNotation) {
+      if (inlinePatchTimerRef.current !== null) {
+        window.clearTimeout(inlinePatchTimerRef.current)
+        inlinePatchTimerRef.current = null
+      }
+      pendingInlinePatchRef.current = null
+      return
+    }
+
+    pendingInlinePatchRef.current = { blockId: inlineNotationBlock.id, patch }
+    if (inlinePatchTimerRef.current !== null) window.clearTimeout(inlinePatchTimerRef.current)
+    inlinePatchTimerRef.current = window.setTimeout(flushInlineNotationPatch, 400)
+  }, [flushInlineNotationPatch, inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled])
+
+  useEffect(() => () => {
+    flushInlineNotationPatch()
+    // Unmount persist relies on the last queued autosave.
+  }, [flushInlineNotationPatch, inlineNotationBlock?.id])
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -2797,11 +2867,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [selectedBlock])
 
   const handleSaveReusable = useCallback(async (payload: SaveAsReusablePayload) => {
-    if (!selectedBlock) {
+    flushInlineNotationPatch()
+    const block = selectedBlock
+      ? (blocksRef.current.find(b => b.id === selectedBlock.id) ?? selectedBlock)
+      : null
+    if (!block) {
       toast.error('Selecione um bloco primeiro')
       return
     }
-    if (!isReusableBlockType(selectedBlock.block_type)) {
+    if (!isReusableBlockType(block.block_type)) {
       toast.error('Esse tipo de bloco nao pode ser salvo como reutilizavel')
       return
     }
@@ -2821,7 +2895,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         instrument: payload.instrument,
         difficulty_level: payload.difficulty_level,
         tags: payload.tags,
-        blocks: [editorBlockToExerciseBlock(selectedBlock)],
+        blocks: [editorBlockToExerciseBlock(block)],
         block_count: 1,
         preview_data: {},
         thumbnail_url: null,
@@ -2839,7 +2913,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } finally {
       setSaveReusableLoading(false)
     }
-  }, [school?.id, selectedBlock])
+  }, [blocksRef, flushInlineNotationPatch, school?.id, selectedBlock])
 
   const handleInsertContentFromBrowser = useCallback(async (preparedBlocks: PreparedMaterialBlock[], item: { id: string; title: string }) => {
     setInsertingContentId(item.id)
@@ -2889,6 +2963,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Duplicar bloco
   const handleDuplicateBlock = useCallback(async (blockId: string) => {
+    flushInlineNotationPatch()
     const beforeBlocks = blocksRef.current
     const block = beforeBlocks.find(b => b.id === blockId)
     if (!block) return
@@ -2935,7 +3010,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       commitBlocksHistory(beforeBlocks, optimisticBlocks)
       toast.info('Bloco duplicado localmente')
     }
-  }, [blocksRef, commitBlocksHistory, materialId, setBlocks, setSelectedBlockId])
+  }, [blocksRef, commitBlocksHistory, flushInlineNotationPatch, materialId, setBlocks, setSelectedBlockId])
 
   const flushCanvasNudgeSession = useCallback((session = canvasNudgeSessionRef.current) => {
     if (!session) return
@@ -3114,14 +3189,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Salvar alterações do bloco selecionado
   const handleSaveBlock = useCallback(async () => {
+    const flushed = flushInlineNotationPatch()
     if (!selectedBlock) return
+    const renderData = flushed && flushed.blockId === selectedBlock.id
+      ? flushed.patch
+      : selectedBlock.render_data
     setSaving(true)
     try {
       await updateMaterialBlockRpc({
         blockId: selectedBlock.id,
         title: selectedBlock.title,
         content: selectedBlock.content,
-        renderData: selectedBlock.render_data,
+        renderData,
       })
       setBlocks(prev => prev.map(b =>
         b.id === selectedBlock.id ? { ...b, is_edited: true } : b,
@@ -3140,7 +3219,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } finally {
       setSaving(false)
     }
-  }, [selectedBlock, school, materialId, pageConfig])
+  }, [flushInlineNotationPatch, selectedBlock, school, materialId, pageConfig])
 
   // Reverter bloco ao original
   const handleRevertBlock = useCallback(async () => {
@@ -5779,7 +5858,7 @@ Regras:
     const targetedLegacyStave = notationEditorStaveIndex !== null ? legacyStaves[notationEditorStaveIndex] : legacyStaves[0]
     // Primeiro tenta notation_data salvo (com beats completos do editor)
     // Se não existir, converte notas VexFlow → beats
-    const nd = legacyStaves.length > 1
+    const nd = notationEditorStaveIndex !== null && legacyStaves.length > 1
       ? vexNotesToBeats(targetedLegacyStave ? [targetedLegacyStave] : [])
       : (block.content as any)?.notation_data
         ?? rd.notation_data
@@ -5809,19 +5888,10 @@ Regras:
   // Abrir editor de notação para um bloco
   const openNotationEditorForBlock = useCallback((blockId: string) => {
     setNotationEditorBlockId(blockId)
-    const block = blocks.find((b) => b.id === blockId)
-    const staves = ((block?.render_data ?? {}) as any)?.notation?.staves
-    const pointedStave = notationPreviewStaveRef.current?.blockId === blockId
-      ? notationPreviewStaveRef.current.staveIndex
-      : null
-    setNotationEditorStaveIndex(
-      Array.isArray(staves) && staves.length > 1
-        ? (pointedStave ?? 0)
-        : null,
-    )
+    setNotationEditorStaveIndex(null)
     notationPreviewStaveRef.current = null
     setNotationEditorOpen(true)
-  }, [blocks])
+  }, [])
 
   // Salvar notação de volta no bloco
   const handleNotationEditorSave = useCallback(async (data: NotationEditorMaterialSaveData) => {
@@ -6120,7 +6190,14 @@ Regras:
     else if (block.block_type === 'keyboard') openKeyboardEditorForBlock(block.id)
     else if (block.block_type === 'keyboard_grid') openKeyboardEditorForGrid(block.id)
     else if (block.block_type === 'tablature') openTablatureEditorForBlock(block.id)
-    else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+    else if (block.block_type === 'notation') {
+      if (isNotationInlineEnabled()) {
+        setSelectedBlockId(block.id)
+        return
+      }
+      openNotationEditorForBlock(block.id)
+    }
+    else if (blockHasNotation(block)) openNotationEditorForBlock(block.id)
     else if (block.block_type === 'image') imageInputRef.current?.click()
     else if (block.block_type === 'cover') setCoverTitleEditing(true)
   }, [
@@ -6132,6 +6209,7 @@ Regras:
     openKeyboardEditorForGrid,
     openNotationEditorForBlock,
     openTablatureEditorForBlock,
+    setSelectedBlockId,
   ])
 
   const handleCanvasInlineTitleChange = useCallback((blockId: string, title: string) => {
@@ -6557,6 +6635,7 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
+        cancelInlineNotationPatch()
         if (
           (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
           undoFloatingElementChange()
@@ -6568,6 +6647,7 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
+        cancelInlineNotationPatch()
         if (
           (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
           redoFloatingElementChange()
@@ -6804,7 +6884,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, cancelInlineNotationPatch, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -6940,6 +7020,7 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
+                cancelInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
                   undoFloatingElementChange()
@@ -6956,6 +7037,7 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
+                cancelInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
                   redoFloatingElementChange()
@@ -7776,6 +7858,30 @@ ${pagesHtml}
                             onCoverRenderDataChange={handleCanvasCoverRenderDataChange}
                             onCoverLogoDuplicate={handleCanvasCoverLogoDuplicate}
                             onCoverTitleChange={handleCanvasCoverTitleChange}
+                            notationInteractive={
+                              notationInlineEnabled &&
+                              block.id === selectedBlockId &&
+                              block.block_type === 'notation'
+                                ? {
+                                    blockId: block.id,
+                                    tex: inlineNotationSession.tex,
+                                    indexMap: inlineNotationSession.indexMap,
+                                    selectedBeatIdx: inlineNotationSession.selectedBeatIdx,
+                                    clef: inlineNotationSession.clef,
+                                    keySignature: inlineNotationSession.keySignature,
+                                    timeSignature: inlineNotationSession.timeSignature === 'free'
+                                      ? null
+                                      : inlineNotationSession.timeSignature,
+                                    grandStaffMode: inlineNotationSession.grandStaff,
+                                    onSelectBeat: inlineNotationSession.onSelectBeat,
+                                    onInsertNote: inlineNotationSession.onInsertNote,
+                                    onReplaceNote: inlineNotationSession.onReplaceNote,
+                                    onKeyDown: inlineNotationSession.handleKeyDown,
+                                    inputRef: inlineNotationSession.inputRef,
+                                    durationStrip: inlineNotationSession.durationStrip,
+                                  }
+                                : null
+                            }
                           />
                           </>
                         )}
@@ -8167,6 +8273,53 @@ ${pagesHtml}
                 Clique em um bloco para editar suas propriedades
               </div>
             </div>
+          ) : notationInlineEnabled && selectedBlock.block_type === 'notation' ? (
+            <div className="space-y-4 pb-4">
+              <NotationToolsSidebar
+                timeSignature={inlineNotationSession.timeSignature}
+                clef={inlineNotationSession.clef}
+                keySignature={inlineNotationSession.keySignature}
+                currentTuplet={inlineNotationSession.currentTuplet}
+                bpm={inlineNotationSession.bpm}
+                grandStaffMode={inlineNotationSession.grandStaff}
+                activeStaff={inlineNotationSession.activeStaff}
+                canUndo={inlineNotationSession.canUndo}
+                canRedo={inlineNotationSession.canRedo}
+                isPlaying={inlineNotationSession.isPlaying}
+                onTimeSignature={inlineNotationSession.onTimeSignature}
+                onClef={inlineNotationSession.onClef}
+                onKeySignature={inlineNotationSession.onKeySignature}
+                onTuplet={inlineNotationSession.onTuplet}
+                onBpm={inlineNotationSession.onBpm}
+                onGrandStaff={inlineNotationSession.onGrandStaff}
+                onFocusStaff={inlineNotationSession.onFocusStaff}
+                onTransposeUp={inlineNotationSession.onTransposeUp}
+                onTransposeDown={inlineNotationSession.onTransposeDown}
+                onUndo={inlineNotationSession.onUndo}
+                onRedo={inlineNotationSession.onRedo}
+                onTogglePlay={inlineNotationSession.onTogglePlay}
+                layout="column"
+              />
+              <Separator />
+              <div className="prop-section">
+                <div className="prop-label">Tipo</div>
+                <div className="flex items-center gap-2 rounded-md bg-azul-soft px-3 py-2">
+                  <MusicNotes size={16} className="text-master" />
+                  <span className="text-[12px] font-semibold text-master">Partitura</span>
+                </div>
+              </div>
+              <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-4 border-t border-border bg-surface/95 p-3 shadow-[0_-10px_24px_rgba(15,23,42,0.10)] backdrop-blur">
+                <Button
+                  size="sm"
+                  className="h-9 w-full justify-center bg-azul-escuro text-[11px] hover:bg-azul"
+                  onClick={handleSaveBlock}
+                  disabled={saving}
+                >
+                  {saving ? <SpinnerGap size={14} className="animate-spin" /> : <FloppyDisk size={14} />}
+                  Salvar Alterações
+                </Button>
+              </div>
+            </div>
           ) : (
             <>
               <div className="prop-label mb-3" style={{ color: 'var(--accent)' }}>
@@ -8191,7 +8344,7 @@ ${pagesHtml}
                     <Badge variant="gold" className="text-[8px] ml-auto">editado</Badge>
                   )}
                 </div>
-                {selectedBlock.block_type === 'notation' && (
+                {selectedBlock.block_type === 'notation' && !notationInlineEnabled && (
                   <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10" onClick={() => openNotationEditorForBlock(selectedBlock.id)}>
                     <MusicNotes size={14} weight="bold" /> Editar Notação
                   </Button>
@@ -8483,7 +8636,8 @@ ${pagesHtml}
               )}
 
               {/* Notação — botão para abrir editor visual */}
-              {(selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
+              {!(notationInlineEnabled && selectedBlock.block_type === 'notation') &&
+                (selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
                 <div className="prop-section">
                   <div className="prop-label">
                     {selectedBlock.block_type === 'notation' ? 'Notação' : 'Notação do bloco'}
@@ -10239,6 +10393,7 @@ ${pagesHtml}
           onEditInline={() => enterInlineEditForBlock(selectedBlock.id)}
           onExitEdit={exitInlineEdit}
           onEditNotation={() => openNotationEditorForBlock(selectedBlock.id)}
+          notationInline={notationInlineEnabled}
           onEditTablature={() => openTablatureEditorForBlock(selectedBlock.id)}
           onEditChord={() => selectedBlock.block_type === 'chord_grid' ? openChordLibraryPickerForGrid(selectedBlock.id) : openChordLibraryPickerForBlock(selectedBlock.id)}
           onEditKeyboard={() => selectedBlock.block_type === 'keyboard_grid' ? openKeyboardEditorForGrid(selectedBlock.id) : openKeyboardEditorForBlock(selectedBlock.id)}

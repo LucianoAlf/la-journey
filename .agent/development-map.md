@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-15  
+Atualizado: 2026-08-15 (deploy em produção)  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Apostila / Download do editor quando não é songbook.
+**Próximo corte:** Mapas de acorde e cifra na pauta (lead sheet).
 
 ## Como retomar
 
@@ -16,17 +16,33 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Modal **Editar notação** usa o AlphaTab do canvas (layout `page`, mesma gravura). SVG + “Preview (AlphaTab)” só com `?notationSurface=svg`.
-- Superfície: `NotationAlphaTabSurface` no `NotationEditorV2`. Modelo continua `beats`.
-- Conferido no browser: Intervalos Melódicos — Série 1, sistemas empilhados iguais dentro e fora; teclado A–G insere; rollback SVG ok.
-- Branch: `feat/notacao-alphatab-folha` (worktree `.worktrees/notacao-alphatab-folha`). Spec: `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`.
-
-- App local: http://localhost:3002 — produção: https://la-journey.vercel.app
+Próximo corte: mapas de acorde e cifra na pauta (lead sheet). Spec ainda não escrita.
+- Produção: https://la-journey.vercel.app — notação in-place + escrita fluida mergeadas em `main` em 15/08.
+- App local do corte: worktree `.worktrees/notacao-alphatab-folha` (pode remover depois do deploy).
 - Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
 
 ---
 
 ## Feito
+
+### Escrita fluida na pauta A4 (15/08)
+
+- Teclado completo via `notationInlineKeyboard`: A–G, Shift+acorde, 1–7/numpad, setas, Ctrl+oitava, R, 0, ponto, `#`/`-`/`=`, Esc em dois tempos. Foco no input ao hidratar o bloco.
+- Feedback: destaque accent no beat (`boundsLookup`, last-index para grace, offset+zoom), nota-fantasma com ledger/badge, som `playNotePreview` com acidente.
+- Fileira em três grupos (durações | pausa/ponto/acidentes+♮ | indicador `C4 · Semínima · n/m` + ‹ ›).
+- Gravura `NOTATION_DIDACTIC_SCALE = 1.35` em canvas, modal e preview. Ritmo/tab não mudam.
+- Render sem spinner nos updates + `TexRenderQueue`. Patch de `render_data` com debounce 400 ms; flush no save/duplicar/biblioteca; undo global cancela o pendente.
+- Conferência local + merge em `main` (15/08) para produção. Rollback `?notationInline=off`. Validar no ar o som, as setas e o tamanho 1.35.
+- Spec: `docs/superpowers/specs/2026-08-15-escrita-fluida-pauta-design.md`
+- Plano: `docs/superpowers/plans/2026-08-15-escrita-fluida-pauta.md`
+
+### Notação in-place na A4 (15/08)
+
+- Clique no bloco de notação seleciona e mostra fileira de duração acima da pauta + ferramentas na lateral direita. Não abre modal. Segundo clique / A–G escreve na folha.
+- Motor AlphaTab; modelo `beats` → `beatsToAlphaTex`; `render_data` local + autosave / Salvar Alterações persiste.
+- Biblioteca → Notação continua no `NotationEditorV2`. Rollback: `?notationInline=off` (botão Editar Notação volta).
+- Spec: `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+- Plano: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
 
 ### Modal Editar notação = AlphaTab do canvas (15/08)
 
@@ -273,12 +289,22 @@ Edição:
 - Caderno de exercício: `docs/superpowers/specs/2026-08-14-caderno-exercicio-montador-design.md` (implementada)
 - Plano: `docs/superpowers/plans/2026-08-14-caderno-exercicio-montador.md`
 
+### Specs de notação
+
+- Folha AlphaTab (modal = mesma gravura): `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`
+- In-place A4 (escrever na pauta): `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+- Plano in-place: `docs/superpowers/plans/2026-08-15-notacao-inplace-a4.md`
+
 ---
 
-## Radar (ordem combinada em 14/08)
+## Radar (ordem combinada em 15/08)
 
-1. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-2. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **Mapas de acorde e cifra na pauta** — escrever cifra em cima do compasso (lead sheet). Prioridade alta do Luciano.
+2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+3. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
+4. **Folha deitada (horizontal)** vs em pé (vertical) — tipo de material; exercício/repertório às vezes lê melhor deitado.
+5. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
+6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 

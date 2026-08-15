@@ -93,6 +93,19 @@ test('toolbar exposes direct actions by block type', () => {
   )
 })
 
+test('notation toolbar hides edit-notation when inline is on', () => {
+  assertEqual(
+    getCanvasToolbarActions('notation', { notationInline: true }).includes('edit-notation'),
+    false,
+    'inline notation should not expose the modal action',
+  )
+  assertEqual(
+    getCanvasToolbarActions('notation', { notationInline: false }).includes('edit-notation'),
+    true,
+    'disabled inline notation should preserve the modal action',
+  )
+})
+
 test('clicking another block exits the previous inline editing session', () => {
   assertEqual(
     getInlineEditingBlockAfterCanvasBlockClick({
