@@ -1,14 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowSquareOut, Copy, MagnifyingGlass, PencilSimple, SpinnerGap, Trash, Warning } from '@phosphor-icons/react'
+import { MagnifyingGlass, SpinnerGap, Warning } from '@phosphor-icons/react'
 import { ExerciseCard } from './ExerciseCard'
 import { ExerciseNotebookTab } from './ExerciseNotebookTab'
-import { MaterialPreview, type MaterialBlock } from '@/components/material/MaterialPreview'
+import { ExercisePreviewDialog } from './ExercisePreviewDialog'
+import { type MaterialBlock } from '@/components/material/MaterialPreview'
 import { useExerciseCounts, useExerciseLibrary } from '@/hooks/useExerciseLibrary'
 import type { ExerciseLibraryFilters, ExerciseLibraryItem } from '@/services/exerciseLibraryService'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -44,25 +42,6 @@ const LEVELS = [
   { value: 'advance', label: 'Advance' },
   { value: 'master', label: 'Master' },
 ]
-
-const CATEGORY_LABELS: Record<string, string> = {
-  technique: 'Técnica',
-  harmony: 'Harmonia',
-  reading: 'Leitura',
-  rhythm: 'Ritmo',
-  scales: 'Escalas',
-  intervals: 'Intervalos',
-  piece: 'Peça',
-  progression: 'Progressão',
-  other: 'Outro',
-}
-
-const LEVEL_LABELS: Record<string, string> = {
-  foundation: 'Foundation',
-  grow: 'Grow',
-  advance: 'Advance',
-  master: 'Master',
-}
 
 function getBlocksArray(blocks: unknown): MaterialBlock[] {
   if (Array.isArray(blocks)) return blocks as MaterialBlock[]
@@ -279,87 +258,23 @@ export function ExerciseTab() {
         </div>
       )}
 
-      <Dialog open={!isNotebookTab && !!previewExercise} onOpenChange={(open) => !open && setPreviewExercise(null)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-[14px] border-border bg-card">
-          <DialogHeader>
-            <div className="flex flex-wrap items-center gap-2 pr-8">
-              <DialogTitle className="text-[18px] font-semibold text-text">
-                {previewExercise?.title}
-              </DialogTitle>
-              {previewExercise ? (
-                <>
-                  <Badge className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border bg-green-500/15 text-green-400 border-green-500/20">
-                    {previewExercise.content_type === 'exercise' ? 'Exercício' : 'Exemplo'}
-                  </Badge>
-                  <Badge className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-400 border-blue-500/20">
-                    {CATEGORY_LABELS[previewExercise.category] || previewExercise.category}
-                  </Badge>
-                  <Badge className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border bg-purple-500/15 text-purple-400 border-purple-500/20">
-                    {LEVEL_LABELS[previewExercise.difficulty_level] || previewExercise.difficulty_level}
-                  </Badge>
-                </>
-              ) : null}
-            </div>
-          </DialogHeader>
-
-          <div className="mt-4 space-y-4">
-            {previewBlocks.length === 0 ? (
-              <div className="rounded-lg border border-border bg-background/30 p-6 text-center">
-                <p className="text-[13px] text-text2">Este exercício não possui blocos para preview.</p>
-              </div>
-            ) : (
-              <div className="min-w-0 overflow-x-auto rounded-[14px] border border-border bg-background/30 p-4">
-                <MaterialPreview blocks={previewBlocks} />
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => previewExercise && handleEditExercise(previewExercise)}
-              >
-                <PencilSimple size={14} />
-                Editar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (!previewExercise) return
-                  await handleDuplicate(previewExercise.id)
-                  setPreviewExercise(null)
-                }}
-              >
-                <Copy size={14} />
-                Duplicar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive"
-                onClick={async () => {
-                  if (!previewExercise) return
-                  if (confirm('Excluir?')) {
-                    await handleDelete(previewExercise.id)
-                    setPreviewExercise(null)
-                  }
-                }}
-              >
-                <Trash size={14} />
-                Excluir
-              </Button>
-            </div>
-
-            <Button size="sm" onClick={() => previewExercise && handleUseInMaterial(previewExercise)}>
-              <ArrowSquareOut size={14} />
-              Usar no Material
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {!isNotebookTab && (
+        <ExercisePreviewDialog
+          exercise={previewExercise}
+          blocks={previewBlocks}
+          onClose={() => setPreviewExercise(null)}
+          onEdit={handleEditExercise}
+          onDuplicate={async (id) => {
+            await handleDuplicate(id)
+            setPreviewExercise(null)
+          }}
+          onDelete={async (id) => {
+            await handleDelete(id)
+            setPreviewExercise(null)
+          }}
+          onUseInMaterial={handleUseInMaterial}
+        />
+      )}
     </div>
   )
 }
