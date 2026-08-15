@@ -36,6 +36,11 @@ function getSmartOctave(noteName: string, lastPitch: string | null, clef: string
   return lastOctave
 }
 
+function consumeNotationKey(event: KeyboardEvent<HTMLInputElement>) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
 function transposePitch(pitch: string, semitones: number): string {
   const match = pitch.match(/^([A-G])([#b]?)\/(\d+)$/)
   if (!match) return pitch
@@ -241,34 +246,34 @@ export function useNotationInlineSession({
   const stopPlayback = useCallback(() => playbackRef.current?.stop(), [])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.ctrlKey && event.key === 'z') { event.preventDefault(); undo(); return }
-    if (event.ctrlKey && event.key === 'y') { event.preventDefault(); redo(); return }
+    if (event.ctrlKey && event.key === 'z') { consumeNotationKey(event); undo(); return }
+    if (event.ctrlKey && event.key === 'y') { consumeNotationKey(event); redo(); return }
     const durationIndex = '1234567'.indexOf(event.key)
     if (durationIndex >= 0) {
-      event.preventDefault()
+      consumeNotationKey(event)
       const duration = (['64', '32', '16', '8', 'q', 'h', 'w'] as InlineBeat['duration'][])[durationIndex]
       setCurrentDuration(duration)
       if (selectedBeatIdx >= 0) updateBeat(selectedBeatIdx, { duration })
       return
     }
-    if (event.key === '.') { event.preventDefault(); toggleDot(); return }
-    if (event.key === '0') { event.preventDefault(); onInsertRest(); return }
-    if (event.key === ' ') { event.preventDefault(); if (isPlaying) stopPlayback(); else void startPlayback(); return }
+    if (event.key === '.') { consumeNotationKey(event); toggleDot(); return }
+    if (event.key === '0') { consumeNotationKey(event); onInsertRest(); return }
+    if (event.key === ' ') { consumeNotationKey(event); if (isPlaying) stopPlayback(); else void startPlayback(); return }
     const note = event.key.toUpperCase()
     if (NOTE_NAMES.includes(note) && !event.ctrlKey && !event.altKey) {
-      event.preventDefault()
+      consumeNotationKey(event)
       const pitch = `${note}/${getSmartOctave(note, lastPitchRef.current, grandStaff && activeStaff === 'bass' ? 'bass' : clef)}`
       onInsertNote(pitch, selectedBeatIdx >= 0 ? selectedBeatIdx : beats.length - 1)
       return
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      event.preventDefault()
+      consumeNotationKey(event)
       if (selectedBeatIdx >= 0) onDeleteBeat(selectedBeatIdx)
       return
     }
-    if (event.key === '#') { event.preventDefault(); setCurrentAccidental(value => value === '#' ? null : '#'); return }
-    if (event.key === '=' ) { event.preventDefault(); setCurrentAccidental(value => value === 'n' ? null : 'n'); return }
-    if (event.key === 'b' && event.shiftKey) { event.preventDefault(); setCurrentAccidental(value => value === 'b' ? null : 'b') }
+    if (event.key === '#') { consumeNotationKey(event); setCurrentAccidental(value => value === '#' ? null : '#'); return }
+    if (event.key === '=' ) { consumeNotationKey(event); setCurrentAccidental(value => value === 'n' ? null : 'n'); return }
+    if (event.key === 'b' && event.shiftKey) { consumeNotationKey(event); setCurrentAccidental(value => value === 'b' ? null : 'b') }
   }, [activeStaff, beats.length, clef, grandStaff, isPlaying, onDeleteBeat, onInsertNote, onInsertRest, redo, selectedBeatIdx, startPlayback, stopPlayback, toggleDot, undo, updateBeat])
 
   const patchRenderData = useMemo(() => {

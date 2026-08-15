@@ -6144,13 +6144,14 @@ Regras:
     else if (block.block_type === 'keyboard') openKeyboardEditorForBlock(block.id)
     else if (block.block_type === 'keyboard_grid') openKeyboardEditorForGrid(block.id)
     else if (block.block_type === 'tablature') openTablatureEditorForBlock(block.id)
-    else if (block.block_type === 'notation' || blockHasNotation(block)) {
+    else if (block.block_type === 'notation') {
       if (isNotationInlineEnabled()) {
         setSelectedBlockId(block.id)
         return
       }
       openNotationEditorForBlock(block.id)
     }
+    else if (blockHasNotation(block)) openNotationEditorForBlock(block.id)
     else if (block.block_type === 'image') imageInputRef.current?.click()
     else if (block.block_type === 'cover') setCoverTitleEditing(true)
   }, [
