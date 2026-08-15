@@ -10,7 +10,7 @@ export async function playNotePreview(pitches: string[]) {
     if (!synth) {
       synth = new Tone.PolySynth(Tone.Synth, { volume: -10 }).toDestination()
     }
-    synth.triggerAttackRelease(pitches.map(pitch => pitch.replace('/', '')), 0.18)
+    synth.triggerAttackRelease(pitches.map(pitch => pitch.replace('/', '')), 0.18, Tone.immediate())
   } catch {
     // Sem áudio disponível — a escrita continua muda, nunca quebra.
   }
