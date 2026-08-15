@@ -2026,20 +2026,17 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   useEffect(() => {
     const patch = inlineNotationSession.patchRenderData
     if (!notationInlineEnabled || !inlineNotationBlock || !inlineNotationSession.isHydrated || !patch) return
+    const current = blocksRef.current.find(block => block.id === inlineNotationBlock.id)
+    if (!current) return
+    const currentNotation = JSON.stringify((current.render_data ?? {}).notation_data ?? null)
+    const nextNotation = JSON.stringify(patch.notation_data ?? null)
+    if (currentNotation === nextNotation) return
 
-    setBlocksWithHistory(previous => {
-      let changed = false
-      const next = previous.map(block => {
-      if (block.id !== inlineNotationBlock.id) return block
-      const currentNotation = JSON.stringify((block.render_data ?? {}).notation_data ?? null)
-      const nextNotation = JSON.stringify(patch.notation_data ?? null)
-      if (currentNotation === nextNotation) return block
-      changed = true
-      return { ...block, render_data: patch }
-      })
-      return changed ? next : previous
-    })
-  }, [inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled, setBlocksWithHistory])
+    setBlocksWithHistory(previous => previous.map(block => (
+      block.id === inlineNotationBlock.id ? { ...block, render_data: patch } : block
+    )))
+    queueBlockAutosave(inlineNotationBlock.id)
+  }, [inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled, queueBlockAutosave, setBlocksWithHistory])
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -8258,6 +8255,17 @@ ${pagesHtml}
                   <MusicNotes size={16} className="text-master" />
                   <span className="text-[12px] font-semibold text-master">Partitura</span>
                 </div>
+              </div>
+              <div className="sticky bottom-0 z-20 -mx-4 -mb-4 mt-4 border-t border-border bg-surface/95 p-3 shadow-[0_-10px_24px_rgba(15,23,42,0.10)] backdrop-blur">
+                <Button
+                  size="sm"
+                  className="h-9 w-full justify-center bg-azul-escuro text-[11px] hover:bg-azul"
+                  onClick={handleSaveBlock}
+                  disabled={saving}
+                >
+                  {saving ? <SpinnerGap size={14} className="animate-spin" /> : <FloppyDisk size={14} />}
+                  Salvar Alterações
+                </Button>
               </div>
             </div>
           ) : (
