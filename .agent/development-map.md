@@ -3,7 +3,7 @@
 Atualizado: 2026-08-15  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Apostila / Download do editor quando não é songbook.
+**Próximo corte:** Notação in-place na A4 (ferramentas do modal na lateral + duração perto da pauta).
 
 ## Como retomar
 
@@ -16,12 +16,13 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Modal **Editar notação** usa o AlphaTab do canvas (layout `page`, mesma gravura). SVG + “Preview (AlphaTab)” só com `?notationSurface=svg`.
-- Superfície: `NotationAlphaTabSurface` no `NotationEditorV2`. Modelo continua `beats`.
-- Conferido no browser: Intervalos Melódicos — Série 1, sistemas empilhados iguais dentro e fora; teclado A–G insere; rollback SVG ok.
-- Branch: `feat/notacao-alphatab-folha` (worktree `.worktrees/notacao-alphatab-folha`). Spec: `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`.
-
-- App local: http://localhost:3002 — produção: https://la-journey.vercel.app
+Corte: **escrever na pauta da A4**, gesto MuseScore/Finale/Sibelius. Biblioteca → Notação (modal) **continua**.
+- Clica no bloco de notação: edita na folha. Duração/acidente perto da pauta. Resto das ferramentas atuais na **lateral direita** (no lugar do painel de bloco / configuração da página).
+- Motor: **AlphaTab** (já no produto). MuseScore 3.x é app Qt/QML de desktop ([repo 3.x](https://github.com/musescore/MuseScore/tree/3.x), [API de plugin](https://musescore.github.io/MuseScore_PluginAPI_Docs/plugins/html/index.html)) — **não** entra como SDK web tipo `@coderline/alphatab`.
+- Primeiro corte: só o que o modal já tem. Ligadura, cifra-na-pauta, folha deitada, playhead → Radar.
+- Spec deste corte: `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+- Caderninho (respiro dos dois lados, worker Vite, partitura inteira no modal): worktree `feat/notacao-caderninho`.
+- Simple Browser: **http://localhost:3002**. Produção: https://la-journey.vercel.app
 - Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
 
 ---
@@ -273,12 +274,21 @@ Edição:
 - Caderno de exercício: `docs/superpowers/specs/2026-08-14-caderno-exercicio-montador-design.md` (implementada)
 - Plano: `docs/superpowers/plans/2026-08-14-caderno-exercicio-montador.md`
 
+### Specs de notação
+
+- Folha AlphaTab (modal = mesma gravura): `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`
+- In-place A4 (escrever na pauta): `docs/superpowers/specs/2026-08-15-notacao-inplace-a4-design.md`
+
 ---
 
-## Radar (ordem combinada em 14/08)
+## Radar (ordem combinada em 15/08)
 
-1. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-2. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+1. **Mapas de acorde e cifra na pauta** — escrever cifra em cima do compasso (lead sheet). Prioridade alta do Luciano.
+2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+3. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
+4. **Folha deitada (horizontal)** vs em pé (vertical) — tipo de material; exercício/repertório às vezes lê melhor deitado.
+5. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
+6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
 
 ---
 
