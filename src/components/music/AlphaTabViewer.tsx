@@ -346,6 +346,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
           window.cancelAnimationFrame(cleanupFrame)
         }
         api.destroy()
+        texQueue.failed()
         apiRef.current = null
         texQueueRef.current = null
       }
