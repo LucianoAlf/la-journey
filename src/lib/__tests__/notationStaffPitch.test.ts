@@ -39,6 +39,10 @@ test('bass top line is A3', () => {
   assert(pitchFromStaffY(TOP, TOP, BOTTOM, 'bass') === 'A/3', 'bass top')
 })
 
+test('bass bottom line is G2', () => {
+  assert(pitchFromStaffY(BOTTOM, TOP, BOTTOM, 'bass') === 'G/2', 'bass bottom')
+})
+
 test('empty staff tex has clef and a rest so AlphaTab draws a staff', () => {
   const tex = emptyStaffAlphaTex({ clef: 'treble', keySignature: 'C', timeSignature: null })
   assert(tex.includes('\\clef'), 'clef')
