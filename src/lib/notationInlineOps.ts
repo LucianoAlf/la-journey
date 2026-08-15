@@ -263,3 +263,116 @@ export function sessionToAlphaTex(input: {
     includeLyrics: false,
   })
 }
+
+function beatToLegacyNote(beat: InlineBeat): { note: string; accidental: string | null } {
+  const durationToken = `${beat.duration ?? 'q'}${beat.doubleDotted ? 'dd' : beat.dotted ? 'd' : ''}${beat.isRest ? 'r' : ''}`
+
+  if (beat.isRest || !Array.isArray(beat.pitches) || beat.pitches.length === 0) {
+    return { note: `b/4:${durationToken}`, accidental: null }
+  }
+
+  const firstPitch = beat.pitches[0]
+  const pitchText = String(firstPitch?.pitch ?? '')
+  const [notePart = 'B', octave = '4'] = pitchText.split('/')
+  const normalizedBase = notePart.replace(/[#bn]/gi, '').toLowerCase()
+  const accidental = firstPitch?.accidental ?? null
+  const inlineAccidental = accidental && accidental !== 'n' ? accidental : ''
+
+  return {
+    note: `${normalizedBase}${inlineAccidental}/${octave}:${durationToken}`,
+    accidental,
+  }
+}
+
+export function applySessionToRenderData<T extends Record<string, any>>(
+  renderData: T,
+  session: {
+    beats: InlineBeat[]
+    clef: string
+    keySignature: string
+    timeSignature: string
+    bpm: number
+    grandStaff: boolean
+    title?: string
+  },
+): T & {
+  notation: {
+    type: 'staff'
+    staves: Array<{
+      clef: string
+      key_signature: string | undefined
+      time_signature: string | undefined
+      notes: string[]
+      accidentals: Array<string | null>
+      label: string
+    }>
+    width: number
+    height: number
+  }
+  notation_data: {
+    beats: InlineBeat[]
+    clef: string
+    keySignature: string
+    timeSignature: string | null
+    bpm: number
+    grandStaff: boolean
+  }
+  alphaTex: string
+  clef: string
+  key_signature: string
+  time_signature: string | null
+} {
+  const originalStaves = Array.isArray(renderData.notation?.staves) ? renderData.notation.staves : []
+  const staveGroups: InlineBeat[][] = []
+  let currentGroup: InlineBeat[] = []
+
+  for (const beat of session.beats) {
+    currentGroup.push(beat)
+    if (beat.barAfter) {
+      staveGroups.push(currentGroup)
+      currentGroup = []
+    }
+  }
+  if (currentGroup.length > 0) staveGroups.push(currentGroup)
+
+  const keySignature = session.clef === 'percussion' || session.keySignature === 'C'
+    ? undefined
+    : session.keySignature
+  const timeSignature = session.timeSignature === 'free' ? undefined : session.timeSignature
+  const staves = staveGroups.map((group, index) => {
+    const legacyNotes = group.map(beatToLegacyNote)
+    return {
+      clef: session.clef,
+      key_signature: keySignature,
+      time_signature: timeSignature,
+      notes: legacyNotes.map(({ note }) => note),
+      accidentals: legacyNotes.map(({ accidental }) => accidental),
+      label: originalStaves[index]?.label ?? '',
+    }
+  })
+  const notation = {
+    type: 'staff' as const,
+    staves,
+    width: renderData.notation?.width ?? 500,
+    height: staves.length > 1 ? 140 * staves.length : 150,
+  }
+  const notationData = {
+    beats: session.beats,
+    clef: session.clef,
+    keySignature: session.keySignature,
+    timeSignature: session.timeSignature === 'free' ? null : session.timeSignature,
+    bpm: session.bpm,
+    grandStaff: session.grandStaff,
+  }
+  const { tex: alphaTex } = sessionToAlphaTex(session)
+
+  return {
+    ...renderData,
+    notation,
+    notation_data: notationData,
+    alphaTex,
+    clef: session.clef,
+    key_signature: session.keySignature,
+    time_signature: notationData.timeSignature,
+  }
+}

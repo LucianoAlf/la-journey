@@ -5,6 +5,7 @@ import {
   insertRest,
   replaceNote,
   sessionToAlphaTex,
+  applySessionToRenderData,
 } from '../notationInlineOps.ts'
 import type { InlineBeat } from '../notationInlineHydrate.ts'
 
@@ -79,4 +80,25 @@ test('sessionToAlphaTex emits the new pitch', () => {
   })
   assert.match(tex, /e4/i)
   assert.ok(indexMap.length >= 2)
+})
+
+test('applySessionToRenderData writes notation_data and alphaTex without dropping other keys', () => {
+  const rd = applySessionToRenderData(
+    { foo: 1, notation: { type: 'staff', staves: [] } },
+    {
+      beats: [{ pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false }],
+      clef: 'treble',
+      keySignature: 'C',
+      timeSignature: 'free',
+      bpm: 120,
+      grandStaff: false,
+      title: 'Intervalos',
+    },
+  )
+  assert.equal(rd.foo, 1)
+  assert.equal(rd.clef, 'treble')
+  assert.ok(Array.isArray(rd.notation_data.beats))
+  assert.equal(typeof rd.alphaTex, 'string')
+  assert.match(rd.alphaTex, /c4/i)
+  assert.equal(rd.notation.staves.length >= 1, true)
 })
