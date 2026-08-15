@@ -72,3 +72,23 @@ test('content.notation_data is used when render_data has none', () => {
   assert.equal(session.beats[0].pitches[0].pitch, 'C/5')
   assert.equal(session.beats[0].duration, 'h')
 })
+
+test('render_data notation_data wins over stale content', () => {
+  const session = hydrateNotationFromBlock({
+    render_data: {
+      notation_data: {
+        beats: [{ pitches: [{ pitch: 'E/5' }], duration: 'q', isRest: false }],
+        clef: 'bass',
+      },
+    },
+    content: {
+      notation_data: {
+        beats: [{ pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false }],
+        clef: 'treble',
+      },
+    },
+    staveIndex: null,
+  })
+  assert.equal(session.beats[0].pitches[0].pitch, 'E/5')
+  assert.equal(session.clef, 'bass')
+})

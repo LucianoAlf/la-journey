@@ -89,7 +89,7 @@ export function hydrateNotationFromBlock(input: {
   const useLegacySlice = staveIndex !== null && staves.length > 1
   const rawData = useLegacySlice
     ? null
-    : (content.notation_data ?? rd.notation_data ?? null)
+    : (rd.notation_data ?? content.notation_data ?? null)
   const beats = rawData?.beats && Array.isArray(rawData.beats)
     ? normalizeBeats(rawData.beats)
     : beatsFromLegacyStaves(staves, staveIndex)
