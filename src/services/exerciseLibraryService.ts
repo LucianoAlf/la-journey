@@ -1,5 +1,7 @@
+import { adaptExerciseLibraryItem } from '@/lib/contentBrowserAdapters'
 import { supabase } from '@/lib/supabase'
 import { handleError } from '@/lib/supabase-error'
+import { createDraftMaterialWithBlocks } from './materialService'
 import { getSchool } from './schoolService'
 
 // Helper para tabelas não tipadas no database.types.ts (regenerar tipos depois)
@@ -164,4 +166,28 @@ export async function getExerciseCounts(): Promise<Record<string, number>> {
   }
 
   return counts
+}
+
+export async function createDraftMaterialFromExercise(
+  exercise: ExerciseLibraryItem,
+  schoolId: string
+): Promise<string> {
+  const blocks = adaptExerciseLibraryItem(exercise)
+  if (blocks.length === 0) {
+    throw new Error('Este exercício não tem blocos para abrir no editor.')
+  }
+
+  return createDraftMaterialWithBlocks({
+    schoolId,
+    title: exercise.title,
+    type: 'exercise_sheet',
+    blocks,
+    instrument: exercise.instrument,
+    level: exercise.difficulty_level,
+    description: exercise.description,
+    generationConfig: {
+      source: 'exercise_library',
+      exercise_id: exercise.id,
+    },
+  })
 }

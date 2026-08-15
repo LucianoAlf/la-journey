@@ -47,6 +47,7 @@ function useA4PreviewScale() {
 interface ExercisePreviewDialogProps {
   exercise: ExerciseLibraryItem | null
   blocks: MaterialBlock[]
+  opening?: boolean
   onClose: () => void
   onEdit: (exercise: ExerciseLibraryItem) => void
   onDuplicate: (id: string) => void
@@ -57,6 +58,7 @@ interface ExercisePreviewDialogProps {
 export function ExercisePreviewDialog({
   exercise,
   blocks,
+  opening = false,
   onClose,
   onEdit,
   onDuplicate,
@@ -121,10 +123,11 @@ export function ExercisePreviewDialog({
               <Button
                 variant="outline"
                 size="sm"
+                disabled={opening}
                 onClick={() => exercise && onEdit(exercise)}
               >
                 <PencilSimple size={14} />
-                Editar
+                {opening ? 'Abrindo...' : 'Editar'}
               </Button>
               <Button
                 variant="outline"
@@ -148,9 +151,9 @@ export function ExercisePreviewDialog({
               </Button>
             </div>
 
-            <Button size="sm" onClick={() => exercise && onUseInMaterial(exercise)}>
+            <Button size="sm" disabled={opening} onClick={() => exercise && onUseInMaterial(exercise)}>
               <ArrowSquareOut size={14} />
-              Usar no Material
+              {opening ? 'Abrindo...' : 'Usar no Material'}
             </Button>
           </div>
         </div>
