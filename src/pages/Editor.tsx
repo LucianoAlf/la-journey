@@ -2051,6 +2051,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     const currentNotation = JSON.stringify((current.render_data ?? {}).notation_data ?? null)
     const nextNotation = JSON.stringify(patch.notation_data ?? null)
     if (currentNotation === nextNotation) {
+      if (inlinePatchTimerRef.current !== null) {
+        window.clearTimeout(inlinePatchTimerRef.current)
+        inlinePatchTimerRef.current = null
+      }
       pendingInlinePatchRef.current = null
       return
     }
@@ -2060,7 +2064,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     inlinePatchTimerRef.current = window.setTimeout(flushInlineNotationPatch, 400)
   }, [flushInlineNotationPatch, inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled])
 
-  useEffect(() => () => { flushInlineNotationPatch() }, [flushInlineNotationPatch, inlineNotationBlock?.id])
+  useEffect(() => () => {
+    flushInlineNotationPatch()
+    // Unmount persist relies on the last queued autosave.
+  }, [flushInlineNotationPatch, inlineNotationBlock?.id])
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -2852,11 +2859,15 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   }, [selectedBlock])
 
   const handleSaveReusable = useCallback(async (payload: SaveAsReusablePayload) => {
-    if (!selectedBlock) {
+    flushInlineNotationPatch()
+    const block = selectedBlock
+      ? (blocksRef.current.find(b => b.id === selectedBlock.id) ?? selectedBlock)
+      : null
+    if (!block) {
       toast.error('Selecione um bloco primeiro')
       return
     }
-    if (!isReusableBlockType(selectedBlock.block_type)) {
+    if (!isReusableBlockType(block.block_type)) {
       toast.error('Esse tipo de bloco nao pode ser salvo como reutilizavel')
       return
     }
@@ -2876,7 +2887,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         instrument: payload.instrument,
         difficulty_level: payload.difficulty_level,
         tags: payload.tags,
-        blocks: [editorBlockToExerciseBlock(selectedBlock)],
+        blocks: [editorBlockToExerciseBlock(block)],
         block_count: 1,
         preview_data: {},
         thumbnail_url: null,
@@ -2894,7 +2905,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     } finally {
       setSaveReusableLoading(false)
     }
-  }, [school?.id, selectedBlock])
+  }, [blocksRef, flushInlineNotationPatch, school?.id, selectedBlock])
 
   const handleInsertContentFromBrowser = useCallback(async (preparedBlocks: PreparedMaterialBlock[], item: { id: string; title: string }) => {
     setInsertingContentId(item.id)
@@ -2944,6 +2955,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Duplicar bloco
   const handleDuplicateBlock = useCallback(async (blockId: string) => {
+    flushInlineNotationPatch()
     const beforeBlocks = blocksRef.current
     const block = beforeBlocks.find(b => b.id === blockId)
     if (!block) return
@@ -2990,7 +3002,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       commitBlocksHistory(beforeBlocks, optimisticBlocks)
       toast.info('Bloco duplicado localmente')
     }
-  }, [blocksRef, commitBlocksHistory, materialId, setBlocks, setSelectedBlockId])
+  }, [blocksRef, commitBlocksHistory, flushInlineNotationPatch, materialId, setBlocks, setSelectedBlockId])
 
   const flushCanvasNudgeSession = useCallback((session = canvasNudgeSessionRef.current) => {
     if (!session) return
@@ -6615,6 +6627,7 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
+        flushInlineNotationPatch()
         if (
           (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
           undoFloatingElementChange()
@@ -6626,6 +6639,7 @@ ${pagesHtml}
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
         flushCanvasNudgeSession()
+        flushInlineNotationPatch()
         if (
           (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
           redoFloatingElementChange()
@@ -6862,7 +6876,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, flushInlineNotationPatch, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -6998,6 +7012,7 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
+                flushInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
                   undoFloatingElementChange()
@@ -7014,6 +7029,7 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
+                flushInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
                   redoFloatingElementChange()
