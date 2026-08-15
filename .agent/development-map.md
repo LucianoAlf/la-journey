@@ -16,17 +16,24 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Caderno de exercício no ar (tabelas, montador, UI, repertório movido).
-- Biblioteca → Exercícios → **Exercícios | Cadernos** monta `exercise_sheet` no editor (capa + cabeçalho + blocos). Sem receita de impressão.
-- Cadernos de repertório saíram dessa aba e ficam em `/repertorio` → **Músicas | Cadernos**. PDF/receita do songbook não mudou.
-- `npx tsx --test`: 50 arquivos, 0 falhas. `npm run build` ok neste worktree.
+Modal **Editar notação** usa o AlphaTab do canvas (layout `page`, mesma gravura). SVG + “Preview (AlphaTab)” só com `?notationSurface=svg`.
+- Superfície: `NotationAlphaTabSurface` no `NotationEditorV2`. Modelo continua `beats`.
+- Conferido no browser: Intervalos Melódicos — Série 1, sistemas empilhados iguais dentro e fora; teclado A–G insere; rollback SVG ok.
+- Branch: `feat/notacao-alphatab-folha` (worktree `.worktrees/notacao-alphatab-folha`). Spec: `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`.
 
-- App local: http://127.0.0.1:3001 — produção: https://la-journey.vercel.app
-- Branch: `feat/caderno-exercicio-montador` (worktree `.worktrees/caderno-exercicio`) → `main`. Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
+- App local: http://localhost:3002 — produção: https://la-journey.vercel.app
+- Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
 
 ---
 
 ## Feito
+
+### Modal Editar notação = AlphaTab do canvas (15/08)
+
+- A pauta do modal é `AlphaTabViewer` com purpose `canvas-notation-score`, layout `page`, scale `1`, largura da folha A4.
+- `beats` → `beatsToAlphaTex` preserva duração AlphaTex (`:2` → mínima) e barras pedagógicas em tempo livre.
+- Rollback: `?notationSurface=svg` devolve o SVG + preview. `NotationSvgEditor` permanece.
+- Spec: `docs/superpowers/specs/2026-08-15-notacao-alphatab-folha-design.md`
 
 ### Cadernos de exercício (15/08)
 
