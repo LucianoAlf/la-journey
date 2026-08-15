@@ -8575,7 +8575,8 @@ ${pagesHtml}
               )}
 
               {/* Notação — botão para abrir editor visual */}
-              {!notationInlineEnabled && (selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
+              {!(notationInlineEnabled && selectedBlock.block_type === 'notation') &&
+                (selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
                 <div className="prop-section">
                   <div className="prop-label">
                     {selectedBlock.block_type === 'notation' ? 'Notação' : 'Notação do bloco'}
