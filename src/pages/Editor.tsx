@@ -318,6 +318,7 @@ function parseBlocks(rows: MaterialWithBlocks[]): { material: MaterialWithBlocks
 
 function editorBlockToPreview(b: EditorBlock): MaterialBlock {
   return {
+    id: b.id,
     block_type: b.block_type as MaterialBlock['block_type'],
     title: b.title ?? undefined,
     content: b.content as MaterialBlock['content'],
