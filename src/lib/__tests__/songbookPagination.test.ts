@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { A4_CONTENT_HEIGHT } from '../sharedPagination'
-import { groupSongbookSongs, looksLikeSongbook, paginateSongbookBlocks } from '../songbookPagination'
+import { groupSongbookSongs, isSongbookMaterial, looksLikeSongbook, paginateSongbookBlocks } from '../songbookPagination'
 
 function test(name: string, fn: () => void) {
   try {
@@ -34,6 +34,18 @@ test('looksLikeSongbook detects caderno assembly', () => {
   assert.equal(looksLikeSongbook([
     { id: 't', block_type: 'text' },
   ]), false)
+})
+
+test('exercise_sheet with cover, page_break and header is not a songbook', () => {
+  const exerciseBlocks = [
+    { id: 'c', block_type: 'cover' },
+    { id: 'b', block_type: 'page_break' },
+    { id: 'h', block_type: 'text', title: 'Cromático' },
+  ]
+  assert.equal(looksLikeSongbook(exerciseBlocks), true)
+  assert.equal(isSongbookMaterial('exercise_sheet', exerciseBlocks), false)
+  assert.equal(isSongbookMaterial('repertoire_sheet', exerciseBlocks), true)
+  assert.equal(isSongbookMaterial(null, exerciseBlocks), true)
 })
 
 test('groups title, chord grid and cifra as one song', () => {

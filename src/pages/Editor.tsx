@@ -187,7 +187,7 @@ import {
   shouldKeepBlocksTogether,
   type BlockPaginationPolicy,
 } from "@/lib/sharedPagination";
-import { looksLikeSongbook, paginateSongbookBlocks } from "@/lib/songbookPagination";
+import { isSongbookMaterial, paginateSongbookBlocks } from "@/lib/songbookPagination";
 
 type MusicSnapshotCacheEntry = { hash: string; html: string; height: number }
 
@@ -2100,7 +2100,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   /** Caderno de repertório pagina por música; apostila continua no motor de blocos. */
   const paginationResult = useMemo(() => {
     const getHeight = (block: EditorBlock) => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
-    if (materialMeta?.material_type === 'repertoire_sheet' || looksLikeSongbook(blocks)) {
+    if (isSongbookMaterial(materialMeta?.material_type, blocks)) {
       return paginateSongbookBlocks(blocks, getHeight)
     }
     return paginateBlocks(blocks, getHeight)
@@ -6461,7 +6461,7 @@ ${pagesHtml}
   }, [activateAllCanvasPages, blocks, materialTitle, pageConfig])
 
   const handleDownloadPDF = useCallback(async () => {
-    const isSongbook = materialMeta?.material_type === 'repertoire_sheet' || looksLikeSongbook(blocks)
+    const isSongbook = isSongbookMaterial(materialMeta?.material_type, blocks)
     if (isSongbook) {
       const toastId = toast.loading('Gerando PDF...')
       try {
