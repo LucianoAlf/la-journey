@@ -1,6 +1,6 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-15  
+Atualizado: 2026-08-15 (deploy em produção)  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
 **Próximo corte:** Mapas de acorde e cifra na pauta (lead sheet).
@@ -16,10 +16,10 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Próximo corte: mapas de acorde e cifra na pauta (lead sheet).
-- App local: **http://localhost:3002** — produção: https://la-journey.vercel.app
-- Branch: `feat/notacao-caderninho` no worktree `.worktrees/notacao-alphatab-folha`. Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
-- Spec do próximo corte: ainda não escrita. Escrita fluida fechada abaixo.
+Próximo corte: mapas de acorde e cifra na pauta (lead sheet). Spec ainda não escrita.
+- Produção: https://la-journey.vercel.app — notação in-place + escrita fluida mergeadas em `main` em 15/08.
+- App local do corte: worktree `.worktrees/notacao-alphatab-folha` (pode remover depois do deploy).
+- Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
 
 ---
 
@@ -32,7 +32,7 @@ Próximo corte: mapas de acorde e cifra na pauta (lead sheet).
 - Fileira em três grupos (durações | pausa/ponto/acidentes+♮ | indicador `C4 · Semínima · n/m` + ‹ ›).
 - Gravura `NOTATION_DIDACTIC_SCALE = 1.35` em canvas, modal e preview. Ritmo/tab não mudam.
 - Render sem spinner nos updates + `TexRenderQueue`. Patch de `render_data` com debounce 400 ms; flush no save/duplicar/biblioteca; undo global cancela o pendente.
-- Conferência local em `/editor/5e17a085-aa14-4e71-b348-362811935ae7`: fileira + indicador + insert A–G + highlight + rollback `?notationInline=off` (volta Editar notação). Validar no ouvido o som e o tamanho 1.35 na folha.
+- Conferência local + merge em `main` (15/08) para produção. Rollback `?notationInline=off`. Validar no ar o som, as setas e o tamanho 1.35.
 - Spec: `docs/superpowers/specs/2026-08-15-escrita-fluida-pauta-design.md`
 - Plano: `docs/superpowers/plans/2026-08-15-escrita-fluida-pauta.md`
 
