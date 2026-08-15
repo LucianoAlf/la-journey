@@ -50,6 +50,8 @@ import { coverFromSongbookBlocks } from "@/lib/repertoirePdfCover";
 import { MaterialPreview, type MaterialBlock, type CoverOverlayElement, type CoverTextElement, DEFAULT_TEXT_SHADOW, DEFAULT_TEXT_OUTLINE, DEFAULT_TEXT_BG } from "@/components/material/MaterialPreview";
 import { TitleTemplateRenderer } from "@/components/material/TitleTemplateRenderer";
 import { NotationEditorMaterialAdapter, type NotationEditorMaterialSaveData } from "@/components/music/NotationEditorMaterialAdapter";
+import { NotationToolsSidebar } from "@/components/music/NotationToolsSidebar";
+import { useNotationInlineSession } from "@/components/music/useNotationInlineSession";
 import { SaveAsReusableDialog, type SaveAsReusablePayload } from "@/components/content/SaveAsReusableDialog";
 import { ContentBrowser } from "@/components/content/ContentBrowser";
 import { ChordEditor, createEmptyState, positionsToState, stateToPositions, type ChordEditorState } from "@/components/music/ChordEditor";
@@ -90,6 +92,7 @@ import { PropertiesSidebar } from "@/components/editor/PropertiesSidebar";
 import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
+import { isNotationInlineEnabled } from "@/lib/notationInline";
 import { buildSidebarPageGroups, buildSidebarPagePreviewItems, reorderSidebarBlocks } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
@@ -1194,6 +1197,7 @@ interface CanvasMaterialPreviewProps {
   onCoverRenderDataChange: (blockId: string, patch: Record<string, any>) => void
   onCoverLogoDuplicate: (blockId: string) => void
   onCoverTitleChange: (value: string) => void
+  notationInteractive?: React.ComponentProps<typeof MaterialPreview>['notationInteractive']
 }
 
 const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
@@ -1227,6 +1231,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
   onCoverRenderDataChange,
   onCoverLogoDuplicate,
   onCoverTitleChange,
+  notationInteractive,
 }: CanvasMaterialPreviewProps) {
   const realRendererRef = useRef<HTMLDivElement | null>(null)
   const previewBlock = useMemo(() => editorBlockToPreview(block), [block])
@@ -1374,6 +1379,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       onTextCloneForDrag={block.block_type === 'cover' ? onTextCloneForDrag : undefined}
       onTextLayerChange={block.block_type === 'cover' ? onTextLayerChange : undefined}
       onLegacyTextActivate={block.block_type === 'cover' ? onLegacyCoverTextActivate : undefined}
+      notationInteractive={notationInteractive}
     />
   )
 
@@ -1421,6 +1427,7 @@ const CanvasMaterialPreview = memo(function CanvasMaterialPreview({
       prev.onKeyboardGridItemClick === next.onKeyboardGridItemClick &&
       prev.onCoverPositionChange === next.onCoverPositionChange &&
       prev.onCoverTitleChange === next.onCoverTitleChange &&
+      prev.notationInteractive === next.notationInteractive &&
       prev.musicRendererSnapshotCacheRef === next.musicRendererSnapshotCacheRef &&
       prev.canHydrateMusicRenderer === next.canHydrateMusicRenderer
     )
@@ -1937,6 +1944,14 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     () => selectedBlock ? mergeBlockStyle(selectedBlock.render_data?.style as Partial<BlockStyle> | undefined, {}) : DEFAULT_BLOCK_STYLE,
     [selectedBlock],
   )
+  const notationInlineEnabled = isNotationInlineEnabled()
+  const inlineNotationBlock = notationInlineEnabled && selectedBlock?.block_type === 'notation'
+    ? selectedBlock
+    : null
+  const inlineNotationSession = useNotationInlineSession({
+    block: inlineNotationBlock,
+    enabled: notationInlineEnabled,
+  })
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialMeta, setMaterialMeta] = useState<MaterialWithBlocks | null>(null)
   const [saving, setSaving] = useState(false)
@@ -2006,6 +2021,24 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     blocksRef,
     initialLoadDone,
   })
+
+  useEffect(() => {
+    const patch = inlineNotationSession.patchRenderData
+    if (!notationInlineEnabled || !inlineNotationBlock || !inlineNotationSession.isHydrated || !patch) return
+
+    setBlocksWithHistory(previous => {
+      let changed = false
+      const next = previous.map(block => {
+      if (block.id !== inlineNotationBlock.id) return block
+      const currentNotation = JSON.stringify((block.render_data ?? {}).notation_data ?? null)
+      const nextNotation = JSON.stringify(patch.notation_data ?? null)
+      if (currentNotation === nextNotation) return block
+      changed = true
+      return { ...block, render_data: patch }
+      })
+      return changed ? next : previous
+    })
+  }, [inlineNotationBlock?.id, inlineNotationSession.isHydrated, inlineNotationSession.patchRenderData, notationInlineEnabled, setBlocksWithHistory])
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -6111,7 +6144,13 @@ Regras:
     else if (block.block_type === 'keyboard') openKeyboardEditorForBlock(block.id)
     else if (block.block_type === 'keyboard_grid') openKeyboardEditorForGrid(block.id)
     else if (block.block_type === 'tablature') openTablatureEditorForBlock(block.id)
-    else if (block.block_type === 'notation' || blockHasNotation(block)) openNotationEditorForBlock(block.id)
+    else if (block.block_type === 'notation' || blockHasNotation(block)) {
+      if (isNotationInlineEnabled()) {
+        setSelectedBlockId(block.id)
+        return
+      }
+      openNotationEditorForBlock(block.id)
+    }
     else if (block.block_type === 'image') imageInputRef.current?.click()
     else if (block.block_type === 'cover') setCoverTitleEditing(true)
   }, [
@@ -6123,6 +6162,7 @@ Regras:
     openKeyboardEditorForGrid,
     openNotationEditorForBlock,
     openTablatureEditorForBlock,
+    setSelectedBlockId,
   ])
 
   const handleCanvasInlineTitleChange = useCallback((blockId: string, title: string) => {
@@ -7767,6 +7807,30 @@ ${pagesHtml}
                             onCoverRenderDataChange={handleCanvasCoverRenderDataChange}
                             onCoverLogoDuplicate={handleCanvasCoverLogoDuplicate}
                             onCoverTitleChange={handleCanvasCoverTitleChange}
+                            notationInteractive={
+                              notationInlineEnabled &&
+                              block.id === selectedBlockId &&
+                              block.block_type === 'notation'
+                                ? {
+                                    blockId: block.id,
+                                    tex: inlineNotationSession.tex,
+                                    indexMap: inlineNotationSession.indexMap,
+                                    selectedBeatIdx: inlineNotationSession.selectedBeatIdx,
+                                    clef: inlineNotationSession.clef,
+                                    keySignature: inlineNotationSession.keySignature,
+                                    timeSignature: inlineNotationSession.timeSignature === 'free'
+                                      ? null
+                                      : inlineNotationSession.timeSignature,
+                                    grandStaffMode: inlineNotationSession.grandStaff,
+                                    onSelectBeat: inlineNotationSession.onSelectBeat,
+                                    onInsertNote: inlineNotationSession.onInsertNote,
+                                    onReplaceNote: inlineNotationSession.onReplaceNote,
+                                    onKeyDown: inlineNotationSession.handleKeyDown,
+                                    inputRef: inlineNotationSession.inputRef,
+                                    durationStrip: inlineNotationSession.durationStrip,
+                                  }
+                                : null
+                            }
                           />
                           </>
                         )}
@@ -8158,6 +8222,42 @@ ${pagesHtml}
                 Clique em um bloco para editar suas propriedades
               </div>
             </div>
+          ) : notationInlineEnabled && selectedBlock.block_type === 'notation' ? (
+            <div className="space-y-4 pb-4">
+              <NotationToolsSidebar
+                timeSignature={inlineNotationSession.timeSignature}
+                clef={inlineNotationSession.clef}
+                keySignature={inlineNotationSession.keySignature}
+                currentTuplet={inlineNotationSession.currentTuplet}
+                bpm={inlineNotationSession.bpm}
+                grandStaffMode={inlineNotationSession.grandStaff}
+                activeStaff={inlineNotationSession.activeStaff}
+                canUndo={inlineNotationSession.canUndo}
+                canRedo={inlineNotationSession.canRedo}
+                isPlaying={inlineNotationSession.isPlaying}
+                onTimeSignature={inlineNotationSession.onTimeSignature}
+                onClef={inlineNotationSession.onClef}
+                onKeySignature={inlineNotationSession.onKeySignature}
+                onTuplet={inlineNotationSession.onTuplet}
+                onBpm={inlineNotationSession.onBpm}
+                onGrandStaff={inlineNotationSession.onGrandStaff}
+                onFocusStaff={inlineNotationSession.onFocusStaff}
+                onTransposeUp={inlineNotationSession.onTransposeUp}
+                onTransposeDown={inlineNotationSession.onTransposeDown}
+                onUndo={inlineNotationSession.onUndo}
+                onRedo={inlineNotationSession.onRedo}
+                onTogglePlay={inlineNotationSession.onTogglePlay}
+                layout="column"
+              />
+              <Separator />
+              <div className="prop-section">
+                <div className="prop-label">Tipo</div>
+                <div className="flex items-center gap-2 rounded-md bg-azul-soft px-3 py-2">
+                  <MusicNotes size={16} className="text-master" />
+                  <span className="text-[12px] font-semibold text-master">Partitura</span>
+                </div>
+              </div>
+            </div>
           ) : (
             <>
               <div className="prop-label mb-3" style={{ color: 'var(--accent)' }}>
@@ -8182,7 +8282,7 @@ ${pagesHtml}
                     <Badge variant="gold" className="text-[8px] ml-auto">editado</Badge>
                   )}
                 </div>
-                {selectedBlock.block_type === 'notation' && (
+                {selectedBlock.block_type === 'notation' && !notationInlineEnabled && (
                   <Button size="sm" variant="outline" className="mt-2 h-8 w-full justify-center gap-2 border-master/30 text-master hover:bg-master/10" onClick={() => openNotationEditorForBlock(selectedBlock.id)}>
                     <MusicNotes size={14} weight="bold" /> Editar Notação
                   </Button>
@@ -8474,7 +8574,7 @@ ${pagesHtml}
               )}
 
               {/* Notação — botão para abrir editor visual */}
-              {(selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
+              {!notationInlineEnabled && (selectedBlock.block_type === 'notation' || blockHasNotation(selectedBlock)) && (
                 <div className="prop-section">
                   <div className="prop-label">
                     {selectedBlock.block_type === 'notation' ? 'Notação' : 'Notação do bloco'}
@@ -10230,6 +10330,7 @@ ${pagesHtml}
           onEditInline={() => enterInlineEditForBlock(selectedBlock.id)}
           onExitEdit={exitInlineEdit}
           onEditNotation={() => openNotationEditorForBlock(selectedBlock.id)}
+          notationInline={notationInlineEnabled}
           onEditTablature={() => openTablatureEditorForBlock(selectedBlock.id)}
           onEditChord={() => selectedBlock.block_type === 'chord_grid' ? openChordLibraryPickerForGrid(selectedBlock.id) : openChordLibraryPickerForBlock(selectedBlock.id)}
           onEditKeyboard={() => selectedBlock.block_type === 'keyboard_grid' ? openKeyboardEditorForGrid(selectedBlock.id) : openKeyboardEditorForBlock(selectedBlock.id)}

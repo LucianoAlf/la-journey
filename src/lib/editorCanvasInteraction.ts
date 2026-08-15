@@ -141,12 +141,18 @@ export function getCanvasToolbarPosition({
   }
 }
 
-export function getCanvasToolbarActions(blockType: string): CanvasToolbarAction[] {
+export function getCanvasToolbarActions(
+  blockType: string,
+  options: { notationInline?: boolean } = {},
+): CanvasToolbarAction[] {
   const actions: CanvasToolbarAction[] = ['move-up', 'move-down', 'duplicate', 'delete']
 
   if (canEnterInlineEdit(blockType)) {
     actions.push('edit-inline', 'ai-rewrite')
-  } else if (blockType === 'notation' || blockType === 'rhythm') {
+  } else if (
+    (blockType === 'notation' || blockType === 'rhythm') &&
+    options.notationInline !== true
+  ) {
     actions.push('edit-notation')
   } else if (blockType === 'tablature') {
     actions.push('edit-tablature')
