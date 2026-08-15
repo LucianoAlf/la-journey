@@ -114,7 +114,7 @@ export function NotationAlphaTabSurface({
       <AlphaTabViewer
         ref={viewerRef}
         tex={displayTex}
-        purpose={grandStaffMode ? 'editor-notation-grand-staff' : 'canvas-notation-score'}
+        purpose={variant === 'canvas' || !grandStaffMode ? 'canvas-notation-score' : 'editor-notation-grand-staff'}
         staveProfile="score"
         layout={grandStaffMode ? 'horizontal' : 'page'}
         scale={1}
