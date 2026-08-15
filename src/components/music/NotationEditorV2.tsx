@@ -4,6 +4,8 @@ import * as Tone from 'tone'
 import MidiWriter from 'midi-writer-js'
 import { AlphaTabViewer } from './AlphaTabViewer'
 import { NotationSvgEditor, type Beat as SvgBeat, type BeatDuration, type PitchData } from './NotationSvgEditor'
+import { NotationAlphaTabSurface } from './NotationAlphaTabSurface'
+import { readNotationSurface } from '@/lib/notationSurface'
 import type { Beat as AlphaTexBeat } from '@/lib/beatsToAlphaTex'
 import { beatsToAlphaTexWithMap } from '@/lib/beatsToAlphaTex'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -19,6 +21,7 @@ import {
 import { toast } from 'sonner'
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from '@/services/notationService'
 import { getEditorTimeSignature, normalizeTimeSignature } from '@/lib/timeSignature'
+import { editorDurationFromRaw } from '@/lib/notationBeatNormalize'
 
 // ─── Re-export tipos do NotationSvgEditor ───────────────────────────
 export type { BeatDuration, PitchData }
@@ -172,10 +175,7 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
       const rawDuration = String(rawBeat.duration ?? rawDurationFromNotes ?? 'q')
       const doubleDotted = Boolean(rawBeat.doubleDotted) || rawDuration.includes('dd')
       const dotted = doubleDotted ? false : (Boolean(rawBeat.dotted) || rawDuration.includes('d'))
-      const duration = rawDuration.replace(/dd|d|r/g, '') as BeatDuration
-      const safeDuration: BeatDuration = (['w', 'h', 'q', '8', '16', '32', '64'] as string[]).includes(duration)
-        ? duration
-        : 'q'
+      const safeDuration = editorDurationFromRaw(rawDuration)
 
       const isRest = Boolean(rawBeat.isRest) || rawDuration.includes('r') || pitches.length === 0
 
@@ -192,6 +192,7 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
         staff: rawBeat.staff === 'bass' ? 'bass' : rawBeat.staff === 'treble' ? 'treble' : undefined,
         tuplet: rawBeat.tuplet,
         timeSlot: Number.isFinite(rawBeat.timeSlot) ? rawBeat.timeSlot : undefined,
+        barAfter: Boolean(rawBeat.barAfter),
       }
     })
     .filter((beat): beat is SvgBeat => beat !== null)
@@ -326,6 +327,7 @@ export function NotationEditorV2({
   // Refs
   const hiddenInputRef = useRef<HTMLInputElement>(null)
   const lastPitchRef = useRef<string | null>(null)
+  const notationSurface = readNotationSurface()
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false)
@@ -409,9 +411,9 @@ export function NotationEditorV2({
       lyric: null,
       staff: b.staff,
       timeSlot: b.timeSlot,
-      barAfter: grandStaffMode
+      barAfter: Boolean(b.barAfter) || (grandStaffMode
         ? barlineSlotSet.has(b.timeSlot ?? idx)
-        : computedBarlines.includes(idx), // Sincronizar barlines
+        : computedBarlines.includes(idx)),
     }))
     const result = beatsToAlphaTexWithMap(alphaTexBeats, {
       clef,
@@ -1555,45 +1557,62 @@ export function NotationEditorV2({
         <div className="flex gap-4">
           {/* Coluna esquerda: Editor SVG + Preview */}
           <div className="flex-1 space-y-3">
-            {/* Editor SVG */}
-            <NotationSvgEditor
-              beats={beats}
-              selectedBeatIdx={isPlaying ? playingBeatIdx : selectedBeatIdx}
-              onSelectBeat={handleSelectBeat}
-              onInsertNote={handleInsertNote}
-              onReplaceNote={handleReplaceNote}
-              onDeleteBeat={handleDeleteBeat}
-              onUpdateBeat={handleUpdateBeat}
-              clef={clef}
-              keySignature={keySignature}
-              timeSignature={timeSignature !== 'free' ? timeSignature : null}
-              currentDuration={currentDuration}
-              isInputMode={isInputMode}
-              grandStaffMode={grandStaffMode}
-              activeStaff={activeStaff}
-              barlines={barlines}
-              inputRef={hiddenInputRef}
-              onKeyDown={handleKeyDown}
-              onHoverPosition={setHoveredSvgPos}
-            />
-
-            {/* Preview AlphaTab */}
-            {alphaTex && (
-              <div className="rounded-xl border border-border overflow-hidden">
-                <div className="px-3 py-1.5 bg-muted/30 text-[10px] font-semibold uppercase tracking-wider text-text3">
-                  Preview (AlphaTab)
-                </div>
-                <AlphaTabViewer
-                  tex={alphaTex}
-                  staveProfile="score"
-                  purpose={grandStaffMode ? 'editor-notation-grand-staff' : 'editor-notation-score'}
+            {notationSurface === 'alphatab' ? (
+              <NotationAlphaTabSurface
+                tex={alphaTex}
+                indexMap={alphaTabIndexMap}
+                selectedBeatIdx={isPlaying ? playingBeatIdx : selectedBeatIdx}
+                clef={clef}
+                keySignature={keySignature}
+                timeSignature={timeSignature !== 'free' ? timeSignature : null}
+                grandStaffMode={grandStaffMode}
+                onSelectBeat={handleSelectBeat}
+                onInsertNote={handleInsertNote}
+                onReplaceNote={handleReplaceNote}
+                inputRef={hiddenInputRef}
+                onKeyDown={handleKeyDown}
+                onHoverPitch={(pitch) => setHoveredSvgPos(pitch ? { beatIdx: selectedBeatIdx, pitch } : null)}
+              />
+            ) : (
+              <>
+                <NotationSvgEditor
+                  beats={beats}
+                  selectedBeatIdx={isPlaying ? playingBeatIdx : selectedBeatIdx}
+                  onSelectBeat={handleSelectBeat}
+                  onInsertNote={handleInsertNote}
+                  onReplaceNote={handleReplaceNote}
+                  onDeleteBeat={handleDeleteBeat}
+                  onUpdateBeat={handleUpdateBeat}
+                  clef={clef}
+                  keySignature={keySignature}
+                  timeSignature={timeSignature !== 'free' ? timeSignature : null}
+                  currentDuration={currentDuration}
+                  isInputMode={isInputMode}
                   grandStaffMode={grandStaffMode}
-                  layout={grandStaffMode ? 'horizontal' : 'page'}
-                  scale={1.0}
-                  showTimeSignature={timeSignature !== 'free'}
-                  minHeight={120}
+                  activeStaff={activeStaff}
+                  barlines={barlines}
+                  inputRef={hiddenInputRef}
+                  onKeyDown={handleKeyDown}
+                  onHoverPosition={setHoveredSvgPos}
                 />
-              </div>
+                {alphaTex && (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <div className="px-3 py-1.5 bg-muted/30 text-[10px] font-semibold uppercase tracking-wider text-text3">
+                      Preview (AlphaTab)
+                    </div>
+                    <AlphaTabViewer
+                      tex={alphaTex}
+                      staveProfile="score"
+                      purpose={grandStaffMode ? 'editor-notation-grand-staff' : 'editor-notation-score'}
+                      grandStaffMode={grandStaffMode}
+                      layout={grandStaffMode ? 'horizontal' : 'page'}
+                      scale={1.0}
+                      showTimeSignature={timeSignature !== 'free'}
+                      minHeight={120}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
 

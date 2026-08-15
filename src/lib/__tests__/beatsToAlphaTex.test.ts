@@ -262,6 +262,16 @@ assertContains(freeTex, '\\ft', 'Emite marcador AlphaTab de tempo livre')
 assertNotContains(freeTex, '\\ts', 'Nao emite formula de compasso para "free"')
 assertNotContains(freeTex, 'undefined', 'Nao emite fragmento invalido com "free"')
 
+const freeBarTex = beatsToAlphaTex(
+  [
+    makeBeat({ pitches: [makeNote('C/4')], duration: 'h', barAfter: true }),
+    makeBeat({ pitches: [makeNote('D/4')], duration: 'h' }),
+  ],
+  { ...defaultOptions, timeSignature: 'free' as any },
+)
+assertContains(freeBarTex, '|', 'Preserva barra pedagogica em tempo livre')
+assertContains(freeBarTex, ':2', 'Preserva minima vinda do modelo')
+
 // 20. Compasso invalido
 console.log('\n--- Compasso invalido ---')
 const invalidTex = beatsToAlphaTex(

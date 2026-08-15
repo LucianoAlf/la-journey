@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
-import { A4_NOTATION_CONTENT_WIDTH, resolveNotationPreviewWidth } from '../notationPreviewWidth'
+import {
+  A4_CANVAS_NOTATION_WIDTH,
+  A4_NOTATION_CONTENT_WIDTH,
+  resolveNotationPreviewWidth,
+} from '../notationPreviewWidth'
 
 function test(name: string, fn: () => void) {
   try {
@@ -29,4 +33,8 @@ test('ignores invalid stored widths', () => {
 
 test('A4 content width is the printable page minus the usual 40px side padding', () => {
   assert.equal(A4_NOTATION_CONTENT_WIDTH, 794 - 80)
+})
+
+test('canvas AlphaTab width matches A4 content after page and block chrome', () => {
+  assert.equal(A4_CANVAS_NOTATION_WIDTH, 638)
 })
