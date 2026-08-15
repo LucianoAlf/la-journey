@@ -822,12 +822,12 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
     content,
     renderData: rd,
   })
-  const isInteractive = notationInteractive?.blockId === block.id
+  const isInteractive = Boolean(notationInteractive && notationInteractive.blockId && notationInteractive.blockId === block.id)
 
   return (
     <div className="mb-4">
       {block.title && <h3 className="font-bold text-[14px] text-text mb-2">{block.title}</h3>}
-      {isInteractive ? (
+      {isInteractive && notationInteractive ? (
         <>
           <div className="mb-2 flex flex-wrap items-center gap-1">
             <NotationDurationStrip {...notationInteractive.durationStrip} />
