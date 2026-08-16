@@ -5,9 +5,13 @@ export const A4_NOTATION_CONTENT_WIDTH = A4_PAGE_WIDTH_PX - 80
 
 /**
  * Largura em que o AlphaTab realmente pagina no bloco A4 do editor:
- * página 794, `.a4-page-content` 60+60, `.canvas-block` 16+16, borda 2+2.
+ * página, `.a4-page-content` 60+60, `.canvas-block` 16+16, borda 2+2.
  */
-export const A4_CANVAS_NOTATION_WIDTH = A4_PAGE_WIDTH_PX - 120 - 32 - 4
+export function canvasNotationWidth(pageWidthPx: number = A4_PAGE_WIDTH_PX): number {
+  return pageWidthPx - 120 - 32 - 4
+}
+
+export const A4_CANVAS_NOTATION_WIDTH = canvasNotationWidth()
 
 export function resolveNotationPreviewWidth(
   renderData: { width?: unknown } | null | undefined,

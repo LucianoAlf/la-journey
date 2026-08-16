@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   A4_CANVAS_NOTATION_WIDTH,
   A4_NOTATION_CONTENT_WIDTH,
+  canvasNotationWidth,
   resolveNotationPreviewWidth,
 } from '../notationPreviewWidth'
 
@@ -37,4 +38,9 @@ test('A4 content width is the printable page minus the usual 40px side padding',
 
 test('canvas AlphaTab width matches A4 content after page and block chrome', () => {
   assert.equal(A4_CANVAS_NOTATION_WIDTH, 638)
+})
+
+test('canvas notation width grows with landscape paper', () => {
+  assert.equal(canvasNotationWidth(1123), 1123 - 120 - 32 - 4)
+  assert.equal(canvasNotationWidth(), A4_CANVAS_NOTATION_WIDTH)
 })
