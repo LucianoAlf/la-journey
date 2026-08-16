@@ -62,20 +62,44 @@ function joinList(items: string[]): string {
   return items.map((item) => item.trim()).filter(Boolean).join(', ')
 }
 
+function scaleWord(scale?: string): string {
+  if (!scale) return ''
+  const normalized = scale.trim().toLowerCase()
+  if (normalized === 'major' || normalized === 'maior') return 'major'
+  if (normalized === 'minor' || normalized === 'menor') return 'minor'
+  return scale.trim()
+}
+
+export function describePracticeKey(recipe: Pick<PracticeAudioRecipe, 'key' | 'scale'>): string | null {
+  const key = recipe.key?.trim()
+  if (!key) return null
+  if (/\b(major|minor|maior|menor|maj|min)\b/i.test(key)) return key
+  const scale = scaleWord(recipe.scale)
+  return scale ? `${key} ${scale}` : key
+}
+
 export function compilePracticeAudioPrompt(recipe: PracticeAudioRecipe): string {
   const seconds = recipe.durationSeconds
-  const parts: string[] = [
-    `Create a ${seconds}-second ${KIND_LABEL[recipe.kind]}.`,
-  ]
+  const keyName = describePracticeKey(recipe)
+  const tonic = recipe.key?.trim()
+  const lead = keyName
+    ? `Create a ${seconds}-second ${KIND_LABEL[recipe.kind]} in ${keyName}.`
+    : `Create a ${seconds}-second ${KIND_LABEL[recipe.kind]}.`
+  const parts: string[] = [lead]
 
-  if (recipe.key) parts.push(`Key: ${recipe.key}.`)
-  if (recipe.scale) parts.push(`Scale/mode: ${recipe.scale}.`)
+  if (tonic && keyName) {
+    parts.push(`The tonic is ${tonic}. Stay in ${keyName} from the first note to the last. Do not modulate. Do not transpose. Do not change key.`)
+  }
+  if (recipe.kind === 'vocalize' && keyName && tonic) {
+    parts.push(`The melody and guide vocal use only the ${keyName} scale and resolve on ${tonic}.`)
+  }
   if (recipe.bpm && recipe.bpm > 0) parts.push(`${recipe.bpm} BPM.`)
   if (recipe.style) parts.push(`Style: ${recipe.style}.`)
   if (recipe.instruments.length) parts.push(`Instruments: ${joinList(recipe.instruments)}.`)
 
   if (recipe.requestedChords.length) {
-    parts.push(`Only these chords: ${joinList(recipe.requestedChords)}.`)
+    const inKey = keyName ? ` in ${keyName}` : ''
+    parts.push(`Only these chords${inKey}: ${joinList(recipe.requestedChords)}.`)
   }
 
   if (recipe.wordlessGuide) {

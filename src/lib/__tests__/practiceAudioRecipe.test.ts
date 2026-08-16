@@ -35,7 +35,9 @@ test('vocalize in C asks for wordless ah guide vocal', () => {
   const prompt = compilePracticeAudioPrompt(recipe)
   assert.match(prompt, /vocalise|vocalize|vocal warm-up/i)
   assert.match(prompt, /\bah\b/i)
-  assert.match(prompt, /\bC\b/)
+  assert.match(prompt, /in C major/i)
+  assert.match(prompt, /tonic is C/i)
+  assert.match(prompt, /do not modulate/i)
   assert.match(prompt, /30/)
 })
 
