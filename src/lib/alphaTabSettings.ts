@@ -10,6 +10,7 @@ export type AlphaTabPurpose =
   | 'snapshot-notation'
   | 'snapshot-rhythm'
   | 'snapshot-tablature'
+  | 'study-playalong'
 
 export interface BuildAlphaTabSettingsOptions {
   purpose: AlphaTabPurpose
@@ -148,8 +149,13 @@ export function buildAlphaTabSettings({
     ? alphaTabModule.StaveProfile.Tab
     : alphaTabModule.StaveProfile.Score
 
-  settings.player.enablePlayer = false
-  settings.player.enableCursor = false
+  const isStudy = purpose === 'study-playalong'
+  settings.player.enablePlayer = isStudy
+  settings.player.enableCursor = isStudy
+  settings.player.enableAnimatedBeatCursor = false
+  settings.player.playerMode = isStudy
+    ? alphaTabModule.PlayerMode.EnabledBackingTrack
+    : alphaTabModule.PlayerMode.Disabled
 
   settings.notation.rhythmMode = alphaTabModule.TabRhythmMode.ShowWithBars
   settings.notation.notationMode = (isTab || isGrandStaff)
