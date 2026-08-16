@@ -126,6 +126,7 @@ import { DEFAULT_TITLE_TEMPLATE_ID, TITLE_TEMPLATE_PRESETS, type TitleTemplateId
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { parsePageOrientation, type PageOrientation } from "@/lib/a4Preview";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -180,7 +181,7 @@ import {
   shouldNudgeFloatingElementFromKey,
 } from "@/lib/editorCanvasInteraction";
 import {
-  A4_CONTENT_HEIGHT,
+  a4ContentHeight,
   canSplitBlockForPagination,
   describePaginationPolicy,
   getBlockPaginationPolicy,
@@ -233,6 +234,7 @@ interface PageConfig {
   floating_elements?: FloatingElement[]
   margins?: PageMargins
   guides?: PageGuide[]
+  orientation?: PageOrientation
 }
 
 const DEFAULT_PAGE_CONFIG: PageConfig = {
@@ -269,6 +271,7 @@ function migratePageConfig(raw: Record<string, unknown>): PageConfig {
     footer: footer && isLegacyFormat(footer)
       ? migrateLegacyFooter(footer as { enabled: boolean; leftText: string; centerText: string; rightText: string; showPageNumber: boolean; pageNumberPosition: 'left' | 'center' | 'right' })
       : (pc.footer ?? DEFAULT_FOOTER),
+    orientation: parsePageOrientation(raw.orientation),
   }
 }
 
@@ -1020,12 +1023,14 @@ function useEditorPagination({
   canvasScrollRef,
   musicRendererSnapshotCacheRef,
   selectedBlockId,
+  contentHeight,
 }: {
   blocks: EditorBlock[]
   blocksRef: React.MutableRefObject<EditorBlock[]>
   canvasScrollRef: React.RefObject<HTMLDivElement | null>
   musicRendererSnapshotCacheRef: React.MutableRefObject<Map<string, MusicSnapshotCacheEntry>>
   selectedBlockId: string | null
+  contentHeight: number
 }) {
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
   const blockHeightCacheRef = useRef<Map<string, number>>(new Map())
@@ -1056,7 +1061,8 @@ function useEditorPagination({
   const paginationResult = useMemo(() => paginateBlocks(
     blocks,
     block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
-  ), [blocks, blockHeights])
+    contentHeight,
+  ), [blocks, blockHeights, contentHeight])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -1980,6 +1986,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Configuração de cabeçalho/rodapé da página
   const [pageConfig, setPageConfig] = useState<PageConfig>(DEFAULT_PAGE_CONFIG)
+  const pageOrientation = parsePageOrientation(pageConfig.orientation)
+  const contentHeight = a4ContentHeight(pageOrientation)
 
   // Sidebar retrátil
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => {
@@ -2213,8 +2221,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (isSongbookMaterial(materialMeta?.material_type, blocks)) {
       return paginateSongbookBlocks(blocks, getHeight)
     }
-    return paginateBlocks(blocks, getHeight)
-  }, [blocks, blockHeights, materialMeta?.material_type])
+    return paginateBlocks(blocks, getHeight, contentHeight)
+  }, [blocks, blockHeights, materialMeta?.material_type, contentHeight])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -2240,7 +2248,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       }
 
       const h = blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
-      if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
+      if (currentHeight + h > contentHeight && result[result.length - 1].length > 0) {
         result.push([])
         currentHeight = 0
       }
@@ -2343,7 +2351,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return pages.map((pageBlocks, pageIndex) => {
       const debugBlocks = pageBlocks.map(getBlockDetail)
       const usedHeight = debugBlocks.reduce((sum, block) => sum + block.usedHeight, 0)
-      const freeHeight = Math.max(0, A4_CONTENT_HEIGHT - usedHeight)
+      const freeHeight = Math.max(0, contentHeight - usedHeight)
       const nextFirstBlock = pages[pageIndex + 1]?.[0]
       const hasEstimatedBlock = pageBlocks.some(block => getHeightCacheEntry(block).source === 'estimated')
       const nextFirstBlockEstimated = nextFirstBlock ? getHeightCacheEntry(nextFirstBlock).source === 'estimated' : false
@@ -2390,7 +2398,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
           }
         }
 
-        if (freeHeight > A4_CONTENT_HEIGHT * 0.3) {
+        if (freeHeight > contentHeight * 0.3) {
           const nextPolicy = getBlockPaginationPolicy(nextFirstBlock)
           const canSplitNext = canSplitBlockForPagination(nextFirstBlock, nextPolicy)
           if (breakReason === 'manual') {
@@ -2418,10 +2426,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
       return {
         pageNumber: pageIndex + 1,
-        totalHeight: A4_CONTENT_HEIGHT,
+        totalHeight: contentHeight,
         usedHeight,
         freeHeight,
-        freePercent: (freeHeight / A4_CONTENT_HEIGHT) * 100,
+        freePercent: (freeHeight / contentHeight) * 100,
         breakReason,
         breakDetail,
         opportunity,
@@ -2432,7 +2440,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         blocks: debugBlocks,
       }
     })
-  }, [blocks, blockHeights, pages, paginationBreakReasons])
+  }, [blocks, blockHeights, pages, paginationBreakReasons, contentHeight])
 
   const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
   const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
@@ -7735,7 +7743,7 @@ ${pagesHtml}
                   <div
                     key={pageIdx}
                     ref={el => { pageRefs.current[pageIdx] = el }}
-                    className="a4-page a4-page--placeholder"
+                    className={`a4-page a4-page--placeholder ${pageOrientation === 'landscape' ? 'a4-page--landscape' : ''}`}
                     data-page-index={pageIdx}
                     data-editor-page-active="false"
                     style={{ position: 'relative', backgroundColor: '#ffffff' }}
@@ -7776,7 +7784,7 @@ ${pagesHtml}
               <div
                 key={pageIdx}
                 ref={el => { pageRefs.current[pageIdx] = el }}
-                className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
+                className={`a4-page ${pageOrientation === 'landscape' ? 'a4-page--landscape' : ''} ${isCoverPage ? 'a4-page--cover' : ''}`}
                 data-page-index={pageIdx}
                 data-editor-page-active="true"
                 onMouseDownCapture={handleCanvasPageMouseDownCapture}
@@ -8242,6 +8250,32 @@ ${pagesHtml}
               <p className="text-[10px] text-text3 -mt-2 mb-3">
                 As alterações aparecem na folha em tempo real.
               </p>
+
+              <div className="space-y-2 border-t border-border pt-3">
+                <Label className="text-[11px] text-text3 uppercase tracking-wider">Orientação</Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    className={cn(
+                      'h-8 rounded-md border text-[11px]',
+                      pageOrientation === 'portrait' ? 'border-accent ring-1 ring-accent/40' : 'border-border',
+                    )}
+                    onClick={() => setPageConfig(prev => ({ ...prev, orientation: 'portrait' }))}
+                  >
+                    Retrato
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'h-8 rounded-md border text-[11px]',
+                      pageOrientation === 'landscape' ? 'border-accent ring-1 ring-accent/40' : 'border-border',
+                    )}
+                    onClick={() => setPageConfig(prev => ({ ...prev, orientation: 'landscape' }))}
+                  >
+                    Deitada
+                  </button>
+                </div>
+              </div>
 
               {/* === CABEÇALHO E RODAPÉ === */}
               <div className="space-y-3 border-t border-border pt-3">
