@@ -258,6 +258,55 @@ export interface AlphaTexNotesResult {
 // a barra lendo beat.notes[0]. O professor não escolhe altura de barra rítmica.
 const SLASH_NEUTRAL_PITCH: PitchData = { pitch: 'B/4', accidental: null }
 
+const SIMILE_MAP: Record<string, string> = {
+  simple: 'simple',
+  firstOfDouble: 'firstofdouble',
+  secondOfDouble: 'secondofdouble',
+}
+
+/** Agrupa beats em compassos usando o barAfter que já existe no modelo. */
+function segmentBars(beats: Beat[]): Beat[][] {
+  const bars: Beat[][] = []
+  let current: Beat[] = []
+  for (const beat of beats) {
+    current.push(beat)
+    if (beat.barAfter) {
+      bars.push(current)
+      current = []
+    }
+  }
+  if (current.length > 0) bars.push(current)
+  return bars
+}
+
+/**
+ * Metadado de compasso do AlphaTex é propriedade de masterbar, então sai tudo no
+ * cabeçalho, em ordem fixa: ts, section, ro, simile, rc, jump. Ordem fixa não é
+ * exigência do parser — é para o tex ser estável e testável por string.
+ */
+function barHeaderTex(bar: Beat[], activeTimeSignature: string | null): { tex: string; timeSignature: string | null } {
+  const first = bar[0]
+  const parts: string[] = []
+  let timeSignature = activeTimeSignature
+
+  const barFacts = bar.find(b => b.repeatClose || b.jump) ?? first
+
+  if (first.timeSignature && first.timeSignature !== activeTimeSignature) {
+    const [n, d] = first.timeSignature.split('/')
+    parts.push(`\\ts ${n} ${d}`)
+    timeSignature = first.timeSignature
+  }
+  if (first.sectionStart) {
+    parts.push(`\\section "${first.sectionStart.marker}" "${first.sectionStart.text}"`)
+  }
+  if (first.repeatOpen) parts.push('\\ro')
+  if (first.simile) parts.push(`\\simile ${SIMILE_MAP[first.simile]}`)
+  if (barFacts.repeatClose && barFacts.repeatClose > 1) parts.push(`\\rc ${barFacts.repeatClose}`)
+  if (barFacts.jump === 'fine') parts.push('\\jump fine')
+
+  return { tex: parts.join(' '), timeSignature }
+}
+
 // ─── Converter array de beats em notas AlphaTex ───
 
 function beatsToAlphaTexNotes(
@@ -270,119 +319,119 @@ function beatsToAlphaTexNotes(
   let lastDuration = ''
   let activeTupletGroupId: string | null = null
   const includeBarlines = options.includeBarlines ?? true
+  const bars = segmentBars(beats)
+  let activeTimeSignature: string | null = null
+  let beatIndex = 0
 
-  for (let i = 0; i < beats.length; i++) {
-    const beat = beats[i]
-    const noteParts: string[] = []
+  for (let barIdx = 0; barIdx < bars.length; barIdx++) {
+    const bar = bars[barIdx]
+    const header = barHeaderTex(bar, activeTimeSignature)
+    activeTimeSignature = header.timeSignature
+    if (header.tex) parts.push(header.tex)
 
-    // Duração — só emitir se mudou
-    const dur = DURATION_MAP[beat.duration] || '4'
-    if (dur !== lastDuration) {
-      noteParts.push(`:${dur}`)
-      lastDuration = dur
-    }
-
-    // Grace notes (antes do beat principal)
-    // AlphaTex: grace notes são aplicadas ao beat seguinte
-    // Sintaxe: {gr} = before beat, {gr ob} = on beat
-    // Precisamos emitir grace notes como beats separados ANTES deste beat
-    // IMPORTANTE: cada grace note conta como um beat AlphaTab separado!
-    if (beat.graceNotes && beat.graceNotes.pitches.length > 0) {
-      const graceDur = DURATION_MAP[beat.graceNotes.duration || '8'] || '8'
-      const graceEffect = beat.graceNotes.type === 'appoggiatura' ? '{gr ob}' : '{gr}'
-      for (const gp of beat.graceNotes.pitches) {
-        parts.push(`:${graceDur} ${pitchToAlphaTex(gp)}${graceEffect}`)
-        // Grace note aponta para o mesmo ourBeatIdx do beat principal
-        indexMap.push(i)
+    // Compasso de simile: sai só a tag, sem beats e sem pausa. Quem toca é o
+    // compasso anterior (_getPlaybackBar do AlphaTab). O AlphaTab cria um beat
+    // vazio para o compasso, então o indexMap ganha uma entrada apontando para o
+    // primeiro beat nosso — sem isso a seleção de nota desalinha.
+    if (bar[0].simile) {
+      indexMap.push(beatIndex)
+      beatIndex += bar.length
+      lastDuration = ''
+      if (includeBarlines && (barIdx < bars.length - 1 || bar[bar.length - 1].barAfter)) {
+        parts.push('|')
       }
-      // Resetar duração pois grace note mudou
-      noteParts.push(`:${dur}`)
-      lastDuration = dur
+      continue
     }
 
-    // Nota ou pausa
-    const pitches = beat.slash && !beat.isRest && beat.pitches.length === 0
-      ? [SLASH_NEUTRAL_PITCH]
-      : beat.pitches
-    if (beat.isRest) {
-      noteParts.push('r')
-    } else if (pitches.length === 1) {
-      noteParts.push(pitchToAlphaTex(pitches[0], octaveOffset))
-    } else if (pitches.length > 1) {
-      const chord = pitches.map(p => pitchToAlphaTex(p, octaveOffset)).join(' ')
-      noteParts.push(`(${chord})`)
-    }
+    for (const beat of bar) {
+      const i = beatIndex
+      beatIndex++
+      const noteParts: string[] = []
 
-    // Efeitos do beat (dentro de { })
-    const effects: string[] = []
-
-    // Ponto de aumento
-    if (beat.doubleDotted) effects.push('dd')
-    else if (beat.dotted) effects.push('d')
-
-    // Tie
-    if (beat.tie) effects.push('-')
-
-    // Barra rítmica
-    if (beat.slash) effects.push('slashed')
-
-    // Articulações — sintaxe AlphaTab validada
-    if (beat.articulations) {
-      for (const art of beat.articulations) {
-        if (art === 'a.') effects.push('st')         // staccato
-        if (art === 'a>') effects.push('ac')         // acento (accent)
-        if (art === 'a-') effects.push('ten')        // tenuto
-        if (art === 'a^') effects.push('hac')        // marcato (heavy accent)
-        if (art === 'a@a') effects.push('fermata medium 4')  // fermata (requer tipo + duração)
+      // Duração — só emitir se mudou
+      const dur = DURATION_MAP[beat.duration] || '4'
+      if (dur !== lastDuration) {
+        noteParts.push(`:${dur}`)
+        lastDuration = dur
       }
-    }
 
-    // Tuplet — só na primeira nota do grupo
-    if (beat.tuplet) {
-      if (beat.tuplet.groupId !== activeTupletGroupId) {
-        activeTupletGroupId = beat.tuplet.groupId
+      // Grace notes (antes do beat principal)
+      if (beat.graceNotes && beat.graceNotes.pitches.length > 0) {
+        const graceDur = DURATION_MAP[beat.graceNotes.duration || '8'] || '8'
+        const graceEffect = beat.graceNotes.type === 'appoggiatura' ? '{gr ob}' : '{gr}'
+        for (const gp of beat.graceNotes.pitches) {
+          parts.push(`:${graceDur} ${pitchToAlphaTex(gp)}${graceEffect}`)
+          indexMap.push(i)
+        }
+        noteParts.push(`:${dur}`)
+        lastDuration = dur
+      }
+
+      // Nota ou pausa
+      const pitches = beat.slash && !beat.isRest && beat.pitches.length === 0
+        ? [SLASH_NEUTRAL_PITCH]
+        : beat.pitches
+      if (beat.isRest) {
+        noteParts.push('r')
+      } else if (pitches.length === 1) {
+        noteParts.push(pitchToAlphaTex(pitches[0], octaveOffset))
+      } else if (pitches.length > 1) {
+        const chord = pitches.map(p => pitchToAlphaTex(p, octaveOffset)).join(' ')
+        noteParts.push(`(${chord})`)
+      }
+
+      const effects: string[] = []
+
+      if (beat.doubleDotted) effects.push('dd')
+      else if (beat.dotted) effects.push('d')
+
+      if (beat.tie) effects.push('-')
+
+      if (beat.slash) effects.push('slashed')
+
+      if (beat.articulations) {
+        for (const art of beat.articulations) {
+          if (art === 'a.') effects.push('st')
+          if (art === 'a>') effects.push('ac')
+          if (art === 'a-') effects.push('ten')
+          if (art === 'a^') effects.push('hac')
+          if (art === 'a@a') effects.push('fermata medium 4')
+        }
+      }
+
+      if (beat.tuplet) {
+        if (beat.tuplet.groupId !== activeTupletGroupId) {
+          activeTupletGroupId = beat.tuplet.groupId
+        }
         effects.push(`tu ${beat.tuplet.numNotes}`)
       } else {
-        effects.push(`tu ${beat.tuplet.numNotes}`)
+        activeTupletGroupId = null
       }
-    } else {
-      activeTupletGroupId = null
-    }
 
-    // Dinâmicas
-    if (beat.dynamic) {
-      effects.push(`dy ${beat.dynamic}`)
-    }
+      if (beat.dynamic) {
+        effects.push(`dy ${beat.dynamic}`)
+      }
 
-    // Hairpins (crescendo / decrescendo)
-    if (beat.hairpinStart === 'crescendo') effects.push('cre')
-    if (beat.hairpinStart === 'decrescendo') effects.push('dec')
+      if (beat.hairpinStart === 'crescendo') effects.push('cre')
+      if (beat.hairpinStart === 'decrescendo') effects.push('dec')
 
-    // Ornamentos — trill, mordente, etc.
-    if (beat.ornament === 'tr') effects.push('trill')
-    // mordent, turn — verificar sintaxe AlphaTab
+      if (beat.ornament === 'tr') effects.push('trill')
 
-    // Cifra (chord name)
-    if (beat.cifra) {
-      effects.push(`ch "${beat.cifra}"`)
-    }
+      if (beat.cifra) {
+        effects.push(`ch "${beat.cifra}"`)
+      }
 
-    // Lyrics — NÃO vai dentro de {} (AlphaTab usa \lyrics como metadado de track)
-    // Removido: {ly "..."} não é sintaxe válida
+      let beatStr = noteParts.join(' ')
+      if (effects.length > 0) {
+        beatStr += `{${effects.join(' ')}}`
+      }
 
-    // Montar string do beat
-    let beatStr = noteParts.join(' ')
-    if (effects.length > 0) {
-      beatStr += `{${effects.join(' ')}}`
-    }
+      parts.push(beatStr)
+      indexMap.push(i)
 
-    parts.push(beatStr)
-    // Mapear este beat AlphaTab ao nosso índice
-    indexMap.push(i)
-
-    // Barline após o beat (não conta como beat no AlphaTab)
-    if (includeBarlines && beat.barAfter) {
-      parts.push('|')
+      if (includeBarlines && beat.barAfter) {
+        parts.push('|')
+      }
     }
   }
 

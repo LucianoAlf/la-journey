@@ -308,7 +308,7 @@ Em `src/lib/beatsToAlphaTex.ts`, no `interface Beat`, junto de `slash`:
 
 Em `src/lib/notationInlineHydrate.ts`, os mesmos campos no `interface InlineBeat`.
 
-- [ ] **Passo 4: hidratação**
+- [x] **Passo 4: hidratação**
 
 Em `normalizeBeats` de `src/lib/notationInlineHydrate.ts`, no objeto retornado:
 
@@ -325,7 +325,7 @@ Em `normalizeBeats` de `src/lib/notationInlineHydrate.ts`, no objeto retornado:
       jump: raw.jump === 'fine' ? 'fine' : undefined,
 ```
 
-- [ ] **Passo 5: repassar na sessão**
+- [x] **Passo 5: repassar na sessão**
 
 Em `sessionToAlphaTex` de `src/lib/notationInlineOps.ts`, no `map`, junto de `slash`:
 
@@ -338,7 +338,7 @@ Em `sessionToAlphaTex` de `src/lib/notationInlineOps.ts`, no `map`, junto de `sl
     jump: beat.jump,
 ```
 
-- [ ] **Passo 6: rodar, checar tipos e commitar**
+- [x] **Passo 6: rodar, checar tipos e commitar**
 
 Run: `npx tsx src/lib/__tests__/notationInlineOps.test.ts` e `npm run lint`
 Esperado: asserções passam, sem erro novo de tipo.
@@ -360,7 +360,7 @@ Cuidado que vale o corte: a função devolve `indexMap`, o mapa `índice de beat
 - Modify: `src/lib/beatsToAlphaTex.ts:172-294`
 - Test: `src/lib/__tests__/beatsToAlphaTex.test.ts`
 
-- [ ] **Passo 1: escrever os testes que falham**
+- [x] **Passo 1: escrever os testes que falham**
 
 ```ts
 console.log('\n--- Cabeçalho de compasso ---')
@@ -383,12 +383,12 @@ assertContains(cabecalhoTex, '\\jump fine', 'Fine no último compasso')
 assert(cabecalhoTex.split('\\ts 2 4').length === 2, 'métrica não repete no compasso seguinte')
 ```
 
-- [ ] **Passo 2: rodar e confirmar que falha**
+- [x] **Passo 2: rodar e confirmar que falha**
 
 Run: `npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts`
 Esperado: falha em todas as asserções de cabeçalho.
 
-- [ ] **Passo 3: segmentar em compassos e montar o cabeçalho**
+- [x] **Passo 3: segmentar em compassos e montar o cabeçalho**
 
 Em `src/lib/beatsToAlphaTex.ts`, acima de `beatsToAlphaTexNotes`:
 
@@ -443,7 +443,7 @@ function barHeaderTex(bar: Beat[], activeTimeSignature: string | null): { tex: s
 }
 ```
 
-- [ ] **Passo 4: reescrever o laço de emissão**
+- [x] **Passo 4: reescrever o laço de emissão**
 
 Ainda em `beatsToAlphaTexNotes`, envolva o laço atual de beats num laço de compassos. O corpo que monta cada beat (duração, grace, nota, efeitos) **não muda**; o que muda é a moldura:
 
@@ -482,12 +482,12 @@ O corpo interno preserva tudo que já existia: `:${dur}` só quando muda, grace 
 
 Depois de um compasso de simile, `lastDuration` é zerado porque o compasso vazio quebra o estado de duração do AlphaTex.
 
-- [ ] **Passo 5: rodar os testes de emissão**
+- [x] **Passo 5: rodar os testes de emissão**
 
 Run: `npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts`
 Esperado: as asserções novas passam **e** todas as antigas (duração stateful, tie, tuplet, cifra, barline) seguem passando. Se alguma antiga quebrar, o `indexMap` ou o `lastDuration` saiu do lugar.
 
-- [ ] **Passo 6: rodar o resto da bateria de notação**
+- [x] **Passo 6: rodar o resto da bateria de notação**
 
 Run:
 ```bash
@@ -497,7 +497,7 @@ npx tsx src/lib/__tests__/notationBeatHit.test.ts
 ```
 Esperado: sem regressão. O `notationBeatHit` é o que protege o mapa de índice.
 
-- [ ] **Passo 7: commit**
+- [x] **Passo 7: commit**
 
 ```bash
 git add src/lib/beatsToAlphaTex.ts src/lib/__tests__/beatsToAlphaTex.test.ts

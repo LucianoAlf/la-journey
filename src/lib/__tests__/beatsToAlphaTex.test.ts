@@ -424,6 +424,40 @@ const slashCifraTex = beatsToAlphaTexNotes([
 ]).tex
 assertContains(slashCifraTex, 'b3{slashed ch "D"}', 'slash e cifra saem na mesma chave')
 
+console.log('\n--- Cabecalho de compasso ---')
+const cabecalhoTex = beatsToAlphaTexNotes([
+  makeBeat({
+    pitches: [makeNote('B/4')], slash: true, cifra: 'D',
+    sectionStart: { marker: 'A', text: 'Violao, piano e vocal' },
+    repeatOpen: true, timeSignature: '4/4', barAfter: true,
+  }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, timeSignature: '2/4', barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, repeatClose: 7, jump: 'fine' }),
+]).tex
+
+assertContains(cabecalhoTex, '\\section "A" "Violao, piano e vocal"', 'secao com marcador e texto')
+assertContains(cabecalhoTex, '\\ts 4 4 \\section', 'metrica antes da secao')
+assertContains(cabecalhoTex, '\\section "A" "Violao, piano e vocal" \\ro', 'secao antes do repeat open')
+assertContains(cabecalhoTex, '\\ts 2 4', 'metrica muda no compasso do meio')
+assertContains(cabecalhoTex, '\\rc 7', 'repeat close com numero de voltas')
+assertContains(cabecalhoTex, '\\jump fine', 'Fine no ultimo compasso')
+assert(cabecalhoTex.split('\\ts 2 4').length === 2, 'metrica nao repete no compasso seguinte')
+
+const simileResult = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, simile: 'simple', barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true }),
+])
+assertContains(simileResult.tex, '\\simile simple', 'compasso de simile emite a tag')
+assert(
+  (simileResult.tex.match(/slashed/g) ?? []).length === 2,
+  `simile nao emite os beats do compasso, tex=${simileResult.tex}`,
+)
+assert(
+  simileResult.indexMap.length === 3,
+  `simile reserva um indice AlphaTab, mapa=${simileResult.indexMap.join(',')}`,
+)
+
 // ─── Resultado ───
 
 console.log(`\n${'─'.repeat(40)}`)
