@@ -1,6 +1,6 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — folha deitada no editor  
+Atualizado: 2026-08-16 (noite) — folha deitada em produção  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
 **Próximo corte:** player de estudo (corte C).
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **no editor local** (`feat/folha-deitada`) — Retrato/Deitada por material. Player de estudo (C) é o próximo; não misturar. Áudio didático continua em `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção** (orientação por material). Player de estudo (C) é o próximo; não misturar. Áudio didático continua em `feat/audio-didatico`.
 - Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
 - Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
 - Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
@@ -34,7 +34,7 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 
 ### Folha deitada — orientação A4 por material (16/08, noite)
 
-Toggle Retrato/Deitada em Configuração da Página. `page_config.orientation`, default retrato. Folha 1123×794, pauta mais larga, Por linha na mão. PrintView + `generate-pdf` (Browserless `landscape`) + jsPDF do canvas seguem o papel. PDF de repertório intocado. Conferido no editor local (Intervalos Melódicos): 1123×794 e PrintView 1123×794; Baixar PDF de apostila só fecha deitado depois do deploy (Browserless lê produção).
+Toggle Retrato/Deitada em Configuração da Página. `page_config.orientation`, default retrato. Folha 1123×794, pauta mais larga, Por linha na mão. PrintView + `generate-pdf` (Browserless `landscape`) + jsPDF do canvas seguem o papel. PDF de repertório intocado. **Em produção** (main `cd51c76`+).
 - Spec: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
 - Plano: `docs/superpowers/plans/2026-08-16-folha-deitada.md`
 - Branch: `feat/folha-deitada`
@@ -356,7 +356,7 @@ Edição:
 
 ## Radar (ordem combinada em 16/08, noite)
 
-1. Apostila / Download do editor quando **não** é songbook — conferir Baixar PDF deitado **depois do merge** (Browserless `generate-pdf` lê o PrintView de produção).
+1. Confirmar Baixar PDF deitado em produção (Edge `generate-pdf` já deployada; Vercel no ar após o push).
 2. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
 3. **Playalong com cursor no compasso** — backing track MP3 (Suno) + `BackingTrackSyncPoint` do AlphaTab (`PlayerMode.EnabledBackingTrack`, `api.updateSyncPoints()`, tag `\sync`). Exige ligar o player, hoje desligado em `src/lib/alphaTabSettings.ts` para os nove propósitos. **Não** calcular playhead por BPM: quebra em métrica mista e em repetição.
 4. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
