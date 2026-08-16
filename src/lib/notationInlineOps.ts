@@ -188,7 +188,8 @@ export function sessionToAlphaTex(input: {
   const beats: AlphaTexBeat[] = input.beats.map((beat, index) => ({
     pitches: beat.pitches.map(pitch => ({ pitch: pitch.pitch, accidental: pitch.accidental ?? null })),
     duration: beat.duration,
-    tie: beat.tieToNext ?? false,
+    // O {-} do AlphaTex marca a nota destino: quem recebe a ligadura é o beat seguinte.
+    tie: Boolean(input.beats[index - 1]?.tieToNext),
     isRest: beat.isRest,
     dotted: beat.dotted ?? false,
     doubleDotted: beat.doubleDotted,

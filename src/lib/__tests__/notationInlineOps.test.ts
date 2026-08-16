@@ -153,6 +153,29 @@ test('sessionToAlphaTex puts chord names on the beats that carry cifra', () => {
   assert.match(tex, /\{ch "G"\}/)
 })
 
+test('sessionToAlphaTex marks the tie on the destination beat', () => {
+  // tieToNext no beat N liga N ao N+1; o {-} do AlphaTex marca quem recebe a ligadura.
+  const { tex } = sessionToAlphaTex({
+    beats: [
+      { pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false, tieToNext: true },
+      { pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false },
+    ],
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: 'free',
+    bpm: 120,
+    grandStaff: false,
+  })
+  const tokens = tex.split('\n').at(-1)!.trim().split(/\s+/)
+  const comTie = tokens.filter(token => token.includes('{-}'))
+  assert.equal(comTie.length, 1, `ligadura deve sair em exatamente um beat, veio: ${tex}`)
+  assert.equal(
+    tokens.indexOf(comTie[0]),
+    tokens.length - 1,
+    `ligadura deve sair no beat destino (o segundo), veio: ${tex}`,
+  )
+})
+
 test('replaceNote keeps cifra; insertNote does not copy it', () => {
   const withCifra: InlineBeat = { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false, cifra: 'D' }
   const replaced = replaceNote({ beats: [withCifra], atIdx: 0, pitch: 'F/4', accidental: null })
