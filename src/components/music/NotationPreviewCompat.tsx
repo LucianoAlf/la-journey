@@ -21,6 +21,7 @@ interface NotationPreviewCompatProps {
   className?: string
   showLabels?: boolean
   scale?: number
+  barsPerRow?: number
   onStableRender?: (html: string) => void
 }
 
@@ -38,6 +39,7 @@ export function NotationPreviewCompat({
   className = '',
   showLabels = true,
   scale = NOTATION_DIDACTIC_SCALE,
+  barsPerRow,
   onStableRender,
 }: NotationPreviewCompatProps) {
   const hasLegacyNotes = Boolean(notes?.length)
@@ -66,6 +68,7 @@ export function NotationPreviewCompat({
             staveProfile="score"
             purpose="canvas-notation-score"
             layout="page"
+            barsPerRow={barsPerRow}
             showTimeSignature={hasExplicitAlphaTexTimeSignature(previewItem.tex)}
             className="notation-container"
             onStableRender={onStableRender}

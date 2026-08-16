@@ -62,6 +62,7 @@ import {
 import { TitleTemplateRenderer } from '@/components/material/TitleTemplateRenderer'
 import { resolveNotationPreviewWidth } from '@/lib/notationPreviewWidth'
 import { NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
+import { clampBarsPerSystem } from '@/lib/notationLayout'
 
 export interface MaterialBlock {
   id?: string
@@ -178,6 +179,8 @@ interface MaterialPreviewProps {
     keySignature: string
     timeSignature: string | null
     grandStaffMode: boolean
+    barsPerRow?: number
+    noteInputArmed?: boolean
     onSelectBeat: (idx: number) => void
     onInsertNote: (pitch: string, afterIdx: number) => void
     onReplaceNote: (pitch: string, atIdx: number) => void
@@ -824,6 +827,7 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
     renderData: rd,
   })
   const isInteractive = Boolean(notationInteractive && notationInteractive.blockId && notationInteractive.blockId === block.id)
+  const barsPerRow = clampBarsPerSystem(rd.barsPerSystem ?? (rd.notation_data as { barsPerSystem?: unknown } | undefined)?.barsPerSystem)
 
   return (
     <div className="mb-4">
@@ -842,6 +846,8 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
             keySignature={notationInteractive.keySignature}
             timeSignature={notationInteractive.timeSignature}
             grandStaffMode={notationInteractive.grandStaffMode}
+            barsPerRow={notationInteractive.barsPerRow}
+            noteInputArmed={notationInteractive.noteInputArmed}
             onSelectBeat={notationInteractive.onSelectBeat}
             onInsertNote={notationInteractive.onInsertNote}
             onReplaceNote={notationInteractive.onReplaceNote}
@@ -859,6 +865,7 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
           staveProfile="score"
           purpose="canvas-notation-score"
           layout="page"
+          barsPerRow={barsPerRow}
           showTimeSignature={hasExplicitAlphaTexTimeSignature(displayAlphaTex)}
           className="notation-container"
           onStableRender={(html) => onMusicStableRender?.(block, html)}
@@ -873,6 +880,7 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
           timeSignature={rd.time_signature}
           keySignature={rd.key_signature}
           width={resolveNotationPreviewWidth(rd)}
+          barsPerRow={barsPerRow}
           className="w-full min-w-0"
           onStableRender={(html) => onMusicStableRender?.(block, html)}
         />

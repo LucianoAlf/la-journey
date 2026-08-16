@@ -40,6 +40,8 @@ export interface NotationToolsSidebarProps {
   onUndo: () => void
   onRedo: () => void
   onTogglePlay: () => void
+  barsPerSystem: number
+  onBarsPerSystem: (value: number) => void
   layout?: 'row' | 'column'
 }
 
@@ -66,6 +68,8 @@ export function NotationToolsSidebar({
   onUndo,
   onRedo,
   onTogglePlay,
+  barsPerSystem,
+  onBarsPerSystem,
   layout = 'column',
 }: NotationToolsSidebarProps) {
   const isRow = layout === 'row'
@@ -76,12 +80,12 @@ export function NotationToolsSidebar({
     <div className={sectionClassName}>
       <div className={isRow ? 'contents' : 'space-y-3'}>
         <div className={isRow ? 'flex gap-2 items-end' : 'space-y-3'}>
-          <div className="space-y-1">
+          <div className={`space-y-1 ${isRow ? 'min-w-[168px]' : 'w-full'}`}>
             <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Modo</span>
-            <div className="flex border border-border rounded-lg overflow-hidden">
+            <div className="flex w-full border border-border rounded-lg overflow-hidden">
               <button
                 onClick={() => onTimeSignature('free')}
-                className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                className={`flex-1 px-3 py-1.5 text-center text-[12px] font-medium transition-colors ${
                   timeSignature === 'free' ? 'bg-accent text-white' : 'text-text3 hover:bg-accent/10 hover:text-accent'
                 }`}
               >
@@ -89,7 +93,7 @@ export function NotationToolsSidebar({
               </button>
               <button
                 onClick={() => onTimeSignature('4/4')}
-                className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                className={`flex-1 px-3 py-1.5 text-center text-[12px] font-medium transition-colors ${
                   timeSignature !== 'free' ? 'bg-accent text-white' : 'text-text3 hover:bg-accent/10 hover:text-accent'
                 }`}
               >
@@ -98,38 +102,75 @@ export function NotationToolsSidebar({
             </div>
           </div>
 
-          {timeSignature !== 'free' && (
-            <div className="space-y-1 min-w-[140px]">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Compasso</span>
-              <Select value={timeSignature} onValueChange={onTimeSignature}>
-                <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
+          <div
+            className={
+              timeSignature !== 'free'
+                ? isRow
+                  ? 'flex min-w-0 items-end gap-2'
+                  : 'grid w-full grid-cols-2 gap-2'
+                : isRow
+                  ? 'min-w-[120px]'
+                  : 'w-full'
+            }
+          >
+            {timeSignature !== 'free' && (
+              <div className="min-w-0 space-y-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Compasso</span>
+                <Select value={timeSignature} onValueChange={onTimeSignature}>
+                  <SelectTrigger className="h-[34px] w-full text-[13px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TIME_SIGNATURE_OPTIONS.filter(option => option.value !== 'free').map(option => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="min-w-0 space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Por linha</span>
+              <div className="flex h-[34px] w-full items-center overflow-hidden rounded-lg border border-border">
+                <button
+                  type="button"
+                  title="Menos compassos por sistema"
+                  onClick={() => onBarsPerSystem(barsPerSystem - 1)}
+                  className="h-full w-8 shrink-0 text-[14px] text-text3 hover:bg-accent/10 hover:text-accent"
+                >
+                  −
+                </button>
+                <span className="flex-1 text-center text-[13px] font-semibold text-text">{barsPerSystem}</span>
+                <button
+                  type="button"
+                  title="Mais compassos por sistema"
+                  onClick={() => onBarsPerSystem(barsPerSystem + 1)}
+                  className="h-full w-8 shrink-0 text-[14px] text-text3 hover:bg-accent/10 hover:text-accent"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={isRow ? 'flex min-w-0 items-end gap-2' : 'grid w-full grid-cols-2 gap-2'}>
+            <div className="min-w-0 space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Clave</span>
+              <Select value={clef} onValueChange={onClef}>
+                <SelectTrigger className="h-[34px] w-full text-[13px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TIME_SIGNATURE_OPTIONS.filter(option => option.value !== 'free').map(option => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
+                  {CLEF_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-          )}
 
-          <div className="space-y-1 min-w-[80px]">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Clave</span>
-            <Select value={clef} onValueChange={onClef}>
-              <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CLEF_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1 min-w-[160px]">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Armadura</span>
-            <Select value={keySignature} onValueChange={onKeySignature}>
-              <SelectTrigger className="h-[34px] text-[13px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {KEY_SIGNATURE_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="min-w-0 space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">Armadura</span>
+              <Select value={keySignature} onValueChange={onKeySignature}>
+                <SelectTrigger className="h-[34px] w-full text-[13px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {KEY_SIGNATURE_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 

@@ -1,16 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import * as Tone from 'tone'
 import type { NotationDurationStripProps } from './NotationDurationStrip'
-import { DURATION_OPTIONS } from '@/lib/notationEditorChrome'
-import { playNotePreview, soundingPitch } from '@/lib/notationInlineAudio'
+import { playNotePreview, setNotePreviewMuted, soundingPitch } from '@/lib/notationInlineAudio'
+
+const PREVIEW_SOUND_KEY = 'la.notation.previewSound'
+
+function readPreviewSoundEnabled(): boolean {
+  try {
+    return localStorage.getItem(PREVIEW_SOUND_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
 import { resolveNotationKeyAction } from '@/lib/notationInlineKeyboard'
+import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
 import {
   applySessionToRenderData,
   deleteBeat,
   insertNote,
   insertRest,
   replaceNote,
+  resolveDeleteBeatIndex,
   sessionToAlphaTex,
 } from '@/lib/notationInlineOps'
 
@@ -37,18 +48,6 @@ function getSmartOctave(noteName: string, lastPitch: string | null, clef: string
   if (difference > 3) return lastOctave - 1
   if (difference < -3) return lastOctave + 1
   return lastOctave
-}
-
-function durationLabel(duration: InlineBeat['duration']): string {
-  return DURATION_OPTIONS.find(option => option.value === duration)?.label ?? ''
-}
-
-function formatPitchLabel(pitches: InlineBeat['pitches']): string {
-  return pitches.map(({ pitch, accidental }) => {
-    const [note, octave] = pitch.split('/')
-    const symbol = accidental === '#' ? '♯' : accidental === 'b' ? '♭' : accidental === 'n' ? '♮' : ''
-    return `${note}${symbol}${octave}`
-  }).join(' ')
 }
 
 function consumeNotationKey(event: KeyboardEvent<HTMLInputElement>) {
@@ -104,9 +103,12 @@ export function useNotationInlineSession({
   const [timeSignature, setTimeSignature] = useState('free')
   const [bpm, setBpm] = useState(120)
   const [grandStaff, setGrandStaff] = useState(false)
+  const [barsPerSystem, setBarsPerSystem] = useState(4)
   const [activeStaff, setActiveStaff] = useState<'treble' | 'bass'>('treble')
   const [isPlaying, setIsPlaying] = useState(false)
   const [hydratedBlockId, setHydratedBlockId] = useState<string | null>(null)
+  const [noteInputArmed, setNoteInputArmed] = useState(true)
+  const [previewSound, setPreviewSound] = useState(readPreviewSoundEnabled)
 
   const focusInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -139,11 +141,13 @@ export function useNotationInlineSession({
     setTimeSignature(session.timeSignature)
     setBpm(session.bpm)
     setGrandStaff(session.grandStaff)
+    setBarsPerSystem(session.barsPerSystem)
     setActiveStaff('treble')
     setCurrentAccidental(null)
     setDotted(false)
     setDoubleDotted(false)
     lastPitchRef.current = null
+    setNoteInputArmed(true)
     setHydratedBlockId(block.id)
   }, [block?.id, enabled])
 
@@ -177,6 +181,17 @@ export function useNotationInlineSession({
     setBeats(history[historyIdx + 1])
   }, [history, historyIdx])
 
+  const armNoteInput = useCallback(() => setNoteInputArmed(true), [])
+
+  useEffect(() => {
+    setNotePreviewMuted(!previewSound)
+    try {
+      localStorage.setItem(PREVIEW_SOUND_KEY, previewSound ? 'on' : 'off')
+    } catch {
+      // Sem storage — o mute vale só nesta sessão.
+    }
+  }, [previewSound])
+
   const onSelectBeat = useCallback((idx: number) => {
     setSelectedBeatIdx(idx)
     const beat = beats[idx]
@@ -199,6 +214,7 @@ export function useNotationInlineSession({
     lastPitchRef.current = pitch
     void playNotePreview([soundingPitch(pitch, currentAccidental)])
     if (staff) setActiveStaff(staff)
+    setNoteInputArmed(true)
     focusInput()
   }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx])
 
@@ -207,14 +223,18 @@ export function useNotationInlineSession({
     commit(result.beats)
     lastPitchRef.current = pitch
     void playNotePreview([soundingPitch(pitch, currentAccidental)])
+    setNoteInputArmed(true)
     focusInput()
   }, [beats, commit, currentAccidental, focusInput])
 
   const onDeleteBeat = useCallback((idx: number) => {
-    const result = deleteBeat({ beats, selectedBeatIdx, idx })
+    const target = resolveDeleteBeatIndex(idx, beats.length)
+    if (target < 0) return
+    const result = deleteBeat({ beats, selectedBeatIdx, idx: target })
     commit(result.beats)
     setSelectedBeatIdx(result.selectedBeatIdx)
-  }, [beats, commit, selectedBeatIdx])
+    focusInput()
+  }, [beats, commit, focusInput, selectedBeatIdx])
 
   const updateBeat = useCallback((idx: number, update: Partial<InlineBeat>) => {
     if (idx < 0 || idx >= beats.length) return
@@ -222,6 +242,19 @@ export function useNotationInlineSession({
     nextBeats[idx] = { ...nextBeats[idx], ...update }
     commit(nextBeats)
   }, [beats, commit])
+
+  const navigateBar = useCallback((delta: -1 | 1) => {
+    if (beats.length === 0) return
+    const next = navigateBarIndex(barStartIndices(beats, timeSignature, grandStaff), selectedBeatIdx, delta, beats.length)
+    setSelectedBeatIdx(next)
+    const beat = beats[next]
+    if (beat?.staff) setActiveStaff(beat.staff)
+    if (beat && !beat.isRest && beat.pitches[0]) {
+      lastPitchRef.current = beat.pitches[0].pitch
+      void playNotePreview(beat.pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
+    }
+    focusInput()
+  }, [beats, focusInput, grandStaff, selectedBeatIdx, timeSignature])
 
   const navigateSelection = useCallback((delta: -1 | 1) => {
     if (beats.length === 0) return
@@ -332,13 +365,17 @@ export function useNotationInlineSession({
   const stopPlayback = useCallback(() => playbackRef.current?.stop(), [])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-    const action = resolveNotationKeyAction(event, { hasSelection: selectedBeatIdx >= 0 })
+    const action = resolveNotationKeyAction(event, {
+      hasSelection: selectedBeatIdx >= 0,
+      noteInputArmed,
+    })
     if (!action) return
     consumeNotationKey(event)
     switch (action.type) {
       case 'undo': undo(); break
       case 'redo': redo(); break
       case 'set-duration':
+        setNoteInputArmed(true)
         setCurrentDuration(action.duration)
         if (selectedBeatIdx >= 0) updateBeat(selectedBeatIdx, { duration: action.duration })
         break
@@ -351,54 +388,56 @@ export function useNotationInlineSession({
       case 'insert-note': insertNoteByName(action.note); break
       case 'add-chord-note': addChordNote(action.note); break
       case 'navigate': navigateSelection(action.delta); break
+      case 'navigate-bar': navigateBar(action.delta); break
       case 'transpose': transposeSelected(action.direction, action.octave); break
       case 'repeat-last-note': repeatLastNote(); break
       case 'delete-beat':
-        if (selectedBeatIdx >= 0) onDeleteBeat(selectedBeatIdx)
+        onDeleteBeat(selectedBeatIdx)
         break
       case 'set-accidental':
         setCurrentAccidental(value => value === action.accidental ? null : action.accidental)
         break
-      case 'release-selection': setSelectedBeatIdx(-1); break
+      case 'leave-note-input':
+        setNoteInputArmed(false)
+        break
+      case 'release-selection':
+        setSelectedBeatIdx(-1)
+        break
     }
-  }, [addChordNote, insertNoteByName, isPlaying, navigateSelection, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
+  }, [addChordNote, insertNoteByName, isPlaying, navigateBar, navigateSelection, noteInputArmed, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
 
   const patchRenderData = useMemo(() => {
     if (!enabled || !block || hydratedBlockId !== block.id) return null
     return applySessionToRenderData(block.render_data ?? {}, {
-      beats, clef, keySignature, timeSignature, bpm, grandStaff, title: block.title,
+      beats, clef, keySignature, timeSignature, bpm, grandStaff, barsPerSystem, title: block.title,
     })
-  }, [beats, block, bpm, clef, enabled, grandStaff, hydratedBlockId, keySignature, timeSignature])
+  }, [barsPerSystem, beats, block, bpm, clef, enabled, grandStaff, hydratedBlockId, keySignature, timeSignature])
   const { tex, indexMap } = useMemo(() => sessionToAlphaTex({ beats, clef, keySignature, timeSignature, bpm, grandStaff }), [beats, bpm, clef, grandStaff, keySignature, timeSignature])
 
-  const selectedBeat = selectedBeatIdx >= 0 && selectedBeatIdx < beats.length ? beats[selectedBeatIdx] : null
   const durationStrip: NotationDurationStripProps = {
     currentDuration, currentAccidental, dotted, doubleDotted,
-    selectedInfo: selectedBeat
-      ? {
-          label: selectedBeat.isRest
-            ? `Pausa · ${durationLabel(selectedBeat.duration)}`
-            : `${formatPitchLabel(selectedBeat.pitches)} · ${durationLabel(selectedBeat.duration)}`,
-          position: `${selectedBeatIdx + 1}/${beats.length}`,
-        }
-      : null,
-    onNavigate: navigateSelection,
-    onDuration: duration => { setCurrentDuration(duration); focusInput() },
+    noteInputArmed,
+    canDelete: beats.length > 0,
+    previewSound,
+    onDuration: duration => { setNoteInputArmed(true); setCurrentDuration(duration); focusInput() },
     onAccidental: accidental => { setCurrentAccidental(accidental); focusInput() },
     onToggleDot: toggleDot,
     onInsertRest,
+    onDelete: () => onDeleteBeat(selectedBeatIdx),
+    onTogglePreviewSound: () => setPreviewSound(value => !value),
   }
 
   return {
     inputRef: inputRef as RefObject<HTMLInputElement>,
     beats, selectedBeatIdx, currentDuration, currentAccidental, dotted, doubleDotted,
-    currentTuplet, clef, keySignature, timeSignature, bpm, grandStaff, activeStaff, isPlaying,
+    currentTuplet, clef, keySignature, timeSignature, bpm, grandStaff, barsPerSystem, activeStaff, isPlaying,
     canUndo: historyIdx > 0, canRedo: historyIdx < history.length - 1,
     isHydrated: hydratedBlockId === block?.id,
-    patchRenderData, tex, indexMap, durationStrip,
+    patchRenderData, tex, indexMap, durationStrip, noteInputArmed, armNoteInput,
     onSelectBeat, onInsertNote, onReplaceNote, onDeleteBeat, onInsertRest,
     onDuration: setCurrentDuration, onAccidental: setCurrentAccidental, onToggleDot: toggleDot,
     onTimeSignature: setTimeSignature, onClef: setClef, onKeySignature: setKeySignature,
+    onBarsPerSystem: (value: number) => setBarsPerSystem(clampBarsPerSystem(value)),
     onTuplet: setCurrentTuplet, onBpm: setBpm,
     onGrandStaff: () => setGrandStaff(value => !value),
     onFocusStaff: setActiveStaff,
@@ -419,6 +458,8 @@ export function useNotationInlineSession({
       void playNotePreview(pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     },
     onUndo: undo, onRedo: redo, onTogglePlay: isPlaying ? stopPlayback : startPlayback,
+    disarmNoteInput: () => { setNoteInputArmed(false); focusInput() },
+    clearSelection: () => setSelectedBeatIdx(-1),
     handleKeyDown,
   }
 }

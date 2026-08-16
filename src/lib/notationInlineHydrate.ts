@@ -1,5 +1,6 @@
 import { editorDurationFromRaw, type EditorBeatDuration } from './notationBeatNormalize.ts'
 import { legacyNotesToBeats } from './notationCompat.ts'
+import { clampBarsPerSystem } from './notationLayout.ts'
 import { getEditorTimeSignature } from './timeSignature.ts'
 
 export interface InlinePitch {
@@ -28,6 +29,7 @@ export interface HydratedNotationSession {
   timeSignature: string
   bpm: number
   grandStaff: boolean
+  barsPerSystem: number
 }
 
 function normalizeBeats(rawBeats: any[]): InlineBeat[] {
@@ -101,5 +103,6 @@ export function hydrateNotationFromBlock(input: {
     timeSignature: getEditorTimeSignature(rawData?.timeSignature, pointed?.time_signature, rd.time_signature),
     bpm: Number(rawData?.bpm || 120),
     grandStaff: Boolean(rawData?.grandStaff),
+    barsPerSystem: clampBarsPerSystem(rawData?.barsPerSystem ?? rd.barsPerSystem),
   }
 }

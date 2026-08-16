@@ -38,12 +38,14 @@ export function canDeleteSelectedBlock({
   selectedBlockId,
   inlineEditingBlockId,
   isTextInputTarget,
+  notationInlineActive = false,
 }: {
   selectedBlockId: string | null
   inlineEditingBlockId: string | null
   isTextInputTarget: boolean
+  notationInlineActive?: boolean
 }): boolean {
-  return Boolean(selectedBlockId && !inlineEditingBlockId && !isTextInputTarget)
+  return Boolean(selectedBlockId && !inlineEditingBlockId && !isTextInputTarget && !notationInlineActive)
 }
 
 export type FloatingTextCanvasClickAction = 'select' | 'edit'

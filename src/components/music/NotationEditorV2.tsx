@@ -23,6 +23,7 @@ import {
 import { toast } from 'sonner'
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from '@/services/notationService'
 import { getEditorTimeSignature, normalizeTimeSignature } from '@/lib/timeSignature'
+import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
 import { editorDurationFromRaw } from '@/lib/notationBeatNormalize'
 
 // ─── Re-export tipos do NotationSvgEditor ───────────────────────────
@@ -239,6 +240,7 @@ export function NotationEditorV2({
   const [dotted, setDotted] = useState(false)
   const [doubleDotted, setDoubleDotted] = useState(false)
   const [grandStaffMode, setGrandStaffMode] = useState(false)
+  const [barsPerSystem, setBarsPerSystem] = useState(4)
   const [activeStaff, setActiveStaff] = useState<'treble' | 'bass'>('treble')
   const [currentTuplet, setCurrentTuplet] = useState<string>('none')
   const tupletCounterRef = useRef(0)
@@ -293,6 +295,7 @@ export function NotationEditorV2({
       setTimeSignature(getEditorTimeSignature(data?.timeSignature, notation.time_signature))
       setBpm(data?.bpm || 120)
       setGrandStaffMode(data?.grandStaff || false)
+      setBarsPerSystem(clampBarsPerSystem(data?.barsPerSystem))
       setLabel(notation.name || '')
       setCategory(notation.category || 'Escala')
       setDifficulty(notation.difficulty || 1)
@@ -306,6 +309,7 @@ export function NotationEditorV2({
       setTimeSignature('free')
       setBpm(120)
       setGrandStaffMode(false)
+      setBarsPerSystem(4)
       setLabel('')
       setCategory('Escala')
       setDifficulty(1)
@@ -782,19 +786,21 @@ export function NotationEditorV2({
       return
     }
 
-    // ← → = Navegar
-    if (e.key === 'ArrowLeft') {
+    // ← → = Navegar; Ctrl/Cmd+← → = pular compasso
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault()
-      if (selectedBeatIdx > 0) {
-        setSelectedBeatIdx(selectedBeatIdx - 1)
+      const delta = e.key === 'ArrowRight' ? 1 : -1
+      if (e.ctrlKey || e.metaKey) {
+        setSelectedBeatIdx(navigateBarIndex(
+          barStartIndices(beats, timeSignature, grandStaffMode),
+          selectedBeatIdx,
+          delta,
+          beats.length,
+        ))
+        return
       }
-      return
-    }
-    if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      if (selectedBeatIdx < beats.length - 1) {
-        setSelectedBeatIdx(selectedBeatIdx + 1)
-      }
+      if (delta < 0 && selectedBeatIdx > 0) setSelectedBeatIdx(selectedBeatIdx - 1)
+      if (delta > 0 && selectedBeatIdx < beats.length - 1) setSelectedBeatIdx(selectedBeatIdx + 1)
       return
     }
 
@@ -863,15 +869,18 @@ export function NotationEditorV2({
       return
     }
 
-    // Tab = Recuar seleção na pauta simples; alternar treble/bass na grande pauta
+    // Tab = pular compasso (Shift+Tab volta). Na grande pauta, Tab ainda troca de pauta.
     if (e.key === 'Tab') {
       e.preventDefault()
       if (grandStaffMode) {
         focusStaff(activeStaff === 'treble' ? 'bass' : 'treble')
-      } else if (selectedBeatIdx > 0) {
-        setSelectedBeatIdx(selectedBeatIdx - 1)
-      } else if (beats.length > 0 && selectedBeatIdx === -1) {
-        setSelectedBeatIdx(beats.length - 1)
+      } else {
+        setSelectedBeatIdx(navigateBarIndex(
+          barStartIndices(beats, timeSignature, grandStaffMode),
+          selectedBeatIdx,
+          e.shiftKey ? -1 : 1,
+          beats.length,
+        ))
       }
       return
     }
@@ -1065,6 +1074,7 @@ export function NotationEditorV2({
         timeSignature: normalizedTimeSignature,
         bpm,
         grandStaff: grandStaffMode,
+        barsPerSystem: clampBarsPerSystem(barsPerSystem),
       }
 
       const draft: NotationEditorDraft = {
@@ -1220,6 +1230,8 @@ export function NotationEditorV2({
             onUndo={undo}
             onRedo={redo}
             onTogglePlay={isPlaying ? stopPlayback : startPlayback}
+            barsPerSystem={barsPerSystem}
+            onBarsPerSystem={(value) => setBarsPerSystem(clampBarsPerSystem(value))}
           />
 
           {/* Categoria */}
@@ -1287,6 +1299,7 @@ export function NotationEditorV2({
                 keySignature={keySignature}
                 timeSignature={timeSignature !== 'free' ? timeSignature : null}
                 grandStaffMode={grandStaffMode}
+                barsPerRow={barsPerSystem}
                 onSelectBeat={handleSelectBeat}
                 onInsertNote={handleInsertNote}
                 onReplaceNote={handleReplaceNote}

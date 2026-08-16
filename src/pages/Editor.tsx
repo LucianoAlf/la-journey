@@ -1953,6 +1953,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     block: inlineNotationBlock,
     enabled: notationInlineEnabled,
   })
+  const notationSessionActive = Boolean(inlineNotationBlock && inlineNotationSession.isHydrated)
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialMeta, setMaterialMeta] = useState<MaterialWithBlocks | null>(null)
   const [saving, setSaving] = useState(false)
@@ -2076,6 +2077,41 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     flushInlineNotationPatch()
     // Unmount persist relies on the last queued autosave.
   }, [flushInlineNotationPatch, inlineNotationBlock?.id])
+
+  useEffect(() => {
+    if (!notationSessionActive) return
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      const leaveWrite = event.key === 'Escape' || event.key === 'v' || event.key === 'V'
+      if (!leaveWrite) return
+      if (event.key === 'v' || event.key === 'V') {
+        if (!inlineNotationSession.noteInputArmed) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        inlineNotationSession.disarmNoteInput()
+        return
+      }
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (inlineNotationSession.noteInputArmed) {
+        inlineNotationSession.disarmNoteInput()
+        return
+      }
+      if (inlineNotationSession.selectedBeatIdx >= 0) {
+        inlineNotationSession.clearSelection()
+        return
+      }
+      setSelectedBlockId(null)
+    }
+    window.addEventListener('keydown', onEsc, true)
+    return () => window.removeEventListener('keydown', onEsc, true)
+  }, [
+    notationSessionActive,
+    inlineNotationSession.noteInputArmed,
+    inlineNotationSession.selectedBeatIdx,
+    inlineNotationSession.disarmNoteInput,
+    inlineNotationSession.clearSelection,
+  ])
 
   // Parsear dados vindos da RPC
   useEffect(() => {
@@ -6634,6 +6670,11 @@ ${pagesHtml}
       // Ctrl+Z — Undo (funciona mesmo em inputs, exceto contentEditable)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
+        if (notationSessionActive) {
+          // Nunca vazar pro undo global com a pauta ativa: reverteria o bloco inteiro.
+          if (inlineNotationSession.canUndo) inlineNotationSession.onUndo()
+          return
+        }
         flushCanvasNudgeSession()
         cancelInlineNotationPatch()
         if (
@@ -6646,6 +6687,10 @@ ${pagesHtml}
       // Ctrl+Y ou Ctrl+Shift+Z — Redo
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey)) && !(e.target as HTMLElement)?.isContentEditable) {
         e.preventDefault()
+        if (notationSessionActive) {
+          if (inlineNotationSession.canRedo) inlineNotationSession.onRedo()
+          return
+        }
         flushCanvasNudgeSession()
         cancelInlineNotationPatch()
         if (
@@ -6728,6 +6773,20 @@ ${pagesHtml}
         return
       }
 
+      if (e.key === 'Escape' && notationSessionActive) {
+        e.preventDefault()
+        if (inlineNotationSession.noteInputArmed) {
+          inlineNotationSession.disarmNoteInput()
+          return
+        }
+        if (inlineNotationSession.selectedBeatIdx >= 0) {
+          inlineNotationSession.clearSelection()
+          return
+        }
+        setSelectedBlockId(null)
+        return
+      }
+
       if (e.key === 'Escape' && inlineEditingBlockId) {
         e.preventDefault()
         exitInlineEdit()
@@ -6745,6 +6804,11 @@ ${pagesHtml}
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (notationSessionActive && inlineNotationSession.beats.length > 0) {
+          e.preventDefault()
+          inlineNotationSession.onDeleteBeat(inlineNotationSession.selectedBeatIdx)
+          return
+        }
         if (selectedFloatingId && !editingFloatingId) {
           e.preventDefault()
           removeFloatingElement(selectedFloatingId)
@@ -6766,7 +6830,12 @@ ${pagesHtml}
         if (
           blockToDelete &&
           !['cover', 'page_break'].includes(blockToDelete.block_type) &&
-          canDeleteSelectedBlock({ selectedBlockId, inlineEditingBlockId, isTextInputTarget: isEditingTarget })
+          canDeleteSelectedBlock({
+            selectedBlockId,
+            inlineEditingBlockId,
+            isTextInputTarget: isEditingTarget,
+            notationInlineActive: notationSessionActive,
+          })
         ) {
           e.preventDefault()
           handleDeleteBlock(selectedBlockId!)
@@ -6884,7 +6953,7 @@ ${pagesHtml}
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, cancelInlineNotationPatch, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement])
+  }, [handleUndo, handleRedo, handleSaveBlock, handleDuplicateBlock, handleDeleteBlock, handleMoveBlock, handleResetBlockPosition, flushCanvasNudgeSession, cancelInlineNotationPatch, selectedBlockId, blocks, inlineEditingBlockId, coverTitleEditing, selectBlock, selectedFloatingId, editingFloatingId, removeFloatingElement, rightSidebarOpen, selectedOverlayId, removeOverlayElement, selectedTextId, editingTextId, removeTextElement, openPrimaryCanvasActionForBlock, exitInlineEdit, copySelectedFloatingElement, pasteFloatingElement, duplicateFloatingElement, copySelectedCoverElement, pasteCoverElement, duplicateTextElement, duplicateOverlayElement, nudgeSelectedFloatingElement, nudgeSelectedCoverElement, undoFloatingElementChange, redoFloatingElementChange, canUndoFloatingElementChange, canRedoFloatingElementChange, addFloatingTextElement, notationSessionActive, inlineNotationSession.canUndo, inlineNotationSession.canRedo, inlineNotationSession.onUndo, inlineNotationSession.onRedo, inlineNotationSession.onDeleteBeat, inlineNotationSession.selectedBeatIdx, inlineNotationSession.beats.length, inlineNotationSession.noteInputArmed, inlineNotationSession.disarmNoteInput, inlineNotationSession.clearSelection])
 
   // Persistir estado da sidebar no localStorage
   useEffect(() => {
@@ -7020,6 +7089,10 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
+                if (notationSessionActive) {
+                  if (inlineNotationSession.canUndo) inlineNotationSession.onUndo()
+                  return
+                }
                 cancelInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canUndoFloatingElementChange())) &&
@@ -7027,7 +7100,7 @@ ${pagesHtml}
                 ) return
                 handleUndo()
               }}
-              disabled={!canUndo() && !((selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId)) && canUndoFloatingElementChange())}
+              disabled={!canUndo() && !inlineNotationSession.canUndo && !((selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId)) && canUndoFloatingElementChange())}
               title="Desfazer (Ctrl+Z)"
             >
               <ArrowCounterClockwise size={15} />
@@ -7037,6 +7110,10 @@ ${pagesHtml}
               size="sm"
               className="h-7 w-7 p-0"
               onClick={() => {
+                if (notationSessionActive) {
+                  if (inlineNotationSession.canRedo) inlineNotationSession.onRedo()
+                  return
+                }
                 cancelInlineNotationPatch()
                 if (
                   (selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId && canRedoFloatingElementChange())) &&
@@ -7044,7 +7121,7 @@ ${pagesHtml}
                 ) return
                 handleRedo()
               }}
-              disabled={!canRedo() && !((selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId)) && canRedoFloatingElementChange())}
+              disabled={!canRedo() && !inlineNotationSession.canRedo && !((selectedFloatingId || (!selectedBlockId && !selectedTextId && !selectedOverlayId)) && canRedoFloatingElementChange())}
               title="Refazer (Ctrl+Y)"
             >
               <ArrowCounterClockwise size={15} className="scale-x-[-1]" />
@@ -7799,7 +7876,10 @@ ${pagesHtml}
                         style={bStyle}
                         previewStateKey={block.block_type === 'cover'
                           ? `${selectedTextId ?? ''}|${editingTextId ?? ''}|${selectedOverlayId ?? ''}`
-                          : undefined}
+                          : notationInlineEnabled && block.block_type === 'notation' && block.id === selectedBlockId
+                            // Sem isso o memo do bloco engole seleção/tex da sessão: clique não destaca e nota digitada só aparece após o debounce.
+                            ? `nota:${inlineNotationSession.tex}|${inlineNotationSession.selectedBeatIdx}|${inlineNotationSession.noteInputArmed}|${inlineNotationSession.clef}|${inlineNotationSession.keySignature}|${inlineNotationSession.timeSignature}|${inlineNotationSession.barsPerSystem}|${inlineNotationSession.grandStaff}`
+                            : undefined}
                         blockRef={el => {
                           canvasRefs.current[block.id] = el
                           if (!isVirtualFragment || fragment?.index === 0 || !canvasRefs.current[sourceBlockId]) {
@@ -7873,6 +7953,8 @@ ${pagesHtml}
                                       ? null
                                       : inlineNotationSession.timeSignature,
                                     grandStaffMode: inlineNotationSession.grandStaff,
+                                    barsPerRow: inlineNotationSession.barsPerSystem,
+                                    noteInputArmed: inlineNotationSession.noteInputArmed,
                                     onSelectBeat: inlineNotationSession.onSelectBeat,
                                     onInsertNote: inlineNotationSession.onInsertNote,
                                     onReplaceNote: inlineNotationSession.onReplaceNote,
@@ -8298,6 +8380,8 @@ ${pagesHtml}
                 onUndo={inlineNotationSession.onUndo}
                 onRedo={inlineNotationSession.onRedo}
                 onTogglePlay={inlineNotationSession.onTogglePlay}
+                barsPerSystem={inlineNotationSession.barsPerSystem}
+                onBarsPerSystem={inlineNotationSession.onBarsPerSystem}
                 layout="column"
               />
               <Separator />

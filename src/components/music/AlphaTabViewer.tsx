@@ -58,6 +58,7 @@ interface AlphaTabViewerProps {
   staveProfile?: 'tab' | 'score' | 'scoreTab'
   grandStaffMode?: boolean
   includeNoteBounds?: boolean
+  barsPerRow?: number
   purpose?: AlphaTabPurpose
   onBeatMouseDown?: (beat: alphaTabModule.model.Beat) => void
   onBeatMouseMove?: (beat: alphaTabModule.model.Beat) => void
@@ -161,6 +162,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     staveProfile = 'tab',
     grandStaffMode = false,
     includeNoteBounds = false,
+    barsPerRow,
     purpose,
     onBeatMouseDown,
     onBeatMouseMove,
@@ -215,7 +217,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
     const isTablaturePurpose = alphaTabPurpose.includes('tablature')
     const renderTex = getAlphaTabViewerRenderTex(tex, showTimeSignature, isTablaturePurpose)
     renderTexRef.current = renderTex
-    const configKey = `${effectiveLayout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}|${alphaTabPurpose}`
+    const configKey = `${effectiveLayout}|${scale}|${showTimeSignature}|${staveProfile}|${grandStaffMode}|${includeNoteBounds}|${alphaTabPurpose}|${barsPerRow ?? 0}|parchment`
 
     useEffect(() => {
       if (!containerRef.current) return
@@ -230,6 +232,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
       let resizeObserver: ResizeObserver | null = null
       let cleanupFrame: number | null = null
       let lastRenderWidth = 0
+      let ignoreResizeUntil = 0
       const queueDomCleanup = () => {
         if (cleanupFrame !== null) return
         cleanupFrame = window.requestAnimationFrame(() => {
@@ -244,6 +247,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
         layout: effectiveLayout,
         scale,
         includeNoteBounds,
+        barsPerRow,
       })
 
       const api = new alphaTabModule.AlphaTabApi(containerRef.current, settings)
@@ -261,8 +265,9 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
           subtree: true,
         })
         resizeObserver = new ResizeObserver(() => {
+          if (performance.now() < ignoreResizeUntil) return
           const width = containerRef.current?.clientWidth ?? 0
-          if (width > 32 && Math.abs(width - lastRenderWidth) >= 4) {
+          if (width > 32 && Math.abs(width - lastRenderWidth) >= 24) {
             lastRenderWidth = width
             const nextTex = renderTexRef.current
             if (nextTex) texQueue.request(nextTex)
@@ -274,6 +279,20 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
 
       api.scoreLoaded.on((score: any) => {
         setPhase('rendering')
+        if (barsPerRow && barsPerRow > 0) {
+          const systems: number[] = []
+          let remaining = score.masterBars?.length ?? 0
+          while (remaining > 0) {
+            systems.push(Math.min(barsPerRow, remaining))
+            remaining -= barsPerRow
+          }
+          score.defaultSystemsLayout = barsPerRow
+          score.systemsLayout = systems
+          for (const track of score.tracks ?? []) {
+            track.defaultSystemsLayout = barsPerRow
+            track.systemsLayout = systems
+          }
+        }
         for (const mb of score.masterBars) {
           mb.isFreeTime = !showTimeSignature && !isTablature
           mb.tempoAutomations = []
@@ -303,6 +322,7 @@ export const AlphaTabViewer = forwardRef<AlphaTabViewerHandle, AlphaTabViewerPro
           setLoading(false)
           setPhase('ready')
           hasRenderedOnceRef.current = true
+          ignoreResizeUntil = performance.now() + 400
           texQueue.finished()
           const html = containerRef.current?.innerHTML
           if (html) onStableRenderRef.current?.(html)
