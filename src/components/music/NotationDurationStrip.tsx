@@ -19,6 +19,9 @@ export interface NotationDurationStripProps {
   cifraEnabled?: boolean
   cifraOpen?: boolean
   onOpenCifra?: () => void
+  slashArmed?: boolean
+  onToggleSlash?: () => void
+  inputLocked?: boolean
 }
 
 const BASE_BUTTON = 'inline-flex items-center justify-center h-10 w-10 rounded-md border transition-colors'
@@ -44,6 +47,9 @@ export function NotationDurationStrip({
   cifraEnabled = false,
   cifraOpen = false,
   onOpenCifra,
+  slashArmed = false,
+  onToggleSlash,
+  inputLocked = false,
 }: NotationDurationStripProps) {
   return (
     <div
@@ -55,8 +61,9 @@ export function NotationDurationStrip({
           <button
             key={d.value}
             onClick={() => onDuration(d.value)}
+            disabled={inputLocked}
             title={`${d.label} (${d.key})`}
-            className={`${SYMBOL_BUTTON} ${noteInputArmed && currentDuration === d.value ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+            className={`${SYMBOL_BUTTON} ${inputLocked ? 'cursor-not-allowed border-border/50 text-text3/30' : noteInputArmed && currentDuration === d.value ? ACTIVE_BUTTON : IDLE_BUTTON}`}
           >
             {d.symbol}
           </button>
@@ -67,37 +74,42 @@ export function NotationDurationStrip({
         <button
           type="button"
           onClick={onInsertRest}
+          disabled={inputLocked}
           title="Pausa (0)"
-          className={`${SYMBOL_BUTTON} border-orange-500/30 text-orange-500 hover:bg-orange-500/10`}
+          className={`${SYMBOL_BUTTON} ${inputLocked ? 'cursor-not-allowed border-border/50 text-text3/30' : 'border-orange-500/30 text-orange-500 hover:bg-orange-500/10'}`}
         >
           𝄽
         </button>
         <button
           onClick={onToggleDot}
+          disabled={inputLocked}
           title="Ponto de aumento (.)"
-          className={`${DOT_BUTTON} ${dotted || doubleDotted ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+          className={`${DOT_BUTTON} ${inputLocked ? 'cursor-not-allowed border-border/50 text-text3/30' : dotted || doubleDotted ? ACTIVE_BUTTON : IDLE_BUTTON}`}
         >
           •{doubleDotted && '•'}
         </button>
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button
           onClick={() => onAccidental('#')}
+          disabled={inputLocked}
           title="Sustenido (#)"
-          className={`${SYMBOL_BUTTON} ${currentAccidental === '#' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+          className={`${SYMBOL_BUTTON} ${inputLocked ? 'cursor-not-allowed border-border/50 text-text3/30' : currentAccidental === '#' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
         >
           ♯
         </button>
         <button
           onClick={() => onAccidental('b')}
+          disabled={inputLocked}
           title="Bemol (-)"
-          className={`${SYMBOL_BUTTON} ${currentAccidental === 'b' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+          className={`${SYMBOL_BUTTON} ${inputLocked ? 'cursor-not-allowed border-border/50 text-text3/30' : currentAccidental === 'b' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
         >
           ♭
         </button>
         <button
           onClick={() => onAccidental('n')}
+          disabled={inputLocked}
           title="Bequadro (=)"
-          className={`${SYMBOL_BUTTON} ${currentAccidental === 'n' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
+          className={`${SYMBOL_BUTTON} ${inputLocked ? 'cursor-not-allowed border-border/50 text-text3/30' : currentAccidental === 'n' ? ACTIVE_BUTTON : IDLE_BUTTON}`}
         >
           ♮
         </button>
@@ -128,10 +140,10 @@ export function NotationDurationStrip({
         <button
           type="button"
           onClick={onOpenCifra}
-          disabled={!cifraEnabled}
+          disabled={!cifraEnabled || inputLocked}
           title={cifraEnabled ? 'Escrever a cifra acima da nota (K)' : 'Selecione uma nota na pauta'}
           className={`${BASE_BUTTON} w-auto gap-1.5 px-2.5 text-[12px] font-semibold ${
-            !cifraEnabled
+            !cifraEnabled || inputLocked
               ? 'cursor-not-allowed border-border/50 text-text3/30'
               : cifraOpen
                 ? ACTIVE_BUTTON
@@ -140,6 +152,24 @@ export function NotationDurationStrip({
         >
           <MusicNotes size={16} />
           Cifra
+        </button>
+      )}
+      {onToggleSlash && (
+        <button
+          type="button"
+          onClick={onToggleSlash}
+          disabled={inputLocked}
+          title="Barra rítmica: escreve barra de tempo em vez de nota"
+          className={`${BASE_BUTTON} w-auto gap-1.5 px-2.5 text-[12px] font-semibold ${
+            inputLocked
+              ? 'cursor-not-allowed border-border/50 text-text3/30'
+              : slashArmed
+                ? ACTIVE_BUTTON
+                : IDLE_BUTTON
+          }`}
+        >
+          <span className="text-[16px] leading-none">/</span>
+          Ritmo
         </button>
       )}
     </div>

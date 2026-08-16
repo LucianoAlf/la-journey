@@ -16,6 +16,8 @@ import {
 } from '@/lib/notationEditorChrome'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
+import type { BarFactPatch } from '@/lib/notationInlineOps'
 
 export interface NotationToolsSidebarProps {
   timeSignature: string
@@ -47,6 +49,17 @@ export interface NotationToolsSidebarProps {
   cifraOpen?: boolean
   cifraValue?: string
   onOpenCifra?: () => void
+  barNumber?: number
+  barEnabled?: boolean
+  simileLocked?: boolean
+  sectionMarker?: string
+  sectionText?: string
+  repeatOpen?: boolean
+  repeatClose?: number
+  simile?: boolean
+  barTimeSignature?: string
+  jumpFine?: boolean
+  onApplyBarFact?: (fact: BarFactPatch) => void
 }
 
 export function NotationToolsSidebar({
@@ -79,10 +92,24 @@ export function NotationToolsSidebar({
   cifraOpen = false,
   cifraValue = '',
   onOpenCifra,
+  barNumber = 0,
+  barEnabled = false,
+  simileLocked = false,
+  sectionMarker = '',
+  sectionText = '',
+  repeatOpen = false,
+  repeatClose,
+  simile = false,
+  barTimeSignature = '',
+  jumpFine = false,
+  onApplyBarFact,
 }: NotationToolsSidebarProps) {
   const isRow = layout === 'row'
   const sectionClassName = isRow ? 'flex flex-wrap items-end gap-2' : 'space-y-3'
   const toolClassName = isRow ? 'flex flex-wrap items-center gap-1' : 'flex flex-wrap items-center gap-1'
+  const chipClassName = 'inline-flex h-[34px] items-center justify-center rounded-lg border px-2.5 text-[12px] font-semibold transition-colors'
+  const chipOn = 'border-accent bg-accent/10 text-accent'
+  const chipOff = 'border-border text-text3 hover:border-accent/50 hover:text-accent'
 
   return (
     <div className={sectionClassName}>
@@ -208,6 +235,121 @@ export function NotationToolsSidebar({
             ) : (
               <div className="flex h-[34px] w-full items-center rounded-lg border border-dashed border-border px-2.5 text-[11px] text-text3">
                 Selecione uma nota na pauta
+              </div>
+            )}
+          </div>
+        )}
+
+        {onApplyBarFact && (
+          <div className={isRow ? 'min-w-[220px] space-y-1' : 'space-y-2'}>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">
+              {barEnabled && barNumber > 0 ? `Compasso ${barNumber}` : 'Compasso'}
+            </span>
+            {!barEnabled ? (
+              <div className="flex h-[34px] w-full items-center rounded-lg border border-dashed border-border px-2.5 text-[11px] text-text3">
+                Selecione uma nota na pauta
+              </div>
+            ) : simileLocked ? (
+              <div className="space-y-2">
+                <p className="text-[11px] text-text3">
+                  Este compasso copia o anterior (%). As notas ficam guardadas; desmarque para voltar a editá-las.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onApplyBarFact({ simile: null })}
+                  className={`${chipClassName} w-full ${chipOn}`}
+                >
+                  Desmarcar %
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className={isRow ? 'flex gap-2' : 'grid grid-cols-[72px_1fr] gap-2'}>
+                  <Input
+                    value={sectionMarker}
+                    onChange={event => onApplyBarFact({
+                      sectionStart: event.target.value || sectionText
+                        ? { marker: event.target.value, text: sectionText }
+                        : null,
+                    })}
+                    placeholder="A"
+                    title="Marcador de ensaio"
+                    className="h-[34px] text-[13px]"
+                  />
+                  <Input
+                    value={sectionText}
+                    onChange={event => onApplyBarFact({
+                      sectionStart: sectionMarker || event.target.value
+                        ? { marker: sectionMarker || 'A', text: event.target.value }
+                        : null,
+                    })}
+                    placeholder="título (Drawer)"
+                    title="Texto da seção — fica no Drawer, não na pauta"
+                    className="h-[34px] text-[13px]"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onApplyBarFact({ repeatOpen: repeatOpen ? null : true })}
+                    title="Início de repetição"
+                    className={`${chipClassName} font-mono ${repeatOpen ? chipOn : chipOff}`}
+                  >
+                    |:
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onApplyBarFact({ repeatClose: repeatClose ? null : 2 })}
+                    title="Fim de repetição"
+                    className={`${chipClassName} font-mono ${repeatClose ? chipOn : chipOff}`}
+                  >
+                    :|
+                  </button>
+                  <Input
+                    type="number"
+                    min={2}
+                    max={16}
+                    value={repeatClose ?? 2}
+                    disabled={!repeatClose}
+                    onChange={event => {
+                      const value = Number(event.target.value)
+                      if (Number.isFinite(value) && value > 1) onApplyBarFact({ repeatClose: value })
+                    }}
+                    title="Número de voltas"
+                    className="h-[34px] w-14 text-center text-[13px]"
+                  />
+                  <span className="text-[11px] text-text3">x</span>
+                  <button
+                    type="button"
+                    onClick={() => onApplyBarFact({ simile: simile ? null : 'simple' })}
+                    title="Simile: este compasso copia o anterior"
+                    className={`${chipClassName} ${simile ? chipOn : chipOff}`}
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onApplyBarFact({ jump: jumpFine ? null : 'fine' })}
+                    title="Fine"
+                    className={`${chipClassName} italic ${jumpFine ? chipOn : chipOff}`}
+                  >
+                    Fine
+                  </button>
+                </div>
+                <Select
+                  value={barTimeSignature || 'inherit'}
+                  onValueChange={value => onApplyBarFact({ timeSignature: value === 'inherit' ? null : value })}
+                >
+                  <SelectTrigger className="h-[34px] w-full text-[13px]">
+                    <SelectValue placeholder="Métrica deste compasso" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inherit" className="text-[12px]">Métrica herdada</SelectItem>
+                    {TIME_SIGNATURE_OPTIONS.filter(option => option.value !== 'free').map(option => (
+                      <SelectItem key={option.value} value={option.value} className="text-[12px]">{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>

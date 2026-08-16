@@ -91,6 +91,35 @@ export function barStartIndices(
   return [...new Set(starts)].sort((a, b) => a - b)
 }
 
+export function barStartIndexForBeat(
+  beats: InlineBeat[],
+  index: number,
+  timeSignature = 'free',
+  grandStaff = false,
+): number {
+  if (beats.length === 0 || index < 0) return 0
+  const starts = barStartIndices(beats, timeSignature, grandStaff)
+  let start = starts[0] ?? 0
+  for (const candidate of starts) {
+    if (candidate <= index) start = candidate
+    else break
+  }
+  return start
+}
+
+export function barNumberForBeat(
+  beats: InlineBeat[],
+  index: number,
+  timeSignature = 'free',
+  grandStaff = false,
+): number {
+  if (beats.length === 0 || index < 0) return 0
+  const starts = barStartIndices(beats, timeSignature, grandStaff)
+  const start = barStartIndexForBeat(beats, index, timeSignature, grandStaff)
+  const found = starts.indexOf(start)
+  return found < 0 ? 1 : found + 1
+}
+
 export function navigateBarIndex(
   starts: number[],
   selectedBeatIdx: number,
