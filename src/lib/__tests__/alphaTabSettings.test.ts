@@ -26,11 +26,11 @@ test('editor, canvas and snapshot keep the player off', () => {
   }
 })
 
-test('study-playalong enables backing-track player without animated beat cursor', () => {
+test('study-playalong enables external-media player without animated beat cursor', () => {
   const study = buildAlphaTabSettings({ purpose: 'study-playalong', barsPerRow: 4 })
   assert.equal(study.player.enablePlayer, true)
   assert.equal(study.player.enableCursor, true)
   assert.equal(study.player.enableAnimatedBeatCursor, false)
-  assert.equal(study.player.playerMode, alphaTabModule.PlayerMode.EnabledBackingTrack)
+  assert.equal(study.player.playerMode, alphaTabModule.PlayerMode.EnabledExternalMedia)
   assert.equal(study.display.barsPerRow, 4)
 })

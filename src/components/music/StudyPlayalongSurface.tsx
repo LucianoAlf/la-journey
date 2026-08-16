@@ -19,10 +19,11 @@ export interface StudyPlayalongSurfaceProps {
   syncPoints: PlayalongSyncPoint[]
   marking: boolean
   onMarkBar?: (point: PlayalongSyncPoint) => void
+  onPlayingChange?: (playing: boolean) => void
 }
 
 export interface StudyPlayalongSurfaceHandle {
-  play: () => void
+  play: () => boolean
   pause: () => void
   api: alphaTabModule.AlphaTabApi | null
 }
@@ -30,6 +31,18 @@ export interface StudyPlayalongSurfaceHandle {
 const STUDY_CURSOR_CSS = `
   .at-study-playalong .at-cursor-beat { display: none !important; }
 `
+
+type ExternalMediaOutput = {
+  handler?: {
+    backingTrackDuration: number
+    playbackRate: number
+    masterVolume: number
+    seekTo: (time: number) => void
+    play: () => void
+    pause: () => void
+  }
+  updatePosition: (currentTime: number) => void
+}
 
 function applyBarsPerRow(score: alphaTabModule.model.Score, barsPerRow: number) {
   if (barsPerRow <= 0) return
@@ -66,6 +79,12 @@ function masterBarIndexAtTick(score: alphaTabModule.model.Score | null, tick: nu
   return index
 }
 
+function externalOutput(api: alphaTabModule.AlphaTabApi | null): ExternalMediaOutput | null {
+  const output = api?.player?.output as unknown as ExternalMediaOutput | undefined
+  if (!output || typeof output.updatePosition !== 'function') return null
+  return output
+}
+
 export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, StudyPlayalongSurfaceProps>(
   function StudyPlayalongSurfaceInner({
     tex,
@@ -74,41 +93,78 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
     syncPoints,
     marking,
     onMarkBar,
+    onPlayingChange,
   }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null)
     const hostRef = useRef<HTMLDivElement>(null)
+    const mediaRef = useRef<HTMLAudioElement>(null)
     const apiRef = useRef<alphaTabModule.AlphaTabApi | null>(null)
-    const audioReadyRef = useRef(false)
     const lastBarIndexRef = useRef(0)
     const syncPointsRef = useRef(syncPoints)
     const onMarkBarRef = useRef(onMarkBar)
     const markingRef = useRef(marking)
     const audioUrlRef = useRef(audioUrl)
-    const attachedUrlRef = useRef<string | null>(null)
+    const onPlayingChangeRef = useRef(onPlayingChange)
+    const positionTimerRef = useRef<number>(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [scoreNonce, setScoreNonce] = useState(0)
 
     syncPointsRef.current = syncPoints
     onMarkBarRef.current = onMarkBar
     markingRef.current = marking
     audioUrlRef.current = audioUrl
+    onPlayingChangeRef.current = onPlayingChange
 
-    const applyBackingTrack = useCallback(async (api: alphaTabModule.AlphaTabApi, url: string, points: PlayalongSyncPoint[]) => {
-      const score = api.score
-      if (!score) return false
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('Não deu para carregar o áudio')
-      const bytes = new Uint8Array(await response.arrayBuffer())
-      const backingTrack = new alphaTabModule.model.BackingTrack()
-      backingTrack.rawAudioFile = bytes
-      score.backingTrack = backingTrack
-      if (points.length > 0) {
-        score.applyFlatSyncPoints(toFlatSyncPoints(points))
+    const pushPosition = useCallback(() => {
+      const audio = mediaRef.current
+      const output = externalOutput(apiRef.current)
+      if (!audio || !output) return
+      const rate = audio.playbackRate || 1
+      output.updatePosition((audio.currentTime / rate) * 1000)
+    }, [])
+
+    const stopPositionTimer = useCallback(() => {
+      if (positionTimerRef.current) {
+        window.clearInterval(positionTimerRef.current)
+        positionTimerRef.current = 0
       }
-      const player = api.player as { loadBackingTrack?: (next: alphaTabModule.model.Score) => void } | null
-      player?.loadBackingTrack?.(score)
-      api.updateSyncPoints()
+    }, [])
+
+    const startPositionTimer = useCallback(() => {
+      stopPositionTimer()
+      positionTimerRef.current = window.setInterval(pushPosition, 50)
+    }, [pushPosition, stopPositionTimer])
+
+    const wireMediaHandler = useCallback((api: alphaTabModule.AlphaTabApi | null) => {
+      const audio = mediaRef.current
+      const output = externalOutput(api)
+      if (!audio || !output) return false
+      output.handler = {
+        get backingTrackDuration() {
+          return Number.isFinite(audio.duration) ? audio.duration * 1000 : 0
+        },
+        get playbackRate() {
+          return audio.playbackRate
+        },
+        set playbackRate(value) {
+          audio.playbackRate = value
+        },
+        get masterVolume() {
+          return audio.volume
+        },
+        set masterVolume(value) {
+          audio.volume = value
+        },
+        seekTo(time) {
+          audio.currentTime = (time * audio.playbackRate) / 1000
+        },
+        play() {
+          void audio.play()
+        },
+        pause() {
+          audio.pause()
+        },
+      }
       return true
     }, [])
 
@@ -126,21 +182,36 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
 
     useImperativeHandle(ref, () => ({
       play: () => {
-        const api = apiRef.current
-        if (!api) return
-        if (!audioUrlRef.current || !audioReadyRef.current) {
+        const audio = mediaRef.current
+        if (!audioUrlRef.current || !audio) {
           toast.error('Carregue um playalong para tocar')
-          return
+          return false
         }
-        api.play()
+        const api = apiRef.current
+        if (api) wireMediaHandler(api)
+        const playPromise = audio.play()
+        if (api && Number.isFinite(audio.duration) && audio.duration > 0) {
+          api.play()
+        }
+        startPositionTimer()
+        void playPromise.catch((err: unknown) => {
+          stopPositionTimer()
+          apiRef.current?.pause()
+          onPlayingChangeRef.current?.(false)
+          const message = err instanceof Error ? err.message : 'O navegador bloqueou o áudio'
+          toast.error(message)
+        })
+        return true
       },
       pause: () => {
+        mediaRef.current?.pause()
         apiRef.current?.pause()
+        stopPositionTimer()
       },
       get api() {
         return apiRef.current
       },
-    }), [])
+    }), [startPositionTimer, stopPositionTimer, wireMediaHandler])
 
     useEffect(() => {
       const id = 'at-study-playalong-css'
@@ -156,8 +227,6 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
       const scroll = scrollRef.current
       if (!host || !tex.trim()) return
 
-      audioReadyRef.current = false
-      attachedUrlRef.current = null
       setLoading(true)
       setError(null)
 
@@ -180,7 +249,14 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
       api.scoreLoaded.on((score) => {
         applyBarsPerRow(score, barsPerRow)
         lastBarIndexRef.current = 0
-        setScoreNonce((value) => value + 1)
+        if (syncPointsRef.current.length > 0) {
+          score.applyFlatSyncPoints(toFlatSyncPoints(syncPointsRef.current))
+        }
+        wireMediaHandler(api)
+      })
+
+      api.playerReady.on(() => {
+        wireMediaHandler(api)
       })
 
       api.renderFinished.on(() => {
@@ -201,48 +277,54 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
       api.tex(tex)
 
       return () => {
+        stopPositionTimer()
         api.destroy()
         apiRef.current = null
-        audioReadyRef.current = false
-        attachedUrlRef.current = null
       }
-    }, [barsPerRow, tex])
-
-    useEffect(() => {
-      const api = apiRef.current
-      const url = audioUrl
-      if (!api?.score || !url) {
-        audioReadyRef.current = false
-        return
-      }
-      if (attachedUrlRef.current === url && audioReadyRef.current) return
-      let cancelled = false
-      void (async () => {
-        try {
-          await applyBackingTrack(api, url, syncPointsRef.current)
-          if (cancelled) return
-          attachedUrlRef.current = url
-          audioReadyRef.current = true
-        } catch (err) {
-          if (cancelled) return
-          audioReadyRef.current = false
-          attachedUrlRef.current = null
-          toast.error(err instanceof Error ? err.message : 'Falha ao carregar o áudio')
-        }
-      })()
-      return () => {
-        cancelled = true
-      }
-    }, [applyBackingTrack, audioUrl, scoreNonce])
+    }, [barsPerRow, stopPositionTimer, tex, wireMediaHandler])
 
     useEffect(() => {
       const api = apiRef.current
       const score = api?.score
-      if (!api || !score || !audioReadyRef.current) return
+      if (!api || !score) return
       if (syncPoints.length === 0) return
       score.applyFlatSyncPoints(toFlatSyncPoints(syncPoints))
       api.updateSyncPoints()
     }, [syncPoints])
+
+    useEffect(() => {
+      const audio = mediaRef.current
+      if (!audio) return
+
+      const onPlay = () => {
+        wireMediaHandler(apiRef.current)
+        startPositionTimer()
+        onPlayingChangeRef.current?.(true)
+      }
+      const onPause = () => {
+        stopPositionTimer()
+        apiRef.current?.pause()
+        onPlayingChangeRef.current?.(false)
+      }
+      const onEnded = () => {
+        stopPositionTimer()
+        apiRef.current?.pause()
+        onPlayingChangeRef.current?.(false)
+      }
+
+      audio.addEventListener('play', onPlay)
+      audio.addEventListener('pause', onPause)
+      audio.addEventListener('ended', onEnded)
+      audio.addEventListener('timeupdate', pushPosition)
+      audio.addEventListener('seeked', pushPosition)
+      return () => {
+        audio.removeEventListener('play', onPlay)
+        audio.removeEventListener('pause', onPause)
+        audio.removeEventListener('ended', onEnded)
+        audio.removeEventListener('timeupdate', pushPosition)
+        audio.removeEventListener('seeked', pushPosition)
+      }
+    }, [audioUrl, pushPosition, startPositionTimer, stopPositionTimer, wireMediaHandler])
 
     useEffect(() => {
       if (!marking) return
@@ -279,20 +361,31 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
     if (!tex.trim()) return null
 
     return (
-      <div
-        ref={scrollRef}
-        className="at-study-playalong relative overflow-auto rounded-[var(--radius)] border border-border bg-surface"
-        style={{ minHeight: 280, maxHeight: 'calc(100vh - 180px)' }}
-      >
-        {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-card/80">
-            <SpinnerGap size={24} className="animate-spin text-accent" />
-          </div>
+      <div className="space-y-3">
+        {audioUrl && (
+          <audio
+            ref={mediaRef}
+            src={audioUrl}
+            preload="auto"
+            controls
+            className="h-10 w-full"
+          />
         )}
-        {error && (
-          <div className="p-3 text-[12px] text-destructive">{error}</div>
-        )}
-        <div ref={hostRef} className="w-full" />
+        <div
+          ref={scrollRef}
+          className="at-study-playalong relative overflow-auto rounded-[var(--radius)] border border-border bg-surface"
+          style={{ minHeight: 280, maxHeight: 'calc(100vh - 220px)' }}
+        >
+          {loading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-card/80">
+              <SpinnerGap size={24} className="animate-spin text-accent" />
+            </div>
+          )}
+          {error && (
+            <div className="p-3 text-[12px] text-destructive">{error}</div>
+          )}
+          <div ref={hostRef} className="w-full" />
+        </div>
       </div>
     )
   },

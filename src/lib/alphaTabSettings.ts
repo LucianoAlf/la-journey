@@ -154,7 +154,7 @@ export function buildAlphaTabSettings({
   settings.player.enableCursor = isStudy
   settings.player.enableAnimatedBeatCursor = false
   settings.player.playerMode = isStudy
-    ? alphaTabModule.PlayerMode.EnabledBackingTrack
+    ? alphaTabModule.PlayerMode.EnabledExternalMedia
     : alphaTabModule.PlayerMode.Disabled
 
   settings.notation.rhythmMode = alphaTabModule.TabRhythmMode.ShowWithBars
