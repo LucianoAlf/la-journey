@@ -735,7 +735,7 @@ git commit -m "feat: edit bar-level facts from the notation drawer"
 
 - [x] **Passo 1: a Ovelha completa na sonda**
 
-Esqueleto de forma no gerador (`[A']`, `[B]` com `|: :|`, `%`, `[Solo]` 7x, Fine em losango). Ritmo interno dos compassos 9+ não foi inventado — a spec manda tirar dos frames.
+45 compassos do vídeo no gerador (`src/lib/ovelhaNegraBeats.ts`) e na sonda: `[A]`, `[A']` Banda, `[B]` com `|: :|`, Interlúdio, Solo 7x, Fine em losango. Ritmo interno (levada, 2/4, vocalize) sai do mapeamento das 4 telas.
 
 - [x] **Passo 2: bateria completa**
 

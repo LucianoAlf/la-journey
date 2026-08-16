@@ -1,7 +1,7 @@
 # Ovelha Negra — barras rítmicas na pauta (corte 1)
 
 Data: 2026-08-16  
-Status: conferida na sonda `/dev/alphatab-fixtures` (16/08, tarde). Gerador emite `{slashed}`, cabeçalho de compasso e `[A]` só com marcador. Fileira **Ritmo** e Drawer **Compasso** estão na A4. Folha dos 45 compassos transcrita dos frames ainda não — o ritmo interno não se inventa.  
+Status: conferida na sonda `/dev/alphatab-fixtures` (16/08, noite). Gerador emite `{slashed}`, cabeçalho de compasso e `[A]` só com marcador. Fileira **Ritmo** e Drawer **Compasso** estão na A4. Os 45 compassos do vídeo estão no gerador (`src/lib/ovelhaNegraBeats.ts`) e na sonda — ritmo interno sai do mapeamento das 4 telas, não de memória. Folha deitada e playalong continuam no próximo corte.  
 Corte: o professor escreve **grade rítmica com cifra** na mesma pauta da A4 — barra de tempo no lugar da melodia, seção de ensaio, repetição e troca de métrica.
 
 Alvo visual: vídeo da Escola de Música Rafael Bastos (Ovelha Negra / Rita Lee), 45 compassos em 4 telas — `[A]` `[A'] (Banda)` `[B]` `[Interlúdio (Vocalize)]` `[Solo]`, `Fine` no fim.
@@ -198,7 +198,7 @@ Esse cabeçalho é o que o `beatsToAlphaTex` já monta hoje para instrumento ún
 2. Comparar a fixture com o frame do vídeo: barra no meio da pauta, cifra na faixa do acorde, caixa de ensaio antes da clave.
 3. Decidir `\staff{score}` vs `\staff{slash}` olhando a fixture.
 4. A4: escrever um compasso rítmico no editor in-place, salvar, reabrir — a grade continua.
-5. Folha inteira (45 compassos, `[B]` com `|: :|`, solo com `7x`, `Fine`).
+5. Folha inteira (45 compassos, `[B]` com `|: :|`, solo com `7x`, `Fine`) — no gerador e na sonda, 16/08 noite. Fonte: `src/lib/ovelhaNegraBeats.ts`.
 
 ## Arquivos-chave
 
@@ -213,4 +213,5 @@ Esse cabeçalho é o que o `beatsToAlphaTex` já monta hoje para instrumento ún
 | Sessão A4 | `src/components/music/useNotationInlineSession.ts` |
 | Pauta interativa | `src/components/music/NotationAlphaTabSurface.tsx` |
 | Fixtures de gravura | `src/pages/AlphaTabFixtures.tsx` |
+| Grade da Ovelha (45 compassos) | `src/lib/ovelhaNegraBeats.ts` |
 | Spec do corte A (cifra) | `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md` |
