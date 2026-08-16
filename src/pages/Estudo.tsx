@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { StudyPlayalongSurface, type StudyPlayalongSurfaceHandle } from '@/components/music/StudyPlayalongSurface'
 import { useMaterials, useMaterialWithBlocks } from '@/hooks/useMaterials'
 import { useSchool } from '@/hooks/useSchool'
-import { parsePlayalong, playalongToJson, type PlayalongConfig } from '@/lib/playalong'
+import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSyncPoint } from '@/lib/playalong'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
 import { updateMaterial, type GeneratedMaterial, type MaterialListItem, type MaterialWithBlocks } from '@/services/materialService'
 import { uploadPlayalongFile } from '@/services/playalongUpload'
@@ -84,6 +84,9 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const [playing, setPlaying] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [playalongOverride, setPlayalongOverride] = useState<PlayalongConfig | null>(null)
+  const [marking, setMarking] = useState(false)
+  const dirtyRef = useRef(false)
+  const playalongRef = useRef<PlayalongConfig | null>(null)
 
   const material = rows?.[0] ?? null
   const notation = useMemo(() => pickNotationBlock(rows), [rows])
@@ -91,6 +94,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
     ? studyTexFromBlock({ content: notation.block_content, render_data: notation.block_render_data })
     : null
   const playalong = playalongOverride ?? parsePlayalong(material?.page_config?.playalong)
+  playalongRef.current = playalong
 
   const persistPlayalong = async (next: PlayalongConfig) => {
     const existing = (material?.page_config ?? {}) as Record<string, unknown>
@@ -101,6 +105,14 @@ function EstudoRoom({ materialId }: { materialId: string }) {
       } as GeneratedMaterial['page_config'],
     })
     setPlayalongOverride(next)
+  }
+
+  const flushMarks = async () => {
+    const current = playalongRef.current
+    if (!dirtyRef.current || !current) return
+    dirtyRef.current = false
+    await persistPlayalong(current)
+    toast.success('Compassos salvos')
   }
 
   const onPickAudio = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,10 +140,35 @@ function EstudoRoom({ materialId }: { materialId: string }) {
     if (playing) {
       surfaceRef.current?.pause()
       setPlaying(false)
+      void flushMarks()
       return
     }
     surfaceRef.current?.play()
     setPlaying(true)
+  }
+
+  const toggleMarking = () => {
+    if (marking) {
+      setMarking(false)
+      void flushMarks()
+      return
+    }
+    if (!playalong?.audioUrl) {
+      toast.error('Carregue um playalong antes de marcar')
+      return
+    }
+    setMarking(true)
+  }
+
+  const onMarkBar = (point: PlayalongSyncPoint) => {
+    const current = playalongRef.current
+    if (!current) return
+    const next = {
+      ...current,
+      syncPoints: upsertSyncPoint(current.syncPoints, point),
+    }
+    dirtyRef.current = true
+    setPlayalongOverride(next)
   }
 
   return (
@@ -160,12 +197,20 @@ function EstudoRoom({ materialId }: { materialId: string }) {
             {uploading ? <SpinnerGap size={16} className="animate-spin" /> : null}
             Carregar playalong
           </Button>
+          <Button variant={marking ? 'default' : 'outline'} size="sm" onClick={toggleMarking} disabled={!study}>
+            {marking ? 'Parar marcação' : 'Marcar compassos'}
+          </Button>
           <Button size="sm" onClick={togglePlayback} disabled={!study}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
             {playing ? 'Pausar' : 'Play'}
           </Button>
         </div>
       </div>
+      {marking && (
+        <p className="mb-3 text-[12px] text-text2">
+          Espaço ou clique na pauta marca o tempo 1 do compasso. {playalong?.syncPoints.length ?? 0} ponto(s).
+        </p>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center gap-2 py-16 text-text2">
@@ -189,11 +234,23 @@ function EstudoRoom({ materialId }: { materialId: string }) {
           barsPerRow={study.barsPerSystem}
           audioUrl={playalong?.audioUrl ?? null}
           syncPoints={playalong?.syncPoints ?? []}
-          marking={false}
+          marking={marking}
+          onMarkBar={onMarkBar}
         />
       )}
     </div>
   )
+}
+
+function upsertSyncPoint(points: PlayalongSyncPoint[], point: PlayalongSyncPoint) {
+  const index = points.findIndex((item) => (
+    item.masterBarIndex === point.masterBarIndex
+    && item.masterBarOccurence === point.masterBarOccurence
+  ))
+  if (index < 0) return [...points, point]
+  const next = [...points]
+  next[index] = point
+  return next
 }
 
 function pickNotationBlock(rows: MaterialWithBlocks[] | null | undefined) {
