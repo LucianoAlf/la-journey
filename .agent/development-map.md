@@ -327,7 +327,7 @@ Edição:
 4. **Folha deitada (horizontal)** vs em pé (vertical) — tipo de material; exercício/repertório às vezes lê melhor deitado.
 5. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
 6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
-7. **Áudio didático corte 1** — Edges no ar. Falta smoke (vocalize 30s, base C G D, Gerar base na ficha). Upload/stems = Pendente.
+7. **Áudio didático corte 1** — Edges no ar. Cifra usa `music-ai/chords-and-beat-mapping` (o slug `generate-chords` não existe). Falta re-smoke: **Reconhecer de novo** no take que falhou, base C G D, Gerar base na ficha. Upload/stems = Pendente.
 
 ---
 
