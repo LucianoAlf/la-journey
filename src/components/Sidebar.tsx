@@ -1,6 +1,6 @@
 import { 
   SquaresFour, MapTrifold, FileText, NotePencil, Books, MusicNotesSimple, 
-  UsersThree, MusicNote, ChalkboardTeacher, GraduationCap, Trophy, 
+  UsersThree, MusicNote, MusicNotes, ChalkboardTeacher, GraduationCap, Trophy, 
   WhatsappLogo, ChartBar, PlugsConnected, GearSix, Plus, Bell, Moon, Sun, CaretLeft, CaretRight
 } from "@phosphor-icons/react";
 import { useState, useRef, useEffect } from "react";
@@ -45,6 +45,7 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
     { section: "Operacional" },
     { id: "turmas", label: "Turmas", icon: ChalkboardTeacher },
     { id: "professor", label: "Visão Professor", icon: GraduationCap },
+    { id: "estudo", label: "Estudo", icon: MusicNotes },
     { section: "Engajamento" },
     { id: "gamificacao", label: "Gamificação", icon: Trophy },
     { id: "whatsapp", label: "WhatsApp", icon: WhatsappLogo, badge: "4" },

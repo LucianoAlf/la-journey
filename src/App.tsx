@@ -19,6 +19,7 @@ import { Integracoes } from './pages/Integracoes'
 import { Configuracoes } from './pages/Configuracoes'
 import { AlphaTabFixtures } from './pages/AlphaTabFixtures'
 import { PrintView } from './pages/PrintView'
+import { Estudo } from './pages/Estudo'
 
 export default function App() {
   return (
@@ -45,6 +46,8 @@ export default function App() {
           <Route path="repertorio" element={<Repertorio />} />
           <Route path="turmas" element={<Turmas />} />
           <Route path="professor" element={<Professor />} />
+          <Route path="estudo" element={<Estudo />} />
+          <Route path="estudo/:id" element={<Estudo />} />
           <Route path="gamificacao" element={<Gamificacao />} />
           <Route path="whatsapp" element={<Whatsapp />} />
           <Route path="relatorios" element={<Relatorios />} />
