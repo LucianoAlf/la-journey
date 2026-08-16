@@ -1,6 +1,8 @@
 import type { MaterialBlock } from '@/components/material/MaterialPreview'
 import type { MaterialWithBlocks } from '@/services/materialService'
+import { type PageOrientation } from '@/lib/a4Preview'
 import {
+  a4ContentHeight,
   paginateBlocks,
   type SharedPaginationBlock,
 } from '@/lib/sharedPagination'
@@ -60,9 +62,13 @@ export function parsePrintMaterialRows(rows: MaterialWithBlocks[]): {
   }
 }
 
-export function paginatePrintBlocks(blocks: PrintBlock[], materialType?: string | null) {
+export function paginatePrintBlocks(
+  blocks: PrintBlock[],
+  materialType?: string | null,
+  orientation: PageOrientation = 'portrait',
+) {
   if (isSongbookMaterial(materialType, blocks)) {
     return paginateSongbookBlocks(blocks).pages
   }
-  return paginateBlocks(blocks).pages
+  return paginateBlocks(blocks, undefined, a4ContentHeight(orientation)).pages
 }

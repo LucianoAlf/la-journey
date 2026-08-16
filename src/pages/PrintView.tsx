@@ -8,6 +8,7 @@ import {
   canvasPageLayerToCSS,
   hasCanvasBlockLayoutOffset,
 } from '@/lib/canvasBlockLayout'
+import { parsePageOrientation, type PageOrientation } from '@/lib/a4Preview'
 import {
   paginatePrintBlocks,
   parsePrintMaterialRows,
@@ -79,6 +80,7 @@ interface PrintPageConfig {
   header: HeaderFooterConfig
   footer: HeaderFooterConfig
   floatingElements: FloatingElement[]
+  orientation: PageOrientation
 }
 
 function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefined): PrintPageConfig {
@@ -96,6 +98,7 @@ function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefine
     floatingElements: Array.isArray(pageConfig.floating_elements)
       ? pageConfig.floating_elements as FloatingElement[]
       : [],
+    orientation: parsePageOrientation(pageConfig.orientation),
   }
 }
 
@@ -177,9 +180,10 @@ export function PrintView() {
 
   const { material, blocks, pages } = useMemo(() => {
     const parsed = parsePrintMaterialRows(data ?? [])
+    const orientation = parsePageOrientation(parsed.material?.pageConfig?.orientation)
     return {
       ...parsed,
-      pages: paginatePrintBlocks(parsed.blocks, parsed.material?.type),
+      pages: paginatePrintBlocks(parsed.blocks, parsed.material?.type, orientation),
     }
   }, [data])
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -293,7 +297,7 @@ export function PrintView() {
         return (
           <section
             key={pageIndex}
-            className={`a4-page print-page ${isCoverPage ? 'a4-page--cover print-page--cover' : ''}`}
+            className={`a4-page print-page ${pageConfig.orientation === 'landscape' ? 'a4-page--landscape' : ''} ${isCoverPage ? 'a4-page--cover print-page--cover' : ''}`}
             data-print-page={pageIndex + 1}
             style={pageLayerStyle}
           >
