@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — spec do player de estudo C1  
+Atualizado: 2026-08-16 (noite) — C1 playalong implementado  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** player de estudo C1 (playalong). Spec e plano abaixo. Código ainda não.
+**Próximo corte:** confirmar Baixar PDF deitado em produção (radar 1). Depois: aluno na sala Estudo, ou prova de MP3+sync na Ovelha se o professor ainda não marcou.
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. Spec do **player de estudo C1** aprovada — sala `/estudo`, MP3 real + cursor AlphaTab no compasso. Plano escrito. Código ainda não. Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Player de estudo C1** implementado em `feat/estudo-playalong` (ainda não em produção). Não misturar com `feat/audio-didatico`.
 - Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
 - Plano C1: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
 - Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
@@ -32,6 +32,15 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 ---
 
 ## Feito
+
+### Player de estudo C1 — playalong na grade (16/08, noite)
+
+Sala `/estudo` + `/estudo/:id` no Operacional (depois de Visão Professor). Propósito `study-playalong` é o único com player + cursor de **compasso** (`EnabledBackingTrack`, sem soundfont, sem beat animado). Áudio = MP3/OGG em `page_config.playalong` (sem coluna nova). Tex vem do bloco de notação que já existe. Editor continua mudo. Sync = tap (Espaço/clique → `api.timePosition` + master bar), não `currentTime / BPM`.
+- Spec: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
+- Branch: `feat/estudo-playalong` (worktree `.worktrees/estudo-playalong`). Dev: `http://localhost:5202/estudo`
+- Smoke: lista + pauta desenham (Intervalos Melódicos). Editor do mesmo material sem cursor/som. Material titulado Ovelha **não** está no banco — a prova 2/4 + Solo 7x + MP3 fica no professor (Carregar playalong + Marcar compassos).
+- Testes: `playalong`, `alphaTabSettings`, `studyNotationTex` — todos `ok`.
 
 ### Folha deitada — orientação A4 por material (16/08, noite)
 
