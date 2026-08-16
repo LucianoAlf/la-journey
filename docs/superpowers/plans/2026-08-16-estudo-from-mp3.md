@@ -37,7 +37,7 @@
 - Create: `src/lib/__tests__/fromMp3ToStudy.test.ts`
 - Create: `src/lib/fromMp3ToStudy.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import assert from 'node:assert/strict'

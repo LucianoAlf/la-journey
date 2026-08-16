@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — spec C2 Estudo a partir do MP3  
+Atualizado: 2026-08-16 (noite) — C2 Do MP3 implementado  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Estudo C2 — Do MP3 → Music.AI → material novo (slash + cifra + playalong). Spec escrita, plano ainda não.
+**Próximo corte:** smoke Do MP3 no Chrome (faixa ~30s) + decidir se o C1/C2 sobe no PR 22. Não misturar Suno.
 
 ## Como retomar
 
@@ -16,8 +16,9 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Player de estudo C1** implementado em `feat/estudo-playalong` (ainda não em produção). **C2** (MP3 → pauta) spec aprovada no chat, código ainda não. Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2** em `feat/estudo-playalong` (ainda não em produção). Não misturar com `feat/audio-didatico`.
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
+- Plano C2: `docs/superpowers/plans/2026-08-16-estudo-from-mp3.md`
 - Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
 - Plano C1: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
 - Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
@@ -33,6 +34,13 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 ---
 
 ## Feito
+
+### Estudo C2 — material a partir do MP3 (16/08, noite)
+
+Lista `/estudo` → **Do MP3** → Music.AI `chords-and-beat-mapping` → material **novo** (slash 4/4 + cifra + `page_config.playalong`). Inbox em `content-images/playalong/inbox/`. Sem `practice_audio`. Sem Suno. Falha não cria material.
+- Spec: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-estudo-from-mp3.md`
+- Testes: `fromMp3ToStudy` + C1 — todos `ok`. Smoke Chrome ainda falta.
 
 ### Player de estudo C1 — playalong na grade (16/08, noite)
 
