@@ -7053,8 +7053,9 @@ ${pagesHtml}
       ? activeTablatureRenderData.tab.split('\n')
       : []
   const canvasRulerGutter = showRulers ? 28 : 0
-  const canvasBaseWidth = 794 + canvasRulerGutter
-  const canvasBaseHeight = (canvasPages.length * 1123)
+  const { width: pageWidthPx, height: pageHeightPx } = pageSize(pageOrientation)
+  const canvasBaseWidth = pageWidthPx + canvasRulerGutter
+  const canvasBaseHeight = (canvasPages.length * pageHeightPx)
     + (Math.max(canvasPages.length - 1, 0) * 32)
     + canvasRulerGutter
     + 48
@@ -7703,6 +7704,8 @@ ${pagesHtml}
                   guides={pageConfig.guides}
                   onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
                   orientation="horizontal"
+                  pageWidthMm={pageOrientation === 'landscape' ? 297 : 210}
+                  pageHeightMm={pageOrientation === 'landscape' ? 210 : 297}
                 />
               </div>
             )}
@@ -7717,6 +7720,8 @@ ${pagesHtml}
                   guides={pageConfig.guides}
                   onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
                   orientation="vertical"
+                  pageWidthMm={pageOrientation === 'landscape' ? 297 : 210}
+                  pageHeightMm={pageOrientation === 'landscape' ? 210 : 297}
                 />
               </div>
             )}
