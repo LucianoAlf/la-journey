@@ -27,6 +27,56 @@ function fixtureToMaterialBlock(fixture: typeof notationFixtures[number]): Mater
   }
 }
 
+// Sondas de gravura rítmica (Ovelha corte 1). AlphaTex cru, escrito na convenção do
+// beatsToAlphaTex: duração como prefixo :N, efeitos numa chave só, oitava do tex = modelo - 1.
+const slashProbes: { name: string; alvo: string; tex: string }[] = [
+  {
+    name: 'Slash 1 — barras neutras, cifra e seção',
+    alvo: 'Quatro barras no meio da pauta e cifra acima. Conhecido: o texto da seção cai na mesma faixa da cifra e cobre o acorde do 1º tempo.',
+    tex: [
+      '\\track',
+      '\\staff{score}',
+      '\\tuning piano',
+      '\\ks Dmajor',
+      '\\ts 4 4',
+      '.',
+      '\\section "A" "Violao, piano e vocal" :4 b3{slashed ch "D"} b3{slashed} b3{slashed} b3{slashed} |',
+      ':4 b3{slashed ch "G"} b3{slashed} b3{slashed} b3{slashed} |',
+    ].join('\n'),
+  },
+  {
+    name: 'Slash 2 — síncope (ponto + ligadura) e métrica mista',
+    alvo: 'Barra pontuada com haste, colcheia, ligadura entre as barras, compasso 2/4 e volta pra 4/4.',
+    tex: [
+      '\\track',
+      '\\staff{score}',
+      '\\tuning piano',
+      '\\ks Dmajor',
+      '\\ts 4 4',
+      '.',
+      ':4 b3{d slashed ch "G"} :8 b3{slashed} :4 b3{- slashed} b3{slashed} |',
+      '\\ts 2 4 :4 b3{slashed ch "A"} b3{slashed} |',
+      '\\ts 4 4 :4 b3{slashed ch "A"} b3{slashed} b3{slashed} b3{slashed} |',
+    ].join('\n'),
+  },
+  {
+    name: 'Slash 3 — repetição 7x, simile % e Fine',
+    alvo: '|: no 1º compasso, % sozinho no 2º (compasso vazio, sem pausa), x7 e :| no 3º, Fine e barra de semibreve (losango) no último.',
+    tex: [
+      '\\track',
+      '\\staff{score}',
+      '\\tuning piano',
+      '\\ks Dmajor',
+      '\\ts 4 4',
+      '.',
+      '\\ro :4 b3{slashed ch "D"} b3{slashed} b3{slashed} b3{slashed} |',
+      '\\simile simple |',
+      '\\rc 7 :4 b3{slashed ch "G"} b3{slashed} b3{slashed} b3{slashed} |',
+      '\\jump fine :1 b3{slashed ch "D"} |',
+    ].join('\n'),
+  },
+]
+
 export function AlphaTabFixtures() {
   if (!import.meta.env.DEV) {
     return (
@@ -59,6 +109,31 @@ export function AlphaTabFixtures() {
       </div>
 
       <div className="space-y-8">
+        {slashProbes.map((probe) => (
+          <section key={probe.name} className="rounded-lg border-2 border-accent/40 bg-card p-4">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-text">{probe.name}</h2>
+              <p className="text-xs text-text3">{probe.alvo}</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="rounded-md border border-border/70 bg-bg p-3">
+                <AlphaTabViewer
+                  tex={probe.tex}
+                  purpose="editor-notation-score"
+                  staveProfile="score"
+                  layout="page"
+                  scale={1.3}
+                  minHeight={200}
+                  showTimeSignature
+                />
+              </div>
+              <pre className="max-h-64 overflow-auto rounded-md border border-border/70 bg-bg2 p-3 text-xs text-text2">
+                {probe.tex}
+              </pre>
+            </div>
+          </section>
+        ))}
+
         {notationRows.map(({ fixture, tex, block }) => (
           <section key={fixture.name} className="rounded-lg border border-border bg-card p-4">
             <div className="mb-3 flex items-center justify-between gap-3">

@@ -3,7 +3,7 @@
 Atualizado: 2026-08-16 (meio-dia) — lead sheet corte A conferido na A4 e sobe pra produção  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Ovelha Negra — barras rítmicas (slash) + folha deitada. Spec ainda não escrita.
+**Próximo corte:** Ovelha corte 1 — barras rítmicas + seções/repetições na gravura. Spec escrita; folha deitada e playalong saíram deste corte.
 
 ## Como retomar
 
@@ -16,8 +16,13 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **conferido na A4** e sobe pra produção (cifra na faixa do acorde, overlay, K / fileira / Drawer). Próximo corte: Ovelha Negra (slash + folha deitada) — spec a escrever, ramificar de `origin/main` depois deste merge.
+Lead sheet corte A **em produção** (cifra na faixa do acorde, overlay, K / fileira / Drawer). Agora: Ovelha corte 1 — barras rítmicas (`{slashed}`), seção `\section`, repetição `\ro`/`\rc`, simile `\simile`, métrica no meio do fluxo. Ramificar de `origin/main`.
+- Spec Ovelha corte 1: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
+- Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md` (9 tarefas, TDD). Branch `feat/ovelha-slash`, worktree `.worktrees/ovelha-slash`.
+- Sonda visual em `/dev/alphatab-fixtures` (Slash 1-3) já provou no motor: `{slashed}`, `{d slashed}`, `{- slashed}`, `\ts` no meio, `\ro`/`\rc 7`, `\simile simple` em compasso vazio, `\jump fine`, `\section "A" "Texto"` com marcador em caixa, e barra de semibreve saindo como losango.
 - Spec lead sheet A: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
+- **O motor já faz tudo isso** (AlphaTab 1.8.1): `Beat.slashed`, `MasterBar.simileMark`, `\section`, `\ro`/`\rc`, `\jump fine`, `Staff.showSlash`. O que falta é `beatsToAlphaTex` emitir e o modelo carregar. Não construir gravura nova.
+- **Playalong (corte futuro):** AlphaTab 1.8 tem backing track nativo — `PlayerMode.EnabledBackingTrack`, `score.backingTrack`, `BackingTrackSyncPoint[]`, `api.updateSyncPoints()`, tag `\sync`, output por `HTMLAudioElement`. Decisão travada: MP3 do Suno + sync points, **não** playhead calculado por BPM (quebra em métrica mista e em repetição).
 - Áudio didático corte 1 está em `feat/audio-didatico` (Suno V5.5 + Lyria fallback + Music.AI). **Não** misturar neste PR. Smoke no Chrome ainda falta.
 - Spec áudio: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
 - Plano áudio: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
@@ -338,14 +343,15 @@ Edição:
 
 ## Radar (ordem combinada em 16/08)
 
-1. **Ovelha Negra** — barras rítmicas (slash) + folha deitada (horizontal). Spec a escrever. Não misturar com áudio nem com escrita avançada.
-2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-3. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
-4. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
-5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
-6. **Áudio didático corte 1 → produção** — código em `feat/audio-didatico`. Smoke no Chrome ainda falta. Não puxar na frente da Ovelha.
-7. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems (sem bateria/baixo/voz) + pitch/tempo. Motor já ligado (`MUSIC_AI_API_KEY`, `musicai-transcribe`). Slugs confirmados nesta conta: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`. Job na nuvem (segundos), não Moises Live. Mixer local depois da 1ª separação.
-8. **Soundslice (fase 3)** — player de partitura + vídeo/MP3 sincronizado (playhead, loop, slowdown). **Não** substitui Music.AI: a API deles não transcreve áudio→cifra/pauta; o “Transcribe” é editor humano + scanner de PDF (OCR de partitura, sem API). Embed no LA Journey exige plano **Licensing** (~US$ 100/mês, 200 users). PUT de MusicXML/GP na API precisa permissão especial. Teacher (US$ 20/100 alunos) tem Data API mas não embed comercial. Doc: https://www.soundslice.com/help/data-api/
+1. **Ovelha corte 1 — gravura rítmica.** `{slashed}` no beat, `\section`, `\ro`/`\rc N`, `\simile`, `\ts` no meio do fluxo, `\jump fine`. Spec: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`. Não misturar com áudio nem com escrita avançada.
+2. **Folha deitada (landscape)** — orientação de material + PDF. Hoje A4 é retrato fixo (`794×1123` em `src/lib/a4Preview.ts`, `.a4-page` no CSS, três serviços de PDF em portrait). Cuidado: o `layout: 'horizontal'` que já usamos é `LayoutMode.Horizontal` do AlphaTab (sistemas em linha contínua), não folha deitada.
+3. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
+4. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
+5. **Playalong com cursor no compasso** — backing track MP3 (Suno) + `BackingTrackSyncPoint` do AlphaTab (`PlayerMode.EnabledBackingTrack`, `api.updateSyncPoints()`, tag `\sync`). Exige ligar o player, hoje desligado em `src/lib/alphaTabSettings.ts` para os nove propósitos. **Não** calcular playhead por BPM: quebra em métrica mista e em repetição.
+6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+7. **Áudio didático corte 1 → produção** — código em `feat/audio-didatico`. Smoke no Chrome ainda falta. Não puxar na frente da Ovelha.
+8. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems (sem bateria/baixo/voz) + pitch/tempo. Motor já ligado (`MUSIC_AI_API_KEY`, `musicai-transcribe`). Slugs confirmados nesta conta: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`. Job na nuvem (segundos), não Moises Live. Mixer local depois da 1ª separação.
+9. **Soundslice (fase 3)** — player de partitura + vídeo/MP3 sincronizado (playhead, loop, slowdown). **Não** substitui Music.AI: a API deles não transcreve áudio→cifra/pauta; o “Transcribe” é editor humano + scanner de PDF (OCR de partitura, sem API). Embed no LA Journey exige plano **Licensing** (~US$ 100/mês, 200 users). PUT de MusicXML/GP na API precisa permissão especial. Teacher (US$ 20/100 alunos) tem Data API mas não embed comercial. Doc: https://www.soundslice.com/help/data-api/
 
 ---
 
