@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-15 (noite — fechamento da pauta sobe pra produção)  
+Atualizado: 2026-08-16 (código do corte 1 na `feat/audio-didatico`)  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Áudio didático corte 1 (Lyria 3 + Music.AI). Lead sheet continua no radar da pauta.
+**Próximo corte:** Smoke do áudio didático no Chrome (vocalize 30s, base C G D, Gerar base na ficha). Lead sheet continua no radar da pauta.
 
 ## Como retomar
 
@@ -16,10 +16,11 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Próximo corte: áudio didático corte 1 (Lyria 3 + Music.AI). Spec pronta. Ramificar de `origin/main` — não da branch velha `feat/caderno-repertorio-montador`.
-- Produção: https://la-journey.vercel.app — caderno de exercício (PR #13) + notação in-place (PR #17) + escrita fluida (PR #18) + fechamento da pauta (este corte).
-- Preview de nota (Tone.js) no Simple Browser do Cursor não toca; validar no Chrome.
-- Image-gen/Iconify/Recraft ficam no working tree sujo de `D:\la-journey`. Não misturar.
+Corte 1 do áudio didático: código na `feat/audio-didatico`, tabela `practice_audio` aplicada, Edges `lyria-generate` e `musicai-transcribe` **deployadas**. Falta smoke no Chrome.
+- Spec: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
+- Plano: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
+- Stash local `wip-not-audio-didatico` tem image-gen/Recraft. Não dar pop nesta branch.
+- Produção: https://la-journey.vercel.app — pauta já no ar. Preview Tone.js no Simple Browser do Cursor não toca.
 
 ---
 
@@ -30,6 +31,10 @@ Próximo corte: áudio didático corte 1 (Lyria 3 + Music.AI). Spec pronta. Rami
 Spec aprovada. Generate Lyria ao vivo ok (Clip + Pro HTTP 200). Music.AI PAYG + US$ 20 + key no `.env` e na Edge. Gemini já listava e gerou os dois modelos. Áudio em `steps[].content[]`.
 - Spec: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
 - Implementação: duas Edges (`lyria-generate`, `musicai-transcribe`), tabela `practice_audio`, bucket `audio-tracks`. A partir de `origin/main`.
+
+### Áudio didático corte 1 — código + Edges (16/08)
+
+Branch `feat/audio-didatico`. Modal de receita, `practice_audio` (migration aplicada), libs + testes, service, botões em Exercícios e na ficha. Edges `lyria-generate` e `musicai-transcribe` deployadas. Aba Enviar visível e inerte. Smoke no Chrome ainda falta.
 
 ### Fechamento da pauta: compassos por linha + fluidez (15/08)
 
@@ -322,7 +327,7 @@ Edição:
 4. **Folha deitada (horizontal)** vs em pé (vertical) — tipo de material; exercício/repertório às vezes lê melhor deitado.
 5. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
 6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
-7. **Áudio didático corte 1** — Gerar (Lyria 3) + cifrar (Music.AI). Spec pronta. É o próximo corte (não o lead sheet).
+7. **Áudio didático corte 1** — Edges no ar. Falta smoke (vocalize 30s, base C G D, Gerar base na ficha). Upload/stems = Pendente.
 
 ---
 
@@ -385,6 +390,8 @@ Não entrar no PR de repertório/Cifra Club:
 | Songsterr client | `src/services/repertoireService.ts` (`search`/`enrich`/`save`/`downloadGp`) |
 | Songsterr edges | só no Supabase: `songsterr-search`, `songsterr-import`, `songsterr-enrich`, `songsterr-gp-download` |
 | AlphaTab | `src/components/music/AlphaTabPlayer.tsx`, `src/lib/songsterr-converter/` |
+| Áudio didático | `src/lib/practiceAudio.ts`, `practiceAudioRecipe.ts`, `PracticeAudioModal.tsx`, `practiceAudioService.ts` |
+| Edges áudio | `supabase/functions/lyria-generate`, `musicai-transcribe` |
 
 Supabase: `rkfszavfqplhorvfpkcq`. Print de apostila ainda aponta `APP_URL` de produção.
 

@@ -48,7 +48,7 @@ function getIntegrations(): IntegrationDef[] {
     {
       id: 'google',
       name: 'Gemini API (Google)',
-      description: 'Geração de texto (Flash) + Imagens (Imagen 4) para materiais didáticos',
+      description: 'Texto (Flash), imagens (Imagen) e áudio didático (Lyria 3 Clip/Pro). Lyria só na Edge (GEMINI_API_KEY), nunca VITE_ no generate.',
       model: AI_CONFIG.generation.model,
       icon: '✨',
       gradient: 'from-[#4285F4] to-[#34A853]',
@@ -108,6 +108,25 @@ function getIntegrations(): IntegrationDef[] {
       envKey: '',
       configured: true,
       testFn: null,
+    },
+    {
+      id: 'musicai',
+      name: 'Music.AI (Moises B2B)',
+      description: 'Cifra e BPM em cima do áudio gerado. Chave só na Edge (MUSIC_AI_API_KEY), nunca VITE_.',
+      model: 'generate-chords + beats',
+      icon: '🎵',
+      gradient: 'from-[#111827] to-[#374151]',
+      envKey: 'MUSIC_AI_API_KEY',
+      configured: true,
+      testFn: async () => {
+        const start = performance.now()
+        const { data, error } = await supabase.functions.invoke('musicai-transcribe', { body: { ping: true } })
+        if (error) return { ok: false, latencyMs: 0, message: error.message }
+        if (!data?.configured && !data?.ok) {
+          return { ok: false, latencyMs: Math.round(performance.now() - start), message: 'Secret ausente na Edge' }
+        }
+        return { ok: true, latencyMs: Math.round(performance.now() - start), message: 'Edge responde — chave presente' }
+      },
     },
     {
       id: 'uazapi',

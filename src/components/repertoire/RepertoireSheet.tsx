@@ -46,6 +46,8 @@ import { generateRepertoireBookPdf } from "@/services/repertoirePdfEngine"
 import { TransposeControl } from "@/components/repertoire/TransposeControl"
 import { ChordSuggestions } from "@/components/repertoire/ChordSuggestions"
 import { AlphaTabPlayer } from "@/components/music/AlphaTabPlayer"
+import { PracticeAudioModal } from "@/components/music/PracticeAudioModal"
+import { useSchool } from "@/hooks/useSchool"
 import { transposeCifraContent, transposeChords, shouldUseFlats, transposeKey } from "@/lib/transpose"
 import type { Tables, Database } from "@/lib/database.types"
 import type { Json } from "@/lib/database.types"
@@ -394,6 +396,7 @@ interface RepertoireSheetProps {
 
 export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, onSaved }: RepertoireSheetProps) {
   const { user } = useAuth()
+  const { data: school } = useSchool()
   // Estado local da música — sincroniza com a prop mas pode ser atualizado localmente (ex: enriquecimento IA)
   const [liveSong, setLiveSong] = useState<Repertoire | null>(songProp)
   const justSavedRef = useRef(false)
@@ -434,6 +437,7 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
   const [applyingEnrich, setApplyingEnrich] = useState(false)
 
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [practiceAudioOpen, setPracticeAudioOpen] = useState(false)
 
   // --- Enriquecimento IA ---
   const handleEnrichWithAI = useCallback(async () => {
@@ -1062,6 +1066,15 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
                 </SheetDescription>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPracticeAudioOpen(true)}
+                  className="border-accent/30 text-accent hover:bg-accent/10 text-xs"
+                >
+                  <MusicNotesSimple size={14} />
+                  Gerar base
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1939,6 +1952,22 @@ export function RepertoireSheet({ song: songProp, open, onOpenChange, onEdit, on
         initialLines={tabEditorLines}
         initialLabel={tabEditorLabel}
         onSave={handleSaveTab}
+      />
+
+      <PracticeAudioModal
+        open={practiceAudioOpen}
+        onOpenChange={setPracticeAudioOpen}
+        schoolId={school?.id}
+        initialKind="backing"
+        lockKind
+        repertoireId={song.id}
+        preset={{
+          title: `Base · ${song.title}`,
+          key: song.key ?? 'C',
+          bpm: song.bpm ?? null,
+          requestedChords: (song.chords ?? []).slice(0, 8),
+        }}
+        onSaved={onSaved}
       />
     </Sheet>
   )
