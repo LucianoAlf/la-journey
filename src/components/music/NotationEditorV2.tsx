@@ -25,6 +25,7 @@ import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow
 import { getEditorTimeSignature, normalizeTimeSignature } from '@/lib/timeSignature'
 import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
 import { editorDurationFromRaw } from '@/lib/notationBeatNormalize'
+import { normalizeCifraSymbol } from '@/lib/notationCifra'
 
 // ─── Re-export tipos do NotationSvgEditor ───────────────────────────
 export type { BeatDuration, PitchData }
@@ -129,6 +130,7 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
         articulations: Array.isArray(rawBeat.articulations) ? rawBeat.articulations : undefined,
         dynamics: rawBeat.dynamics ?? rawBeat.dynamic,
         lyric: typeof rawBeat.lyric === 'string' ? rawBeat.lyric : undefined,
+        cifra: normalizeCifraSymbol(rawBeat.cifra),
         staff: rawBeat.staff === 'bass' ? 'bass' : rawBeat.staff === 'treble' ? 'treble' : undefined,
         tuplet: rawBeat.tuplet,
         timeSlot: Number.isFinite(rawBeat.timeSlot) ? rawBeat.timeSlot : undefined,
@@ -267,8 +269,11 @@ export function NotationEditorV2({
 
   // Refs
   const hiddenInputRef = useRef<HTMLInputElement>(null)
+  const cifraInputRef = useRef<HTMLInputElement>(null)
+  const cifraEditingRef = useRef(false)
   const lastPitchRef = useRef<string | null>(null)
   const notationSurface = readNotationSurface()
+  const [cifraEditing, setCifraEditing] = useState(false)
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false)
@@ -349,7 +354,7 @@ export function NotationEditorV2({
       doubleDotted: b.doubleDotted,
       articulations: b.articulations,
       tuplet: b.tuplet,
-      cifra: null,
+      cifra: b.cifra ?? null,
       annotation: null,
       lyric: null,
       staff: b.staff,
@@ -409,9 +414,27 @@ export function NotationEditorV2({
     })
   }, [])
 
+  const startCifraEditing = useCallback(() => {
+    if (selectedBeatIdx < 0) return
+    cifraEditingRef.current = true
+    setCifraEditing(true)
+  }, [selectedBeatIdx])
+
+  const stopCifraEditing = useCallback(() => {
+    cifraEditingRef.current = false
+    setCifraEditing(false)
+    focusInput()
+  }, [focusInput])
+
+  const selectedCifra = selectedBeatIdx >= 0 ? (beats[selectedBeatIdx]?.cifra ?? '') : ''
+
   // ─── Callbacks do NotationSvgEditor ────────────────────────────────
 
   const handleSelectBeat = useCallback((idx: number) => {
+    if (idx < 0) {
+      cifraEditingRef.current = false
+      setCifraEditing(false)
+    }
     setSelectedBeatIdx(idx)
     if (idx >= 0 && idx < beats.length) {
       const beat = beats[idx]
@@ -422,6 +445,7 @@ export function NotationEditorV2({
         lastPitchRef.current = beat.pitches[0].pitch
       }
     }
+    if (cifraEditingRef.current) return
     focusInput()
   }, [beats, focusInput, grandStaffMode])
 
@@ -673,6 +697,13 @@ export function NotationEditorV2({
     if (e.key === 'Escape') {
       e.preventDefault()
       setIsInputMode(false)
+      return
+    }
+
+    if (e.key === 'k' || e.key === 'K') {
+      if (selectedBeatIdx < 0) return
+      e.preventDefault()
+      startCifraEditing()
       return
     }
 
@@ -951,6 +982,7 @@ export function NotationEditorV2({
     beats, selectedBeatIdx, currentDuration, currentAccidental, dotted, doubleDotted,
     clef, grandStaffMode, activeStaff, isPlaying,
     undo, redo, handleInsertNote, handleReplaceNote, handleDeleteBeat, handleUpdateBeat, pushHistory,
+    startCifraEditing,
   ])
 
   // ─── Playback ──────────────────────────────────────────────────────
@@ -1232,6 +1264,10 @@ export function NotationEditorV2({
             onTogglePlay={isPlaying ? stopPlayback : startPlayback}
             barsPerSystem={barsPerSystem}
             onBarsPerSystem={(value) => setBarsPerSystem(clampBarsPerSystem(value))}
+            cifraEnabled={selectedBeatIdx >= 0}
+            cifraOpen={cifraEditing}
+            cifraValue={selectedCifra}
+            onOpenCifra={startCifraEditing}
           />
 
           {/* Categoria */}
@@ -1282,6 +1318,9 @@ export function NotationEditorV2({
               setSelectedBeatIdx(insertIdx)
               focusInput()
             }}
+            cifraEnabled={selectedBeatIdx >= 0}
+            cifraOpen={cifraEditing}
+            onOpenCifra={startCifraEditing}
           />
 
         </div>
@@ -1306,6 +1345,25 @@ export function NotationEditorV2({
                 inputRef={hiddenInputRef}
                 onKeyDown={handleKeyDown}
                 onHoverPitch={(pitch) => setHoveredSvgPos(pitch ? { beatIdx: selectedBeatIdx, pitch } : null)}
+                cifra={{
+                  value: selectedCifra,
+                  editing: cifraEditing,
+                  inputRef: cifraInputRef,
+                  onCommit: (value) => {
+                    if (selectedBeatIdx < 0) return
+                    if (selectedCifra === (normalizeCifraSymbol(value) ?? '')) return
+                    handleUpdateBeat(selectedBeatIdx, { cifra: normalizeCifraSymbol(value) })
+                  },
+                  onStartEditing: startCifraEditing,
+                  onStopEditing: stopCifraEditing,
+                  onNavigateBeat: (delta) => {
+                    if (beats.length === 0) return
+                    const next = selectedBeatIdx < 0
+                      ? (delta > 0 ? 0 : beats.length - 1)
+                      : Math.min(beats.length - 1, Math.max(0, selectedBeatIdx + delta))
+                    setSelectedBeatIdx(next)
+                  },
+                }}
               />
             ) : (
               <>

@@ -136,3 +136,36 @@ test('applySessionToRenderData writes notation_data and alphaTex without droppin
   assert.match(rd.alphaTex, /c3/i)
   assert.equal(rd.notation.staves.length >= 1, true)
 })
+
+test('sessionToAlphaTex puts chord names on the beats that carry cifra', () => {
+  const { tex } = sessionToAlphaTex({
+    beats: [
+      { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false, cifra: 'D' },
+      { pitches: [{ pitch: 'G/4' }], duration: 'q', isRest: false, cifra: 'G' },
+    ],
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: '4/4',
+    bpm: 120,
+    grandStaff: false,
+  })
+  assert.match(tex, /\{ch "D"\}/)
+  assert.match(tex, /\{ch "G"\}/)
+})
+
+test('replaceNote keeps cifra; insertNote does not copy it', () => {
+  const withCifra: InlineBeat = { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false, cifra: 'D' }
+  const replaced = replaceNote({ beats: [withCifra], atIdx: 0, pitch: 'F/4', accidental: null })
+  assert.equal(replaced.beats[0].cifra, 'D')
+  const inserted = insertNote({
+    beats: [withCifra],
+    selectedBeatIdx: 0,
+    pitch: 'A/4',
+    afterIdx: 0,
+    duration: 'q',
+    accidental: null,
+    dotted: false,
+    doubleDotted: false,
+  })
+  assert.equal(inserted.beats[1].cifra, undefined)
+})

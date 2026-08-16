@@ -19,6 +19,7 @@ export interface Beat {
   articulations?: string[]
   dynamics?: string
   lyric?: string
+  cifra?: string | null
   staff?: 'treble' | 'bass'
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
   timeSlot?: number // Posição temporal para sincronização entre pautas na Grande Pauta

@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (código do corte 1 na `feat/audio-didatico`)  
+Atualizado: 2026-08-16 (meio-dia) — lead sheet corte A conferido na A4 e sobe pra produção  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Smoke do áudio didático no Chrome (vocalize 30s, base C G D, Gerar base na ficha). Lead sheet continua no radar da pauta.
+**Próximo corte:** Ovelha Negra — barras rítmicas (slash) + folha deitada. Spec ainda não escrita.
 
 ## Como retomar
 
@@ -16,9 +16,11 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Corte 1 do áudio didático: código na `feat/audio-didatico`, tabela `practice_audio` aplicada, Edges `lyria-generate` e `musicai-transcribe` **deployadas**. Falta smoke no Chrome.
-- Spec: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
-- Plano: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
+Lead sheet corte A **conferido na A4** e sobe pra produção (cifra na faixa do acorde, overlay, K / fileira / Drawer). Próximo corte: Ovelha Negra (slash + folha deitada) — spec a escrever, ramificar de `origin/main` depois deste merge.
+- Spec lead sheet A: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
+- Áudio didático corte 1 está em `feat/audio-didatico` (Suno V5.5 + Lyria fallback + Music.AI). **Não** misturar neste PR. Smoke no Chrome ainda falta.
+- Spec áudio: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
+- Plano áudio: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
 - Stash local `wip-not-audio-didatico` tem image-gen/Recraft. Não dar pop nesta branch.
 - Produção: https://la-journey.vercel.app — pauta já no ar. Preview Tone.js no Simple Browser do Cursor não toca.
 
@@ -32,9 +34,24 @@ Spec aprovada. Generate Lyria ao vivo ok (Clip + Pro HTTP 200). Music.AI PAYG + 
 - Spec: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
 - Implementação: duas Edges (`lyria-generate`, `musicai-transcribe`), tabela `practice_audio`, bucket `audio-tracks`. A partir de `origin/main`.
 
+### Áudio didático — decisão Suno (16/08, meio-dia)
+
+Suno V5.5 é o generate. Vocalize com “ah” no Suno (instrumental off) acertou C e a voz. Levada C–F–G: tom ok, acordes extras. Lyria no mesmo prompt saiu Eb / 180 BPM. Custo: ~12 créditos/generate (~US$ 0,06), 2 takes. Pacote de 1.000 = US$ 5. Lyria clip ~US$ 0,04 mas não trava tom. Lyria fica fallback + experimentos de textura, não aula com tom marcado.
+
 ### Áudio didático corte 1 — código + Edges (16/08)
 
 Branch `feat/audio-didatico`. Modal de receita, `practice_audio` (migration aplicada), libs + testes, service, botões em Exercícios e na ficha. Edges `lyria-generate` e `musicai-transcribe` deployadas. Aba Enviar visível e inerte. Smoke no Chrome ainda falta.
+
+### Lead sheet corte A — cifra no beat + escrita na pauta (16/08, noite)
+
+`Beat.cifra` persiste e o AlphaTab desenha `{ch}`. O campo **CIFRA (K)** saiu da fileira à direita: escreve-se na faixa do acorde acima da nota, com camada de acordes inteiros (C, Cm, C7, Cmaj7…). Abre por `K`, botão Cifra na fileira ou pela seção do Drawer, que mostra a cifra da nota selecionada. Commit no Enter/Tab/clique fora — não a cada tecla.
+- **Loop de render corrigido:** o repaint da seleção chamava `api.render()` em `renderFinished` e o `postRenderFinished` repintava de novo — a pauta piscava sem parar, o foco caía e o clique virava nota. Repaint agora tem chave `alphaIdx|tex` + instância da API.
+- **Botão Cifra “não fazia nada”:** o `previewStateKey` do `EditableBlock` não carregava o estado da cifra, então o memo engolia a abertura — o Drawer acendia e a folha continuava com o alvo fechado. Chave agora leva `cifra:editing|value`.
+- **Altura do campo:** o offset chutado (`h*0.28`) nascia encostado na nota. `chordRowY` mede o `<text>` das cifras já gravadas e alinha o campo com elas; sem nenhuma cifra na pauta cai em `h*0.55`.
+- Alvo fechado deixou de ser `+`: mostra a palavra “cifra” em itálico serif na própria faixa do acorde.
+- Esc/V em captura no Editor não roubam mais a tecla enquanto o campo de cifra está aberto.
+- **Conferido na A4 (16/08, meio-dia):** Intervalos a partir de Dó — G7, Cmaj7, Dm7, C6, G7 na faixa do acorde; overlay abre; Drawer mostra a cifra da nota e **Escrever**.
+- Spec: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
 
 ### Fechamento da pauta: compassos por linha + fluidez (15/08)
 
@@ -319,15 +336,16 @@ Edição:
 
 ---
 
-## Radar (ordem combinada em 15/08)
+## Radar (ordem combinada em 16/08)
 
-1. **Mapas de acorde e cifra na pauta** — escrever cifra em cima do compasso (lead sheet). Prioridade alta do Luciano.
+1. **Ovelha Negra** — barras rítmicas (slash) + folha deitada (horizontal). Spec a escrever. Não misturar com áudio nem com escrita avançada.
 2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
 3. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
-4. **Folha deitada (horizontal)** vs em pé (vertical) — tipo de material; exercício/repertório às vezes lê melhor deitado.
-5. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
-6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
-7. **Áudio didático corte 1** — Edges no ar. Cifra usa `music-ai/chords-and-beat-mapping` (o slug `generate-chords` não existe). Falta re-smoke: **Reconhecer de novo** no take que falhou, base C G D, Gerar base na ficha. Upload/stems = Pendente.
+4. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
+5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+6. **Áudio didático corte 1 → produção** — código em `feat/audio-didatico`. Smoke no Chrome ainda falta. Não puxar na frente da Ovelha.
+7. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems (sem bateria/baixo/voz) + pitch/tempo. Motor já ligado (`MUSIC_AI_API_KEY`, `musicai-transcribe`). Slugs confirmados nesta conta: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`. Job na nuvem (segundos), não Moises Live. Mixer local depois da 1ª separação.
+8. **Soundslice (fase 3)** — player de partitura + vídeo/MP3 sincronizado (playhead, loop, slowdown). **Não** substitui Music.AI: a API deles não transcreve áudio→cifra/pauta; o “Transcribe” é editor humano + scanner de PDF (OCR de partitura, sem API). Embed no LA Journey exige plano **Licensing** (~US$ 100/mês, 200 users). PUT de MusicXML/GP na API precisa permissão especial. Teacher (US$ 20/100 alunos) tem Data API mas não embed comercial. Doc: https://www.soundslice.com/help/data-api/
 
 ---
 

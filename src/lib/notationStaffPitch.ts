@@ -121,6 +121,29 @@ export function pickStaffBox(
   })
 }
 
+/** Sem nenhuma cifra medida, a faixa cai meia pauta acima da 1ª linha. */
+export const CHORD_ROW_RATIO = 0.55
+
+/**
+ * Altura em que a cifra é gravada. Prefere a fileira medida das cifras já
+ * escritas (o campo tem de nascer alinhado com elas, não num offset chutado) e
+ * só cai no palpite quando a pauta ainda não tem nenhuma.
+ */
+export function chordRowY(rows: number[], staffTop: number, staffHeight: number): number {
+  let best = staffTop - staffHeight * CHORD_ROW_RATIO
+  let bestGap = Infinity
+  for (const y of rows) {
+    const gap = staffTop - y
+    // Acima da pauta e dentro do sistema: fileira de outra linha não serve.
+    if (gap <= 0 || gap > staffHeight * 1.6) continue
+    if (gap < bestGap) {
+      bestGap = gap
+      best = y
+    }
+  }
+  return best
+}
+
 export function ledgerLineYs(noteY: number, staffTop: number, staffBottom: number): number[] {
   const span = staffBottom - staffTop
   const lineGap = span === 0 ? 2 : span / 4
