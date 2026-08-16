@@ -81,6 +81,11 @@ test('r repeats last note', () => {
   assert(resolveNotationKeyAction({ key: 'r' }, noSelection)?.type === 'repeat-last-note', 'repeat')
 })
 
+test('k focuses the cifra field', () => {
+  assert(resolveNotationKeyAction({ key: 'k' }, withSelection)?.type === 'focus-cifra', 'k')
+  assert(resolveNotationKeyAction({ key: 'K' }, noSelection)?.type === 'focus-cifra', 'K')
+})
+
 test('delete and backspace', () => {
   const del = resolveNotationKeyAction({ key: 'Delete' }, withSelection)
   assert(del?.type === 'delete-beat' && del.backspace === false, 'delete')

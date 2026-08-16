@@ -43,7 +43,7 @@ import { youtubeEmbedSrc } from '@/lib/youtubeEmbed'
 import { Tablature } from '@/components/music/Tablature'
 import { AlphaTexInlineRenderer, getLegacyNotationAlphaTexDisplayTex, hasExplicitAlphaTexTimeSignature } from '@/components/music/AlphaTexInlineRenderer'
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
-import { NotationAlphaTabSurface } from '@/components/music/NotationAlphaTabSurface'
+import { NotationAlphaTabSurface, type NotationCifraBinding } from '@/components/music/NotationAlphaTabSurface'
 import { NotationDurationStrip, type NotationDurationStripProps } from '@/components/music/NotationDurationStrip'
 import { NotationPreviewCompat } from '@/components/music/NotationPreviewCompat'
 import { COVER_FONT_OPTIONS } from '@/lib/googleFonts'
@@ -187,6 +187,7 @@ interface MaterialPreviewProps {
     onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
     inputRef?: React.Ref<HTMLInputElement>
     durationStrip: NotationDurationStripProps
+    cifra?: NotationCifraBinding | null
   } | null
 }
 
@@ -853,6 +854,7 @@ function BlockNotation({ block, notationInteractive, onLegacyNotationStavePointe
             onReplaceNote={notationInteractive.onReplaceNote}
             onKeyDown={notationInteractive.onKeyDown}
             inputRef={notationInteractive.inputRef}
+            cifra={notationInteractive.cifra ?? null}
           />
         </>
       ) : emptyState ? (

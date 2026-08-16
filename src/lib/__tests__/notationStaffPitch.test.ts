@@ -1,4 +1,4 @@
-import { emptyStaffAlphaTex, ledgerLineYs, modelPitchFromStaffY, pickStaffBox, pitchFromStaffY, staffBoxesFromLineYs, staffYFromPitch } from '../notationStaffPitch.ts'
+import { chordRowY, emptyStaffAlphaTex, ledgerLineYs, modelPitchFromStaffY, pickStaffBox, pitchFromStaffY, staffBoxesFromLineYs, staffYFromPitch } from '../notationStaffPitch.ts'
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message)
@@ -111,6 +111,25 @@ test('model pitch is one octave below the written staff pitch', () => {
   const a4Y = TOP + 5 * half
   assert(pitchFromStaffY(a4Y, TOP, BOTTOM, 'treble') === 'A/4', 'written A4')
   assert(modelPitchFromStaffY(a4Y, TOP, BOTTOM, 'treble') === 'A/3', 'AlphaTab displays A/3 as A4')
+})
+
+test('chordRowY aligns the input with the chords already engraved', () => {
+  const staffTop = 100
+  const staffHeight = 40
+  assert(chordRowY([82], staffTop, staffHeight) === 82, 'uses the measured row')
+})
+
+test('chordRowY ignores rows below the staff or from another system', () => {
+  const staffTop = 200
+  const staffHeight = 40
+  // 120 é a fileira do sistema de cima; 210 está dentro da pauta.
+  assert(chordRowY([120, 210], staffTop, staffHeight) === 200 - 40 * 0.55, 'falls back')
+})
+
+test('chordRowY without measured chords sits above the first staff line', () => {
+  const y = chordRowY([], 100, 40)
+  assert(y < 100, 'above the staff')
+  assert(100 - y > 18, 'clear of the note head')
 })
 
 test('staffBoxesFromLineYs splits two systems', () => {

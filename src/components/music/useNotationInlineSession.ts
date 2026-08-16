@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import * as Tone from 'tone'
 import type { NotationDurationStripProps } from './NotationDurationStrip'
+import type { NotationCifraBinding } from './NotationAlphaTabSurface'
 import { playNotePreview, setNotePreviewMuted, soundingPitch } from '@/lib/notationInlineAudio'
 
 const PREVIEW_SOUND_KEY = 'la.notation.previewSound'
@@ -14,6 +15,7 @@ function readPreviewSoundEnabled(): boolean {
 }
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
 import { resolveNotationKeyAction } from '@/lib/notationInlineKeyboard'
+import { normalizeCifraSymbol } from '@/lib/notationCifra'
 import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
 import {
   applySessionToRenderData,
@@ -87,6 +89,7 @@ export function useNotationInlineSession({
   enabled: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const cifraInputRef = useRef<HTMLInputElement>(null)
   const playbackRef = useRef<Playback | null>(null)
   const lastPitchRef = useRef<string | null>(null)
   const [beats, setBeats] = useState<InlineBeat[]>([])
@@ -109,6 +112,8 @@ export function useNotationInlineSession({
   const [hydratedBlockId, setHydratedBlockId] = useState<string | null>(null)
   const [noteInputArmed, setNoteInputArmed] = useState(true)
   const [previewSound, setPreviewSound] = useState(readPreviewSoundEnabled)
+  const [cifraEditing, setCifraEditing] = useState(false)
+  const cifraEditingRef = useRef(false)
 
   const focusInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -116,6 +121,18 @@ export function useNotationInlineSession({
       inputRef.current?.select()
     })
   }, [])
+
+  const startCifraEditing = useCallback(() => {
+    if (selectedBeatIdx < 0) return
+    cifraEditingRef.current = true
+    setCifraEditing(true)
+  }, [selectedBeatIdx])
+
+  const stopCifraEditing = useCallback(() => {
+    cifraEditingRef.current = false
+    setCifraEditing(false)
+    focusInput()
+  }, [focusInput])
 
   useEffect(() => {
     playbackRef.current?.stop()
@@ -148,6 +165,8 @@ export function useNotationInlineSession({
     setDoubleDotted(false)
     lastPitchRef.current = null
     setNoteInputArmed(true)
+    cifraEditingRef.current = false
+    setCifraEditing(false)
     setHydratedBlockId(block.id)
   }, [block?.id, enabled])
 
@@ -193,6 +212,10 @@ export function useNotationInlineSession({
   }, [previewSound])
 
   const onSelectBeat = useCallback((idx: number) => {
+    if (idx < 0) {
+      cifraEditingRef.current = false
+      setCifraEditing(false)
+    }
     setSelectedBeatIdx(idx)
     const beat = beats[idx]
     if (beat?.staff) setActiveStaff(beat.staff)
@@ -200,6 +223,7 @@ export function useNotationInlineSession({
       lastPitchRef.current = beat.pitches[0].pitch
       void playNotePreview(beat.pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     }
+    if (cifraEditingRef.current) return
     focusInput()
   }, [beats, focusInput])
 
@@ -239,7 +263,10 @@ export function useNotationInlineSession({
   const updateBeat = useCallback((idx: number, update: Partial<InlineBeat>) => {
     if (idx < 0 || idx >= beats.length) return
     const nextBeats = [...beats]
-    nextBeats[idx] = { ...nextBeats[idx], ...update }
+    const nextUpdate = 'cifra' in update
+      ? { ...update, cifra: normalizeCifraSymbol(update.cifra) }
+      : update
+    nextBeats[idx] = { ...nextBeats[idx], ...nextUpdate }
     commit(nextBeats)
   }, [beats, commit])
 
@@ -255,6 +282,20 @@ export function useNotationInlineSession({
     }
     focusInput()
   }, [beats, focusInput, grandStaff, selectedBeatIdx, timeSignature])
+
+  const navigateCifraBeat = useCallback((delta: -1 | 1) => {
+    if (beats.length === 0) return
+    const next = selectedBeatIdx < 0
+      ? (delta > 0 ? 0 : beats.length - 1)
+      : Math.min(beats.length - 1, Math.max(0, selectedBeatIdx + delta))
+    setSelectedBeatIdx(next)
+    const beat = beats[next]
+    if (beat?.staff) setActiveStaff(beat.staff)
+    if (beat && !beat.isRest && beat.pitches[0]) {
+      lastPitchRef.current = beat.pitches[0].pitch
+      void playNotePreview(beat.pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
+    }
+  }, [beats, selectedBeatIdx])
 
   const navigateSelection = useCallback((delta: -1 | 1) => {
     if (beats.length === 0) return
@@ -401,10 +442,15 @@ export function useNotationInlineSession({
         setNoteInputArmed(false)
         break
       case 'release-selection':
+        cifraEditingRef.current = false
+        setCifraEditing(false)
         setSelectedBeatIdx(-1)
         break
+      case 'focus-cifra':
+        startCifraEditing()
+        break
     }
-  }, [addChordNote, insertNoteByName, isPlaying, navigateBar, navigateSelection, noteInputArmed, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
+  }, [addChordNote, insertNoteByName, isPlaying, navigateBar, navigateSelection, noteInputArmed, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, startCifraEditing, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
 
   const patchRenderData = useMemo(() => {
     if (!enabled || !block || hydratedBlockId !== block.id) return null
@@ -419,12 +465,38 @@ export function useNotationInlineSession({
     noteInputArmed,
     canDelete: beats.length > 0,
     previewSound,
-    onDuration: duration => { setNoteInputArmed(true); setCurrentDuration(duration); focusInput() },
-    onAccidental: accidental => { setCurrentAccidental(accidental); focusInput() },
+    onDuration: duration => {
+      stopCifraEditing()
+      setNoteInputArmed(true)
+      setCurrentDuration(duration)
+    },
+    onAccidental: accidental => {
+      stopCifraEditing()
+      setCurrentAccidental(accidental)
+    },
     onToggleDot: toggleDot,
     onInsertRest,
     onDelete: () => onDeleteBeat(selectedBeatIdx),
     onTogglePreviewSound: () => setPreviewSound(value => !value),
+    cifraEnabled: selectedBeatIdx >= 0,
+    cifraOpen: cifraEditing,
+    onOpenCifra: startCifraEditing,
+  }
+
+  const cifraValue = selectedBeatIdx >= 0 ? (beats[selectedBeatIdx]?.cifra ?? '') : ''
+
+  const cifraOverlay: NotationCifraBinding = {
+    value: cifraValue,
+    editing: cifraEditing,
+    inputRef: cifraInputRef,
+    onCommit: (value: string) => {
+      if (selectedBeatIdx < 0) return
+      if ((beats[selectedBeatIdx]?.cifra ?? '') === (normalizeCifraSymbol(value) ?? '')) return
+      updateBeat(selectedBeatIdx, { cifra: value })
+    },
+    onStartEditing: startCifraEditing,
+    onStopEditing: stopCifraEditing,
+    onNavigateBeat: navigateCifraBeat,
   }
 
   return {
@@ -433,7 +505,7 @@ export function useNotationInlineSession({
     currentTuplet, clef, keySignature, timeSignature, bpm, grandStaff, barsPerSystem, activeStaff, isPlaying,
     canUndo: historyIdx > 0, canRedo: historyIdx < history.length - 1,
     isHydrated: hydratedBlockId === block?.id,
-    patchRenderData, tex, indexMap, durationStrip, noteInputArmed, armNoteInput,
+    patchRenderData, tex, indexMap, durationStrip, cifraOverlay, cifraValue, noteInputArmed, armNoteInput,
     onSelectBeat, onInsertNote, onReplaceNote, onDeleteBeat, onInsertRest,
     onDuration: setCurrentDuration, onAccidental: setCurrentAccidental, onToggleDot: toggleDot,
     onTimeSignature: setTimeSignature, onClef: setClef, onKeySignature: setKeySignature,
@@ -458,8 +530,14 @@ export function useNotationInlineSession({
       void playNotePreview(pitches.map(({ pitch, accidental }) => soundingPitch(pitch, accidental)))
     },
     onUndo: undo, onRedo: redo, onTogglePlay: isPlaying ? stopPlayback : startPlayback,
+    onOpenCifra: startCifraEditing,
+    cifraEditing,
     disarmNoteInput: () => { setNoteInputArmed(false); focusInput() },
-    clearSelection: () => setSelectedBeatIdx(-1),
+    clearSelection: () => {
+      cifraEditingRef.current = false
+      setCifraEditing(false)
+      setSelectedBeatIdx(-1)
+    },
     handleKeyDown,
   }
 }

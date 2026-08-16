@@ -2082,6 +2082,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (!notationSessionActive) return
     const onEsc = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return
+      // Escrevendo cifra, Esc e V pertencem ao campo da pauta, não à sessão.
+      if (inlineNotationSession.cifraEditing) return
       const leaveWrite = event.key === 'Escape' || event.key === 'v' || event.key === 'V'
       if (!leaveWrite) return
       if (event.key === 'v' || event.key === 'V') {
@@ -2107,6 +2109,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return () => window.removeEventListener('keydown', onEsc, true)
   }, [
     notationSessionActive,
+    inlineNotationSession.cifraEditing,
     inlineNotationSession.noteInputArmed,
     inlineNotationSession.selectedBeatIdx,
     inlineNotationSession.disarmNoteInput,
@@ -7878,7 +7881,7 @@ ${pagesHtml}
                           ? `${selectedTextId ?? ''}|${editingTextId ?? ''}|${selectedOverlayId ?? ''}`
                           : notationInlineEnabled && block.block_type === 'notation' && block.id === selectedBlockId
                             // Sem isso o memo do bloco engole seleção/tex da sessão: clique não destaca e nota digitada só aparece após o debounce.
-                            ? `nota:${inlineNotationSession.tex}|${inlineNotationSession.selectedBeatIdx}|${inlineNotationSession.noteInputArmed}|${inlineNotationSession.clef}|${inlineNotationSession.keySignature}|${inlineNotationSession.timeSignature}|${inlineNotationSession.barsPerSystem}|${inlineNotationSession.grandStaff}`
+                            ? `nota:${inlineNotationSession.tex}|${inlineNotationSession.selectedBeatIdx}|${inlineNotationSession.noteInputArmed}|${inlineNotationSession.clef}|${inlineNotationSession.keySignature}|${inlineNotationSession.timeSignature}|${inlineNotationSession.barsPerSystem}|${inlineNotationSession.grandStaff}|cifra:${inlineNotationSession.cifraEditing}|${inlineNotationSession.cifraValue}`
                             : undefined}
                         blockRef={el => {
                           canvasRefs.current[block.id] = el
@@ -7961,6 +7964,7 @@ ${pagesHtml}
                                     onKeyDown: inlineNotationSession.handleKeyDown,
                                     inputRef: inlineNotationSession.inputRef,
                                     durationStrip: inlineNotationSession.durationStrip,
+                                    cifra: inlineNotationSession.cifraOverlay,
                                   }
                                 : null
                             }
@@ -8383,6 +8387,10 @@ ${pagesHtml}
                 barsPerSystem={inlineNotationSession.barsPerSystem}
                 onBarsPerSystem={inlineNotationSession.onBarsPerSystem}
                 layout="column"
+                cifraEnabled={inlineNotationSession.selectedBeatIdx >= 0}
+                cifraOpen={inlineNotationSession.cifraEditing}
+                cifraValue={inlineNotationSession.cifraValue}
+                onOpenCifra={inlineNotationSession.onOpenCifra}
               />
               <Separator />
               <div className="prop-section">

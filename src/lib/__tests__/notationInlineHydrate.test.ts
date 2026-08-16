@@ -107,3 +107,21 @@ test('render_data notation_data wins over stale content', () => {
   assert.equal(session.beats[0].pitches[0].pitch, 'E/5')
   assert.equal(session.clef, 'bass')
 })
+
+test('notation_data beats preserve cifra on the beat', () => {
+  const session = hydrateNotationFromBlock({
+    render_data: {
+      notation_data: {
+        beats: [
+          { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false, cifra: 'D' },
+          { pitches: [{ pitch: 'G/4' }], duration: 'q', isRest: false, cifra: 'G' },
+        ],
+        clef: 'treble',
+      },
+    },
+    content: {},
+    staveIndex: null,
+  })
+  assert.equal(session.beats[0].cifra, 'D')
+  assert.equal(session.beats[1].cifra, 'G')
+})
