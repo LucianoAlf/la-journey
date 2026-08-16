@@ -435,9 +435,10 @@ const cabecalhoTex = beatsToAlphaTexNotes([
   makeBeat({ pitches: [makeNote('B/4')], slash: true, repeatClose: 7, jump: 'fine' }),
 ]).tex
 
-assertContains(cabecalhoTex, '\\section "A" "Violao, piano e vocal"', 'secao com marcador e texto')
+assertContains(cabecalhoTex, '\\section "A" ""', 'secao emite marcador em caixa, sem o texto longo')
+assertNotContains(cabecalhoTex, 'Violao', 'texto longo da secao nao vai para a pauta')
 assertContains(cabecalhoTex, '\\ts 4 4 \\section', 'metrica antes da secao')
-assertContains(cabecalhoTex, '\\section "A" "Violao, piano e vocal" \\ro', 'secao antes do repeat open')
+assertContains(cabecalhoTex, '\\section "A" "" \\ro', 'secao antes do repeat open')
 assertContains(cabecalhoTex, '\\ts 2 4', 'metrica muda no compasso do meio')
 assertContains(cabecalhoTex, '\\rc 7', 'repeat close com numero de voltas')
 assertContains(cabecalhoTex, '\\jump fine', 'Fine no ultimo compasso')

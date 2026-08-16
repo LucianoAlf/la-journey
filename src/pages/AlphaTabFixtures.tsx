@@ -32,7 +32,7 @@ function fixtureToMaterialBlock(fixture: typeof notationFixtures[number]): Mater
 const slashProbes: { name: string; alvo: string; tex: string }[] = [
   {
     name: 'Slash 1 — barras neutras, cifra e seção',
-    alvo: 'Quatro barras no meio da pauta e cifra acima. Conhecido: o texto da seção cai na mesma faixa da cifra e cobre o acorde do 1º tempo.',
+    alvo: 'Quatro barras no meio da pauta e cifra acima. Seção só com [A] em caixa — o texto longo cobre o D se for pra pauta.',
     tex: [
       '\\track',
       '\\staff{score}',
@@ -40,7 +40,7 @@ const slashProbes: { name: string; alvo: string; tex: string }[] = [
       '\\ks Dmajor',
       '\\ts 4 4',
       '.',
-      '\\section "A" "Violao, piano e vocal" :4 b3{slashed ch "D"} b3{slashed} b3{slashed} b3{slashed} |',
+      '\\section "A" "" :4 b3{slashed ch "D"} b3{slashed} b3{slashed} b3{slashed} |',
       ':4 b3{slashed ch "G"} b3{slashed} b3{slashed} b3{slashed} |',
     ].join('\n'),
   },

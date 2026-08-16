@@ -297,7 +297,10 @@ function barHeaderTex(bar: Beat[], activeTimeSignature: string | null): { tex: s
     timeSignature = first.timeSignature
   }
   if (first.sectionStart) {
-    parts.push(`\\section "${first.sectionStart.marker}" "${first.sectionStart.text}"`)
+    // O texto longo da seção cai na faixa da cifra e cobre o 1º acorde.
+    // Na pauta sai só o marcador em caixa ([A]); o texto continua no modelo
+    // para o Drawer e para o título do bloco.
+    parts.push(`\\section "${first.sectionStart.marker}" ""`)
   }
   if (first.repeatOpen) parts.push('\\ro')
   if (first.simile) parts.push(`\\simile ${SIMILE_MAP[first.simile]}`)
