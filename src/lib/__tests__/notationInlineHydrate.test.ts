@@ -125,3 +125,23 @@ test('notation_data beats preserve cifra on the beat', () => {
   assert.equal(session.beats[0].cifra, 'D')
   assert.equal(session.beats[1].cifra, 'G')
 })
+
+test('notation_data beats preserve slash and do not turn empty slash into a rest', () => {
+  const session = hydrateNotationFromBlock({
+    render_data: {
+      notation_data: {
+        beats: [
+          { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, cifra: 'D' },
+          { pitches: [], duration: 'q', slash: true },
+        ],
+        clef: 'treble',
+      },
+    },
+    content: {},
+    staveIndex: null,
+  })
+  assert.equal(session.beats[0].slash, true)
+  assert.equal(session.beats[0].cifra, 'D')
+  assert.equal(session.beats[1].slash, true)
+  assert.equal(session.beats[1].isRest, false)
+})

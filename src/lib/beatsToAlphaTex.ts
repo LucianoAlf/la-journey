@@ -48,6 +48,8 @@ export interface Beat {
   articulations?: string[]
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
   notehead?: 'normal' | 'x'
+  /** Beat gravado como barra rítmica (barra de tempo em vez de cabeça de nota). */
+  slash?: boolean
   barAfter?: boolean
   pedagogical_separator?: boolean
   stemDirection?: 'up' | 'down'
@@ -245,6 +247,10 @@ export interface AlphaTexNotesResult {
   indexMap: number[]
 }
 
+// Linha do meio da clave de Sol. Beat slashed precisa de nota: o AlphaTab posiciona
+// a barra lendo beat.notes[0]. O professor não escolhe altura de barra rítmica.
+const SLASH_NEUTRAL_PITCH: PitchData = { pitch: 'B/4', accidental: null }
+
 // ─── Converter array de beats em notas AlphaTex ───
 
 function beatsToAlphaTexNotes(
@@ -288,13 +294,15 @@ function beatsToAlphaTexNotes(
     }
 
     // Nota ou pausa
+    const pitches = beat.slash && !beat.isRest && beat.pitches.length === 0
+      ? [SLASH_NEUTRAL_PITCH]
+      : beat.pitches
     if (beat.isRest) {
       noteParts.push('r')
-    } else if (beat.pitches.length === 1) {
-      noteParts.push(pitchToAlphaTex(beat.pitches[0], octaveOffset))
-    } else if (beat.pitches.length > 1) {
-      // Acorde
-      const chord = beat.pitches.map(p => pitchToAlphaTex(p, octaveOffset)).join(' ')
+    } else if (pitches.length === 1) {
+      noteParts.push(pitchToAlphaTex(pitches[0], octaveOffset))
+    } else if (pitches.length > 1) {
+      const chord = pitches.map(p => pitchToAlphaTex(p, octaveOffset)).join(' ')
       noteParts.push(`(${chord})`)
     }
 
@@ -307,6 +315,9 @@ function beatsToAlphaTexNotes(
 
     // Tie
     if (beat.tie) effects.push('-')
+
+    // Barra rítmica
+    if (beat.slash) effects.push('slashed')
 
     // Articulações — sintaxe AlphaTab validada
     if (beat.articulations) {

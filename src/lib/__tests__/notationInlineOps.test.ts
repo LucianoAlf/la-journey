@@ -176,6 +176,22 @@ test('sessionToAlphaTex marks the tie on the destination beat', () => {
   )
 })
 
+test('sessionToAlphaTex emits slashed on slash beats', () => {
+  const { tex } = sessionToAlphaTex({
+    beats: [
+      { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, cifra: 'D' },
+      { pitches: [], duration: 'q', isRest: false, slash: true },
+    ],
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: 'free',
+    bpm: 120,
+    grandStaff: false,
+  })
+  assert.ok(tex.includes('b3{slashed ch "D"}'), `slash e cifra na mesma chave, veio: ${tex}`)
+  assert.ok(tex.includes('b3{slashed}'), `slash sem pitch cai em b3, veio: ${tex}`)
+})
+
 test('replaceNote keeps cifra; insertNote does not copy it', () => {
   const withCifra: InlineBeat = { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false, cifra: 'D' }
   const replaced = replaceNote({ beats: [withCifra], atIdx: 0, pitch: 'F/4', accidental: null })

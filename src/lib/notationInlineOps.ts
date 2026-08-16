@@ -197,6 +197,7 @@ export function sessionToAlphaTex(input: {
     articulations: beat.articulations,
     tuplet: beat.tuplet,
     cifra: normalizeCifraSymbol(beat.cifra),
+    slash: beat.slash,
     annotation: null,
     lyric: null,
     staff: beat.staff,

@@ -121,7 +121,7 @@ Isso importa para as tarefas seguintes: `{slashed}` vai conviver com outros efei
 - Modify: `src/lib/notationInlineOps.ts` (`sessionToAlphaTex`)
 - Test: `src/lib/__tests__/beatsToAlphaTex.test.ts`
 
-- [ ] **Passo 1: escrever os testes que falham**
+- [x] **Passo 1: escrever os testes que falham**
 
 Adicione em `src/lib/__tests__/beatsToAlphaTex.test.ts`:
 
@@ -149,12 +149,12 @@ const slashCifraTex = beatsToAlphaTexNotes([
 assertContains(slashCifraTex, 'b3{slashed ch "D"}', 'slash e cifra saem na mesma chave')
 ```
 
-- [ ] **Passo 2: rodar e confirmar que falha**
+- [x] **Passo 2: rodar e confirmar que falha**
 
 Run: `npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts`
 Esperado: erro de tipo em `slash` e falha nas asserções de `{slashed}`.
 
-- [ ] **Passo 3: campo no tipo `Beat` e altura neutra**
+- [x] **Passo 3: campo no tipo `Beat` e altura neutra**
 
 Em `src/lib/beatsToAlphaTex.ts`, adicione ao `interface Beat`, junto de `notehead`:
 
@@ -171,7 +171,7 @@ E acima de `beatsToAlphaTexNotes`, a altura neutra:
 const SLASH_NEUTRAL_PITCH: PitchData = { pitch: 'B/4', accidental: null }
 ```
 
-- [ ] **Passo 4: emitir na função de notas**
+- [x] **Passo 4: emitir na função de notas**
 
 Em `beatsToAlphaTexNotes`, no bloco "Nota ou pausa", garanta a altura neutra antes de escolher o que emitir:
 
@@ -197,12 +197,12 @@ E no bloco de efeitos, **depois** do ponto e da ligadura e **antes** da cifra, p
     if (beat.slash) effects.push('slashed')
 ```
 
-- [ ] **Passo 5: rodar e confirmar que passa**
+- [x] **Passo 5: rodar e confirmar que passa**
 
 Run: `npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts`
 Esperado: todas as asserções novas passam e as antigas seguem passando.
 
-- [ ] **Passo 6: levar o campo até a sessão**
+- [x] **Passo 6: levar o campo até a sessão**
 
 Em `src/lib/notationInlineHydrate.ts`, adicione ao `interface InlineBeat`:
 
@@ -222,7 +222,7 @@ Em `src/lib/notationInlineOps.ts`, no `map` de `sessionToAlphaTex`:
     slash: beat.slash,
 ```
 
-- [ ] **Passo 7: tipos e commit**
+- [x] **Passo 7: tipos e commit**
 
 Run: `npm run lint`
 Esperado: nenhum erro novo (erros pré-existentes em `notationBeatHit.test.ts`, `notationInlineOps.test.ts` e `practiceAudio.test.ts` já estavam lá).

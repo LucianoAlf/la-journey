@@ -404,6 +404,26 @@ assert(
   'Acorde ligado conta como um beat so na releitura',
 )
 
+console.log('\n--- Barra ritmica (slash) ---')
+const slashTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, dotted: true }),
+]).tex
+assertContains(slashTex, '{slashed}', 'beat com slash emite {slashed}')
+assertContains(slashTex, '{d slashed}', 'ponto e slash saem na mesma chave')
+assertContains(slashTex, 'b3', 'B/4 do modelo sai como b3 no tex')
+
+const semSlashTex = beatsToAlphaTexNotes([makeBeat({ pitches: [makeNote('B/4')] })]).tex
+assertNotContains(semSlashTex, 'slashed', 'beat sem slash nao emite {slashed}')
+
+const slashSemAlturaTex = beatsToAlphaTexNotes([makeBeat({ slash: true, isRest: false })]).tex
+assertContains(slashSemAlturaTex, 'b3{slashed}', 'slash sem pitch cai na altura neutra b3')
+
+const slashCifraTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, cifra: 'D' }),
+]).tex
+assertContains(slashCifraTex, 'b3{slashed ch "D"}', 'slash e cifra saem na mesma chave')
+
 // ─── Resultado ───
 
 console.log(`\n${'─'.repeat(40)}`)

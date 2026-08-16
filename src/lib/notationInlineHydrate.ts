@@ -22,6 +22,7 @@ export interface InlineBeat {
   tieToNext?: boolean
   articulations?: string[]
   cifra?: string | null
+  slash?: boolean
 }
 
 export interface HydratedNotationSession {
@@ -46,7 +47,7 @@ function normalizeBeats(rawBeats: any[]): InlineBeat[] {
     return [{
       pitches,
       duration,
-      isRest: Boolean(raw.isRest) || pitches.length === 0,
+      isRest: Boolean(raw.isRest) || (pitches.length === 0 && !raw.slash),
       dotted: Boolean(raw.dotted),
       doubleDotted: Boolean(raw.doubleDotted),
       barAfter: Boolean(raw.barAfter),
@@ -56,6 +57,7 @@ function normalizeBeats(rawBeats: any[]): InlineBeat[] {
       tieToNext: Boolean(raw.tieToNext ?? raw.tie),
       articulations: Array.isArray(raw.articulations) ? raw.articulations : undefined,
       cifra: normalizeCifraSymbol(raw.cifra),
+      slash: Boolean(raw.slash),
     }]
   })
 }
