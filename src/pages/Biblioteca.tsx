@@ -38,7 +38,7 @@ import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
-import { beatsToAlphaTex, isTieDestination } from "@/lib/beatsToAlphaTex";
+import { beatsToAlphaTex, toTieDestinations } from "@/lib/beatsToAlphaTex";
 import { normalizeTimeSignature } from "@/lib/timeSignature";
 import { ExerciseTab } from "@/components/content/ExerciseTab";
 import { useExerciseCounts } from "@/hooks/useExerciseLibrary";
@@ -87,7 +87,8 @@ function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
 
   // O gerador espera `tie` no beat que RECEBE a ligadura, e os beats já salvos guardam
   // na origem. A conversão só vale depois do filter, com os índices finais.
-  return normalized.map((beat, index) => ({ ...beat, tie: isTieDestination(normalized, index) }))
+  const destinations = toTieDestinations(normalized)
+  return normalized.map((beat, index) => ({ ...beat, tie: destinations[index] }))
 }
 
 /** Traduz family do banco para texto em pt-BR */

@@ -1,6 +1,6 @@
 import {
   beatsToAlphaTexWithMap,
-  isTieDestination,
+  toTieDestinations,
   type Beat as AlphaTexBeat,
   type BeatsToAlphaTexResult,
 } from './beatsToAlphaTex.ts'
@@ -186,10 +186,11 @@ export function sessionToAlphaTex(input: {
 }): BeatsToAlphaTexResult {
   const computedBarlines = computeBarlines(input.beats, input.timeSignature, input.grandStaff)
   const barlineSlots = new Set(computedBarlines.map(index => input.beats[index]?.timeSlot ?? index))
+  const tieDestinations = toTieDestinations(input.beats)
   const beats: AlphaTexBeat[] = input.beats.map((beat, index) => ({
     pitches: beat.pitches.map(pitch => ({ pitch: pitch.pitch, accidental: pitch.accidental ?? null })),
     duration: beat.duration,
-    tie: isTieDestination(input.beats, index),
+    tie: tieDestinations[index],
     isRest: beat.isRest,
     dotted: beat.dotted ?? false,
     doubleDotted: beat.doubleDotted,

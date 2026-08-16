@@ -100,9 +100,16 @@ git add src/lib/notationInlineOps.ts src/lib/__tests__/notationInlineOps.test.ts
 git commit -m "fix: emit tie marker on the destination beat"
 ```
 
-**Concluída — e cresceu além do previsto.** A revisão achou o mesmo mapeamento errado em mais três produtores de AlphaTex, então a conversão virou um helper único (`isTieDestination` em `src/lib/beatsToAlphaTex.ts`) e foi aplicada em `notationInlineOps.ts`, `NotationEditorV2.tsx`, `Biblioteca.tsx` e `notationCompat.ts`. O parser de colagem do `Editor.tsx` foi corrigido junto: além de ler o `{-}` como origem, ele lia os efeitos por substring, e por isso perdia qualquer chave com mais de um efeito (`{d -}`, `{- ch "D"}`) — agora usa `parseAlphaTexEffects`, que quebra a chave em átomos.
+**Concluída — e cresceu além do previsto.** A revisão achou o mesmo mapeamento errado em mais três produtores de AlphaTex, então a conversão virou um helper único (`toTieDestinations` / `isTieDestination` em `src/lib/beatsToAlphaTex.ts`) e foi aplicada em `notationInlineOps.ts`, `NotationEditorV2.tsx`, `Biblioteca.tsx` e `notationCompat.ts`. O parser de colagem do `Editor.tsx` foi corrigido junto: além de ler o `{-}` como origem, ele lia os efeitos por substring, e por isso perdia qualquer chave com mais de um efeito (`{d -}`, `{- ch "D"}`) — agora usa `parseAlphaTexEffects`, que quebra a chave em átomos.
 
-Isso importa para as tarefas seguintes: `{slashed}` vai conviver com outros efeitos na mesma chave, e essa leitura já está pronta. Não mexemos em ligadura entre pautas na grande pauta (segue como estava, com o risco anotado no helper).
+Isso importa para as tarefas seguintes: `{slashed}` vai conviver com outros efeitos na mesma chave, e essa leitura já está pronta. Ligadura na grande pauta agrupa por `staff` — não vaza mais para a outra pauta.
+
+**Dívida anotada (não neste corte):**
+- (a) parser de colagem do `Editor.tsx:5845-5889` não é testável de fora; o teste em `beatsToAlphaTex.test.ts` mantém um tokenizador próprio
+- (b) `parseAlphaTexEffects` (`beatsToAlphaTex.ts:147`) é leitor morando no módulo de escrita, cujo docstring diz que só escreve
+- (c) `notationDataInference.ts:145` é um segundo parser com a semântica antiga e leitura por substring, hoje só usado pelo próprio teste
+- (d) `parseAlphaTexEffects` quebra argumento entre aspas com espaço (`{ch "D min"}`), inofensivo para os efeitos que usamos mas não declarado no docstring
+- (e) `notationCompat.test.ts` aborta na primeira falha, diferente do estilo que acumula e resume
 
 ---
 

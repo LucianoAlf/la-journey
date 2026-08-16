@@ -9,7 +9,7 @@ import { NotationDurationStrip } from './NotationDurationStrip'
 import { NotationToolsSidebar } from './NotationToolsSidebar'
 import { readNotationSurface } from '@/lib/notationSurface'
 import type { Beat as AlphaTexBeat } from '@/lib/beatsToAlphaTex'
-import { beatsToAlphaTexWithMap, isTieDestination } from '@/lib/beatsToAlphaTex'
+import { beatsToAlphaTexWithMap, toTieDestinations } from '@/lib/beatsToAlphaTex'
 import { TUPLET_OPTIONS } from '@/lib/notationEditorChrome'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -345,10 +345,11 @@ export function NotationEditorV2({
     )
     
     // Converter SvgBeat[] → AlphaTexBeat[] para o conversor
+    const tieDestinations = toTieDestinations(beats)
     const alphaTexBeats: AlphaTexBeat[] = beats.map((b, idx) => ({
       pitches: b.pitches.map(p => ({ pitch: p.pitch, accidental: p.accidental ?? null })),
       duration: b.duration,
-      tie: isTieDestination(beats, idx),
+      tie: tieDestinations[idx],
       isRest: b.isRest,
       dotted: b.dotted ?? false,
       doubleDotted: b.doubleDotted,

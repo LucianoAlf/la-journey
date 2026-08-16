@@ -9,6 +9,7 @@ import {
   pitchToAlphaTex,
   beatsToAlphaTexNotes,
   isTieDestination,
+  toTieDestinations,
   tieToNextFromDestination,
   parseAlphaTexEffects,
 } from '../beatsToAlphaTex'
@@ -292,10 +293,25 @@ assertNotContains(invalidTex, 'undefined', 'Nao emite fragmento invalido com com
 console.log('\n--- Ligadura: origem ↔ destino ---')
 
 const tieModel = [{ tieToNext: true }, { tieToNext: false }, { tieToNext: false }]
-const modelDestinations = tieModel.map((_, index) => isTieDestination(tieModel, index))
+const modelDestinations = toTieDestinations(tieModel)
 assert(
   modelDestinations.join(',') === 'false,true,false',
-  'isTieDestination move a marca da origem para o beat seguinte',
+  'toTieDestinations move a marca da origem para o beat seguinte',
+)
+assert(
+  tieModel.every((_, index) => isTieDestination(tieModel, index) === modelDestinations[index]),
+  'isTieDestination bate com o array de destinos',
+)
+
+// Grande pauta: treble e bass intercalados. Ligadura fica na mesma pauta.
+const interleaved = [
+  { tieToNext: true, staff: 'treble' as const },
+  { tieToNext: false, staff: 'bass' as const },
+  { tieToNext: false, staff: 'treble' as const },
+]
+assert(
+  toTieDestinations(interleaved).join(',') === 'false,false,true',
+  'ligadura da treble cai no proximo treble, nao no bass do meio',
 )
 assert(
   tieModel.map((_, index) => tieToNextFromDestination(modelDestinations, index)).join(',')
@@ -311,8 +327,8 @@ assert(
 
 /** Efeitos de cada beat do tex, na ordem. Tolera acorde: `(c3 e3){-}` e um beat so. */
 function beatEffectsFromTex(tex: string): string[][] {
-  const beatTokens = tex.match(/(?:\([^)]+\)|r|[a-gA-G][#bn]?\d)(?:\{[^}]*\})?/g) ?? []
-  return beatTokens.map(token => parseAlphaTexEffects(token.match(/\{[^}]*\}$/)?.[0]))
+  const beatTokens = tex.match(/(?:\([^)]+\)|r|[a-gA-G][#bn]?\d)(?:\{[^}]+\})?/g) ?? []
+  return beatTokens.map(token => parseAlphaTexEffects(token.match(/\{[^}]+\}$/)?.[0]))
 }
 
 function tieToNextFromTex(tex: string): boolean[] {

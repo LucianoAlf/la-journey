@@ -51,3 +51,23 @@ test('preview without ties emits no tie marker', () => {
   ])
   assert.equal(tex.includes('{-}'), false, `sem ligadura no modelo, sem {-} no tex, veio: ${tex}`)
 })
+
+test('preview keeps a treble tie on treble when bass is interleaved', () => {
+  const item = notationDataToPreviewItem({
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: '4/4',
+    grandStaff: true,
+    beats: [
+      { pitches: [{ pitch: 'C/4', accidental: null }], duration: 'q', isRest: false, tieToNext: true, staff: 'treble', timeSlot: 0 },
+      { pitches: [{ pitch: 'C/3', accidental: null }], duration: 'q', isRest: false, staff: 'bass', timeSlot: 0 },
+      { pitches: [{ pitch: 'C/4', accidental: null }], duration: 'q', isRest: false, staff: 'treble', timeSlot: 1 },
+      { pitches: [{ pitch: 'C/3', accidental: null }], duration: 'q', isRest: false, staff: 'bass', timeSlot: 1 },
+    ],
+  })
+  assert.ok(item, 'preview de grande pauta deve sair')
+  const [trebleStaff, bassStaff] = item.tex.split('\\staff').slice(1)
+  assert.equal((item.tex.match(/\{-\}/g) ?? []).length, 1, `uma ligadura so, veio: ${item.tex}`)
+  assert.ok(trebleStaff.includes('{-}'), `ligadura na clave de Sol, veio: ${item.tex}`)
+  assert.equal(bassStaff.includes('{-}'), false, `bass sem ligadura orfa, veio: ${item.tex}`)
+})

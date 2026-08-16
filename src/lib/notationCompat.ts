@@ -1,4 +1,4 @@
-import { beatsToAlphaTex, isTieDestination, type Beat as AlphaTexBeat, type PitchData } from '@/lib/beatsToAlphaTex'
+import { beatsToAlphaTex, toTieDestinations, type Beat as AlphaTexBeat, type PitchData } from '@/lib/beatsToAlphaTex'
 
 type LegacyNoteLike = string | { key: string; duration?: string; label?: string }
 
@@ -108,13 +108,14 @@ export function notationDataToPreviewItem(
 
   // Beats gravados guardam a ligadura na origem (`tieToNext`, ou o alias legado `tie`);
   // o gerador espera a marca no beat que recebe.
-  const sourceBeats = notationData.beats.map((beat: any) => ({
+  const sourceBeats = notationData.beats.map((beat: { tieToNext?: boolean; tie?: boolean }) => ({
     ...beat,
     tieToNext: Boolean(beat?.tieToNext ?? beat?.tie),
   }))
-  const beats = sourceBeats.map((beat: any, index: number) => ({
+  const destinations = toTieDestinations(sourceBeats)
+  const beats = sourceBeats.map((beat, index: number) => ({
     ...beat,
-    tie: isTieDestination(sourceBeats, index),
+    tie: destinations[index],
   }))
 
   const tex = beatsToAlphaTex(beats, {

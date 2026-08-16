@@ -96,13 +96,40 @@ export interface TieSourceBeat {
 }
 
 /**
- * O beat em `index` recebe a ligadura iniciada no beat anterior? (= `{-}` do AlphaTex)
+ * O beat em `index` recebe a ligadura iniciada no beat anterior da **mesma pauta**?
+ * (= `{-}` do AlphaTex)
  *
- * Grande pauta: as duas pautas vêm intercaladas no mesmo array, então `beats[index - 1]`
- * pode ser da outra pauta — ligadura entre pautas não é tratada aqui.
+ * Grande pauta: treble e bass vêm intercalados no mesmo array. Ligadura é intra-pauta,
+ * então o destino é o próximo beat da mesma `staff` — não `beats[index - 1]`.
+ * Beat sem `staff` (pauta única) agrupa junto, e o comportamento fica o de sempre.
  */
 export function isTieDestination(beats: readonly TieSourceBeat[], index: number): boolean {
-  return Boolean(beats[index - 1]?.tieToNext)
+  return Boolean(toTieDestinations(beats)[index])
+}
+
+/**
+ * Marcas de destino na ordem do array: `true` onde o gerador deve emitir `{-}`.
+ * Um passe só, agrupado por pauta — os produtores usam isto em vez de mapear
+ * `isTieDestination` beat a beat.
+ */
+export function toTieDestinations(beats: readonly TieSourceBeat[]): boolean[] {
+  const destinations = beats.map(() => false)
+  const indicesByStaff = new Map<string, number[]>()
+
+  for (let index = 0; index < beats.length; index++) {
+    const staff = (beats[index] as { staff?: string }).staff ?? ''
+    const indices = indicesByStaff.get(staff)
+    if (indices) indices.push(index)
+    else indicesByStaff.set(staff, [index])
+  }
+
+  for (const indices of indicesByStaff.values()) {
+    for (let i = 1; i < indices.length; i++) {
+      destinations[indices[i]] = Boolean(beats[indices[i - 1]]?.tieToNext)
+    }
+  }
+
+  return destinations
 }
 
 /** Inverso de `isTieDestination`: `{-}` no beat `index + 1` significa `tieToNext` no beat `index`. */
