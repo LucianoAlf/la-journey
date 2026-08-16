@@ -68,10 +68,23 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
 function chordFromUnknown(item: unknown): RecognizedChord | null {
   if (!item || typeof item !== 'object') return null
-  const raw = item as { start?: unknown; end?: unknown; chord?: unknown; class?: unknown; name?: unknown }
-  const chord = typeof raw.chord === 'string' ? raw.chord : typeof raw.name === 'string' ? raw.name : ''
+  const raw = item as Record<string, unknown>
+  const chord = firstString(
+    raw.chord_simple_pop,
+    raw.chord_basic_pop,
+    raw.chord_complex_pop,
+    raw.chord,
+    raw.name,
+  )
   const start = asNumber(raw.start)
   const end = asNumber(raw.end)
   if (!chord || start == null || end == null) return null
@@ -86,7 +99,7 @@ export function parseMusicaiChords(result: unknown): RecognizedChord[] {
   if (Array.isArray(result)) bags.push(result)
   if (typeof result === 'object') {
     const obj = result as Record<string, unknown>
-    for (const key of ['chords', 'data', 'result', 'items']) {
+    for (const key of ['chords', 'chords map', 'chordsMap', 'data', 'result', 'items']) {
       if (obj[key] != null) bags.push(obj[key])
     }
   }
@@ -119,6 +132,12 @@ export function preferSimplePopChords(chords: RecognizedChord[]): RecognizedChor
   return [...bySlot.values()]
     .sort((a, b) => a.start - b.start)
     .map(({ start, end, chord }) => ({ start, end, chord }))
+}
+
+export function parseMusicaiKey(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null
+  const obj = result as Record<string, unknown>
+  return firstString(obj['root key'], obj.rootKey, obj.key, obj.recognized_key) || null
 }
 
 export function parseMusicaiBpm(result: unknown): number | null {

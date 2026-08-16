@@ -5,6 +5,7 @@ import {
   json,
   parseMusicaiBpm,
   parseMusicaiChords,
+  parseMusicaiKey,
   preferSimplePopChords,
   requireUser,
   serviceClient,
@@ -41,7 +42,24 @@ async function createJob(apiKey: string, workflow: string, inputUrl: string, nam
     }),
   })
   const payload = await response.json().catch(() => null) as MusicaiJob | null
+  if (!response.ok) {
+    console.error("[musicai-transcribe] create_job", workflow, response.status, payload)
+  }
   return { ok: response.ok, status: response.status, payload }
+}
+
+async function uploadToMusicai(apiKey: string, bytes: Uint8Array, mimeType: string) {
+  const signed = await fetch(`${MUSIC_AI_URL}/upload`, { headers: { Authorization: apiKey } })
+  if (!signed.ok) return null
+  const urls = await signed.json().catch(() => null) as { uploadUrl?: string; downloadUrl?: string } | null
+  if (!urls?.uploadUrl || !urls.downloadUrl) return null
+  const put = await fetch(urls.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": mimeType || "audio/mpeg" },
+    body: bytes,
+  })
+  if (!put.ok) return null
+  return urls.downloadUrl
 }
 
 async function getJob(apiKey: string, id: string) {
@@ -62,6 +80,16 @@ async function pollJob(apiKey: string, id: string): Promise<MusicaiJob> {
   return { status: "FAILED", error: { message: "Timeout no reconhecimento" } }
 }
 
+function looksLikeChords(parsed: unknown[]): boolean {
+  return parsed.some((item) =>
+    item && typeof item === "object" && (
+      "chord_simple_pop" in item ||
+      "chord" in item ||
+      ("start" in item && "end" in item)
+    )
+  )
+}
+
 async function fetchResultJson(result: Record<string, unknown> | null | undefined): Promise<unknown> {
   if (!result) return null
   const merged: Record<string, unknown> = { ...result }
@@ -73,8 +101,12 @@ async function fetchResultJson(result: Record<string, unknown> | null | undefine
       const text = await response.text()
       try {
         const parsed = JSON.parse(text)
-        if (parsed && typeof parsed === "object") Object.assign(merged, parsed)
-        else merged.downloaded = parsed
+        if (Array.isArray(parsed)) {
+          if (looksLikeChords(parsed)) merged.chords = parsed
+          else merged.beats = parsed
+        } else if (parsed && typeof parsed === "object") {
+          Object.assign(merged, parsed)
+        }
       } catch {
         // binary / non-json output — ignore
       }
@@ -139,9 +171,25 @@ Deno.serve(async (req) => {
       }).eq("id", practiceAudioId)
     }
 
-    if (!audioUrl) return json({ error: "Informe practiceAudioId ou audioUrl" }, 400)
+    if (!audioUrl && !row?.audio_path) return json({ error: "Informe practiceAudioId ou audioUrl" }, 400)
 
-    const chordsJob = await createJob(apiKey, "music-ai/generate-chords", audioUrl, `chords-${practiceAudioId ?? "url"}`)
+    let inputUrl = audioUrl
+    if (row?.audio_path) {
+      const { data: file } = await supabase.storage.from("audio-tracks").download(row.audio_path as string)
+      if (file) {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const uploaded = await uploadToMusicai(apiKey, bytes, file.type || "audio/mpeg")
+        if (uploaded) inputUrl = uploaded
+      }
+    }
+    if (!inputUrl) return json({ error: "Não foi possível preparar o áudio para o Music.AI" }, 502)
+
+    const chordsJob = await createJob(
+      apiKey,
+      "music-ai/chords-and-beat-mapping",
+      inputUrl,
+      `chords-${practiceAudioId ?? "url"}`,
+    )
     if (!chordsJob.ok || !chordsJob.payload?.id) {
       if (practiceAudioId) {
         await supabase.from("practice_audio").update({
@@ -149,13 +197,14 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         }).eq("id", practiceAudioId)
       }
-      return json({ error: "Music.AI recusou o job de cifra.", status: "transcribe_failed" }, 502)
+      const detail = (chordsJob.payload as { message?: string } | null)?.message
+      return json({
+        error: detail || "Music.AI recusou o job de cifra.",
+        status: "transcribe_failed",
+      }, 502)
     }
 
-    const beatsJob = await createJob(apiKey, "music-ai/generate-beats", audioUrl, `beats-${practiceAudioId ?? "url"}`)
-
     const chordsDone = await pollJob(apiKey, chordsJob.payload.id)
-    const beatsDone = beatsJob.payload?.id ? await pollJob(apiKey, beatsJob.payload.id) : null
 
     if (chordsDone.status !== "SUCCEEDED") {
       if (practiceAudioId) {
@@ -177,12 +226,13 @@ Deno.serve(async (req) => {
     }
 
     const chordsJson = await fetchResultJson(chordsDone.result)
-    const beatsJson = beatsDone?.status === "SUCCEEDED" ? await fetchResultJson(beatsDone.result) : null
     const chords = preferSimplePopChords(parseMusicaiChords(chordsJson))
-    const bpm = parseMusicaiBpm(beatsJson) ?? parseMusicaiBpm(chordsJson)
-    const recognizedKey = pickKey(chords, typeof row?.recipe === "object" && row?.recipe
-      ? (row.recipe as { key?: string }).key
-      : null)
+    const bpm = parseMusicaiBpm(chordsJson) ?? parseMusicaiBpm(chordsDone.result)
+    const recognizedKey = parseMusicaiKey(chordsJson)
+      ?? parseMusicaiKey(chordsDone.result)
+      ?? pickKey(chords, typeof row?.recipe === "object" && row?.recipe
+        ? (row.recipe as { key?: string }).key
+        : null)
 
     if (practiceAudioId) {
       const ok = applyPracticeAudioEvent(

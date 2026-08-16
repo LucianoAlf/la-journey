@@ -8,6 +8,7 @@ import {
   extractLyriaAudio,
   parseMusicaiBpm,
   parseMusicaiChords,
+  parseMusicaiKey,
   preferSimplePopChords,
 } from '../practiceAudio'
 
@@ -74,11 +75,39 @@ test('parses Music.AI chord array and prefers Simple Pop', () => {
   ])
 })
 
+test('parses Music.AI chords-and-beat-mapping fields', () => {
+  const raw = [
+    {
+      start: 0.34,
+      end: 1.14,
+      chord_simple_pop: 'D#',
+      chord_complex_jazz: 'D#maj7',
+    },
+    {
+      start: 2.72,
+      end: 4.28,
+      chord_simple_pop: 'Cm',
+      chord_complex_jazz: 'C-',
+    },
+  ]
+  assert.deepEqual(parseMusicaiChords(raw), [
+    { start: 0.34, end: 1.14, chord: 'D#' },
+    { start: 2.72, end: 4.28, chord: 'Cm' },
+  ])
+})
+
 test('parses BPM from beats or tempo fields', () => {
   assert.equal(parseMusicaiBpm({ bpm: 96 }), 96)
+  assert.equal(parseMusicaiBpm({ bpm: '76' }), 76)
   assert.equal(parseMusicaiBpm({ tempo: { bpm: 110.4 } }), 110)
   assert.equal(parseMusicaiBpm({ beats: { bpm: 80 } }), 80)
   assert.equal(parseMusicaiBpm({}), null)
+})
+
+test('parses root key from Music.AI job result', () => {
+  assert.equal(parseMusicaiKey({ 'root key': 'Eb major' }), 'Eb major')
+  assert.equal(parseMusicaiKey({ key: 'C' }), 'C')
+  assert.equal(parseMusicaiKey({}), null)
 })
 
 test('cifra line collapses consecutive repeats', () => {

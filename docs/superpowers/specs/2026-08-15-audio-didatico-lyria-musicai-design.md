@@ -16,7 +16,7 @@ Lyria 3.5 (Flow Music / assinatura Gemini) não tem model ID de API. No app usam
 |---|---|
 | Motores | Lyria 3 gera. Music.AI cifra + BPM. Não são intercambiáveis |
 | API Lyria | `lyria-3-clip-preview` (30s, US$ 0,04) e `lyria-3-pro-preview` (até ~3 min, US$ 0,08). Interactions API, paid. Chave só na Edge |
-| API Music.AI | Job assíncrono `POST /v1/job`. Corte 1: `music-ai/generate-chords` + beats. Chave só na Edge |
+| API Music.AI | Job assíncrono `POST /v1/job`. Corte 1: `music-ai/chords-and-beat-mapping` (o slug `generate-chords` da doc/SDK **não existe** nesta conta). Chave só na Edge |
 | Cifra na ficha | Opção B: mostra **pedido** e **reconhecido**. Reconhecido é editável. Não é MIDI travado |
 | Escopo A/B/D | Vocalize, base, exercício. Música completa “de catálogo” (C) fora |
 | Edges | Duas desde o corte 1: `lyria-generate` e `musicai-transcribe`. Upload do corte 2 reusa a segunda |

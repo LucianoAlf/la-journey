@@ -113,7 +113,7 @@ function getIntegrations(): IntegrationDef[] {
       id: 'musicai',
       name: 'Music.AI (Moises B2B)',
       description: 'Cifra e BPM em cima do áudio gerado. Chave só na Edge (MUSIC_AI_API_KEY), nunca VITE_.',
-      model: 'generate-chords + beats',
+      model: 'chords-and-beat-mapping',
       icon: '🎵',
       gradient: 'from-[#111827] to-[#374151]',
       envKey: 'MUSIC_AI_API_KEY',
