@@ -10,6 +10,7 @@ import {
   beatsToAlphaTexNotes,
   isTieDestination,
   tieToNextFromDestination,
+  parseAlphaTexEffects,
 } from '../beatsToAlphaTex'
 import type { Beat, BeatsToAlphaTexOptions, PitchData } from '../beatsToAlphaTex'
 
@@ -302,27 +303,89 @@ assert(
   'ida e volta entre os dois helpers recupera o tieToNext original',
 )
 
-// `tie` legado (gravado antes de tieToNext) tambem e semantica de origem
-assert(isTieDestination([{ tie: true }, {}], 1), 'alias legado tie liga para o beat seguinte')
-assert(!isTieDestination([{ tie: true }, {}], 0), 'alias legado nao marca o proprio beat')
+// ─── Leitura de volta ───
+// O parser de colagem mora dentro do Editor.tsx e nao e importavel, entao nada aqui
+// o chama. O que estes casos cobrem e a leitura de efeitos (parseAlphaTexEffects, a
+// MESMA funcao que o parser usa) sobre o AlphaTex que o gerador realmente emitiu.
+// A tokenizacao de beats do Editor.tsx segue sem cobertura.
 
-// Round-trip contra o gerador de verdade: sincope = seminima pontuada ligada a colcheia
+/** Efeitos de cada beat do tex, na ordem. Tolera acorde: `(c3 e3){-}` e um beat so. */
+function beatEffectsFromTex(tex: string): string[][] {
+  const beatTokens = tex.match(/(?:\([^)]+\)|r|[a-gA-G][#bn]?\d)(?:\{[^}]*\})?/g) ?? []
+  return beatTokens.map(token => parseAlphaTexEffects(token.match(/\{[^}]*\}$/)?.[0]))
+}
+
+function tieToNextFromTex(tex: string): boolean[] {
+  const destinations = beatEffectsFromTex(tex).map(effects => effects.includes('-'))
+  return destinations.map((_, index) => tieToNextFromDestination(destinations, index))
+}
+
+// Sincope da musica-alvo: seminima pontuada ligada a uma colcheia.
 const syncopeModel = [{ tieToNext: true }, { tieToNext: false }]
-const syncopeBeats: Beat[] = [
+const syncopeTex = beatsToAlphaTexNotes([
   makeBeat({ pitches: [makeNote('C/4')], dotted: true, tie: isTieDestination(syncopeModel, 0) }),
   makeBeat({ pitches: [makeNote('C/4')], duration: '8', tie: isTieDestination(syncopeModel, 1) }),
-]
-const syncopeTex = beatsToAlphaTexNotes(syncopeBeats).tex
-// O parser de colagem le o {-} beat a beat; aqui reproduzimos so essa leitura.
-const emittedDestinations = syncopeTex
-  .split(/\s+/)
-  .filter(token => !token.startsWith(':'))
-  .map(token => token.includes('{-}'))
-assert(emittedDestinations.join(',') === 'false,true', 'AlphaTex leva a marca no beat destino')
+]).tex
 assert(
-  emittedDestinations.map((_, index) => tieToNextFromDestination(emittedDestinations, index)).join(',')
-    === syncopeModel.map(beat => beat.tieToNext).join(','),
-  'colar o AlphaTex de volta devolve tieToNext no beat de origem',
+  beatEffectsFromTex(syncopeTex).map(effects => effects.includes('-')).join(',') === 'false,true',
+  'AlphaTex leva a marca no beat destino',
+)
+assert(
+  tieToNextFromTex(syncopeTex).join(',') === syncopeModel.map(beat => beat.tieToNext).join(','),
+  'reler o AlphaTex gerado devolve tieToNext no beat de origem',
+)
+
+// Casos que a leitura por substring errava: o destino tem mais de um efeito na chave.
+const dottedDestinationTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4')], duration: '8' }),
+  makeBeat({ pitches: [makeNote('C/4')], dotted: true, tie: true }),
+]).tex
+assertContains(dottedDestinationTex, '{d -}', 'Destino pontuado junta os dois efeitos numa chave so')
+assert(
+  tieToNextFromTex(dottedDestinationTex).join(',') === 'true,false',
+  'Destino pontuado ({d -}) nao perde a ligadura na releitura',
+)
+
+const cifraDestinationTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('D/4')], duration: '8' }),
+  makeBeat({ pitches: [makeNote('D/4')], tie: true, cifra: 'D' }),
+]).tex
+assert(
+  tieToNextFromTex(cifraDestinationTex).join(',') === 'true,false',
+  'Destino com cifra ({- ch "D"}) nao perde a ligadura na releitura',
+)
+assert(
+  !beatEffectsFromTex(cifraDestinationTex)[1].includes('d'),
+  'O "D" da cifra nao e confundido com ponto de aumento',
+)
+
+const dottedCifraDestinationTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('D/4')], duration: '8' }),
+  makeBeat({ pitches: [makeNote('D/4')], dotted: true, tie: true, cifra: 'D' }),
+]).tex
+const dottedCifraEffects = beatEffectsFromTex(dottedCifraDestinationTex)[1]
+assert(
+  dottedCifraEffects.includes('d') && dottedCifraEffects.includes('-') && dottedCifraEffects.includes('ch'),
+  'Chave com tres efeitos ({d - ch "D"}) e lida atomo a atomo',
+)
+
+// `dd` e um atomo proprio: ponto duplo nao pode virar ponto simples na releitura.
+const doubleDottedEffects = beatEffectsFromTex(
+  beatsToAlphaTexNotes([makeBeat({ pitches: [makeNote('C/4')], doubleDotted: true })]).tex,
+)[0]
+assert(
+  doubleDottedEffects.includes('dd') && !doubleDottedEffects.includes('d'),
+  'Ponto duplo e o atomo dd, nunca d',
+)
+
+// Acorde: a extracao por beat nao pode quebrar no espaco de dentro dos parenteses.
+const chordTieTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4'), makeNote('E/4')] }),
+  makeBeat({ pitches: [makeNote('C/4'), makeNote('E/4')], tie: true }),
+]).tex
+assert(
+  tieToNextFromTex(chordTieTex).join(',') === 'true,false',
+  'Acorde ligado conta como um beat so na releitura',
 )
 
 // ─── Resultado ───

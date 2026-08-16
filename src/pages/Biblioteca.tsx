@@ -49,7 +49,8 @@ function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
       if (!rawBeat || typeof rawBeat !== 'object') return null
 
       if (Array.isArray(rawBeat.pitches)) {
-        return rawBeat
+        // Colapsa o alias legado aqui para o resto do fluxo só conhecer `tieToNext`.
+        return { ...rawBeat, tieToNext: Boolean(rawBeat.tieToNext ?? rawBeat.tie) }
       }
 
       const notes = Array.isArray(rawBeat.notes) ? rawBeat.notes : []

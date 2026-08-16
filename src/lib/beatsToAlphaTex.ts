@@ -84,31 +84,47 @@ export interface Beat {
 // Por isso o índice anda um na conversão — e é por isso que ela mora aqui,
 // num lugar só, em vez de ser reescrita em cada gerador.
 //
-// `tie` legado (dado gravado antes de `tieToNext`) é semântica de origem
-// também: o editor VexFlow antigo marcava o penúltimo beat ao ligar.
+// `tie` legado (dado gravado antes de `tieToNext`) é semântica de origem também:
+// o editor VexFlow antigo marcava o penúltimo beat ao ligar. Quem lê dado gravado
+// colapsa `tieToNext ?? tie` na entrada — aqui só entra `tieToNext`, de propósito:
+// `TieSourceBeat` sem o campo `tie` faz o compilador recusar um `Beat[]` já
+// convertido (destino), que de outro jeito passaria e deslocaria a ligadura de novo.
 
 export interface TieSourceBeat {
   /** Marca o beat que INICIA a ligadura para o beat seguinte. */
   tieToNext?: boolean
-  /** Alias legado de `tieToNext` em dados gravados antigos. */
-  tie?: boolean
 }
 
 /**
  * O beat em `index` recebe a ligadura iniciada no beat anterior? (= `{-}` do AlphaTex)
  *
- * Passe beats do **modelo**. `Beat` também tem `tie`, mas com a semântica oposta
- * (destino), e é estruturalmente compatível com `TieSourceBeat` — então passar beats
- * já convertidos compila e desloca a ligadura outra vez, sem erro nenhum.
+ * Grande pauta: as duas pautas vêm intercaladas no mesmo array, então `beats[index - 1]`
+ * pode ser da outra pauta — ligadura entre pautas não é tratada aqui.
  */
 export function isTieDestination(beats: readonly TieSourceBeat[], index: number): boolean {
-  const previous = beats[index - 1]
-  return Boolean(previous?.tieToNext ?? previous?.tie)
+  return Boolean(beats[index - 1]?.tieToNext)
 }
 
 /** Inverso de `isTieDestination`: `{-}` no beat `index + 1` significa `tieToNext` no beat `index`. */
 export function tieToNextFromDestination(tieDestinations: readonly boolean[], index: number): boolean {
   return Boolean(tieDestinations[index + 1])
+}
+
+/**
+ * Quebra a chave de efeitos de um beat em átomos: `{d - ch "D"}` → `['d', '-', 'ch', '"D"']`.
+ *
+ * Ler por substring erra assim que a chave tem mais de um efeito: `'{d -}'.includes('{-}')`
+ * é falso, e `'{dd}'.includes('{d}')` é falso também. Com átomos, a comparação é por
+ * igualdade — `effects.includes('d')` não confunde `d` com `dd` nem com o `"D"` da cifra.
+ */
+export function parseAlphaTexEffects(modifierToken: string | null | undefined): string[] {
+  if (!modifierToken) return []
+  return modifierToken
+    .replace(/^\{/, '')
+    .replace(/\}$/, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
 }
 
 // ─── Opções de conversão ───

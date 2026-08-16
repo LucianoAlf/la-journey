@@ -45,7 +45,7 @@ Bug anterior ao corte: `sessionToAlphaTex` põe `tie` no beat que **sai** da lig
 - Modify: `src/lib/notationInlineOps.ts:188-205`
 - Test: `src/lib/__tests__/notationInlineOps.test.ts`
 
-- [ ] **Passo 1: escrever o teste que falha**
+- [x] **Passo 1: escrever o teste que falha**
 
 Adicione ao fim de `src/lib/__tests__/notationInlineOps.test.ts`, seguindo o estilo de asserção manual que já existe no arquivo:
 
@@ -70,12 +70,12 @@ Adicione ao fim de `src/lib/__tests__/notationInlineOps.test.ts`, seguindo o est
 }
 ```
 
-- [ ] **Passo 2: rodar e confirmar que falha**
+- [x] **Passo 2: rodar e confirmar que falha**
 
 Run: `npx tsx src/lib/__tests__/notationInlineOps.test.ts`
 Esperado: falha em "ligadura sai no beat destino" — hoje o `{-}` sai no primeiro token.
 
-- [ ] **Passo 3: corrigir o mapeamento**
+- [x] **Passo 3: corrigir o mapeamento**
 
 Em `src/lib/notationInlineOps.ts`, na montagem de `beats` dentro de `sessionToAlphaTex`, troque a linha `tie: beat.tieToNext ?? false` por uma leitura do beat anterior:
 
@@ -88,17 +88,21 @@ Em `src/lib/notationInlineOps.ts`, na montagem de `beats` dentro de `sessionToAl
     isRest: beat.isRest,
 ```
 
-- [ ] **Passo 4: rodar e confirmar que passa**
+- [x] **Passo 4: rodar e confirmar que passa**
 
 Run: `npx tsx src/lib/__tests__/notationInlineOps.test.ts`
 Esperado: todas as asserções passam, sem quebrar as existentes.
 
-- [ ] **Passo 5: commit**
+- [x] **Passo 5: commit**
 
 ```bash
 git add src/lib/notationInlineOps.ts src/lib/__tests__/notationInlineOps.test.ts
 git commit -m "fix: emit tie marker on the destination beat"
 ```
+
+**Concluída — e cresceu além do previsto.** A revisão achou o mesmo mapeamento errado em mais três produtores de AlphaTex, então a conversão virou um helper único (`isTieDestination` em `src/lib/beatsToAlphaTex.ts`) e foi aplicada em `notationInlineOps.ts`, `NotationEditorV2.tsx`, `Biblioteca.tsx` e `notationCompat.ts`. O parser de colagem do `Editor.tsx` foi corrigido junto: além de ler o `{-}` como origem, ele lia os efeitos por substring, e por isso perdia qualquer chave com mais de um efeito (`{d -}`, `{- ch "D"}`) — agora usa `parseAlphaTexEffects`, que quebra a chave em átomos.
+
+Isso importa para as tarefas seguintes: `{slashed}` vai conviver com outros efeitos na mesma chave, e essa leitura já está pronta. Não mexemos em ligadura entre pautas na grande pauta (segue como estava, com o risco anotado no helper).
 
 ---
 

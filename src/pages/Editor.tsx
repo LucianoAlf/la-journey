@@ -93,7 +93,7 @@ import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
 import { isNotationInlineEnabled } from "@/lib/notationInline";
-import { tieToNextFromDestination } from "@/lib/beatsToAlphaTex";
+import { parseAlphaTexEffects, tieToNextFromDestination } from "@/lib/beatsToAlphaTex";
 import { buildSidebarPageGroups, buildSidebarPagePreviewItems, reorderSidebarBlocks } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
@@ -5869,15 +5869,15 @@ Regras:
             ? []
             : [noteToPitch(noteToken)].filter(Boolean)
 
-        const modifiers = modifierToken ?? ''
+        const effects = parseAlphaTexEffects(modifierToken)
 
-        tieDestinations.push(modifiers.includes('{-}'))
+        tieDestinations.push(effects.includes('-'))
         beats.push({
           pitches: chordTokens,
           duration,
           isRest,
-          dotted: modifiers.includes('{d}') && !modifiers.includes('{dd}'),
-          doubleDotted: modifiers.includes('{dd}'),
+          dotted: effects.includes('d'),
+          doubleDotted: effects.includes('dd'),
           tieToNext: false,
           ...(tokenIndex === entries.length - 1 && measureIndex < measures.length - 1 ? { barAfter: true } : {}),
         })
