@@ -1,7 +1,7 @@
 # Folha deitada — orientação da A4 no editor (corte A)
 
 Data: 2026-08-16  
-Status: spec aprovada no chat (16/08, fim da tarde). Implementação ainda não.  
+Status: implementada, conferir Download no editor (Browserless `/print` + `generate-pdf`).  
 Corte: o professor gira **uma folha de material** entre retrato e deitada. Editor, preview e download saem no mesmo papel. Sem play, sem cursor, sem áudio.
 
 Alvo visual: o papel do vídeo da Escola de Música Rafael Bastos (Ovelha Negra) — A4 deitada, ~4 compassos por sistema. A gravura slash já está em produção; este corte só vira o papel.

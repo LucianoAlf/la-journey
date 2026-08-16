@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — spec da folha deitada  
+Atualizado: 2026-08-16 (noite) — folha deitada no editor  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Folha deitada (corte A, spec abaixo). Depois: player de estudo (corte C).
+**Próximo corte:** player de estudo (corte C).
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Corte atual: **folha deitada** (orientação por material). Player de estudo (C) vem depois — não misturar. Áudio didático continua em `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **no editor local** (`feat/folha-deitada`) — Retrato/Deitada por material. Player de estudo (C) é o próximo; não misturar. Áudio didático continua em `feat/audio-didatico`.
 - Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
 - Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
 - Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
@@ -31,6 +31,13 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Co
 ---
 
 ## Feito
+
+### Folha deitada — orientação A4 por material (16/08, noite)
+
+Toggle Retrato/Deitada em Configuração da Página. `page_config.orientation`, default retrato. Folha 1123×794, pauta mais larga, Por linha na mão. PrintView + `generate-pdf` (Browserless `landscape`) + jsPDF do canvas seguem o papel. PDF de repertório intocado. Conferido no editor local (Intervalos Melódicos): 1123×794 e PrintView 1123×794; Baixar PDF de apostila só fecha deitado depois do deploy (Browserless lê produção).
+- Spec: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-folha-deitada.md`
+- Branch: `feat/folha-deitada`
 
 ### Ovelha corte 1 — barras rítmicas na pauta (16/08, tarde)
 
@@ -347,16 +354,15 @@ Edição:
 
 ---
 
-## Radar (ordem combinada em 16/08, tarde)
+## Radar (ordem combinada em 16/08, noite)
 
-1. **Folha deitada (landscape)** — orientação de material + PDF. Hoje A4 é retrato fixo (`794×1123` em `src/lib/a4Preview.ts`, `.a4-page` no CSS, três serviços de PDF em portrait). Cuidado: o `layout: 'horizontal'` que já usamos é `LayoutMode.Horizontal` do AlphaTab (sistemas em linha contínua), não folha deitada.
-2. Apostila / Download do editor quando **não** é songbook (Browserless `generate-pdf` → `/print/:id`).
-3. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
-4. **Playalong com cursor no compasso** — backing track MP3 (Suno) + `BackingTrackSyncPoint` do AlphaTab (`PlayerMode.EnabledBackingTrack`, `api.updateSyncPoints()`, tag `\sync`). Exige ligar o player, hoje desligado em `src/lib/alphaTabSettings.ts` para os nove propósitos. **Não** calcular playhead por BPM: quebra em métrica mista e em repetição.
-5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
-6. **Áudio didático corte 1 → produção** — código em `feat/audio-didatico`. Smoke no Chrome ainda falta. Não puxar na frente da folha deitada.
-7. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems (sem bateria/baixo/voz) + pitch/tempo. Motor já ligado (`MUSIC_AI_API_KEY`, `musicai-transcribe`). Slugs confirmados nesta conta: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`. Job na nuvem (segundos), não Moises Live. Mixer local depois da 1ª separação.
-8. **Soundslice (fase 3)** — player de partitura + vídeo/MP3 sincronizado (playhead, loop, slowdown). **Não** substitui Music.AI: a API deles não transcreve áudio→cifra/pauta; o “Transcribe” é editor humano + scanner de PDF (OCR de partitura, sem API). Embed no LA Journey exige plano **Licensing** (~US$ 100/mês, 200 users). PUT de MusicXML/GP na API precisa permissão especial. Teacher (US$ 20/100 alunos) tem Data API mas não embed comercial. Doc: https://www.soundslice.com/help/data-api/
+1. Apostila / Download do editor quando **não** é songbook — conferir Baixar PDF deitado **depois do merge** (Browserless `generate-pdf` lê o PrintView de produção).
+2. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
+3. **Playalong com cursor no compasso** — backing track MP3 (Suno) + `BackingTrackSyncPoint` do AlphaTab (`PlayerMode.EnabledBackingTrack`, `api.updateSyncPoints()`, tag `\sync`). Exige ligar o player, hoje desligado em `src/lib/alphaTabSettings.ts` para os nove propósitos. **Não** calcular playhead por BPM: quebra em métrica mista e em repetição.
+4. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+5. **Áudio didático corte 1 → produção** — código em `feat/audio-didatico`. Smoke no Chrome ainda falta.
+6. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems (sem bateria/baixo/voz) + pitch/tempo. Motor já ligado (`MUSIC_AI_API_KEY`, `musicai-transcribe`). Slugs confirmados nesta conta: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`. Job na nuvem (segundos), não Moises Live. Mixer local depois da 1ª separação.
+7. **Soundslice (fase 3)** — player de partitura + vídeo/MP3 sincronizado (playhead, loop, slowdown). **Não** substitui Music.AI: a API deles não transcreve áudio→cifra/pauta; o “Transcribe” é editor humano + scanner de PDF (OCR de partitura, sem API). Embed no LA Journey exige plano **Licensing** (~US$ 100/mês, 200 users). PUT de MusicXML/GP na API precisa permissão especial. Teacher (US$ 20/100 alunos) tem Data API mas não embed comercial. Doc: https://www.soundslice.com/help/data-api/
 
 ---
 
