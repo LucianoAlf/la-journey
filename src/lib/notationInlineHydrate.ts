@@ -1,4 +1,5 @@
 import { editorDurationFromRaw, type EditorBeatDuration } from './notationBeatNormalize.ts'
+import { normalizeCifraSymbol } from './notationCifra.ts'
 import { legacyNotesToBeats } from './notationCompat.ts'
 import { clampBarsPerSystem } from './notationLayout.ts'
 import { getEditorTimeSignature } from './timeSignature.ts'
@@ -20,6 +21,7 @@ export interface InlineBeat {
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
   tieToNext?: boolean
   articulations?: string[]
+  cifra?: string | null
 }
 
 export interface HydratedNotationSession {
@@ -53,6 +55,7 @@ function normalizeBeats(rawBeats: any[]): InlineBeat[] {
       tuplet: raw.tuplet,
       tieToNext: Boolean(raw.tieToNext ?? raw.tie),
       articulations: Array.isArray(raw.articulations) ? raw.articulations : undefined,
+      cifra: normalizeCifraSymbol(raw.cifra),
     }]
   })
 }

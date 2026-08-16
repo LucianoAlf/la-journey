@@ -1,4 +1,4 @@
-import { SpeakerHigh, SpeakerSlash, Trash } from '@phosphor-icons/react'
+import { MusicNotes, SpeakerHigh, SpeakerSlash, Trash } from '@phosphor-icons/react'
 import type { BeatDuration } from './NotationSvgEditor'
 import { DURATION_OPTIONS } from '@/lib/notationEditorChrome'
 
@@ -16,6 +16,9 @@ export interface NotationDurationStripProps {
   onInsertRest: () => void
   onDelete?: () => void
   onTogglePreviewSound?: () => void
+  cifraEnabled?: boolean
+  cifraOpen?: boolean
+  onOpenCifra?: () => void
 }
 
 const BASE_BUTTON = 'inline-flex items-center justify-center h-10 w-10 rounded-md border transition-colors'
@@ -38,10 +41,13 @@ export function NotationDurationStrip({
   previewSound = true,
   onDelete,
   onTogglePreviewSound,
+  cifraEnabled = false,
+  cifraOpen = false,
+  onOpenCifra,
 }: NotationDurationStripProps) {
   return (
     <div
-      className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-2 py-1.5"
+      className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-surface px-2 py-1.5"
       onPointerDown={event => event.stopPropagation()}
     >
       <div className="flex shrink-0 items-center gap-1">
@@ -117,6 +123,25 @@ export function NotationDurationStrip({
           </button>
         )}
       </div>
+
+      {onOpenCifra && (
+        <button
+          type="button"
+          onClick={onOpenCifra}
+          disabled={!cifraEnabled}
+          title={cifraEnabled ? 'Escrever a cifra acima da nota (K)' : 'Selecione uma nota na pauta'}
+          className={`${BASE_BUTTON} w-auto gap-1.5 px-2.5 text-[12px] font-semibold ${
+            !cifraEnabled
+              ? 'cursor-not-allowed border-border/50 text-text3/30'
+              : cifraOpen
+                ? ACTIVE_BUTTON
+                : IDLE_BUTTON
+          }`}
+        >
+          <MusicNotes size={16} />
+          Cifra
+        </button>
+      )}
     </div>
   )
 }

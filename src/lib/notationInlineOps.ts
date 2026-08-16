@@ -5,6 +5,7 @@ import {
 } from './beatsToAlphaTex.ts'
 import type { InlineBeat } from './notationInlineHydrate.ts'
 import { clampBarsPerSystem, computeBarlineIndices } from './notationLayout.ts'
+import { normalizeCifraSymbol } from './notationCifra.ts'
 
 type Staff = 'treble' | 'bass'
 
@@ -193,7 +194,7 @@ export function sessionToAlphaTex(input: {
     doubleDotted: beat.doubleDotted,
     articulations: beat.articulations,
     tuplet: beat.tuplet,
-    cifra: null,
+    cifra: normalizeCifraSymbol(beat.cifra),
     annotation: null,
     lyric: null,
     staff: beat.staff,

@@ -32,6 +32,7 @@ export type NotationKeyAction =
   | { type: 'set-accidental'; accidental: '#' | 'b' | 'n' }
   | { type: 'leave-note-input' }
   | { type: 'release-selection' }
+  | { type: 'focus-cifra' }
 
 const NOTE_LETTERS: readonly string[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
 const DURATIONS: NotationKeyDuration[] = ['64', '32', '16', '8', 'q', 'h', 'w']
@@ -68,6 +69,7 @@ export function resolveNotationKeyAction(
   if (key === '-') return { type: 'set-accidental', accidental: 'b' }
   if (key === '=') return { type: 'set-accidental', accidental: 'n' }
   if (key === 'r' || key === 'R') return { type: 'repeat-last-note' }
+  if (key === 'k' || key === 'K') return { type: 'focus-cifra' }
   if (key === 'v' || key === 'V') {
     return context.noteInputArmed ? { type: 'leave-note-input' } : null
   }

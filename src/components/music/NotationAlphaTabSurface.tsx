@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import * as alphaTabModule from '@coderline/alphatab'
 import { AlphaTabViewer, type AlphaTabViewerHandle } from './AlphaTabViewer'
+import { NotationCifraOverlay } from './NotationCifraOverlay'
 import { A4_CANVAS_NOTATION_WIDTH } from '@/lib/notationPreviewWidth'
 import { NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
 import { isStaffLineRect } from '@/lib/extendAlphaTabStaffLines'
-import { emptyStaffAlphaTex, ledgerLineYs, modelPitchFromStaffY, pickStaffBox, pitchFromStaffY, staffBoxesFromLineYs, staffYFromPitch } from '@/lib/notationStaffPitch'
+import { chordRowY, emptyStaffAlphaTex, ledgerLineYs, modelPitchFromStaffY, pickStaffBox, pitchFromStaffY, staffBoxesFromLineYs, staffYFromPitch } from '@/lib/notationStaffPitch'
 import { applySelectionColor, beatBodyHitIndex, collectScoreBeatsFromLookup, insertAfterFromBeatRects, resolveStaffClick } from '@/lib/notationBeatHit'
 
 const SELECTED_NOTE_COLOR = '#c41e3a'
@@ -39,9 +40,30 @@ export interface NotationAlphaTabSurfaceProps {
   inputRef?: React.Ref<HTMLInputElement>
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onHoverPitch?: (pitch: string | null) => void
+  cifra?: NotationCifraBinding | null
+}
+
+export interface NotationCifraBinding {
+  value: string
+  editing: boolean
+  inputRef: RefObject<HTMLInputElement | null>
+  onCommit: (value: string) => void
+  onStartEditing: () => void
+  onStopEditing: () => void
+  onNavigateBeat?: (delta: -1 | 1) => void
 }
 
 interface BeatRect { x: number; y: number; w: number; h: number }
+
+function texChordNames(tex: string): Set<string> {
+  const names = new Set<string>()
+  for (const match of tex.matchAll(/\{\s*ch\s+"([^"]+)"\s*\}/g)) {
+    const name = match[1].trim()
+    if (name) names.add(name)
+  }
+  return names
+}
+
 interface GhostNote { x: number; y: number; label: string; ledger: number[] }
 interface OverlayOrigin { x: number; y: number }
 
@@ -119,11 +141,13 @@ export function NotationAlphaTabSurface({
   inputRef,
   onKeyDown,
   onHoverPitch,
+  cifra = null,
 }: NotationAlphaTabSurfaceProps) {
   const viewerRef = useRef<AlphaTabViewerHandle>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [staffBoxes, setStaffBoxes] = useState<Array<{ top: number; bottom: number }>>([])
   const [beatRects, setBeatRects] = useState<BeatRect[]>([])
+  const [chordRows, setChordRows] = useState<number[]>([])
   const [ghost, setGhost] = useState<GhostNote | null>(null)
   const [origin, setOrigin] = useState<OverlayOrigin>({ x: 0, y: 0 })
 
@@ -153,37 +177,65 @@ export function NotationAlphaTabSurface({
     return [{ top: bounds.y, bottom: bounds.y + bounds.h }]
   }, [])
 
-  const colorPassRef = useRef(false)
+  const readChordRows = useCallback(() => {
+    const wrapper = wrapperRef.current
+    const container = viewerRef.current?.container
+    if (!wrapper || !container) return []
+    const names = texChordNames(displayTex)
+    if (names.size === 0) return []
+    const host = container.getBoundingClientRect()
+    const { sy } = localScale(wrapper)
+    // O AlphaTab pode quebrar "Cmaj7" em fundamental + sufixo: a fundamental sozinha vale.
+    const isChordText = (label: string) => {
+      if (!label) return false
+      if (names.has(label)) return true
+      if (!/^[A-G][#b]?$/.test(label)) return false
+      return Array.from(names).some(name => name.startsWith(label))
+    }
+    const ys: number[] = []
+    container.querySelectorAll('text').forEach(node => {
+      const label = node.textContent?.trim() ?? ''
+      if (!isChordText(label)) return
+      const box = node.getBoundingClientRect()
+      if (box.height === 0) return
+      ys.push((box.top + box.height / 2 - host.top) / sy + container.scrollTop)
+    })
+    return ys
+  }, [displayTex])
 
-  const paintScoreSelection = useCallback((api: { boundsLookup?: any; render?: () => void } | null, rerender: boolean) => {
+  // Pintar a seleção pede um render extra. Sem esta chave o par
+  // renderFinished + postRenderFinished repintava e re-renderizava em loop —
+  // a pauta piscava sem parar e o foco/overlay não paravam de pé.
+  const paintedKeyRef = useRef('')
+  const paintedApiRef = useRef<unknown>(null)
+
+  const paintScoreSelection = useCallback((api: { boundsLookup?: any; render?: () => void } | null) => {
     if (!api) return
     const alphaIdx = resolveAlphaBeatIndex(selectedBeatIdx, indexMap)
+    const key = `${alphaIdx}|${displayTex}`
+    if (paintedApiRef.current === api && paintedKeyRef.current === key) return
+    paintedApiRef.current = api
+    paintedKeyRef.current = key
     applySelectionColor(collectScoreBeatsFromLookup(api, grandStaffMode), alphaIdx, selectedEngravingStyles())
-    if (rerender && selectedBeatIdx >= 0 && typeof api.render === 'function') {
-      colorPassRef.current = true
-      api.render()
-    }
-  }, [grandStaffMode, indexMap, selectedBeatIdx])
+    if (typeof api.render === 'function') api.render()
+  }, [displayTex, grandStaffMode, indexMap, selectedBeatIdx])
 
   const handleRenderFinished = useCallback(() => {
     const wrapper = wrapperRef.current
     const container = viewerRef.current?.container
     if (wrapper && container) setOrigin(overlayOffset(wrapper, container))
     setStaffBoxes(readStaffBoxes())
+    setChordRows(readChordRows())
     const api = viewerRef.current?.api as { boundsLookup?: any; render?: () => void } | null
     setBeatRects(collectBeatRects(api, grandStaffMode))
-    if (colorPassRef.current) {
-      colorPassRef.current = false
-      return
-    }
-    paintScoreSelection(api, true)
-  }, [grandStaffMode, paintScoreSelection, readStaffBoxes])
+    paintScoreSelection(api)
+  }, [grandStaffMode, paintScoreSelection, readChordRows, readStaffBoxes])
 
   useEffect(() => {
     const api = viewerRef.current?.api as { boundsLookup?: any; render?: () => void } | null
     if (!api?.boundsLookup) return
-    paintScoreSelection(api, true)
-  }, [paintScoreSelection, tex])
+    paintScoreSelection(api)
+  }, [paintScoreSelection])
 
   // getBeatAtPos do alphaTab é guloso: atribui o vão inteiro do compasso ao beat
   // mais próximo, o que mataria a inserção em vãos. Só a coluna do beat conta.
@@ -238,17 +290,31 @@ export function NotationAlphaTabSurface({
     else onSelectBeat(-1)
   }, [beatRects, clef, hitModelBeat, indexMap, noteInputArmed, onHoverPitch, onInsertNote, onSelectBeat, readStaffBoxes, selectedBeatIdx, staffBoxes])
 
+  const cifraBeatRect = (() => {
+    if (!cifra || selectedBeatIdx < 0) return null
+    const alphaIdx = resolveAlphaBeatIndex(selectedBeatIdx, indexMap)
+    return alphaIdx >= 0 ? beatRects[alphaIdx] ?? null : null
+  })()
+
   return (
     <div
       ref={wrapperRef}
       className={variant === 'canvas'
         ? 'relative w-full min-w-0'
-        : 'relative mx-auto overflow-hidden rounded-xl border border-border bg-white'}
+        : 'relative mx-auto overflow-visible rounded-xl border border-border bg-white'}
       style={variant === 'modal' ? { width: A4_CANVAS_NOTATION_WIDTH } : undefined}
-      onPointerMove={(event) => handlePointer(event, false)}
+      onPointerMove={(event) => {
+        if (cifra?.editing) return
+        handlePointer(event, false)
+      }}
       onPointerLeave={() => { onHoverPitch?.(null); setGhost(null) }}
       onPointerDown={(event) => {
         if (variant === 'canvas') event.stopPropagation()
+        // Escrevendo cifra, clicar na pauta fecha o campo e grava — nunca insere nota.
+        if (cifra?.editing) {
+          cifra.onStopEditing()
+          return
+        }
         handlePointer(event, true)
         if (inputRef && 'current' in inputRef) inputRef.current?.focus()
       }}
@@ -289,6 +355,21 @@ export function NotationAlphaTabSurface({
             {ghost.label}
           </span>
         </div>
+      )}
+
+      {cifra && cifraBeatRect && (
+        <NotationCifraOverlay
+          beatIdx={selectedBeatIdx}
+          left={origin.x + cifraBeatRect.x + cifraBeatRect.w / 2}
+          top={origin.y + chordRowY(chordRows, cifraBeatRect.y, cifraBeatRect.h)}
+          value={cifra.value}
+          editing={cifra.editing}
+          inputRef={cifra.inputRef}
+          onCommit={cifra.onCommit}
+          onStartEditing={cifra.onStartEditing}
+          onStopEditing={cifra.onStopEditing}
+          onNavigateBeat={cifra.onNavigateBeat}
+        />
       )}
 
       <input

@@ -529,6 +529,7 @@
 .cover-snap-guide--v{top:0;bottom:0;width:1px;background:rgba(255,45,120,.7);box-shadow:0 0 4px rgba(255,45,120,.4)}
 .cover-snap-guide--h{left:0;right:0;height:1px;background:rgba(255,45,120,.7);box-shadow:0 0 4px rgba(255,45,120,.4)}
 @keyframes snap-fade-in{from{opacity:0}to{opacity:1}}
+.cifra-inline-input{caret-color:var(--accent,#ec4899)}
 .block-cover .cover-logo{z-index:2;pointer-events:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
 .block-cover .cover-logo.cover-draggable{pointer-events:auto;padding:6px;border-radius:8px}
 .block-cover .cover-logo--selected{outline:2px solid #8B5CF6;outline-offset:3px;box-shadow:0 0 0 3px rgba(139,92,246,.14)}

@@ -43,6 +43,10 @@ export interface NotationToolsSidebarProps {
   barsPerSystem: number
   onBarsPerSystem: (value: number) => void
   layout?: 'row' | 'column'
+  cifraEnabled?: boolean
+  cifraOpen?: boolean
+  cifraValue?: string
+  onOpenCifra?: () => void
 }
 
 export function NotationToolsSidebar({
@@ -71,6 +75,10 @@ export function NotationToolsSidebar({
   barsPerSystem,
   onBarsPerSystem,
   layout = 'column',
+  cifraEnabled = false,
+  cifraOpen = false,
+  cifraValue = '',
+  onOpenCifra,
 }: NotationToolsSidebarProps) {
   const isRow = layout === 'row'
   const sectionClassName = isRow ? 'flex flex-wrap items-end gap-2' : 'space-y-3'
@@ -173,6 +181,37 @@ export function NotationToolsSidebar({
             </div>
           </div>
         </div>
+
+        {onOpenCifra && (
+          <div className={isRow ? 'min-w-[190px] space-y-1' : 'space-y-1'}>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text3">
+              Cifra da nota selecionada
+            </span>
+            {cifraEnabled ? (
+              <button
+                type="button"
+                onClick={onOpenCifra}
+                title="Abre o campo de cifra acima da nota, na pauta (K)"
+                className={`flex h-[34px] w-full items-center justify-between gap-2 rounded-lg border px-2.5 text-[12px] transition-colors ${
+                  cifraOpen
+                    ? 'border-accent bg-accent/10 text-accent'
+                    : 'border-border text-text hover:border-accent/50 hover:text-accent'
+                }`}
+              >
+                <span className="truncate font-serif text-[14px] font-bold italic">
+                  {cifraValue || <span className="font-sans text-[12px] font-normal not-italic text-text3">sem cifra</span>}
+                </span>
+                <span className="shrink-0 text-[11px] font-semibold">
+                  {cifraOpen ? 'digite na pauta' : 'Escrever'}
+                </span>
+              </button>
+            ) : (
+              <div className="flex h-[34px] w-full items-center rounded-lg border border-dashed border-border px-2.5 text-[11px] text-text3">
+                Selecione uma nota na pauta
+              </div>
+            )}
+          </div>
+        )}
 
         <div className={toolClassName}>
           <button
