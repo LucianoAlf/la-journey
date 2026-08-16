@@ -1,7 +1,7 @@
 import { AlphaTabViewer } from '@/components/music/AlphaTabViewer'
 import { MaterialPreview, type MaterialBlock } from '@/components/material/MaterialPreview'
 import { notationFixtures, tablatureFixture } from '@/lib/__fixtures__/notationFixtures'
-import { beatsToAlphaTex } from '@/lib/beatsToAlphaTex'
+import { beatsToAlphaTex, type Beat } from '@/lib/beatsToAlphaTex'
 
 function fixtureToAlphaTex(fixture: typeof notationFixtures[number]) {
   return beatsToAlphaTex(fixture.notation_data.beats, {
@@ -77,6 +77,34 @@ const slashProbes: { name: string; alvo: string; tex: string }[] = [
   },
 ]
 
+const B: Beat['pitches'] = [{ pitch: 'B/4', accidental: null }]
+
+function slashBeat(over: Partial<Beat> = {}): Beat {
+  return {
+    pitches: B, duration: 'q', tie: false, isRest: false, dotted: false,
+    cifra: null, annotation: null, lyric: null, slash: true, ...over,
+  }
+}
+
+// Compassos 1 a 8 do vídeo, pelo gerador — não AlphaTex escrito à mão.
+const ovelhaBeats: Beat[] = [
+  slashBeat({ cifra: 'D', sectionStart: { marker: 'A', text: 'Violao, piano e vocal' }, timeSignature: '4/4' }),
+  slashBeat(), slashBeat(), slashBeat({ barAfter: true }),
+  slashBeat({ cifra: 'G' }), slashBeat(), slashBeat(), slashBeat({ barAfter: true }),
+  slashBeat({ cifra: 'D' }), slashBeat(), slashBeat(), slashBeat({ barAfter: true }),
+  slashBeat({ cifra: 'G' }), slashBeat(), slashBeat(), slashBeat({ barAfter: true }),
+  slashBeat({ cifra: 'A', timeSignature: '2/4' }), slashBeat({ barAfter: true }),
+  slashBeat({ cifra: 'A', timeSignature: '4/4' }), slashBeat(), slashBeat(), slashBeat({ barAfter: true }),
+]
+
+const ovelhaTex = beatsToAlphaTex(ovelhaBeats, {
+  clef: 'treble',
+  keySignature: 'D',
+  timeSignature: '4/4',
+  timeSignatureMode: 'metered',
+  includeLyrics: false,
+})
+
 export function AlphaTabFixtures() {
   if (!import.meta.env.DEV) {
     return (
@@ -133,6 +161,31 @@ export function AlphaTabFixtures() {
             </div>
           </section>
         ))}
+
+        <section className="rounded-lg border-2 border-accent/40 bg-card p-4">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-text">Ovelha — compassos 1 a 8 pelo gerador</h2>
+            <p className="text-xs text-text3">
+              Mesma gravura das sondas, mas o tex sai de beatsToAlphaTex. Esperado: barras no meio, D/G/A acima, [A] Violao, 2/4 e volta 4/4.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-md border border-border/70 bg-bg p-3">
+              <AlphaTabViewer
+                tex={ovelhaTex}
+                purpose="editor-notation-score"
+                staveProfile="score"
+                layout="page"
+                scale={1.3}
+                minHeight={200}
+                showTimeSignature
+              />
+            </div>
+            <pre className="max-h-64 overflow-auto rounded-md border border-border/70 bg-bg2 p-3 text-xs text-text2">
+              {ovelhaTex}
+            </pre>
+          </div>
+        </section>
 
         {notationRows.map(({ fixture, tex, block }) => (
           <section key={fixture.name} className="rounded-lg border border-border bg-card p-4">

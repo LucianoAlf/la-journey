@@ -513,7 +513,7 @@ As sondas Slash 1-3 que já existem usam AlphaTex escrito à mão. Agora a mesma
 **Files:**
 - Modify: `src/pages/AlphaTabFixtures.tsx`
 
-- [ ] **Passo 1: montar a fixture a partir de beats**
+- [x] **Passo 1: montar a fixture a partir de beats**
 
 Em `src/pages/AlphaTabFixtures.tsx`, acima do componente, monte os 8 primeiros compassos com o modelo e passe pelo gerador:
 
@@ -549,7 +549,7 @@ const ovelhaTex = beatsToAlphaTex(ovelhaBeats, {
 })
 ```
 
-- [ ] **Passo 2: renderizar ao lado das sondas cruas**
+- [x] **Passo 2: renderizar ao lado das sondas cruas**
 
 Adicione uma seção com `AlphaTabViewer` recebendo `tex={ovelhaTex}`, `purpose="editor-notation-score"`, `staveProfile="score"`, `layout="page"`, `scale={1.3}`, `minHeight={200}`, `showTimeSignature`, mais um `<pre>` com `{ovelhaTex}`, no mesmo formato das sondas Slash 1-3.
 
