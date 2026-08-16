@@ -23,6 +23,12 @@ export interface InlineBeat {
   articulations?: string[]
   cifra?: string | null
   slash?: boolean
+  sectionStart?: { marker: string; text: string }
+  repeatOpen?: boolean
+  repeatClose?: number
+  simile?: 'simple' | 'firstOfDouble' | 'secondOfDouble'
+  timeSignature?: string
+  jump?: 'fine'
 }
 
 export interface HydratedNotationSession {
@@ -58,6 +64,16 @@ function normalizeBeats(rawBeats: any[]): InlineBeat[] {
       articulations: Array.isArray(raw.articulations) ? raw.articulations : undefined,
       cifra: normalizeCifraSymbol(raw.cifra),
       slash: Boolean(raw.slash),
+      sectionStart: raw.sectionStart && typeof raw.sectionStart.marker === 'string'
+        ? { marker: String(raw.sectionStart.marker), text: String(raw.sectionStart.text ?? '') }
+        : undefined,
+      repeatOpen: raw.repeatOpen ? true : undefined,
+      repeatClose: Number.isFinite(raw.repeatClose) && raw.repeatClose > 1 ? Number(raw.repeatClose) : undefined,
+      simile: raw.simile === 'simple' || raw.simile === 'firstOfDouble' || raw.simile === 'secondOfDouble'
+        ? raw.simile
+        : undefined,
+      timeSignature: typeof raw.timeSignature === 'string' ? raw.timeSignature : undefined,
+      jump: raw.jump === 'fine' ? 'fine' : undefined,
     }]
   })
 }

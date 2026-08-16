@@ -244,7 +244,7 @@ Seção, repetição, simile, métrica e jump são fatos **do compasso**, guarda
 - Modify: `src/lib/notationInlineOps.ts` (`sessionToAlphaTex`)
 - Test: `src/lib/__tests__/notationInlineOps.test.ts`
 
-- [ ] **Passo 1: escrever o teste que falha**
+- [x] **Passo 1: escrever o teste que falha**
 
 Adicione em `src/lib/__tests__/notationInlineOps.test.ts`:
 
@@ -287,12 +287,12 @@ Adicione em `src/lib/__tests__/notationInlineOps.test.ts`:
 
 Se `hydrateNotationFromBlock` ainda não estiver importado nesse arquivo, adicione ao import existente de `notationInlineHydrate`.
 
-- [ ] **Passo 2: rodar e confirmar que falha**
+- [x] **Passo 2: rodar e confirmar que falha**
 
 Run: `npx tsx src/lib/__tests__/notationInlineOps.test.ts`
 Esperado: falha nas asserções dos campos novos (chegam `undefined`).
 
-- [ ] **Passo 3: tipos**
+- [x] **Passo 3: tipos**
 
 Em `src/lib/beatsToAlphaTex.ts`, no `interface Beat`, junto de `slash`:
 

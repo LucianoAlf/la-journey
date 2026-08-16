@@ -10,6 +10,7 @@ import {
 } from '../notationInlineOps.ts'
 import { beatsToAlphaTex } from '../beatsToAlphaTex.ts'
 import type { InlineBeat } from '../notationInlineHydrate.ts'
+import { hydrateNotationFromBlock } from '../notationInlineHydrate.ts'
 
 function test(name: string, fn: () => void) {
   try {
@@ -190,6 +191,40 @@ test('sessionToAlphaTex emits slashed on slash beats', () => {
   })
   assert.ok(tex.includes('b3{slashed ch "D"}'), `slash e cifra na mesma chave, veio: ${tex}`)
   assert.ok(tex.includes('b3{slashed}'), `slash sem pitch cai em b3, veio: ${tex}`)
+})
+
+test('hydrateNotationFromBlock preserves bar-level facts on beats', () => {
+  const beats = [
+    {
+      pitches: [{ pitch: 'B/4' }],
+      duration: 'q' as const,
+      isRest: false,
+      slash: true,
+      sectionStart: { marker: 'A', text: 'Violao, piano e vocal' },
+      repeatOpen: true,
+      timeSignature: '2/4',
+      barAfter: true,
+    },
+    {
+      pitches: [{ pitch: 'B/4' }],
+      duration: 'q' as const,
+      isRest: false,
+      slash: true,
+      repeatClose: 7,
+      simile: 'simple' as const,
+      jump: 'fine' as const,
+    },
+  ]
+  const hidratado = hydrateNotationFromBlock({ render_data: { notation_data: { beats } } })
+  const b0 = hidratado.beats[0]
+  const b1 = hidratado.beats[1]
+  assert.equal(b0.slash, true, 'slash sobrevive')
+  assert.equal(b0.sectionStart?.marker, 'A', 'marcador de secao sobrevive')
+  assert.equal(b0.repeatOpen, true, 'repeatOpen sobrevive')
+  assert.equal(b0.timeSignature, '2/4', 'metrica do compasso sobrevive')
+  assert.equal(b1.repeatClose, 7, 'repeatClose sobrevive')
+  assert.equal(b1.simile, 'simple', 'simile sobrevive')
+  assert.equal(b1.jump, 'fine', 'jump sobrevive')
 })
 
 test('replaceNote keeps cifra; insertNote does not copy it', () => {

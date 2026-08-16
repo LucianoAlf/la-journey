@@ -50,6 +50,13 @@ export interface Beat {
   notehead?: 'normal' | 'x'
   /** Beat gravado como barra rítmica (barra de tempo em vez de cabeça de nota). */
   slash?: boolean
+  /** Fatos do compasso que este beat abre (ou fecha, no caso de repeatClose e jump). */
+  sectionStart?: { marker: string; text: string }
+  repeatOpen?: boolean
+  repeatClose?: number
+  simile?: 'simple' | 'firstOfDouble' | 'secondOfDouble'
+  timeSignature?: string
+  jump?: 'fine'
   barAfter?: boolean
   pedagogical_separator?: boolean
   stemDirection?: 'up' | 'down'
