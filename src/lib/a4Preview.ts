@@ -18,6 +18,20 @@ export function jsPdfA4Orientation(orientation: PageOrientation): 'portrait' | '
   return orientation
 }
 
+export function browserlessA4PdfOptions(orientation: PageOrientation): {
+  format: 'A4'
+  landscape: boolean
+  printBackground: boolean
+  margin: { top: string; right: string; bottom: string; left: string }
+} {
+  return {
+    format: 'A4',
+    landscape: orientation === 'landscape',
+    printBackground: true,
+    margin: { top: '0', right: '0', bottom: '0', left: '0' },
+  }
+}
+
 /** Precisa de `sm:max-w-none` — o Dialog padrão aplica `sm:max-w-lg` e ganha do `max-w-4xl`. */
 export const EXERCISE_PREVIEW_DIALOG_CLASS =
   'sm:max-w-none w-auto max-w-[calc(100vw-1.5rem)] max-h-[96vh] overflow-hidden border-0 bg-transparent p-0 shadow-none'

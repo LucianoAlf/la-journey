@@ -684,6 +684,12 @@
   break-after:page;
 }
 .print-page:last-child{page-break-after:auto;break-after:auto}
+.print-page.a4-page--landscape{
+  width:297mm!important;
+  height:210mm!important;
+  min-height:210mm!important;
+  max-height:210mm!important;
+}
 .print-page-header{
   display:flex;
   justify-content:space-between;
@@ -841,10 +847,14 @@
   /* 4. Páginas A4: manter flex column com height fixo para header/footer funcionar */
   .a4-page { width:210mm !important; height:297mm !important; min-height:297mm !important; max-height:297mm !important; overflow:hidden !important; box-shadow:none !important; border-radius:0 !important; display:flex !important; flex-direction:column !important; position:relative !important; page-break-after:always; break-after:page; background:white !important; margin:0 !important; padding:0 0 8mm !important; box-sizing:border-box !important; color:#1a1a1a !important }
   .a4-page:last-child { page-break-after:auto; break-after:auto }
+  .a4-page.a4-page--landscape,
+  .print-page.a4-page--landscape { width:297mm !important; height:210mm !important; min-height:210mm !important; max-height:210mm !important }
   /* Capa: transparent + sem padding — o .block-cover tem o background real e preenche 100% */
   .a4-page--cover { background:transparent !important; height:297mm !important; min-height:297mm !important; page-break-before:auto !important; break-before:auto !important; padding:0 !important; margin:0 !important }
+  .a4-page--landscape.a4-page--cover { height:210mm !important; min-height:210mm !important }
   .a4-page--cover .a4-page-content { padding:0 !important; overflow:hidden !important }
   .a4-page--cover .block-cover { min-height:297mm !important; width:100% !important; height:100% !important }
+  .a4-page--landscape.a4-page--cover .block-cover { min-height:210mm !important }
   .a4-page-header { flex-shrink:0 !important; box-sizing:border-box !important }
   .a4-page-content { padding:12px 40px !important; flex:1 !important; overflow:hidden !important; color:#1a1a1a !important }
   .songbook-cifra [data-cifra="chord"],

@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
 
     const { data: material, error: materialError } = await supabase
       .from('generated_materials')
-      .select('id')
+      .select('id, page_config')
       .eq('id', materialId)
       .maybeSingle()
 
@@ -141,8 +141,10 @@ Deno.serve(async (req) => {
 
     const printUrl = `${appUrl.replace(/\/$/, '')}/print/${materialId}?token=${token}`
     const pdfEndpoint = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}&timeout=60000`
+    const pageConfig = (material.page_config ?? {}) as { orientation?: unknown }
+    const landscape = pageConfig.orientation === 'landscape'
 
-    console.info('[generate-pdf] request browserless pdf', printUrl)
+    console.info('[generate-pdf] request browserless pdf', printUrl, { landscape })
     const pdfResponse = await fetch(pdfEndpoint, {
       method: 'POST',
       headers: {
@@ -161,6 +163,7 @@ Deno.serve(async (req) => {
         },
         options: {
           format: 'A4',
+          landscape,
           printBackground: true,
           margin: { top: '0', right: '0', bottom: '0', left: '0' },
         },

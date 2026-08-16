@@ -6372,19 +6372,21 @@ Regras:
 
   const handlePrint = useCallback(async () => {
     await activateAllCanvasPages()
-    // Forçar tema light para notações SVG (remove filter:invert do dark mode)
     const currentTheme = document.documentElement.getAttribute('data-theme')
     document.documentElement.setAttribute('data-theme', 'light')
+    const printStyle = document.createElement('style')
+    printStyle.setAttribute('data-a4-print-orientation', 'true')
+    printStyle.textContent = `@page { size: A4 ${pageOrientation}; margin: 0; }`
+    document.head.appendChild(printStyle)
 
-    // Aguardar re-render, imprimir, restaurar tema
-    // O @media print CSS cuida de TUDO: esconde sidebar/nav, reseta containers, dimensiona páginas A4
     setTimeout(() => {
       window.print()
+      printStyle.remove()
       if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
       else document.documentElement.removeAttribute('data-theme')
       setForceAllPagesActive(false)
     }, 150)
-  }, [activateAllCanvasPages])
+  }, [activateAllCanvasPages, pageOrientation])
 
   const handleExportHTML = useCallback(async () => {
     await activateAllCanvasPages()

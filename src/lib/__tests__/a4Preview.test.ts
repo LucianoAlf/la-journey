@@ -7,6 +7,7 @@ import {
   jsPdfA4Orientation,
   pageSize,
   parsePageOrientation,
+  browserlessA4PdfOptions,
 } from '../a4Preview'
 
 function test(name: string, fn: () => void) {
@@ -62,4 +63,10 @@ test('preview scale uses the oriented page', () => {
 test('jsPDF orientation follows the page', () => {
   assert.equal(jsPdfA4Orientation('portrait'), 'portrait')
   assert.equal(jsPdfA4Orientation('landscape'), 'landscape')
+})
+
+test('browserless A4 uses landscape paper when the page is landscape', () => {
+  assert.equal(browserlessA4PdfOptions('portrait').landscape, false)
+  assert.equal(browserlessA4PdfOptions('landscape').landscape, true)
+  assert.equal(browserlessA4PdfOptions('landscape').format, 'A4')
 })

@@ -273,7 +273,10 @@ export function PrintView() {
   const coverRenderData = (blocks.find((block) => block.block_type === 'cover')?.render_data ?? {}) as Record<string, unknown>
 
   return (
-    <main className="print-view" data-print-root>
+    <main className="print-view" data-print-root data-page-orientation={pageConfig.orientation}>
+      {pageConfig.orientation === 'landscape' && (
+        <style>{'@page { size: A4 landscape; margin: 0; }'}</style>
+      )}
       {canvasPages.map((pageBlocks, pageIndex) => {
         const isCoverPage = pageBlocks.some(block => block.block_type === 'cover')
         const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
