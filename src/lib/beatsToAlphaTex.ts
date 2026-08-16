@@ -76,6 +76,41 @@ export interface Beat {
   timeSlot?: number  // Posição temporal para sincronização entre pautas
 }
 
+// ─── Ligadura: origem (nosso modelo) ↔ destino (AlphaTex) ───
+//
+// Os dois lados guardam a ligadura em pontas opostas do mesmo par de beats:
+// o nosso modelo marca quem SAI (`tieToNext`, na origem) e o `{-}` do AlphaTex
+// marca quem RECEBE (`Beat.tie`, no destino, vira `note.isTieDestination`).
+// Por isso o índice anda um na conversão — e é por isso que ela mora aqui,
+// num lugar só, em vez de ser reescrita em cada gerador.
+//
+// `tie` legado (dado gravado antes de `tieToNext`) é semântica de origem
+// também: o editor VexFlow antigo marcava o penúltimo beat ao ligar.
+
+export interface TieSourceBeat {
+  /** Marca o beat que INICIA a ligadura para o beat seguinte. */
+  tieToNext?: boolean
+  /** Alias legado de `tieToNext` em dados gravados antigos. */
+  tie?: boolean
+}
+
+/**
+ * O beat em `index` recebe a ligadura iniciada no beat anterior? (= `{-}` do AlphaTex)
+ *
+ * Passe beats do **modelo**. `Beat` também tem `tie`, mas com a semântica oposta
+ * (destino), e é estruturalmente compatível com `TieSourceBeat` — então passar beats
+ * já convertidos compila e desloca a ligadura outra vez, sem erro nenhum.
+ */
+export function isTieDestination(beats: readonly TieSourceBeat[], index: number): boolean {
+  const previous = beats[index - 1]
+  return Boolean(previous?.tieToNext ?? previous?.tie)
+}
+
+/** Inverso de `isTieDestination`: `{-}` no beat `index + 1` significa `tieToNext` no beat `index`. */
+export function tieToNextFromDestination(tieDestinations: readonly boolean[], index: number): boolean {
+  return Boolean(tieDestinations[index + 1])
+}
+
 // ─── Opções de conversão ───
 
 export interface BeatsToAlphaTexOptions {

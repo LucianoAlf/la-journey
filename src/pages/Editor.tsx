@@ -93,6 +93,7 @@ import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
 import { isNotationInlineEnabled } from "@/lib/notationInline";
+import { tieToNextFromDestination } from "@/lib/beatsToAlphaTex";
 import { buildSidebarPageGroups, buildSidebarPagePreviewItems, reorderSidebarBlocks } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
@@ -5842,6 +5843,9 @@ Regras:
     }
 
     const beats: any[] = []
+    // `{-}` marca o beat que RECEBE a ligadura; guardamos por beat e convertemos
+    // para `tieToNext` (origem) num segundo passe, com a lista de beats já pronta.
+    const tieDestinations: boolean[] = []
     const measures = body.split('|').map((measure) => measure.trim()).filter(Boolean)
     let currentDuration = '4'
 
@@ -5867,16 +5871,21 @@ Regras:
 
         const modifiers = modifierToken ?? ''
 
+        tieDestinations.push(modifiers.includes('{-}'))
         beats.push({
           pitches: chordTokens,
           duration,
           isRest,
           dotted: modifiers.includes('{d}') && !modifiers.includes('{dd}'),
           doubleDotted: modifiers.includes('{dd}'),
-          tieToNext: modifiers.includes('{-}'),
+          tieToNext: false,
           ...(tokenIndex === entries.length - 1 && measureIndex < measures.length - 1 ? { barAfter: true } : {}),
         })
       }
+    }
+
+    for (let index = 0; index < beats.length; index++) {
+      beats[index].tieToNext = tieToNextFromDestination(tieDestinations, index)
     }
 
     if (beats.length === 0) return null

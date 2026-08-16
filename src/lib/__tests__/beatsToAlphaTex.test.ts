@@ -4,7 +4,13 @@
  * Executar via: npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts
  */
 
-import { beatsToAlphaTex, pitchToAlphaTex, beatsToAlphaTexNotes } from '../beatsToAlphaTex'
+import {
+  beatsToAlphaTex,
+  pitchToAlphaTex,
+  beatsToAlphaTexNotes,
+  isTieDestination,
+  tieToNextFromDestination,
+} from '../beatsToAlphaTex'
 import type { Beat, BeatsToAlphaTexOptions, PitchData } from '../beatsToAlphaTex'
 
 // ─── Helpers de teste ───
@@ -280,6 +286,44 @@ const invalidTex = beatsToAlphaTex(
 )
 assertNotContains(invalidTex, '\\ts', 'Ignora formula de compasso invalida')
 assertNotContains(invalidTex, 'undefined', 'Nao emite fragmento invalido com compasso invalido')
+
+// 21. Ligadura: origem (nosso modelo) ↔ destino (AlphaTex)
+console.log('\n--- Ligadura: origem ↔ destino ---')
+
+const tieModel = [{ tieToNext: true }, { tieToNext: false }, { tieToNext: false }]
+const modelDestinations = tieModel.map((_, index) => isTieDestination(tieModel, index))
+assert(
+  modelDestinations.join(',') === 'false,true,false',
+  'isTieDestination move a marca da origem para o beat seguinte',
+)
+assert(
+  tieModel.map((_, index) => tieToNextFromDestination(modelDestinations, index)).join(',')
+    === tieModel.map(beat => beat.tieToNext).join(','),
+  'ida e volta entre os dois helpers recupera o tieToNext original',
+)
+
+// `tie` legado (gravado antes de tieToNext) tambem e semantica de origem
+assert(isTieDestination([{ tie: true }, {}], 1), 'alias legado tie liga para o beat seguinte')
+assert(!isTieDestination([{ tie: true }, {}], 0), 'alias legado nao marca o proprio beat')
+
+// Round-trip contra o gerador de verdade: sincope = seminima pontuada ligada a colcheia
+const syncopeModel = [{ tieToNext: true }, { tieToNext: false }]
+const syncopeBeats: Beat[] = [
+  makeBeat({ pitches: [makeNote('C/4')], dotted: true, tie: isTieDestination(syncopeModel, 0) }),
+  makeBeat({ pitches: [makeNote('C/4')], duration: '8', tie: isTieDestination(syncopeModel, 1) }),
+]
+const syncopeTex = beatsToAlphaTexNotes(syncopeBeats).tex
+// O parser de colagem le o {-} beat a beat; aqui reproduzimos so essa leitura.
+const emittedDestinations = syncopeTex
+  .split(/\s+/)
+  .filter(token => !token.startsWith(':'))
+  .map(token => token.includes('{-}'))
+assert(emittedDestinations.join(',') === 'false,true', 'AlphaTex leva a marca no beat destino')
+assert(
+  emittedDestinations.map((_, index) => tieToNextFromDestination(emittedDestinations, index)).join(',')
+    === syncopeModel.map(beat => beat.tieToNext).join(','),
+  'colar o AlphaTex de volta devolve tieToNext no beat de origem',
+)
 
 // ─── Resultado ───
 
