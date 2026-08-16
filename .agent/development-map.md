@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — Ovelha 45 compassos no gerador  
+Atualizado: 2026-08-16 (noite) — spec da folha deitada  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Folha deitada (orientação de material + PDF). Playalong (vídeo + áudio + cursor) fica depois.
+**Próximo corte:** Folha deitada (corte A, spec abaixo). Depois: player de estudo (corte C).
 
 ## Como retomar
 
@@ -16,8 +16,9 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha corte 1 **na branch `feat/ovelha-slash`**: barras rítmicas, Ritmo + Drawer Compasso, e os **45 compassos** do vídeo no gerador (`src/lib/ovelhaNegraBeats.ts`, sonda `/dev/alphatab-fixtures`). Folha deitada é o próximo. Áudio didático continua em `feat/audio-didatico` — não misturar.
-- Spec Ovelha corte 1: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Corte atual: **folha deitada** (orientação por material). Player de estudo (C) vem depois — não misturar. Áudio didático continua em `feat/audio-didatico`.
+- Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
+- Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
 - Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
 - Spec lead sheet A: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
 - **Playalong (corte futuro):** AlphaTab 1.8 tem backing track nativo — `PlayerMode.EnabledBackingTrack`, `score.backingTrack`, `BackingTrackSyncPoint[]`, `api.updateSyncPoints()`, tag `\sync`, output por `HTMLAudioElement`. Decisão travada: MP3 do Suno + sync points, **não** playhead calculado por BPM (quebra em métrica mista e em repetição).
