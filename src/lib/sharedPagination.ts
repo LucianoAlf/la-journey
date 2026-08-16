@@ -1,3 +1,5 @@
+import { pageSize, type PageOrientation } from './a4Preview'
+
 export type PaginationBehavior = 'unbreakable' | 'breakable'
 export type PaginationBreakReason = 'overflow' | 'manual' | 'cover' | 'estimativa' | 'fim'
 
@@ -39,7 +41,11 @@ export const HEADER_HEIGHT = 60
 export const FOOTER_HEIGHT = 72
 export const CONTENT_VERTICAL_PADDING = 40
 export const PRINT_SAFE_AREA = 56
-export const A4_CONTENT_HEIGHT = A4_TOTAL_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - CONTENT_VERTICAL_PADDING - PRINT_SAFE_AREA
+export function a4ContentHeight(orientation: PageOrientation = 'portrait'): number {
+  const { height } = pageSize(orientation)
+  return height - HEADER_HEIGHT - FOOTER_HEIGHT - CONTENT_VERTICAL_PADDING - PRINT_SAFE_AREA
+}
+export const A4_CONTENT_HEIGHT = a4ContentHeight('portrait')
 export const ESTIMATED_BLOCK_HEIGHT_FACTOR = 1.15
 export const TEXT_FRAGMENT_TARGET_HEIGHT_RATIO = 0.22
 export const PRE_LINE_HEIGHT = 22
@@ -362,6 +368,7 @@ export function shouldKeepBlocksTogether(current: SharedPaginationBlock, next: S
 export function paginateBlocks<TBlock extends SharedPaginationBlock>(
   blocks: TBlock[],
   getHeight: (block: TBlock) => number = block => getEstimatedBlockHeightForPagination(block),
+  contentHeight: number = A4_CONTENT_HEIGHT,
 ): SharedPaginationResult<TBlock> {
   const pages: TBlock[][] = [[]]
   const breakReasons = new Map<number, { reason: PaginationBreakReason; detail: string }>()
@@ -386,7 +393,7 @@ export function paginateBlocks<TBlock extends SharedPaginationBlock>(
     const groupBlocks = [block]
     let height = getHeight(block)
 
-    if (shouldKeepBlocksTogether(block, paginationBlocks[index + 1]) && height + getHeight(paginationBlocks[index + 1]) <= A4_CONTENT_HEIGHT) {
+    if (shouldKeepBlocksTogether(block, paginationBlocks[index + 1]) && height + getHeight(paginationBlocks[index + 1]) <= contentHeight) {
       const next = paginationBlocks[index + 1]
       groupBlocks.push(next)
       height += getHeight(next)
@@ -419,7 +426,7 @@ export function paginateBlocks<TBlock extends SharedPaginationBlock>(
       pushPage('manual', `${firstBlock.title || firstBlock.block_type} configurado para comecar em nova pagina.`)
     }
 
-    if (currentHeight + group.height > A4_CONTENT_HEIGHT && pages[pages.length - 1].length > 0) {
+    if (currentHeight + group.height > contentHeight && pages[pages.length - 1].length > 0) {
       pushPage('overflow', `${firstBlock.title || firstBlock.block_type} nao coube no espaco restante.`)
     }
 

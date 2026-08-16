@@ -146,3 +146,18 @@ test('page_break still starts the next song on a new page', () => {
   const wildPage = titles.findIndex((page) => page.includes('Wild'))
   assert.ok(horsePage >= 0 && wildPage > horsePage, `songs should not share a page: ${JSON.stringify(titles)}`)
 })
+
+test('paginateBlocks uses a shorter content height on landscape', () => {
+  const block: SharedPaginationBlock = {
+    id: 'n1',
+    block_type: 'notation',
+    content: { text: 'pauta' },
+  }
+  const portrait = paginateBlocks([block, { ...block, id: 'n2' }, { ...block, id: 'n3' }])
+  const landscape = paginateBlocks(
+    [block, { ...block, id: 'n2' }, { ...block, id: 'n3' }],
+    undefined,
+    566,
+  )
+  assert.ok(landscape.pages.length > portrait.pages.length)
+})
