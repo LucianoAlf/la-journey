@@ -8400,6 +8400,17 @@ ${pagesHtml}
                 cifraOpen={inlineNotationSession.cifraEditing}
                 cifraValue={inlineNotationSession.cifraValue}
                 onOpenCifra={inlineNotationSession.onOpenCifra}
+                barNumber={inlineNotationSession.barNumber}
+                barEnabled={inlineNotationSession.barEnabled}
+                simileLocked={inlineNotationSession.simileLocked}
+                sectionMarker={inlineNotationSession.sectionMarker}
+                sectionText={inlineNotationSession.sectionText}
+                repeatOpen={inlineNotationSession.repeatOpen}
+                repeatClose={inlineNotationSession.repeatClose}
+                simile={inlineNotationSession.simile}
+                barTimeSignature={inlineNotationSession.barTimeSignature}
+                jumpFine={inlineNotationSession.jumpFine}
+                onApplyBarFact={inlineNotationSession.onApplyBarFact}
               />
               <Separator />
               <div className="prop-section">

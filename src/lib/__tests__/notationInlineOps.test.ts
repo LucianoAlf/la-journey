@@ -7,7 +7,10 @@ import {
   replaceNote,
   sessionToAlphaTex,
   applySessionToRenderData,
+  applyBarFact,
+  isSimileBar,
 } from '../notationInlineOps.ts'
+import { barStartIndexForBeat } from '../notationLayout.ts'
 import { beatsToAlphaTex } from '../beatsToAlphaTex.ts'
 import type { InlineBeat } from '../notationInlineHydrate.ts'
 import { hydrateNotationFromBlock } from '../notationInlineHydrate.ts'
@@ -276,4 +279,38 @@ test('insertNote without slash keeps the clicked pitch', () => {
   })
   assert.equal(next.beats[1].slash, undefined)
   assert.equal(next.beats[1].pitches[0].pitch, 'E/5')
+})
+
+const bar1: InlineBeat[] = [
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, barAfter: true },
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true },
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true },
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, barAfter: true },
+]
+
+test('barStartIndexForBeat finds the beat that opens the selected bar', () => {
+  assert.equal(barStartIndexForBeat(bar1, 0), 0)
+  assert.equal(barStartIndexForBeat(bar1, 2), 1)
+  assert.equal(barStartIndexForBeat(bar1, 3), 1)
+})
+
+test('applyBarFact writes on the opening beat, not the selected one', () => {
+  const next = applyBarFact(bar1, 3, { sectionStart: { marker: 'A', text: 'Violao, piano e vocal' } })
+  assert.equal(next[3].sectionStart, undefined, 'beat do meio do compasso nao leva o fato')
+  assert.equal(next[1].sectionStart?.marker, 'A')
+  assert.equal(next[1].sectionStart?.text, 'Violao, piano e vocal')
+})
+
+test('applyBarFact marks simile without deleting the stored beats', () => {
+  const marked = applyBarFact(bar1, 2, { simile: 'simple' })
+  assert.equal(marked[1].simile, 'simple')
+  assert.equal(marked.length, 4, 'beats do compasso continuam no modelo')
+  assert.equal(marked[2].pitches[0].pitch, 'B/4')
+  assert.equal(isSimileBar(marked, 3), true)
+  assert.equal(isSimileBar(marked, 0), false)
+
+  const unmarked = applyBarFact(marked, 3, { simile: null })
+  assert.equal(unmarked[1].simile, undefined)
+  assert.equal(unmarked[2].pitches[0].pitch, 'B/4', 'conteudo volta ao desmarcar')
+  assert.equal(isSimileBar(unmarked, 3), false)
 })

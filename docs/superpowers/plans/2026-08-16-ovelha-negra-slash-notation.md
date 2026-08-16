@@ -553,12 +553,12 @@ const ovelhaTex = beatsToAlphaTex(ovelhaBeats, {
 
 Adicione uma seção com `AlphaTabViewer` recebendo `tex={ovelhaTex}`, `purpose="editor-notation-score"`, `staveProfile="score"`, `layout="page"`, `scale={1.3}`, `minHeight={200}`, `showTimeSignature`, mais um `<pre>` com `{ovelhaTex}`, no mesmo formato das sondas Slash 1-3.
 
-- [ ] **Passo 3: olhar**
+- [x] **Passo 3: olhar**
 
 Run: `npx vite --port 5199 --strictPort` e abrir `/dev/alphatab-fixtures`
 Esperado: barras diagonais na linha do meio, cifras `D`/`G`/`A` acima, `[A] Violao, piano e vocal`, `2/4` no compasso 5 e volta para `4/4` no 6. Compare com o frame do vídeo.
 
-- [ ] **Passo 4: commit**
+- [x] **Passo 4: commit**
 
 ```bash
 git add src/pages/AlphaTabFixtures.tsx
@@ -575,11 +575,11 @@ Achado na sonda: o texto da seção cai na mesma faixa vertical da cifra e cobre
 - Modify: `src/lib/alphaTabSettings.ts:46-77` (`applyNotationElements`)
 - Modify: `src/pages/AlphaTabFixtures.tsx` (conferência visual)
 
-- [ ] **Passo 1: reproduzir com o mínimo**
+- [x] **Passo 1: reproduzir com o mínimo**
 
 Na sonda Slash 1, confirme que com `\section "A" "Texto"` mais `{ch "D"}` no primeiro beat os dois se sobrepõem, e que sem a cifra o texto aparece sozinho e legível.
 
-- [ ] **Passo 2: tentar separar por padding de faixa de efeito**
+- [x] **Passo 2: tentar separar por padding de faixa de efeito**
 
 Em `buildAlphaTabSettings`, para propósitos de notação, experimente:
 
@@ -589,7 +589,7 @@ Em `buildAlphaTabSettings`, para propósitos de notação, experimente:
 
 Rode a sonda e olhe. `EffectMarker` (25) e `EffectChordNames` (16) são elementos distintos de notação, então o esperado é que ganhem faixas empilhadas.
 
-- [ ] **Passo 3: se o padding não separar, decidir com evidência**
+- [x] **Passo 3: se o padding não separar, decidir com evidência**
 
 Duas saídas, nesta ordem de preferência:
 1. Manter `\section` só com marcador (`\section "A" "A"`), aceitando o texto curto dentro da caixa, e levar a instrumentação para o título do bloco na A4 — que é onde o professor já escreve texto.
@@ -597,7 +597,9 @@ Duas saídas, nesta ordem de preferência:
 
 Não invente uma terceira saída sem antes rodar o passo 2 e olhar.
 
-- [ ] **Passo 4: commit**
+- [x] **Passo 4: commit**
+
+Padding de faixa não separou `[A]` da cifra (e ainda quebrou o sistema). Decisão: o modelo guarda `sectionStart.text`; o gerador emite `\section "A" ""` — caixa `[A]` na pauta, texto no Drawer.
 
 ```bash
 git add src/lib/alphaTabSettings.ts src/pages/AlphaTabFixtures.tsx
@@ -612,7 +614,7 @@ git commit -m "fix: keep rehearsal marks from colliding with chord symbols"
 - Modify: `src/components/music/NotationDurationStrip.tsx`
 - Modify: `src/components/music/useNotationInlineSession.ts`
 
-- [ ] **Passo 1: estado armado na sessão**
+- [x] **Passo 1: estado armado na sessão**
 
 Em `useNotationInlineSession.ts`, junto dos outros `useState` (perto de `const [cifraEditing, setCifraEditing] = useState(false)`):
 
@@ -634,7 +636,7 @@ Na função que insere beat, marque o beat novo com `slash: slashArmed`. Exponha
   }, [selectedBeatIdx])
 ```
 
-- [ ] **Passo 2: botão na fileira**
+- [x] **Passo 2: botão na fileira**
 
 Em `NotationDurationStrip.tsx`, acrescente às props:
 
@@ -659,7 +661,7 @@ E, ao lado do botão Cifra, seguindo exatamente o mesmo padrão de classe:
       )}
 ```
 
-- [ ] **Passo 3: ligar no lugar onde a fileira é usada**
+- [x] **Passo 3: ligar no lugar onde a fileira é usada**
 
 Passe `slashArmed` e `onToggleSlash={toggleSlashArmed}` onde `NotationDurationStrip` é montada, do mesmo jeito que `cifraOpen` e `onOpenCifra` já são passados.
 
@@ -684,7 +686,7 @@ git commit -m "feat: add rhythmic slash toggle to the notation strip"
 - Modify: `src/components/music/NotationToolsSidebar.tsx`
 - Modify: `src/components/music/useNotationInlineSession.ts`
 
-- [ ] **Passo 1: ações na sessão**
+- [x] **Passo 1: ações na sessão**
 
 Em `useNotationInlineSession.ts`, uma função que aplica fato ao compasso do beat selecionado. Ela precisa achar o primeiro beat do compasso, porque é lá que o fato mora:
 
@@ -707,11 +709,11 @@ Em `useNotationInlineSession.ts`, uma função que aplica fato ao compasso do be
   }, [selectedBeatIdx, barStartIndex])
 ```
 
-- [ ] **Passo 2: controles no Drawer**
+- [x] **Passo 2: controles no Drawer**
 
 No `NotationToolsSidebar.tsx`, numa seção nova chamada "Compasso", seguindo o padrão visual das seções que já existem: campo de texto para marcador e texto da seção, botões de `|:` e `:|` com número de voltas, botão `%`, seletor de métrica do compasso e botão `Fine`. Cada um chama `applyBarFact` com o campo respectivo. O cabeçalho da seção mostra a qual compasso está aplicando, contando os `barAfter` até o beat selecionado.
 
-- [ ] **Passo 3: travar edição dentro de compasso com `%`**
+- [x] **Passo 3: travar edição dentro de compasso com `%`**
 
 Compasso marcado como simile não toca os beats dele (quem toca é o anterior) e não os desenha. Então, quando o beat selecionado estiver num compasso com `simile`, a fileira de duração e a escrita de nota ficam desabilitadas, e o Drawer mostra só o botão de desmarcar o `%`. Sem isso o professor escreve notas que não aparecem nem tocam.
 

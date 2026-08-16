@@ -13,20 +13,23 @@ function readPreviewSoundEnabled(): boolean {
     return true
   }
 }
+import { SLASH_NEUTRAL_PITCH } from '@/lib/beatsToAlphaTex'
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
 import { resolveNotationKeyAction } from '@/lib/notationInlineKeyboard'
 import { normalizeCifraSymbol } from '@/lib/notationCifra'
-import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
-import { SLASH_NEUTRAL_PITCH } from '@/lib/beatsToAlphaTex'
 import {
+  applyBarFact,
   applySessionToRenderData,
   deleteBeat,
   insertNote,
   insertRest,
+  isSimileBar,
   replaceNote,
   resolveDeleteBeatIndex,
   sessionToAlphaTex,
+  type BarFactPatch,
 } from '@/lib/notationInlineOps'
+import { barNumberForBeat, barStartIndexForBeat, barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
 
 const NOTE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 const DURATION_BEATS: Record<InlineBeat['duration'], number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
@@ -230,6 +233,8 @@ export function useNotationInlineSession({
   }, [beats, focusInput])
 
   const onInsertNote = useCallback((pitch: string, afterIdx: number, staff?: 'treble' | 'bass', explicitTimeSlot?: number) => {
+    const lockIdx = afterIdx >= 0 ? afterIdx : selectedBeatIdx
+    if (lockIdx >= 0 && isSimileBar(beats, lockIdx, timeSignature, grandStaff)) return
     const result = insertNote({
       beats, selectedBeatIdx, pitch, afterIdx, duration: currentDuration,
       accidental: currentAccidental, dotted, doubleDotted, grandStaff,
@@ -243,7 +248,7 @@ export function useNotationInlineSession({
     if (staff) setActiveStaff(staff)
     setNoteInputArmed(true)
     focusInput()
-  }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx, slashArmed])
+  }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx, slashArmed, timeSignature])
 
   const toggleSlashArmed = useCallback(() => {
     const nextArmed = !slashArmed
@@ -257,14 +262,22 @@ export function useNotationInlineSession({
     commit(next)
   }, [beats, commit, selectedBeatIdx, slashArmed])
 
+  const simileLocked = selectedBeatIdx >= 0 && isSimileBar(beats, selectedBeatIdx, timeSignature, grandStaff)
+
+  const onApplyBarFact = useCallback((fact: BarFactPatch) => {
+    if (selectedBeatIdx < 0) return
+    commit(applyBarFact(beats, selectedBeatIdx, fact, timeSignature, grandStaff))
+  }, [beats, commit, grandStaff, selectedBeatIdx, timeSignature])
+
   const onReplaceNote = useCallback((pitch: string, atIdx: number) => {
+    if (isSimileBar(beats, atIdx, timeSignature, grandStaff)) return
     const result = replaceNote({ beats, atIdx, pitch, accidental: currentAccidental })
     commit(result.beats)
     lastPitchRef.current = pitch
     void playNotePreview([soundingPitch(pitch, currentAccidental)])
     setNoteInputArmed(true)
     focusInput()
-  }, [beats, commit, currentAccidental, focusInput])
+  }, [beats, commit, currentAccidental, focusInput, grandStaff, timeSignature])
 
   const onDeleteBeat = useCallback((idx: number) => {
     const target = resolveDeleteBeatIndex(idx, beats.length)
@@ -374,11 +387,12 @@ export function useNotationInlineSession({
   }, [beats.length, onInsertNote, selectedBeatIdx])
 
   const onInsertRest = useCallback(() => {
+    if (simileLocked) return
     const result = insertRest({ beats, selectedBeatIdx, duration: currentDuration, dotted, doubleDotted })
     commit(result.beats)
     setSelectedBeatIdx(result.selectedBeatIdx)
     focusInput()
-  }, [beats, commit, currentDuration, dotted, doubleDotted, focusInput, selectedBeatIdx])
+  }, [beats, commit, currentDuration, dotted, doubleDotted, focusInput, selectedBeatIdx, simileLocked])
 
   const toggleDot = useCallback(() => {
     const next = doubleDotted ? { dotted: false, doubleDotted: false } : dotted ? { dotted: false, doubleDotted: true } : { dotted: true, doubleDotted: false }
@@ -427,6 +441,7 @@ export function useNotationInlineSession({
     })
     if (!action) return
     consumeNotationKey(event)
+    if (simileLocked && (action.type === 'insert-note' || action.type === 'add-chord-note' || action.type === 'insert-rest' || action.type === 'set-duration' || action.type === 'toggle-dot' || action.type === 'repeat-last-note')) return
     switch (action.type) {
       case 'undo': undo(); break
       case 'redo': redo(); break
@@ -465,7 +480,7 @@ export function useNotationInlineSession({
         startCifraEditing()
         break
     }
-  }, [addChordNote, insertNoteByName, isPlaying, navigateBar, navigateSelection, noteInputArmed, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, startCifraEditing, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
+  }, [addChordNote, insertNoteByName, isPlaying, navigateBar, navigateSelection, noteInputArmed, onDeleteBeat, onInsertRest, redo, repeatLastNote, selectedBeatIdx, simileLocked, startCifraEditing, startPlayback, stopPlayback, toggleDot, transposeSelected, undo, updateBeat])
 
   const patchRenderData = useMemo(() => {
     if (!enabled || !block || hydratedBlockId !== block.id) return null
@@ -498,6 +513,7 @@ export function useNotationInlineSession({
     onOpenCifra: startCifraEditing,
     slashArmed,
     onToggleSlash: toggleSlashArmed,
+    inputLocked: simileLocked,
   }
 
   const cifraValue = selectedBeatIdx >= 0 ? (beats[selectedBeatIdx]?.cifra ?? '') : ''
@@ -515,6 +531,14 @@ export function useNotationInlineSession({
     onStopEditing: stopCifraEditing,
     onNavigateBeat: navigateCifraBeat,
   }
+
+  const barStart = selectedBeatIdx >= 0
+    ? barStartIndexForBeat(beats, selectedBeatIdx, timeSignature, grandStaff)
+    : -1
+  const barFactBeat = barStart >= 0 ? beats[barStart] : undefined
+  const barNumber = selectedBeatIdx >= 0
+    ? barNumberForBeat(beats, selectedBeatIdx, timeSignature, grandStaff)
+    : 0
 
   return {
     inputRef: inputRef as RefObject<HTMLInputElement>,
@@ -549,6 +573,17 @@ export function useNotationInlineSession({
     onUndo: undo, onRedo: redo, onTogglePlay: isPlaying ? stopPlayback : startPlayback,
     onOpenCifra: startCifraEditing,
     cifraEditing,
+    barNumber,
+    barEnabled: selectedBeatIdx >= 0,
+    simileLocked,
+    sectionMarker: barFactBeat?.sectionStart?.marker ?? '',
+    sectionText: barFactBeat?.sectionStart?.text ?? '',
+    repeatOpen: Boolean(barFactBeat?.repeatOpen),
+    repeatClose: barFactBeat?.repeatClose,
+    simile: Boolean(barFactBeat?.simile),
+    barTimeSignature: barFactBeat?.timeSignature ?? '',
+    jumpFine: barFactBeat?.jump === 'fine',
+    onApplyBarFact,
     disarmNoteInput: () => { setNoteInputArmed(false); focusInput() },
     clearSelection: () => {
       cifraEditingRef.current = false

@@ -6,7 +6,7 @@ import {
   type BeatsToAlphaTexResult,
 } from './beatsToAlphaTex.ts'
 import type { InlineBeat } from './notationInlineHydrate.ts'
-import { clampBarsPerSystem, computeBarlineIndices } from './notationLayout.ts'
+import { barStartIndexForBeat, clampBarsPerSystem, computeBarlineIndices } from './notationLayout.ts'
 import { normalizeCifraSymbol } from './notationCifra.ts'
 
 type Staff = 'treble' | 'bass'
@@ -132,6 +132,48 @@ export function replaceNote(input: {
     isRest: false,
   }
   return { beats }
+}
+
+export type BarFactPatch = {
+  sectionStart?: { marker: string; text: string } | null
+  repeatOpen?: boolean | null
+  repeatClose?: number | null
+  simile?: InlineBeat['simile'] | null
+  timeSignature?: string | null
+  jump?: 'fine' | null
+}
+
+export function applyBarFact(
+  beats: InlineBeat[],
+  selectedBeatIdx: number,
+  fact: BarFactPatch,
+  timeSignature = 'free',
+  grandStaff = false,
+): InlineBeat[] {
+  if (selectedBeatIdx < 0 || !beats[selectedBeatIdx]) return beats
+  const start = barStartIndexForBeat(beats, selectedBeatIdx, timeSignature, grandStaff)
+  const next = [...beats]
+  const current = { ...next[start] }
+  for (const [key, value] of Object.entries(fact) as [keyof BarFactPatch, BarFactPatch[keyof BarFactPatch]][]) {
+    if (value === null || value === undefined || value === false) {
+      delete current[key]
+    } else {
+      ;(current as Record<string, unknown>)[key] = value
+    }
+  }
+  next[start] = current
+  return next
+}
+
+export function isSimileBar(
+  beats: InlineBeat[],
+  selectedBeatIdx: number,
+  timeSignature = 'free',
+  grandStaff = false,
+): boolean {
+  if (selectedBeatIdx < 0 || !beats[selectedBeatIdx]) return false
+  const start = barStartIndexForBeat(beats, selectedBeatIdx, timeSignature, grandStaff)
+  return Boolean(beats[start]?.simile)
 }
 
 export function resolveDeleteBeatIndex(selectedBeatIdx: number, beatCount: number): number {

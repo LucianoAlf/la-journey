@@ -23,7 +23,8 @@ import {
 import { toast } from 'sonner'
 import { createNotation, updateNotation, deleteNotation, type NotationLibraryRow } from '@/services/notationService'
 import { getEditorTimeSignature, normalizeTimeSignature } from '@/lib/timeSignature'
-import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
+import { barNumberForBeat, barStartIndexForBeat, barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
+import { applyBarFact, isSimileBar, type BarFactPatch } from '@/lib/notationInlineOps'
 import { editorDurationFromRaw } from '@/lib/notationBeatNormalize'
 import { normalizeCifraSymbol } from '@/lib/notationCifra'
 
@@ -136,6 +137,16 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
         timeSlot: Number.isFinite(rawBeat.timeSlot) ? rawBeat.timeSlot : undefined,
         barAfter: Boolean(rawBeat.barAfter),
         slash: Boolean(rawBeat.slash) || undefined,
+        sectionStart: rawBeat.sectionStart && typeof rawBeat.sectionStart.marker === 'string'
+          ? { marker: String(rawBeat.sectionStart.marker), text: String(rawBeat.sectionStart.text ?? '') }
+          : undefined,
+        repeatOpen: rawBeat.repeatOpen ? true : undefined,
+        repeatClose: Number.isFinite(rawBeat.repeatClose) && rawBeat.repeatClose > 1 ? Number(rawBeat.repeatClose) : undefined,
+        simile: rawBeat.simile === 'simple' || rawBeat.simile === 'firstOfDouble' || rawBeat.simile === 'secondOfDouble'
+          ? rawBeat.simile
+          : undefined,
+        timeSignature: typeof rawBeat.timeSignature === 'string' ? rawBeat.timeSignature : undefined,
+        jump: rawBeat.jump === 'fine' ? 'fine' : undefined,
       }
     })
     .filter((beat): beat is SvgBeat => beat !== null)
@@ -359,6 +370,12 @@ export function NotationEditorV2({
       tuplet: b.tuplet,
       cifra: b.cifra ?? null,
       slash: b.slash,
+      sectionStart: b.sectionStart,
+      repeatOpen: b.repeatOpen,
+      repeatClose: b.repeatClose,
+      simile: b.simile,
+      timeSignature: b.timeSignature,
+      jump: b.jump,
       annotation: null,
       lyric: null,
       staff: b.staff,
@@ -454,6 +471,8 @@ export function NotationEditorV2({
   }, [beats, focusInput, grandStaffMode])
 
   const handleInsertNote = useCallback((pitch: string, afterIdx: number, staff?: 'treble' | 'bass', explicitTimeSlot?: number) => {
+    const lockIdx = afterIdx >= 0 ? afterIdx : selectedBeatIdx
+    if (lockIdx >= 0 && isSimileBar(beats, lockIdx, timeSignature, grandStaffMode)) return
     // Se staff foi passado (clique no SVG), usa ele. Senão usa activeStaff (teclado)
     const effectiveStaff = staff ?? activeStaff
     
@@ -559,10 +578,11 @@ export function NotationEditorV2({
     }
     
     focusInput()
-  }, [beats, currentDuration, currentAccidental, dotted, doubleDotted, grandStaffMode, activeStaff, pushHistory, focusInput, slashArmed])
+  }, [beats, currentDuration, currentAccidental, dotted, doubleDotted, grandStaffMode, activeStaff, pushHistory, focusInput, slashArmed, selectedBeatIdx, timeSignature])
 
   const handleReplaceNote = useCallback((pitch: string, atIdx: number) => {
     if (atIdx < 0 || atIdx >= beats.length) return
+    if (isSimileBar(beats, atIdx, timeSignature, grandStaffMode)) return
 
     const newBeats = [...beats]
     newBeats[atIdx] = {
@@ -574,7 +594,7 @@ export function NotationEditorV2({
     setBeats(newBeats)
     pushHistory(newBeats)
     lastPitchRef.current = pitch
-  }, [beats, currentAccidental, pushHistory])
+  }, [beats, currentAccidental, grandStaffMode, pushHistory, timeSignature])
 
   const handleDeleteBeat = useCallback((idx: number) => {
     if (idx < 0 || idx >= beats.length) return
@@ -1217,6 +1237,21 @@ export function NotationEditorV2({
   // Removido auto-focus agressivo que bloqueava input externo (chat, etc.)
 
   // ─── Render ────────────────────────────────────────────────────────
+  const v2SimileLocked = selectedBeatIdx >= 0 && isSimileBar(beats, selectedBeatIdx, timeSignature, grandStaffMode)
+  const v2BarStart = selectedBeatIdx >= 0
+    ? barStartIndexForBeat(beats, selectedBeatIdx, timeSignature, grandStaffMode)
+    : -1
+  const v2BarFact = v2BarStart >= 0 ? beats[v2BarStart] : undefined
+  const v2BarNumber = selectedBeatIdx >= 0
+    ? barNumberForBeat(beats, selectedBeatIdx, timeSignature, grandStaffMode)
+    : 0
+  const applyV2BarFact = (fact: BarFactPatch) => {
+    if (selectedBeatIdx < 0) return
+    const next = applyBarFact(beats, selectedBeatIdx, fact, timeSignature, grandStaffMode)
+    setBeats(next)
+    pushHistory(next)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -1275,6 +1310,17 @@ export function NotationEditorV2({
             cifraOpen={cifraEditing}
             cifraValue={selectedCifra}
             onOpenCifra={startCifraEditing}
+            barNumber={v2BarNumber}
+            barEnabled={selectedBeatIdx >= 0}
+            simileLocked={v2SimileLocked}
+            sectionMarker={v2BarFact?.sectionStart?.marker ?? ''}
+            sectionText={v2BarFact?.sectionStart?.text ?? ''}
+            repeatOpen={Boolean(v2BarFact?.repeatOpen)}
+            repeatClose={v2BarFact?.repeatClose}
+            simile={Boolean(v2BarFact?.simile)}
+            barTimeSignature={v2BarFact?.timeSignature ?? ''}
+            jumpFine={v2BarFact?.jump === 'fine'}
+            onApplyBarFact={applyV2BarFact}
           />
 
           {/* Categoria */}
@@ -1341,6 +1387,7 @@ export function NotationEditorV2({
               setBeats(next)
               pushHistory(next)
             }}
+            inputLocked={v2SimileLocked}
           />
 
         </div>

@@ -25,6 +25,12 @@ export interface Beat {
   timeSlot?: number // Posição temporal para sincronização entre pautas na Grande Pauta
   barAfter?: boolean
   slash?: boolean
+  sectionStart?: { marker: string; text: string }
+  repeatOpen?: boolean
+  repeatClose?: number
+  simile?: 'simple' | 'firstOfDouble' | 'secondOfDouble'
+  timeSignature?: string
+  jump?: 'fine'
 }
 
 export interface NotationSvgEditorProps {
