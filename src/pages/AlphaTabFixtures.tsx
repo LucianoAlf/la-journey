@@ -105,6 +105,51 @@ const ovelhaTex = beatsToAlphaTex(ovelhaBeats, {
   includeLyrics: false,
 })
 
+function slashBar(first: Partial<Beat> = {}, last: Partial<Beat> = {}): Beat[] {
+  return [
+    slashBeat(first),
+    slashBeat(),
+    slashBeat(),
+    slashBeat({ barAfter: true, ...last }),
+  ]
+}
+
+// Esqueleto de forma: prova [A'], [B] com |:, %, Solo 7x e Fine pelo gerador.
+// Ritmo interno é 4 semínimas — não é transcrição dos 45 compassos do vídeo.
+const ovelhaFormBeats: Beat[] = [
+  ...slashBar({
+    cifra: 'D',
+    sectionStart: { marker: "A'", text: 'Banda' },
+    timeSignature: '4/4',
+  }),
+  ...slashBar({ cifra: 'G' }),
+  ...slashBar({
+    cifra: 'D',
+    sectionStart: { marker: 'B', text: '' },
+    repeatOpen: true,
+  }),
+  ...slashBar({ cifra: 'A' }, { repeatClose: 2 }),
+  ...slashBar({
+    cifra: 'D',
+    sectionStart: { marker: 'Interlúdio', text: 'Vocalize' },
+  }),
+  slashBeat({ simile: 'simple', barAfter: true }),
+  ...slashBar({
+    cifra: 'G',
+    sectionStart: { marker: 'Solo', text: '' },
+    repeatOpen: true,
+  }, { repeatClose: 7 }),
+  slashBeat({ cifra: 'D', duration: 'w', jump: 'fine', barAfter: true }),
+]
+
+const ovelhaFormTex = beatsToAlphaTex(ovelhaFormBeats, {
+  clef: 'treble',
+  keySignature: 'D',
+  timeSignature: '4/4',
+  timeSignatureMode: 'metered',
+  includeLyrics: false,
+})
+
 export function AlphaTabFixtures() {
   if (!import.meta.env.DEV) {
     return (
@@ -183,6 +228,31 @@ export function AlphaTabFixtures() {
             </div>
             <pre className="max-h-64 overflow-auto rounded-md border border-border/70 bg-bg2 p-3 text-xs text-text2">
               {ovelhaTex}
+            </pre>
+          </div>
+        </section>
+
+        <section className="rounded-lg border-2 border-accent/40 bg-card p-4">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-text">Ovelha — forma pelo gerador</h2>
+            <p className="text-xs text-text3">
+              Esqueleto: [A'] Banda, [B] com |: :|, %, [Solo] 7x, Fine em losango. Ritmo interno é 4 semínimas — não é a transcrição dos 45 compassos.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-md border border-border/70 bg-bg p-3">
+              <AlphaTabViewer
+                tex={ovelhaFormTex}
+                purpose="editor-notation-score"
+                staveProfile="score"
+                layout="page"
+                scale={1.3}
+                minHeight={280}
+                showTimeSignature
+              />
+            </div>
+            <pre className="max-h-64 overflow-auto rounded-md border border-border/70 bg-bg2 p-3 text-xs text-text2">
+              {ovelhaFormTex}
             </pre>
           </div>
         </section>

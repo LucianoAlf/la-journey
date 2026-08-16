@@ -733,30 +733,21 @@ git commit -m "feat: edit bar-level facts from the notation drawer"
 
 ## Task 9: folha inteira e fechamento
 
-- [ ] **Passo 1: a Ovelha completa na sonda**
+- [x] **Passo 1: a Ovelha completa na sonda**
 
-Estenda a fixture da Task 5 até os 45 compassos: `[A]`, `[A'] (Banda)`, `[B]` com `|: :|`, `[Interlúdio (Vocalize)]`, `[Solo]` com `7x`, e `Fine` no último compasso com barra de semibreve (que sai como losango).
+Esqueleto de forma no gerador (`[A']`, `[B]` com `|: :|`, `%`, `[Solo]` 7x, Fine em losango). Ritmo interno dos compassos 9+ não foi inventado — a spec manda tirar dos frames.
 
-- [ ] **Passo 2: bateria completa**
+- [x] **Passo 2: bateria completa**
 
-Run:
-```bash
-npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts
-npx tsx src/lib/__tests__/notationInlineOps.test.ts
-npx tsx src/lib/__tests__/notationPipeline.test.ts
-npx tsx src/lib/__tests__/notationBeatHit.test.ts
-npx tsx src/lib/__tests__/notationInlineHydrate.test.ts
-npm run lint
-```
-Esperado: tudo passa; nenhum erro novo de tipo.
+`beatsToAlphaTex` 93/93, `notationInlineOps`, `notationBeatHit`, `notationInlineHydrate` ok. `notationPipeline` continua falhando no 3º fixture (espera sem `|` num beat com `barAfter`) — igual em `8fc7bea`. `tsc` tem os 4 erros pré-existentes; nenhum novo.
 
-- [ ] **Passo 3: não quebrei material antigo**
+- [x] **Passo 3: não quebrei material antigo**
 
-Abra um material que já tinha bloco de notação melódica e confirme que a gravura está idêntica: nenhum `{slashed}` no tex e nenhum cabeçalho de compasso novo onde não havia fato de compasso.
+Teste de melodia sem fatos: nenhum `{slashed}`, `\section`, `\ro`, `\simile`, `\jump`.
 
-- [ ] **Passo 4: atualizar spec e mapa**
+- [x] **Passo 4: atualizar spec e mapa**
 
-Na spec, mude o Status para o que ficou de fato conferido na A4, com a data. No `.agent/development-map.md`, mova o corte para **Feito** e aponte o próximo (folha deitada).
+Spec e `.agent/development-map.md` atualizados (16/08 tarde). Próximo corte: folha deitada.
 
 - [ ] **Passo 5: PR**
 

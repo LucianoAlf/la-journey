@@ -459,6 +459,34 @@ assert(
   `simile reserva um indice AlphaTab, mapa=${simileResult.indexMap.join(',')}`,
 )
 
+console.log('\n--- Material legado (melodia sem fatos de compasso) ---')
+const legadoTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4')] }),
+  makeBeat({ pitches: [makeNote('E/4')] }),
+  makeBeat({ pitches: [makeNote('G/4')], barAfter: true }),
+]).tex
+assertNotContains(legadoTex, 'slashed', 'melodia nao emite {slashed}')
+assertNotContains(legadoTex, '\\section', 'melodia nao emite secao')
+assertNotContains(legadoTex, '\\ro', 'melodia nao emite repeat open')
+assertNotContains(legadoTex, '\\simile', 'melodia nao emite simile')
+assertNotContains(legadoTex, '\\jump', 'melodia nao emite Fine')
+assertContains(legadoTex, ':4 c3 e3 g3 |', 'melodia continua com notas e barra pedagogica')
+
+console.log('\n--- Forma (secao, repeat, simile, Fine) ---')
+const formaTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, sectionStart: { marker: "A'", text: 'Banda' }, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, sectionStart: { marker: 'B', text: '' }, repeatOpen: true, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, simile: 'simple', barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, repeatClose: 7, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, duration: 'w', jump: 'fine', cifra: 'D' }),
+]).tex
+assertContains(formaTex, '\\section "A\'" ""', 'marcador A\' em caixa')
+assertContains(formaTex, '\\section "B" "" \\ro', 'B abre repeticao')
+assertContains(formaTex, '\\simile simple', 'interludio com %')
+assertContains(formaTex, '\\rc 7', 'solo com 7 voltas')
+assertContains(formaTex, '\\jump fine', 'Fine no ultimo')
+assertContains(formaTex, ':1 b3{slashed ch "D"}', 'Fine em semibreve slashed (losango)')
+
 // ─── Resultado ───
 
 console.log(`\n${'─'.repeat(40)}`)

@@ -1,7 +1,7 @@
 # Ovelha Negra — barras rítmicas na pauta (corte 1)
 
 Data: 2026-08-16  
-Status: spec conferida contra o motor numa sonda visual (`/dev/alphatab-fixtures`, branch `feat/ovelha-slash`). Gravura de produção ainda não existe.  
+Status: conferida na sonda `/dev/alphatab-fixtures` (16/08, tarde). Gerador emite `{slashed}`, cabeçalho de compasso e `[A]` só com marcador. Fileira **Ritmo** e Drawer **Compasso** estão na A4. Folha dos 45 compassos transcrita dos frames ainda não — o ritmo interno não se inventa.  
 Corte: o professor escreve **grade rítmica com cifra** na mesma pauta da A4 — barra de tempo no lugar da melodia, seção de ensaio, repetição e troca de métrica.
 
 Alvo visual: vídeo da Escola de Música Rafael Bastos (Ovelha Negra / Rita Lee), 45 compassos em 4 telas — `[A]` `[A'] (Banda)` `[B]` `[Interlúdio (Vocalize)]` `[Solo]`, `Fine` no fim.
@@ -42,7 +42,7 @@ Fora deste corte, mas registrado porque decide o corte do playalong: o AlphaTab 
 | Pauta | `\staff{score}` + `{slashed}` por beat, **não** `\staff{slash}`. Não é gosto: `StaveProfile.Score` habilita só o `ScoreBarRenderer` (`alphaTab.core.mjs:75940`), e nosso `buildAlphaTabSettings` fixa `Score` para todos os propósitos não-tab (`alphaTabSettings.ts:147-149`). A pauta dedicada renderizaria vazia sem mexer na fábrica central, que serve nove propósitos. Confirmado na sonda: o `{slashed}` grava barra diagonal na linha do meio da pauta de 5 linhas |
 | Fatos de compasso | Seção, repetição, simile e métrica moram **no beat que abre o compasso**, do mesmo jeito que `barAfter` já mora no beat que fecha. Sem array `bars[]` paralelo ao `beats[]` |
 | Simile `%` | Compasso de simile emite `\simile simple` e **mais nada** — compasso vazio, sem beats e **sem pausa**. Testado: com `:1 r` a pausa de semibreve aparece desenhada ao lado do `%`; com o compasso vazio sai só o `%`. Quem toca é o compasso anterior, por decisão do motor (`_getPlaybackBar`, `alphaTab.core.mjs:48208`). Ver "Simile não é conteúdo escondido" |
-| Seção | `\section "A" "Violão, piano e vocal"` — **dois argumentos**: o 1º é o marcador, o 2º é o texto (`alphaTab.core.mjs:13617-13625`). Com dois argumentos o AlphaTab grava `[A] Texto`, com o marcador **em caixa**, que é exatamente a convenção do vídeo. Com um argumento só sai texto solto, sem caixa |
+| Seção | Modelo guarda `sectionStart.marker` + `sectionStart.text`. O gerador emite `\section "A" ""` — caixa `[A]` na pauta, texto no Drawer. Dois argumentos no AlphaTex (marcador + texto); texto longo na pauta cobria a cifra do 1º tempo |
 | Cifra | Reusa o corte A inteiro (`Beat.cifra` → `{ch "…"}`, overlay na faixa do acorde). Nada muda |
 | Áudio | Fora deste corte. Quando vier: backing track MP3 (Suno, motor já ligado) + sync points do AlphaTab. **Não** playhead por `currentTime / secondsPerBar` |
 | Folha deitada | Fora deste corte |
@@ -70,7 +70,7 @@ Sondas em `src/pages/AlphaTabFixtures.tsx` (topo da página `/dev/alphatab-fixtu
 | `\section "A" "Texto"` | `[A] Texto`, marcador em caixa |
 | Barra de semibreve (`:1` + `{slashed}`) | Sai como **losango** — é o último compasso do vídeo. Não precisa de `notehead`, vem de graça |
 
-Um problema achado, e ele é de layout, não de sintaxe: **o texto da seção cai na mesma faixa vertical da cifra e cobre o acorde do primeiro tempo do compasso**. No vídeo o `[A]` e a instrumentação ficam numa linha acima da fileira de cifras. `EffectMarker` e `EffectChordNames` são elementos de notação distintos (`alphaTab.d.ts:12106,12143`) e nossas settings não desligam nenhum dos dois, então o caminho a investigar é `effectBandPaddingBottom` e o estilo por elemento antes de considerar overlay nosso.
+Um problema achado, e ele é de layout, não de sintaxe: **o texto da seção cai na mesma faixa vertical da cifra e cobre o acorde do primeiro tempo do compasso**. Padding de faixa de efeito não separou. Decisão (16/08): emitir `\section "A" ""` — `[A]` em caixa, D visível. O texto longo fica no modelo (Drawer / título do bloco).
 
 ## Simile não é conteúdo escondido
 
