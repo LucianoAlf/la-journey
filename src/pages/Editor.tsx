@@ -126,7 +126,7 @@ import { DEFAULT_TITLE_TEMPLATE_ID, TITLE_TEMPLATE_PRESETS, type TitleTemplateId
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { parsePageOrientation, type PageOrientation } from "@/lib/a4Preview";
+import { parsePageOrientation, pageSize, type PageOrientation } from "@/lib/a4Preview";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6514,7 +6514,9 @@ Regras:
 
       // Page break entre páginas (exceto a última)
       const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;' : ''
-      const coverStyle = isCover ? 'min-height:297mm;background:transparent;' : ''
+      const coverStyle = isCover
+        ? `min-height:${pageOrientation === 'landscape' ? 210 : 297}mm;background:transparent;`
+        : ''
       pagesHtmlParts.push(`<div class="${clone.className}" style="margin-bottom:40px;${coverStyle}${pageBreak}">${clone.innerHTML}</div>`)
     }
     const pagesHtml = pagesHtmlParts.join('\n')
@@ -6523,6 +6525,13 @@ Regras:
       ...blocks,
       { render_data: pageConfig },
     ]))
+    const { width: pageW, height: pageH } = pageSize(pageOrientation)
+    const landscapePageCss = pageOrientation === 'landscape'
+      ? `.a4-page--landscape{width:${pageW}px;height:${pageH}px}
+.a4-page--landscape.a4-page--cover,.a4-page--landscape .block-cover{min-height:${pageH}px}
+.a4-page--landscape.a4-page--cover .block-cover--with-image{background-size:contain!important;background-repeat:no-repeat;background-position:center;background-color:#000}`
+      : ''
+    const printPageSize = pageOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -6537,15 +6546,16 @@ h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
 h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
 strong{font-weight:600}
 p{margin:0 0 12px}
-.a4-page{max-width:794px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:1123px;display:flex;flex-direction:column}
-.a4-page--cover{background:transparent;min-height:1123px;border-radius:0;margin:0 auto 24px;box-shadow:none;overflow:hidden}
+.a4-page{max-width:${pageW}px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:${pageH}px;${pageOrientation === 'landscape' ? `width:${pageW}px;height:${pageH}px;` : ''}display:flex;flex-direction:column}
+.a4-page--cover{background:transparent;min-height:${pageH}px;border-radius:0;margin:0 auto 24px;box-shadow:none;overflow:hidden}
 .a4-page--cover .a4-page-content{padding:0;overflow:hidden}
 .a4-page--cover .canvas-block{padding:0;margin:0}
+${landscapePageCss}
 .a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;flex-shrink:0}
 .a4-page-content{padding:12px 60px;flex:1;overflow:hidden}
 .a4-page-footer{padding:14px 56px 28px;font-size:10px;color:#64748b;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0;min-height:56px}
 .canvas-block{padding:10px 16px;margin-bottom:4px}
-.block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
+.block-cover{position:relative;width:100%;min-height:${pageH}px;display:flex;align-items:center;justify-content:center}
 .block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
 .cover-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45)}
 .cover-content,.cover-footer,.cover-logo{position:absolute;z-index:1}
@@ -6578,7 +6588,7 @@ svg{max-width:100%}
   .canvas-block,.notation-container,.block-tip,.block-exercise,.mb-4,img,svg,table,pre,figure{page-break-inside:avoid!important;break-inside:avoid!important}
   h1,h2,h3,h4{page-break-after:avoid!important;break-after:avoid!important}
   [class*="bg-dourado-soft"],[class*="bg-advance"]{page-break-inside:avoid!important;break-inside:avoid!important}
-  @page{size:A4 portrait;margin:0}
+  @page{size:${printPageSize};margin:0}
 }
 </style>
 </head>
@@ -6592,7 +6602,7 @@ ${pagesHtml}
     window.open(url, '_blank')
     toast.success('HTML exportado em nova aba')
     setForceAllPagesActive(false)
-  }, [activateAllCanvasPages, blocks, materialTitle, pageConfig])
+  }, [activateAllCanvasPages, blocks, materialTitle, pageConfig, pageOrientation])
 
   const handleDownloadPDF = useCallback(async () => {
     const isSongbook = isSongbookMaterial(materialMeta?.material_type, blocks)

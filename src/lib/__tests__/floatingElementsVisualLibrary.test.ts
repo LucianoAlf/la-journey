@@ -138,6 +138,19 @@ test('estimates floating text bounds from content and typography', () => {
   )
 })
 
+test('landscape floating text percent uses the oriented page', () => {
+  const args = {
+    content: '<p>Novo texto</p>',
+    fontSize: 32,
+    lineHeight: 1.18,
+    letterSpacing: 0,
+  }
+  const portrait = getFloatingTextAutoSize(args)
+  const landscape = getFloatingTextAutoSize(args, 'landscape')
+  assert(landscape.width < portrait.width, 'wider paper should shrink width percent')
+  assert(landscape.height > portrait.height, 'shorter paper should grow height percent')
+})
+
 test('normalizes old circle dimensions to a square visual box on A4', () => {
   const circle = createFloatingShape('circle', {
     id: 'shape-1',

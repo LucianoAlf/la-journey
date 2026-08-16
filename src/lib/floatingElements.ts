@@ -1,3 +1,5 @@
+import { pageSize, type PageOrientation } from './a4Preview'
+
 // ── Floating Elements — Tipos, defaults e helpers ──
 
 // Tipo base para todos os floating elements
@@ -104,8 +106,6 @@ export interface FloatingIcon extends FloatingElementBase {
 export type FloatingElement = FloatingText | FloatingImage | FloatingShape | FloatingIcon
 
 export const FLOATING_PAGE_ASPECT_RATIO = 210 / 297
-const FLOATING_TEXT_PAGE_WIDTH_PX = 794
-const FLOATING_TEXT_PAGE_HEIGHT_PX = 1123
 
 export function getFloatingAspectLockedHeight(width: number): number {
   return Math.round(width * FLOATING_PAGE_ASPECT_RATIO * 10) / 10
@@ -446,12 +446,12 @@ export function isFloatingTextContentEmpty(html: string): boolean {
   return floatingTextHtmlToPlainText(html).trim().length === 0
 }
 
-export function getFloatingTextAutoSize({
-  content,
-  fontSize,
-  lineHeight,
-  letterSpacing,
-}: Pick<FloatingText, 'content' | 'fontSize' | 'lineHeight' | 'letterSpacing'>): { width: number; height: number } {
+export function getFloatingTextAutoSize(
+  el: Pick<FloatingText, 'content' | 'fontSize' | 'lineHeight' | 'letterSpacing'>,
+  orientation: PageOrientation = 'portrait',
+): { width: number; height: number } {
+  const { content, fontSize, lineHeight, letterSpacing } = el
+  const { width: pageW, height: pageH } = pageSize(orientation)
   const plain = floatingTextHtmlToPlainText(content) || 'Texto'
   const lines = plain.split('\n')
   const longestLineLength = Math.max(...lines.map(line => line.length), 1)
@@ -459,8 +459,8 @@ export function getFloatingTextAutoSize({
   const widthPx = longestLineLength * estimatedCharacterWidth
   const heightPx = Math.max(lines.length, 1) * fontSize * lineHeight
   return {
-    width: Math.round(Math.max(6, Math.min(80, (widthPx / FLOATING_TEXT_PAGE_WIDTH_PX) * 100)) * 10) / 10,
-    height: Math.round(Math.max(2.4, Math.min(60, (heightPx / FLOATING_TEXT_PAGE_HEIGHT_PX) * 100)) * 10) / 10,
+    width: Math.round(Math.max(6, Math.min(80, (widthPx / pageW) * 100)) * 10) / 10,
+    height: Math.round(Math.max(2.4, Math.min(60, (heightPx / pageH) * 100)) * 10) / 10,
   }
 }
 
