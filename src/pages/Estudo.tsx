@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pause, Play, SpinnerGap } from '@phosphor-icons/react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { StudyPlayalongSurface, type StudyPlayalongSurfaceHandle } from '@/components/music/StudyPlayalongSurface'
 import { useMaterials, useMaterialWithBlocks } from '@/hooks/useMaterials'
 import { useSchool } from '@/hooks/useSchool'
-import { parsePlayalong } from '@/lib/playalong'
+import { parsePlayalong, playalongToJson, type PlayalongConfig } from '@/lib/playalong'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
-import type { MaterialListItem, MaterialWithBlocks } from '@/services/materialService'
+import { updateMaterial, type GeneratedMaterial, type MaterialListItem, type MaterialWithBlocks } from '@/services/materialService'
+import { uploadPlayalongFile } from '@/services/playalongUpload'
 
 function EstudoList() {
   const navigate = useNavigate()
@@ -76,17 +78,51 @@ function EstudoList() {
 
 function EstudoRoom({ materialId }: { materialId: string }) {
   const navigate = useNavigate()
-  const { data: rows, loading, error } = useMaterialWithBlocks(materialId)
+  const { data: rows, loading, error, refetch } = useMaterialWithBlocks(materialId)
   const surfaceRef = useRef<StudyPlayalongSurfaceHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [playing, setPlaying] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [playalongOverride, setPlayalongOverride] = useState<PlayalongConfig | null>(null)
 
   const material = rows?.[0] ?? null
   const notation = useMemo(() => pickNotationBlock(rows), [rows])
   const study = notation
     ? studyTexFromBlock({ content: notation.block_content, render_data: notation.block_render_data })
     : null
-  const playalong = parsePlayalong(material?.page_config?.playalong)
+  const playalong = playalongOverride ?? parsePlayalong(material?.page_config?.playalong)
+
+  const persistPlayalong = async (next: PlayalongConfig) => {
+    const existing = (material?.page_config ?? {}) as Record<string, unknown>
+    await updateMaterial(materialId, {
+      page_config: {
+        ...existing,
+        playalong: playalongToJson(next),
+      } as GeneratedMaterial['page_config'],
+    })
+    setPlayalongOverride(next)
+  }
+
+  const onPickAudio = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      const audioUrl = await uploadPlayalongFile(materialId, file)
+      await persistPlayalong({
+        audioUrl,
+        countInMs: playalong?.countInMs ?? 0,
+        syncPoints: playalong?.syncPoints ?? [],
+      })
+      toast.success('Playalong salvo neste material')
+      refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao enviar o áudio')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const togglePlayback = () => {
     if (playing) {
@@ -118,8 +154,10 @@ function EstudoRoom({ materialId }: { materialId: string }) {
             type="file"
             accept="audio/mpeg,audio/ogg,audio/mp4,.mp3,.ogg"
             className="hidden"
+            onChange={onPickAudio}
           />
-          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? <SpinnerGap size={16} className="animate-spin" /> : null}
             Carregar playalong
           </Button>
           <Button size="sm" onClick={togglePlayback} disabled={!study}>

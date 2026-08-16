@@ -127,6 +127,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { parsePageOrientation, pageSize, type PageOrientation } from "@/lib/a4Preview";
+import { parsePlayalong, type PlayalongConfig } from "@/lib/playalong";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -235,6 +236,7 @@ interface PageConfig {
   margins?: PageMargins
   guides?: PageGuide[]
   orientation?: PageOrientation
+  playalong?: PlayalongConfig
 }
 
 const DEFAULT_PAGE_CONFIG: PageConfig = {
@@ -272,6 +274,7 @@ function migratePageConfig(raw: Record<string, unknown>): PageConfig {
       ? migrateLegacyFooter(footer as { enabled: boolean; leftText: string; centerText: string; rightText: string; showPageNumber: boolean; pageNumberPosition: 'left' | 'center' | 'right' })
       : (pc.footer ?? DEFAULT_FOOTER),
     orientation: parsePageOrientation(raw.orientation),
+    playalong: parsePlayalong(raw.playalong) ?? undefined,
   }
 }
 
