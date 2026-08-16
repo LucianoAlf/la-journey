@@ -10,22 +10,66 @@ import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSy
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
 import { updateMaterial, type GeneratedMaterial, type MaterialListItem, type MaterialWithBlocks } from '@/services/materialService'
 import { uploadPlayalongFile } from '@/services/playalongUpload'
+import { createStudyMaterialFromMp3 } from '@/services/studyFromMp3Service'
 
 function EstudoList() {
   const navigate = useNavigate()
   const { data: school } = useSchool()
   const { data: materials, loading, error } = useMaterials(school?.id)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+
+  const onPickMp3 = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!school?.id) {
+      toast.error('Escola não encontrada')
+      return
+    }
+    setImporting(true)
+    try {
+      const id = await createStudyMaterialFromMp3({ schoolId: school.id, file })
+      navigate(`/estudo/${id}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao ler o MP3')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="mb-6">
-        <h1 className="font-serif text-[26px] leading-[1.2] text-text">
-          Sala de <em className="not-italic text-accent">Estudo</em>
-        </h1>
-        <p className="mt-1.5 text-[13.5px] text-text2">
-          Escolha um material com pauta e toque o playalong
-        </p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-serif text-[26px] leading-[1.2] text-text">
+            Sala de <em className="not-italic text-accent">Estudo</em>
+          </h1>
+          <p className="mt-1.5 text-[13.5px] text-text2">
+            Suba um MP3 para nascer a pauta, ou abra um material que já tem grade
+          </p>
+        </div>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/mpeg,audio/ogg,.mp3,.ogg"
+            className="hidden"
+            onChange={onPickMp3}
+          />
+          <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+            {importing ? <SpinnerGap size={16} className="animate-spin" /> : null}
+            Do MP3
+          </Button>
+        </div>
       </div>
+
+      {importing && (
+        <div className="card mb-4 flex items-center gap-2 py-4 text-[13px] text-text2">
+          <SpinnerGap size={18} className="animate-spin text-accent" />
+          Lendo cifra e compassos…
+        </div>
+      )}
 
       <div className="card">
         {loading && (
@@ -40,7 +84,7 @@ function EstudoList() {
         )}
         {!loading && !error && (!materials || materials.length === 0) && (
           <div className="py-12 text-center text-sm text-text3">
-            Nenhum material ainda.
+            Nenhum material ainda. Use Do MP3 para criar o primeiro.
           </div>
         )}
         {materials && materials.length > 0 && (
@@ -102,7 +146,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
       page_config: {
         ...existing,
         playalong: playalongToJson(next),
-      } as GeneratedMaterial['page_config'],
+      } as unknown as GeneratedMaterial['page_config'],
     })
     setPlayalongOverride(next)
   }
@@ -127,7 +171,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
         countInMs: playalong?.countInMs ?? 0,
         syncPoints: playalong?.syncPoints ?? [],
       })
-      toast.success('Playalong salvo neste material')
+      toast.success('Playalong salvo. Aperte Play para ouvir.')
       refetch()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha ao enviar o áudio')
@@ -139,12 +183,10 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const togglePlayback = () => {
     if (playing) {
       surfaceRef.current?.pause()
-      setPlaying(false)
       void flushMarks()
       return
     }
     surfaceRef.current?.play()
-    setPlaying(true)
   }
 
   const toggleMarking = () => {
@@ -197,15 +239,20 @@ function EstudoRoom({ materialId }: { materialId: string }) {
             {uploading ? <SpinnerGap size={16} className="animate-spin" /> : null}
             Carregar playalong
           </Button>
-          <Button variant={marking ? 'default' : 'outline'} size="sm" onClick={toggleMarking} disabled={!study}>
+          <Button variant={marking ? 'default' : 'outline'} size="sm" onClick={toggleMarking} disabled={!playalong?.audioUrl}>
             {marking ? 'Parar marcação' : 'Marcar compassos'}
           </Button>
-          <Button size="sm" onClick={togglePlayback} disabled={!study}>
+          <Button size="sm" onClick={togglePlayback} disabled={!playalong?.audioUrl}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
             {playing ? 'Pausar' : 'Play'}
           </Button>
         </div>
       </div>
+      {study && (
+        <p className="mb-3 text-[12px] text-text2">
+          A pauta é a deste material (os acordes não vêm do MP3). O playalong é só a faixa — use Play ou o controle de áudio.
+        </p>
+      )}
       {marking && (
         <p className="mb-3 text-[12px] text-text2">
           Espaço ou clique na pauta marca o tempo 1 do compasso. {playalong?.syncPoints.length ?? 0} ponto(s).
@@ -236,6 +283,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
           syncPoints={playalong?.syncPoints ?? []}
           marking={marking}
           onMarkBar={onMarkBar}
+          onPlayingChange={setPlaying}
         />
       )}
     </div>
