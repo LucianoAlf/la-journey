@@ -17,6 +17,7 @@ import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineH
 import { resolveNotationKeyAction } from '@/lib/notationInlineKeyboard'
 import { normalizeCifraSymbol } from '@/lib/notationCifra'
 import { barStartIndices, clampBarsPerSystem, navigateBarIndex } from '@/lib/notationLayout'
+import { SLASH_NEUTRAL_PITCH } from '@/lib/beatsToAlphaTex'
 import {
   applySessionToRenderData,
   deleteBeat,
@@ -113,6 +114,7 @@ export function useNotationInlineSession({
   const [noteInputArmed, setNoteInputArmed] = useState(true)
   const [previewSound, setPreviewSound] = useState(readPreviewSoundEnabled)
   const [cifraEditing, setCifraEditing] = useState(false)
+  const [slashArmed, setSlashArmed] = useState(false)
   const cifraEditingRef = useRef(false)
 
   const focusInput = useCallback(() => {
@@ -231,16 +233,29 @@ export function useNotationInlineSession({
     const result = insertNote({
       beats, selectedBeatIdx, pitch, afterIdx, duration: currentDuration,
       accidental: currentAccidental, dotted, doubleDotted, grandStaff,
-      staff, explicitTimeSlot, activeStaff,
+      staff, explicitTimeSlot, activeStaff, slash: slashArmed,
     })
     commit(result.beats)
     setSelectedBeatIdx(result.selectedBeatIdx)
-    lastPitchRef.current = pitch
-    void playNotePreview([soundingPitch(pitch, currentAccidental)])
+    const writtenPitch = slashArmed ? SLASH_NEUTRAL_PITCH.pitch : pitch
+    lastPitchRef.current = writtenPitch
+    void playNotePreview([soundingPitch(writtenPitch, slashArmed ? null : currentAccidental)])
     if (staff) setActiveStaff(staff)
     setNoteInputArmed(true)
     focusInput()
-  }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx])
+  }, [activeStaff, beats, commit, currentAccidental, currentDuration, dotted, doubleDotted, focusInput, grandStaff, selectedBeatIdx, slashArmed])
+
+  const toggleSlashArmed = useCallback(() => {
+    const nextArmed = !slashArmed
+    setSlashArmed(nextArmed)
+    if (selectedBeatIdx < 0 || !beats[selectedBeatIdx]) return
+    const beat = beats[selectedBeatIdx]
+    const next = [...beats]
+    next[selectedBeatIdx] = nextArmed
+      ? { ...beat, slash: true, isRest: false, pitches: [{ pitch: SLASH_NEUTRAL_PITCH.pitch }] }
+      : { ...beat, slash: undefined }
+    commit(next)
+  }, [beats, commit, selectedBeatIdx, slashArmed])
 
   const onReplaceNote = useCallback((pitch: string, atIdx: number) => {
     const result = replaceNote({ beats, atIdx, pitch, accidental: currentAccidental })
@@ -481,6 +496,8 @@ export function useNotationInlineSession({
     cifraEnabled: selectedBeatIdx >= 0,
     cifraOpen: cifraEditing,
     onOpenCifra: startCifraEditing,
+    slashArmed,
+    onToggleSlash: toggleSlashArmed,
   }
 
   const cifraValue = selectedBeatIdx >= 0 ? (beats[selectedBeatIdx]?.cifra ?? '') : ''

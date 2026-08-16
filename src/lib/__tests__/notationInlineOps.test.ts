@@ -243,3 +243,37 @@ test('replaceNote keeps cifra; insertNote does not copy it', () => {
   })
   assert.equal(inserted.beats[1].cifra, undefined)
 })
+
+test('insertNote with slash writes a rhythmic slash at the neutral pitch', () => {
+  const next = insertNote({
+    beats: [c4],
+    selectedBeatIdx: 0,
+    pitch: 'E/5',
+    afterIdx: 0,
+    duration: 'q',
+    accidental: '#',
+    dotted: false,
+    doubleDotted: false,
+    slash: true,
+  })
+  const slashBeat = next.beats[1]
+  assert.equal(slashBeat.slash, true, 'beat novo sai como barra ritmica')
+  assert.equal(slashBeat.pitches[0].pitch, 'B/4', 'professor nao escolhe altura: sempre B/4')
+  assert.equal(slashBeat.pitches[0].accidental, undefined, 'slash nao carrega acidente do clique')
+  assert.equal(slashBeat.isRest, false)
+})
+
+test('insertNote without slash keeps the clicked pitch', () => {
+  const next = insertNote({
+    beats: [c4],
+    selectedBeatIdx: 0,
+    pitch: 'E/5',
+    afterIdx: 0,
+    duration: 'q',
+    accidental: null,
+    dotted: false,
+    doubleDotted: false,
+  })
+  assert.equal(next.beats[1].slash, undefined)
+  assert.equal(next.beats[1].pitches[0].pitch, 'E/5')
+})

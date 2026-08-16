@@ -24,6 +24,7 @@ export interface Beat {
   tuplet?: { numNotes: number; notesOccupied: number; groupId: string }
   timeSlot?: number // Posição temporal para sincronização entre pautas na Grande Pauta
   barAfter?: boolean
+  slash?: boolean
 }
 
 export interface NotationSvgEditorProps {

@@ -1,5 +1,6 @@
 import {
   beatsToAlphaTexWithMap,
+  SLASH_NEUTRAL_PITCH,
   toTieDestinations,
   type Beat as AlphaTexBeat,
   type BeatsToAlphaTexResult,
@@ -28,6 +29,7 @@ export interface InsertNoteInput {
   staff?: Staff
   explicitTimeSlot?: number
   activeStaff?: Staff
+  slash?: boolean
 }
 
 export function insertNote(input: InsertNoteInput): SessionOperationResult {
@@ -44,6 +46,7 @@ export function insertNote(input: InsertNoteInput): SessionOperationResult {
     staff,
     explicitTimeSlot,
     activeStaff = 'treble',
+    slash = false,
   } = input
   const effectiveStaff = staff ?? activeStaff
   let nextTimeSlot = 0
@@ -70,13 +73,16 @@ export function insertNote(input: InsertNoteInput): SessionOperationResult {
   }
 
   const newBeat: InlineBeat = {
-    pitches: [{ pitch, accidental: accidental || undefined }],
+    pitches: slash
+      ? [{ pitch: SLASH_NEUTRAL_PITCH.pitch }]
+      : [{ pitch, accidental: accidental || undefined }],
     duration,
     isRest: false,
     dotted,
     doubleDotted,
     staff: grandStaff ? effectiveStaff : undefined,
     timeSlot: grandStaff ? nextTimeSlot : undefined,
+    slash: slash || undefined,
   }
   const nextBeats = [...beats]
 

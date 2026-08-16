@@ -256,7 +256,7 @@ export interface AlphaTexNotesResult {
 
 // Linha do meio da clave de Sol. Beat slashed precisa de nota: o AlphaTab posiciona
 // a barra lendo beat.notes[0]. O professor não escolhe altura de barra rítmica.
-const SLASH_NEUTRAL_PITCH: PitchData = { pitch: 'B/4', accidental: null }
+export const SLASH_NEUTRAL_PITCH: PitchData = { pitch: 'B/4', accidental: null }
 
 const SIMILE_MAP: Record<string, string> = {
   simple: 'simple',

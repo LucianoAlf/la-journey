@@ -9,7 +9,7 @@ import { NotationDurationStrip } from './NotationDurationStrip'
 import { NotationToolsSidebar } from './NotationToolsSidebar'
 import { readNotationSurface } from '@/lib/notationSurface'
 import type { Beat as AlphaTexBeat } from '@/lib/beatsToAlphaTex'
-import { beatsToAlphaTexWithMap, toTieDestinations } from '@/lib/beatsToAlphaTex'
+import { beatsToAlphaTexWithMap, SLASH_NEUTRAL_PITCH, toTieDestinations } from '@/lib/beatsToAlphaTex'
 import { TUPLET_OPTIONS } from '@/lib/notationEditorChrome'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -135,6 +135,7 @@ function normalizeLegacyBeats(rawBeats: any[]): SvgBeat[] {
         tuplet: rawBeat.tuplet,
         timeSlot: Number.isFinite(rawBeat.timeSlot) ? rawBeat.timeSlot : undefined,
         barAfter: Boolean(rawBeat.barAfter),
+        slash: Boolean(rawBeat.slash) || undefined,
       }
     })
     .filter((beat): beat is SvgBeat => beat !== null)
@@ -274,6 +275,7 @@ export function NotationEditorV2({
   const lastPitchRef = useRef<string | null>(null)
   const notationSurface = readNotationSurface()
   const [cifraEditing, setCifraEditing] = useState(false)
+  const [slashArmed, setSlashArmed] = useState(false)
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false)
@@ -356,6 +358,7 @@ export function NotationEditorV2({
       articulations: b.articulations,
       tuplet: b.tuplet,
       cifra: b.cifra ?? null,
+      slash: b.slash,
       annotation: null,
       lyric: null,
       staff: b.staff,
@@ -492,13 +495,16 @@ export function NotationEditorV2({
     }
     
     const newBeat: Beat = {
-      pitches: [{ pitch, accidental: currentAccidental || undefined }],
+      pitches: slashArmed
+        ? [{ pitch: SLASH_NEUTRAL_PITCH.pitch }]
+        : [{ pitch, accidental: currentAccidental || undefined }],
       duration: currentDuration,
       isRest: false,
       dotted,
       doubleDotted,
       staff: grandStaffMode ? effectiveStaff : undefined,
       timeSlot: grandStaffMode ? nextTimeSlot : undefined,
+      slash: slashArmed || undefined,
     }
 
     const newBeats = [...beats]
@@ -545,7 +551,7 @@ export function NotationEditorV2({
       setSelectedBeatIdx(insertIdx)
     }
     
-    lastPitchRef.current = pitch
+    lastPitchRef.current = slashArmed ? SLASH_NEUTRAL_PITCH.pitch : pitch
     
     // Manter a pauta ativa coerente com a inserção recém-feita
     if (grandStaffMode) {
@@ -553,7 +559,7 @@ export function NotationEditorV2({
     }
     
     focusInput()
-  }, [beats, currentDuration, currentAccidental, dotted, doubleDotted, grandStaffMode, activeStaff, pushHistory, focusInput])
+  }, [beats, currentDuration, currentAccidental, dotted, doubleDotted, grandStaffMode, activeStaff, pushHistory, focusInput, slashArmed])
 
   const handleReplaceNote = useCallback((pitch: string, atIdx: number) => {
     if (atIdx < 0 || atIdx >= beats.length) return
@@ -1322,6 +1328,19 @@ export function NotationEditorV2({
             cifraEnabled={selectedBeatIdx >= 0}
             cifraOpen={cifraEditing}
             onOpenCifra={startCifraEditing}
+            slashArmed={slashArmed}
+            onToggleSlash={() => {
+              const nextArmed = !slashArmed
+              setSlashArmed(nextArmed)
+              if (selectedBeatIdx < 0 || !beats[selectedBeatIdx]) return
+              const next = [...beats]
+              const beat = next[selectedBeatIdx]
+              next[selectedBeatIdx] = nextArmed
+                ? { ...beat, slash: true, isRest: false, pitches: [{ pitch: SLASH_NEUTRAL_PITCH.pitch }] }
+                : { ...beat, slash: undefined }
+              setBeats(next)
+              pushHistory(next)
+            }}
           />
 
         </div>
