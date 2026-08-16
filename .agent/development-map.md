@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — C1 playalong implementado  
+Atualizado: 2026-08-16 (noite) — spec C2 Estudo a partir do MP3  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** confirmar Baixar PDF deitado em produção (radar 1). Depois: aluno na sala Estudo, ou prova de MP3+sync na Ovelha se o professor ainda não marcou.
+**Próximo corte:** Estudo C2 — Do MP3 → Music.AI → material novo (slash + cifra + playalong). Spec escrita, plano ainda não.
 
 ## Como retomar
 
@@ -16,7 +16,8 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Player de estudo C1** implementado em `feat/estudo-playalong` (ainda não em produção). Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Player de estudo C1** implementado em `feat/estudo-playalong` (ainda não em produção). **C2** (MP3 → pauta) spec aprovada no chat, código ainda não. Não misturar com `feat/audio-didatico`.
+- Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
 - Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
 - Plano C1: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
 - Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
@@ -40,6 +41,7 @@ Sala `/estudo` + `/estudo/:id` no Operacional (depois de Visão Professor). Prop
 - Plano: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
 - Branch: `feat/estudo-playalong` (worktree `.worktrees/estudo-playalong`). Dev: `http://localhost:5202/estudo`
 - Smoke: lista + pauta desenham (Intervalos Melódicos). Editor do mesmo material sem cursor/som. Material titulado Ovelha **não** está no banco — a prova 2/4 + Solo 7x + MP3 fica no professor (Carregar playalong + Marcar compassos).
+- Áudio: `EnabledExternalMedia` + `<audio>` próprio (o backing-track do AlphaTab marcava Play/cursor sem sair som).
 - Testes: `playalong`, `alphaTabSettings`, `studyNotationTex` — todos `ok`.
 
 ### Folha deitada — orientação A4 por material (16/08, noite)
