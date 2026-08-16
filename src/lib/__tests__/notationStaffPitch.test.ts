@@ -1,4 +1,4 @@
-import { emptyStaffAlphaTex, ledgerLineYs, pitchFromStaffY, staffYFromPitch } from '../notationStaffPitch.ts'
+import { emptyStaffAlphaTex, ledgerLineYs, modelPitchFromStaffY, pickStaffBox, pitchFromStaffY, staffBoxesFromLineYs, staffYFromPitch } from '../notationStaffPitch.ts'
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message)
@@ -87,4 +87,35 @@ test('high note above staff gets stacked ledger lines', () => {
   const lines = ledgerLineYs(c6, TOP, BOTTOM)
   assert(lines.length === 2, 'A5 and C6 lines')
   assert(lines.includes(TOP - 2 * half) && lines.includes(TOP - 4 * half), 'positions')
+})
+
+test('fat bar bounds snap A4 away from the real staff line', () => {
+  const realTop = 100
+  const realBottom = 140
+  const realA4 = staffYFromPitch('A/4', realTop, realBottom, 'treble')
+  const fatPitch = pitchFromStaffY(realA4, 60, 180, 'treble')
+  const fatSnap = staffYFromPitch(fatPitch, 60, 180, 'treble')
+  assert(Math.abs(fatSnap - realA4) > 1, 'bar visualBounds must not be used as the staff')
+})
+
+test('staffBoxesFromLineYs keeps only the five staff lines', () => {
+  const boxes = staffBoxesFromLineYs([100, 110, 120, 130, 140])
+  assert(boxes.length === 1, 'one staff')
+  assert(boxes[0].top === 100 && boxes[0].bottom === 140, 'F5 to E4')
+  assert(pitchFromStaffY(125, boxes[0].top, boxes[0].bottom, 'treble') === 'A/4', 'A4 space')
+  assert(staffYFromPitch('A/4', boxes[0].top, boxes[0].bottom, 'treble') === 125, 'snap on A4')
+})
+
+test('model pitch is one octave below the written staff pitch', () => {
+  const half = (BOTTOM - TOP) / 8
+  const a4Y = TOP + 5 * half
+  assert(pitchFromStaffY(a4Y, TOP, BOTTOM, 'treble') === 'A/4', 'written A4')
+  assert(modelPitchFromStaffY(a4Y, TOP, BOTTOM, 'treble') === 'A/3', 'AlphaTab displays A/3 as A4')
+})
+
+test('staffBoxesFromLineYs splits two systems', () => {
+  const boxes = staffBoxesFromLineYs([40, 50, 60, 70, 80, 200, 210, 220, 230, 240])
+  assert(boxes.length === 2, 'two staves')
+  assert(pickStaffBox(boxes, 225)?.top === 200, 'lower system')
+  assert(pickStaffBox(boxes, 55)?.top === 40, 'upper system')
 })

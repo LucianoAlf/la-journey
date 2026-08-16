@@ -18,6 +18,7 @@ export interface BuildAlphaTabSettingsOptions {
   scale?: number
   includeNoteBounds?: boolean
   systemPaddingBottom?: number
+  barsPerRow?: number
 }
 
 /** Escala da gravura de notação para material didático (canvas, modal e preview). */
@@ -87,8 +88,8 @@ function applyThemeResources(
 
   res.barSeparatorColor = showTimeSignature
     ? isDark
-      ? new alphaTabModule.model.Color(120, 130, 150, 200)
-      : new alphaTabModule.model.Color(148, 163, 184, 220)
+      ? new alphaTabModule.model.Color(220, 225, 235, 255)
+      : new alphaTabModule.model.Color(30, 30, 40, 255)
     : new alphaTabModule.model.Color(0, 0, 0, 0)
 
   if (isDark) {
@@ -111,6 +112,7 @@ export function buildAlphaTabSettings({
   scale = 0.8,
   includeNoteBounds = false,
   systemPaddingBottom,
+  barsPerRow,
 }: BuildAlphaTabSettingsOptions): alphaTabModule.Settings {
   const settings = new alphaTabModule.Settings()
   const isTab = isTabPurpose(purpose)
@@ -125,16 +127,23 @@ export function buildAlphaTabSettings({
   settings.core.includeNoteBounds = includeNoteBounds
   settings.core.enableLazyLoading = isEditorPurpose(purpose) && !isSnapshotPurpose(purpose)
 
+  const useForcedSystems = !isTab && !isHorizontalLayout && Boolean(barsPerRow && barsPerRow > 0)
   settings.display.layoutMode = isHorizontalLayout
     ? alphaTabModule.LayoutMode.Horizontal
-    : alphaTabModule.LayoutMode.Page
+    : useForcedSystems
+      ? alphaTabModule.LayoutMode.Parchment
+      : alphaTabModule.LayoutMode.Page
   settings.display.scale = effectiveScale
   settings.display.systemPaddingBottom = systemPaddingBottom ?? (isHorizontalLayout ? 0 : 20)
   const stretchForce = isHorizontalLayout
     ? (showTimeSignature ? 0.75 : 1.05)
-    : (showTimeSignature ? 1.8 : 3.5)
+    : (showTimeSignature ? 0.85 : 1.0)
   settings.display.stretchForce = isTab ? 1.0 : stretchForce
   settings.display.justifyLastSystem = !isHorizontalLayout
+  if (useForcedSystems && barsPerRow) {
+    settings.display.barsPerRow = barsPerRow
+    settings.display.systemsLayoutMode = alphaTabModule.SystemsLayoutMode.UseModelLayout
+  }
   settings.display.staveProfile = isTab
     ? alphaTabModule.StaveProfile.Tab
     : alphaTabModule.StaveProfile.Score

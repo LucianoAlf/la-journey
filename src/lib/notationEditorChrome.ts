@@ -11,14 +11,14 @@ export const DURATION_OPTIONS: { value: BeatDuration; label: string; symbol: str
 ]
 
 export const CLEF_OPTIONS = [
-  { value: 'treble', label: 'Sol (Treble)' },
-  { value: 'bass', label: 'Fá (Bass)' },
-  { value: 'alto', label: 'Dó (Alto)' },
+  { value: 'treble', label: 'Sol' },
+  { value: 'bass', label: 'Fá' },
+  { value: 'alto', label: 'Dó' },
   { value: 'percussion', label: 'Percussão' },
 ]
 
 export const KEY_SIGNATURE_OPTIONS = [
-  { value: 'C', label: 'C / Am (sem alteração)' },
+  { value: 'C', label: 'C / Am' },
   { value: 'G', label: 'G / Em (1♯)' },
   { value: 'D', label: 'D / Bm (2♯)' },
   { value: 'A', label: 'A / F♯m (3♯)' },

@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import {
   deleteBeat,
+  resolveDeleteBeatIndex,
   insertNote,
   insertRest,
   replaceNote,
   sessionToAlphaTex,
   applySessionToRenderData,
 } from '../notationInlineOps.ts'
+import { beatsToAlphaTex } from '../beatsToAlphaTex.ts'
 import type { InlineBeat } from '../notationInlineHydrate.ts'
 
 function test(name: string, fn: () => void) {
@@ -44,6 +46,13 @@ test('replaceNote changes pitch in place', () => {
   assert.equal(next.beats[0].isRest, false)
 })
 
+test('resolveDeleteBeatIndex uses selection or the last note', () => {
+  assert.equal(resolveDeleteBeatIndex(2, 5), 2)
+  assert.equal(resolveDeleteBeatIndex(-1, 5), 4)
+  assert.equal(resolveDeleteBeatIndex(9, 3), 2)
+  assert.equal(resolveDeleteBeatIndex(-1, 0), -1)
+})
+
 test('deleteBeat removes and clamps selection', () => {
   const next = deleteBeat({
     beats: [c4, { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false }],
@@ -66,6 +75,28 @@ test('insertRest uses current duration', () => {
   assert.equal(next.beats[1].duration, 'h')
 })
 
+test('sessionToAlphaTex uses the same AlphaTab octave as the idle preview', () => {
+  // Preview (NotationPreviewCompat) chama beatsToAlphaTex sem offset → default -1.
+  // C/4 do modelo vira c3 no AlphaTex. A sessão não pode emitir c4: o clique oitava a pauta.
+  const preview = beatsToAlphaTex(
+    [{ pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false, tie: false, dotted: false, cifra: null, annotation: null, lyric: null }],
+    { clef: 'treble', keySignature: 'C', timeSignature: null, includeLyrics: false },
+  )
+  const { tex } = sessionToAlphaTex({
+    beats: [c4],
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: 'free',
+    bpm: 120,
+    grandStaff: false,
+  })
+  const previewNote = preview.match(/\bc3\b/i)
+  const sessionNote = tex.match(/\bc3\b/i)
+  assert.ok(previewNote, `preview deve gravar C/4 como c3, veio: ${preview}`)
+  assert.ok(sessionNote, `sessão deve gravar C/4 como c3 (igual ao preview), veio: ${tex}`)
+  assert.equal(tex.includes('c4'), false, 'c4 na sessão = uma oitava acima do preview')
+})
+
 test('sessionToAlphaTex emits the new pitch', () => {
   const { tex, indexMap } = sessionToAlphaTex({
     beats: [
@@ -78,7 +109,7 @@ test('sessionToAlphaTex emits the new pitch', () => {
     bpm: 120,
     grandStaff: false,
   })
-  assert.match(tex, /e4/i)
+  assert.match(tex, /e3/i)
   assert.ok(indexMap.length >= 2)
 })
 
@@ -92,13 +123,16 @@ test('applySessionToRenderData writes notation_data and alphaTex without droppin
       timeSignature: 'free',
       bpm: 120,
       grandStaff: false,
+      barsPerSystem: 4,
       title: 'Intervalos',
     },
   )
   assert.equal(rd.foo, 1)
   assert.equal(rd.clef, 'treble')
+  assert.equal(rd.barsPerSystem, 4)
+  assert.equal(rd.notation_data.barsPerSystem, 4)
   assert.ok(Array.isArray(rd.notation_data.beats))
   assert.equal(typeof rd.alphaTex, 'string')
-  assert.match(rd.alphaTex, /c4/i)
+  assert.match(rd.alphaTex, /c3/i)
   assert.equal(rd.notation.staves.length >= 1, true)
 })

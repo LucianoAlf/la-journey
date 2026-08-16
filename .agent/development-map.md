@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-15 (deploy em produção)  
+Atualizado: 2026-08-15 (noite — fechamento da pauta sobe pra produção)  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Mapas de acorde e cifra na pauta (lead sheet).
+**Próximo corte:** Áudio didático corte 1 (Lyria 3 + Music.AI). Lead sheet continua no radar da pauta.
 
 ## Como retomar
 
@@ -16,14 +16,31 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Próximo corte: mapas de acorde e cifra na pauta (lead sheet). Spec ainda não escrita.
-- Produção: https://la-journey.vercel.app — notação in-place + escrita fluida mergeadas em `main` em 15/08.
-- App local do corte: worktree `.worktrees/notacao-alphatab-folha` (pode remover depois do deploy).
-- Não misturar image-gen/Iconify/Recraft do checkout `D:\la-journey`.
+Próximo corte: áudio didático corte 1 (Lyria 3 + Music.AI). Spec pronta. Ramificar de `origin/main` — não da branch velha `feat/caderno-repertorio-montador`.
+- Produção: https://la-journey.vercel.app — caderno de exercício (PR #13) + notação in-place (PR #17) + escrita fluida (PR #18) + fechamento da pauta (este corte).
+- Preview de nota (Tone.js) no Simple Browser do Cursor não toca; validar no Chrome.
+- Image-gen/Iconify/Recraft ficam no working tree sujo de `D:\la-journey`. Não misturar.
 
 ---
 
 ## Feito
+
+### Áudio didático — pesquisa e credenciais (15/08)
+
+Spec aprovada. Generate Lyria ao vivo ok (Clip + Pro HTTP 200). Music.AI PAYG + US$ 20 + key no `.env` e na Edge. Gemini já listava e gerou os dois modelos. Áudio em `steps[].content[]`.
+- Spec: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
+- Implementação: duas Edges (`lyria-generate`, `musicai-transcribe`), tabela `practice_audio`, bucket `audio-tracks`. A partir de `origin/main`.
+
+### Fechamento da pauta: compassos por linha + fluidez (15/08)
+
+- **Por linha** (1–8, padrão 4) na lateral: AlphaTab `UseModelLayout` + `defaultSystemsLayout` — não é mais 1 compasso por sistema. MuseScore/Finale: Fit Measures / Add System Breaks.
+- Atalhos de pular compasso: `Ctrl/Cmd+←/→` (MuseScore 4) e `Tab` / `Shift+Tab`.
+- Livre/Compasso ocupam a largura inteira da pílula (50/50). Fileira de duração deixa de abrir um vão no meio.
+- Stretch da gravura baixou (1.8/3.5 → 0.85/1.0). Resize do AlphaTab não dispara re-tex no meio do render.
+- Fechamento UX: Compasso e Por linha na mesma linha, cada um com rótulo em cima do controle; layout Parchment (6 por linha vale); Esc sai da escrita (Sibelius, listener em captura — não some o bloco no 1º toque); V também sai da escrita; sem ícone de seta na fileira; barras pretas; setas do indicador com stopPropagation.
+- Clique fluido (15/08, tarde): clique em nota SEMPRE seleciona (MuseScore/Finale) — nunca substitui/insere; vazio armado insere, vazio desarmado solta a seleção. Hit-test por coluna do beat em `notationBeatHit.ts`. Ctrl+Z/Y e undo do header ficam na sessão. `previewStateKey` carrega tex/seleção/armed.
+- **Raiz da oitava no clique (15/08, noite):** o preview idle gera AlphaTex com `octaveOffset` default `-1` (`C/4` → `c3`). A sessão forçava `octaveOffset: 0` (`C/4` → `c4`) — clicar no bloco trocava o gravador e subia tudo uma oitava. `sessionToAlphaTex` agora usa o mesmo default do preview. Teste: sessão e preview emitem o mesmo token. Bloco "Intervalos a partir de Dó" restaurado no banco (14 beats).
+- **Seleção = a própria nota (15/08, noite):** a pílula rosa no `visualBounds` da coluna ficava à direita da cabeça. A seleção agora pinta a gravura no modelo do AlphaTab (`NoteStyle` / `BeatStyle`, `#c41e3a`) — a glifa da nota fica vermelha, sem overlay. Som ao selecionar (já existia) com mute na fileira (alto-falante); persiste em `localStorage`.
 
 ### Escrita fluida na pauta A4 (15/08)
 
@@ -305,6 +322,7 @@ Edição:
 4. **Folha deitada (horizontal)** vs em pé (vertical) — tipo de material; exercício/repertório às vezes lê melhor deitado.
 5. **Playhead no compasso** — destaque que anda com o áudio (repertório tocando; aluno e professor acompanham). Tipo o retângulo no compasso da Ovelha Negra.
 6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
+7. **Áudio didático corte 1** — Gerar (Lyria 3) + cifrar (Music.AI). Spec pronta. É o próximo corte (não o lead sheet).
 
 ---
 

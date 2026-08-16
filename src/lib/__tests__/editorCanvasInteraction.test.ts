@@ -41,6 +41,19 @@ test('never deletes a selected block while inline text editing is active', () =>
   )
 })
 
+test('never deletes the notation block while the staff session is active', () => {
+  assertEqual(
+    canDeleteSelectedBlock({
+      selectedBlockId: 'notation-1',
+      inlineEditingBlockId: null,
+      isTextInputTarget: false,
+      notationInlineActive: true,
+    }),
+    false,
+    'delete must remove a note, not the notation block',
+  )
+})
+
 test('allows delete/backspace only for selected block outside text editing', () => {
   assertEqual(
     canDeleteSelectedBlock({

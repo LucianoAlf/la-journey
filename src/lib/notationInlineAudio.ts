@@ -1,6 +1,19 @@
 import * as Tone from 'tone'
 
 let synth: Tone.PolySynth | null = null
+let previewMuted = false
+
+export function setNotePreviewMuted(muted: boolean) {
+  previewMuted = muted
+}
+
+export function isNotePreviewMuted(): boolean {
+  return previewMuted
+}
+
+export function canPlayNotePreview(pitches: string[]): boolean {
+  return !previewMuted && pitches.length > 0
+}
 
 /** Pitch no formato que `playNotePreview` espera (`C/4`, `C#/4`, `Cb/4`). `n` é natural e some. */
 export function soundingPitch(pitch: string, accidental?: string | null): string {
@@ -12,7 +25,7 @@ export function soundingPitch(pitch: string, accidental?: string | null): string
 
 /** Nota curta de confirmação ao escrever/selecionar. Fire-and-forget. */
 export async function playNotePreview(pitches: string[]) {
-  if (pitches.length === 0) return
+  if (!canPlayNotePreview(pitches)) return
   try {
     await Tone.start()
     if (!synth) {

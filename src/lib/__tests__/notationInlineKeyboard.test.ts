@@ -66,6 +66,17 @@ test('arrows navigate and transpose', () => {
   assert(octaveDown?.type === 'transpose' && octaveDown.direction === -1 && octaveDown.octave === true, 'ctrl+down = octave')
 })
 
+test('ctrl+arrows and tab jump a whole bar', () => {
+  const next = resolveNotationKeyAction({ key: 'ArrowRight', ctrlKey: true }, withSelection)
+  assert(next?.type === 'navigate-bar' && next.delta === 1, 'ctrl+right')
+  const prev = resolveNotationKeyAction({ key: 'ArrowLeft', metaKey: true }, withSelection)
+  assert(prev?.type === 'navigate-bar' && prev.delta === -1, 'meta+left')
+  const tab = resolveNotationKeyAction({ key: 'Tab' }, withSelection)
+  assert(tab?.type === 'navigate-bar' && tab.delta === 1, 'tab')
+  const shiftTab = resolveNotationKeyAction({ key: 'Tab', shiftKey: true }, withSelection)
+  assert(shiftTab?.type === 'navigate-bar' && shiftTab.delta === -1, 'shift+tab')
+})
+
 test('r repeats last note', () => {
   assert(resolveNotationKeyAction({ key: 'r' }, noSelection)?.type === 'repeat-last-note', 'repeat')
 })
@@ -82,9 +93,25 @@ test('undo/redo with ctrl or meta', () => {
   assert(resolveNotationKeyAction({ key: 'y', metaKey: true }, noSelection)?.type === 'redo', 'meta+y')
 })
 
-test('escape releases selection, bubbles when nothing selected', () => {
-  assert(resolveNotationKeyAction({ key: 'Escape' }, withSelection)?.type === 'release-selection', 'esc releases')
-  assert(resolveNotationKeyAction({ key: 'Escape' }, noSelection) === null, 'esc bubbles')
+test('V leaves writing and becomes select mode', () => {
+  assert(
+    resolveNotationKeyAction({ key: 'v' }, { hasSelection: true, noteInputArmed: true })?.type === 'leave-note-input',
+    'v = select',
+  )
+  assert(resolveNotationKeyAction({ key: 'v' }, withSelection) === null, 'v is idle when already selecting')
+})
+
+test('escape leaves writing first, then selection, then bubbles', () => {
+  assert(
+    resolveNotationKeyAction({ key: 'Escape' }, { hasSelection: true, noteInputArmed: true })?.type === 'leave-note-input',
+    'esc 1 = pointer / no ghost',
+  )
+  assert(
+    resolveNotationKeyAction({ key: 'Escape' }, { hasSelection: false, noteInputArmed: true })?.type === 'leave-note-input',
+    'esc leaves writing even without a selected note',
+  )
+  assert(resolveNotationKeyAction({ key: 'Escape' }, withSelection)?.type === 'release-selection', 'esc 2 = clear selection')
+  assert(resolveNotationKeyAction({ key: 'Escape' }, noSelection) === null, 'esc 3 bubbles')
 })
 
 test('unhandled keys return null', () => {

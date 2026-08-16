@@ -35,6 +35,22 @@ export function pitchFromStaffY(
   return `${NOTE_NAMES[nameIdx]}/${octave}`
 }
 
+/** AlphaTab score + guitar display: written pitch is sounding + 12. */
+export function shiftPitchOctave(pitch: string, delta: number): string {
+  const match = pitch.match(/^([A-G][#bn]?)\/(\d+)$/)
+  if (!match) return pitch
+  return `${match[1]}/${Number(match[2]) + delta}`
+}
+
+export function modelPitchFromStaffY(
+  y: number,
+  staffTop: number,
+  staffBottom: number,
+  clef: 'treble' | 'bass',
+): string {
+  return shiftPitchOctave(pitchFromStaffY(y, staffTop, staffBottom, clef), -1)
+}
+
 export function emptyStaffAlphaTex(options: {
   clef: string
   keySignature: string
@@ -70,6 +86,39 @@ export function staffYFromPitch(
   const octave = Number(match[2])
   const steps = (top.octave - octave) * 7 + (top.nameIdx - nameIdx)
   return staffTop + steps * half
+}
+
+export function staffBoxesFromLineYs(ys: number[], epsilon = 1.5): Array<{ top: number; bottom: number }> {
+  const unique: number[] = []
+  for (const y of [...ys].sort((a, b) => a - b)) {
+    if (unique.every(seen => Math.abs(seen - y) > epsilon)) unique.push(y)
+  }
+  const boxes: Array<{ top: number; bottom: number }> = []
+  for (let i = 0; i + 4 < unique.length; ) {
+    const five = unique.slice(i, i + 5)
+    const gaps = [five[1] - five[0], five[2] - five[1], five[3] - five[2], five[4] - five[3]]
+    const mean = gaps.reduce((sum, gap) => sum + gap, 0) / 4
+    const even = mean > 2 && gaps.every(gap => Math.abs(gap - mean) < mean * 0.35 + epsilon)
+    if (even) {
+      boxes.push({ top: five[0], bottom: five[4] })
+      i += 5
+    } else {
+      i += 1
+    }
+  }
+  return boxes
+}
+
+export function pickStaffBox(
+  boxes: Array<{ top: number; bottom: number }>,
+  y: number,
+): { top: number; bottom: number } | null {
+  if (boxes.length === 0) return null
+  return boxes.reduce((best, box) => {
+    const mid = (box.top + box.bottom) / 2
+    const bestMid = (best.top + best.bottom) / 2
+    return Math.abs(y - mid) < Math.abs(y - bestMid) ? box : best
+  })
 }
 
 export function ledgerLineYs(noteY: number, staffTop: number, staffBottom: number): number[] {

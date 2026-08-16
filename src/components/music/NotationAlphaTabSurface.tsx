@@ -1,9 +1,25 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import * as alphaTabModule from '@coderline/alphatab'
 import { AlphaTabViewer, type AlphaTabViewerHandle } from './AlphaTabViewer'
 import { A4_CANVAS_NOTATION_WIDTH } from '@/lib/notationPreviewWidth'
 import { NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
-import { emptyStaffAlphaTex, ledgerLineYs, pitchFromStaffY, staffYFromPitch } from '@/lib/notationStaffPitch'
-import { resolveInsertAfterIndex, resolveModelBeatIndex } from '@/lib/notationBeatHit'
+import { isStaffLineRect } from '@/lib/extendAlphaTabStaffLines'
+import { emptyStaffAlphaTex, ledgerLineYs, modelPitchFromStaffY, pickStaffBox, pitchFromStaffY, staffBoxesFromLineYs, staffYFromPitch } from '@/lib/notationStaffPitch'
+import { applySelectionColor, beatBodyHitIndex, collectScoreBeatsFromLookup, insertAfterFromBeatRects, resolveStaffClick } from '@/lib/notationBeatHit'
+
+const SELECTED_NOTE_COLOR = '#c41e3a'
+
+function selectedEngravingStyles() {
+  const color = alphaTabModule.model.Color.fromJson(SELECTED_NOTE_COLOR)
+  const note = new alphaTabModule.model.NoteStyle()
+  note.colors.set(alphaTabModule.model.NoteSubElement.StandardNotationNoteHead, color)
+  note.colors.set(alphaTabModule.model.NoteSubElement.StandardNotationAccidentals, color)
+  const beat = new alphaTabModule.model.BeatStyle()
+  beat.colors.set(alphaTabModule.model.BeatSubElement.StandardNotationStem, color)
+  beat.colors.set(alphaTabModule.model.BeatSubElement.StandardNotationFlags, color)
+  beat.colors.set(alphaTabModule.model.BeatSubElement.StandardNotationRests, color)
+  return { note, beat }
+}
 
 export interface NotationAlphaTabSurfaceProps {
   tex: string
@@ -14,9 +30,12 @@ export interface NotationAlphaTabSurfaceProps {
   keySignature: string
   timeSignature: string | null
   grandStaffMode?: boolean
+  barsPerRow?: number
+  noteInputArmed?: boolean
   onSelectBeat: (idx: number) => void
   onInsertNote: (pitch: string, afterIdx: number) => void
-  onReplaceNote: (pitch: string, atIdx: number) => void
+  /** Mantido por compatibilidade — o clique não substitui mais nota. */
+  onReplaceNote?: (pitch: string, atIdx: number) => void
   inputRef?: React.Ref<HTMLInputElement>
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onHoverPitch?: (pitch: string | null) => void
@@ -71,7 +90,12 @@ function collectBeatRects(
       for (const bar of bars) {
         for (const beat of bar.beats ?? []) {
           const bounds = beat.visualBounds ?? beat.realBounds
-          if (bounds) rects.push({ x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h })
+          if (bounds) rects.push({
+            x: bounds.x,
+            y: bounds.y,
+            w: bounds.w,
+            h: bounds.h,
+          })
         }
       }
     }
@@ -88,51 +112,84 @@ export function NotationAlphaTabSurface({
   keySignature,
   timeSignature,
   grandStaffMode = false,
+  barsPerRow,
+  noteInputArmed = true,
   onSelectBeat,
   onInsertNote,
-  onReplaceNote,
   inputRef,
   onKeyDown,
   onHoverPitch,
 }: NotationAlphaTabSurfaceProps) {
   const viewerRef = useRef<AlphaTabViewerHandle>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const [staffBox, setStaffBox] = useState<{ top: number; bottom: number } | null>(null)
+  const [staffBoxes, setStaffBoxes] = useState<Array<{ top: number; bottom: number }>>([])
   const [beatRects, setBeatRects] = useState<BeatRect[]>([])
   const [ghost, setGhost] = useState<GhostNote | null>(null)
   const [origin, setOrigin] = useState<OverlayOrigin>({ x: 0, y: 0 })
 
   const displayTex = tex || emptyStaffAlphaTex({ clef, keySignature, timeSignature })
 
-  const readStaffBox = useCallback(() => {
+  const readStaffBoxes = useCallback(() => {
+    const wrapper = wrapperRef.current
+    const container = viewerRef.current?.container
+    if (!wrapper || !container) return []
+    const host = container.getBoundingClientRect()
+    const { sy } = localScale(wrapper)
+    const ys: number[] = []
+    container.querySelectorAll('rect').forEach(rect => {
+      const width = parseFloat(rect.getAttribute('width') || '0')
+      const height = parseFloat(rect.getAttribute('height') || '0')
+      if (!isStaffLineRect(height, width)) return
+      const box = rect.getBoundingClientRect()
+      ys.push((box.top + box.height / 2 - host.top) / sy + container.scrollTop)
+    })
+    const fromLines = staffBoxesFromLineYs(ys)
+    if (fromLines.length > 0) return fromLines
     const api = viewerRef.current?.api as { boundsLookup?: any } | null
     const lookup = api?.boundsLookup
-    const first = lookup?.staffSystems?.[0]?.bars?.[0]
-    const bounds = first?.visualBounds ?? first?.realBounds
-    if (!bounds) return null
-    return { top: bounds.y, bottom: bounds.y + bounds.h }
+    const firstBar = lookup?.staffSystems?.[0]?.bars?.[0]?.bars?.[0]
+    const bounds = firstBar?.visualBounds ?? firstBar?.realBounds
+    if (!bounds) return []
+    return [{ top: bounds.y, bottom: bounds.y + bounds.h }]
   }, [])
+
+  const colorPassRef = useRef(false)
+
+  const paintScoreSelection = useCallback((api: { boundsLookup?: any; render?: () => void } | null, rerender: boolean) => {
+    if (!api) return
+    const alphaIdx = resolveAlphaBeatIndex(selectedBeatIdx, indexMap)
+    applySelectionColor(collectScoreBeatsFromLookup(api, grandStaffMode), alphaIdx, selectedEngravingStyles())
+    if (rerender && selectedBeatIdx >= 0 && typeof api.render === 'function') {
+      colorPassRef.current = true
+      api.render()
+    }
+  }, [grandStaffMode, indexMap, selectedBeatIdx])
 
   const handleRenderFinished = useCallback(() => {
     const wrapper = wrapperRef.current
     const container = viewerRef.current?.container
     if (wrapper && container) setOrigin(overlayOffset(wrapper, container))
-    setStaffBox(readStaffBox())
-    setBeatRects(collectBeatRects(viewerRef.current?.api as { boundsLookup?: any } | null, grandStaffMode))
-  }, [grandStaffMode, readStaffBox])
+    setStaffBoxes(readStaffBoxes())
+    const api = viewerRef.current?.api as { boundsLookup?: any; render?: () => void } | null
+    setBeatRects(collectBeatRects(api, grandStaffMode))
+    if (colorPassRef.current) {
+      colorPassRef.current = false
+      return
+    }
+    paintScoreSelection(api, true)
+  }, [grandStaffMode, paintScoreSelection, readStaffBoxes])
 
-  const selectedRect = useMemo(() => {
-    if (selectedBeatIdx < 0) return null
-    const alphaIdx = resolveAlphaBeatIndex(selectedBeatIdx, indexMap)
-    if (alphaIdx < 0 || alphaIdx >= beatRects.length) return null
-    return beatRects[alphaIdx]
-  }, [beatRects, indexMap, selectedBeatIdx])
+  useEffect(() => {
+    const api = viewerRef.current?.api as { boundsLookup?: any; render?: () => void } | null
+    if (!api?.boundsLookup) return
+    paintScoreSelection(api, true)
+  }, [paintScoreSelection, tex])
 
-  const handleBeatMouseDown = useCallback((beat: { index?: number; voice?: { beats?: unknown[] } }) => {
-    const alphaIdx = typeof beat.index === 'number' ? beat.index : -1
-    const modelIdx = resolveModelBeatIndex(alphaIdx, indexMap)
-    if (modelIdx >= 0) onSelectBeat(modelIdx)
-  }, [indexMap, onSelectBeat])
+  // getBeatAtPos do alphaTab é guloso: atribui o vão inteiro do compasso ao beat
+  // mais próximo, o que mataria a inserção em vãos. Só a coluna do beat conta.
+  const hitModelBeat = useCallback((atX: number, atY: number): number => {
+    return beatBodyHitIndex(beatRects, indexMap, atX, atY)
+  }, [beatRects, indexMap])
 
   const handlePointer = useCallback((event: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
     const api = viewerRef.current?.api as { boundsLookup?: any } | null
@@ -147,39 +204,39 @@ export function NotationAlphaTabSurface({
     const wrapX = (event.clientX - wrap.left) / sx
     const atX = (event.clientX - host.left) / sx + container.scrollLeft
     const atY = (event.clientY - host.top) / sy + container.scrollTop
-    const box = staffBox ?? readStaffBox()
+    const box = pickStaffBox(staffBoxes.length > 0 ? staffBoxes : readStaffBoxes(), atY)
     if (!box) return
-    const pitch = pitchFromStaffY(atY, box.top, box.bottom, staffClef(clef))
-    onHoverPitch?.(pitch)
+    const writtenPitch = pitchFromStaffY(atY, box.top, box.bottom, staffClef(clef))
+    const pitch = modelPitchFromStaffY(atY, box.top, box.bottom, staffClef(clef))
+    const overBeatIdx = hitModelBeat(atX, atY)
+    onHoverPitch?.(writtenPitch)
     if (!commit) {
-      const snappedY = staffYFromPitch(pitch, box.top, box.bottom, staffClef(clef))
+      // Sobre uma nota existente o clique seleciona — fantasma esconderia a intenção.
+      if (!noteInputArmed || overBeatIdx >= 0) {
+        setGhost(null)
+        return
+      }
+      const snappedY = staffYFromPitch(writtenPitch, box.top, box.bottom, staffClef(clef))
       setGhost({
         x: wrapX,
         y: snappedY + offset.y,
-        label: pitch.replace('/', ''),
+        label: writtenPitch.replace('/', ''),
         ledger: ledgerLineYs(snappedY, box.top, box.bottom).map(lineY => lineY + offset.y),
       })
       return
     }
 
-    const lookup = api.boundsLookup
-    const hit = lookup?.getBeatAtPos?.(atX, atY) ?? null
-    if (hit && tex) {
-      const voiceBeats = hit.voice?.beats ?? []
-      const alphaIdx = voiceBeats.indexOf(hit)
-      const modelIdx = resolveModelBeatIndex(alphaIdx >= 0 ? alphaIdx : hit.index, indexMap)
-      if (modelIdx >= 0) {
-        if (event.altKey) {
-          onReplaceNote(pitch, modelIdx)
-        } else {
-          onSelectBeat(modelIdx)
-        }
-        return
-      }
-    }
-    const after = resolveInsertAfterIndex(selectedBeatIdx, false)
-    onInsertNote(pitch, after)
-  }, [clef, indexMap, onHoverPitch, onInsertNote, onReplaceNote, onSelectBeat, readStaffBox, selectedBeatIdx, staffBox, tex])
+    const insertAfter = insertAfterFromBeatRects(beatRects, indexMap, atX, atY)
+    const action = resolveStaffClick({
+      armed: noteInputArmed,
+      noteHitIndex: -1,
+      beatHitIndex: overBeatIdx,
+      insertAfterIndex: insertAfter >= 0 ? insertAfter : selectedBeatIdx,
+    })
+    if (action.type === 'insert') onInsertNote(pitch, action.afterIndex)
+    else if (action.type === 'select') onSelectBeat(action.index)
+    else onSelectBeat(-1)
+  }, [beatRects, clef, hitModelBeat, indexMap, noteInputArmed, onHoverPitch, onInsertNote, onSelectBeat, readStaffBoxes, selectedBeatIdx, staffBoxes])
 
   return (
     <div
@@ -197,6 +254,7 @@ export function NotationAlphaTabSurface({
       }}
     >
       <AlphaTabViewer
+        key={`bars-${barsPerRow ?? 0}`}
         ref={viewerRef}
         tex={displayTex}
         purpose={variant === 'canvas' || !grandStaffMode ? 'canvas-notation-score' : 'editor-notation-grand-staff'}
@@ -205,25 +263,14 @@ export function NotationAlphaTabSurface({
         scale={NOTATION_DIDACTIC_SCALE}
         showTimeSignature={timeSignature != null}
         includeNoteBounds
+        barsPerRow={barsPerRow}
         minHeight={200}
         grandStaffMode={grandStaffMode}
-        onBeatMouseDown={handleBeatMouseDown}
         onRenderFinished={handleRenderFinished}
+        onStableRender={handleRenderFinished}
       />
 
-      {selectedRect && (
-        <div
-          className="pointer-events-none absolute z-10 rounded-md bg-accent/15 ring-2 ring-accent"
-          style={{
-            left: selectedRect.x + origin.x - 5,
-            top: selectedRect.y + origin.y - 5,
-            width: selectedRect.w + 10,
-            height: selectedRect.h + 10,
-          }}
-        />
-      )}
-
-      {ghost && (
+      {ghost && noteInputArmed && (
         <div className="pointer-events-none absolute inset-0 z-10">
           {ghost.ledger.map(lineY => (
             <div
