@@ -360,6 +360,21 @@
   color:#1E293B;
   font-family:'DM Sans',sans-serif;
 }
+.a4-page--landscape{
+  width:1123px;
+  height:794px;
+}
+.a4-page--landscape.a4-page--cover,
+.a4-page--landscape .block-cover{
+  min-height:794px;
+}
+.a4-page--landscape.a4-page--cover .block-cover--with-image{
+  background-size:contain!important;
+  background-repeat:no-repeat;
+  background-position:center;
+  background-color:#000;
+  min-height:794px!important;
+}
 .a4-page-header{
   padding:16px 60px 8px;
   border-bottom:1px solid #e2e8f0;
