@@ -3,7 +3,7 @@
 Atualizado: 2026-08-16 (noite) — spec do player de estudo C1  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** player de estudo C1 (playalong). Spec abaixo. Plano ainda não.
+**Próximo corte:** player de estudo C1 (playalong). Spec e plano abaixo. Código ainda não.
 
 ## Como retomar
 
@@ -16,8 +16,9 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. Spec do **player de estudo C1** aprovada no chat — sala `/estudo`, MP3 real + cursor AlphaTab no compasso. Plano e código ainda não. Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. Spec do **player de estudo C1** aprovada — sala `/estudo`, MP3 real + cursor AlphaTab no compasso. Plano escrito. Código ainda não. Não misturar com `feat/audio-didatico`.
 - Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
+- Plano C1: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
 - Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
 - Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
 - Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
