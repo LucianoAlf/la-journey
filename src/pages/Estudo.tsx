@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pause, Play, Printer, SpinnerGap, Trash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
+import { StudyCifraOverlay } from '@/components/estudo/StudyCifraOverlay'
 import { StudySheetFrame } from '@/components/estudo/StudySheetFrame'
 import { StudyTitleField } from '@/components/estudo/StudyTitleField'
 import { Button } from '@/components/ui/button'
@@ -16,10 +17,12 @@ import {
   parseEstudo,
   type EstudoDisplayMode,
 } from '@/lib/estudoConfig'
-import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSyncPoint } from '@/lib/playalong'
+import { nextCifraBeatIndex } from '@/lib/estudoCifra'
+import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
+import { normalizeCifraSymbol } from '@/lib/notationCifra'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
 import { deleteEstudoMaterial, fetchCurrentUserName, type EstudoListItem } from '@/services/estudoCatalogService'
-import { updateMaterial, type GeneratedMaterial, type MaterialWithBlocks } from '@/services/materialService'
+import { updateMaterial, updateMaterialBlockRpc, type GeneratedMaterial, type MaterialWithBlocks } from '@/services/materialService'
 import { uploadPlayalongFile } from '@/services/playalongUpload'
 import { createStudyMaterialFromMp3 } from '@/services/studyFromMp3Service'
 
@@ -199,6 +202,8 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const [displayMode, setDisplayMode] = useState<EstudoDisplayMode>('slash-beat')
   const [title, setTitle] = useState('Estudo')
   const [curatorName, setCuratorName] = useState<string | null>(null)
+  const [beats, setBeats] = useState<InlineBeat[] | null>(null)
+  const [editingBeat, setEditingBeat] = useState<number | null>(null)
   const dirtyRef = useRef(false)
   const playalongRef = useRef<PlayalongConfig | null>(null)
   const curatorFilledRef = useRef(false)
@@ -206,14 +211,36 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const material = rows?.[0] ?? null
   const estudo = parseEstudo(material?.page_config?.estudo)
   const notation = useMemo(() => pickNotationBlock(rows), [rows])
-  const study = notation
-    ? studyTexFromBlock(
-      { content: notation.block_content, render_data: notation.block_render_data },
+  const study = useMemo(() => {
+    if (!notation) return null
+    const content = beats
+      ? {
+          ...(notation.block_content ?? {}),
+          notation_data: {
+            ...((notation.block_content as { notation_data?: Record<string, unknown> } | null)?.notation_data ?? {}),
+            beats,
+          },
+        }
+      : notation.block_content
+    return studyTexFromBlock(
+      { content, render_data: notation.block_render_data },
       displayMode,
     )
-    : null
+  }, [beats, displayMode, notation])
   const playalong = playalongOverride ?? parsePlayalong(material?.page_config?.playalong)
   playalongRef.current = playalong
+
+  useEffect(() => {
+    if (!notation) {
+      setBeats(null)
+      return
+    }
+    const session = hydrateNotationFromBlock({
+      content: notation.block_content,
+      render_data: notation.block_render_data,
+    })
+    setBeats(session.beats)
+  }, [notation])
 
   useEffect(() => {
     if (!material) return
@@ -274,6 +301,32 @@ function EstudoRoom({ materialId }: { materialId: string }) {
     } catch (err) {
       setTitle(previous)
       toast.error(err instanceof Error ? err.message : 'Não deu para renomear')
+    }
+  }
+
+  const commitCifra = async (index: number, raw: string, moveNext = false) => {
+    if (!beats || !notation?.block_id) return
+    const cifra = normalizeCifraSymbol(raw)
+    const nextBeats = beats.map((beat, beatIndex) => (
+      beatIndex === index ? { ...beat, cifra } : beat
+    ))
+    setBeats(nextBeats)
+    if (moveNext) setEditingBeat(nextCifraBeatIndex(nextBeats, index))
+    else setEditingBeat(null)
+    try {
+      const notationData = (notation.block_content as { notation_data?: Record<string, unknown> } | null)?.notation_data ?? {}
+      await updateMaterialBlockRpc({
+        blockId: notation.block_id,
+        content: {
+          ...(notation.block_content ?? {}),
+          notation_data: {
+            ...notationData,
+            beats: nextBeats,
+          },
+        },
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não deu para gravar a cifra')
     }
   }
 
@@ -433,7 +486,16 @@ function EstudoRoom({ materialId }: { materialId: string }) {
             marking={marking}
             onMarkBar={onMarkBar}
             onPlayingChange={setPlaying}
+            onSelectBeat={setEditingBeat}
           />
+          {editingBeat !== null && beats && (
+            <StudyCifraOverlay
+              value={beats[editingBeat]?.cifra ?? ''}
+              onCommit={(next) => void commitCifra(editingBeat, next)}
+              onCancel={() => setEditingBeat(null)}
+              onNext={(current) => void commitCifra(editingBeat, current, true)}
+            />
+          )}
         </StudySheetFrame>
       )}
     </div>
