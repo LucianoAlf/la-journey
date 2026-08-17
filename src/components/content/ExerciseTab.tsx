@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { MagnifyingGlass, SpinnerGap, Warning } from '@phosphor-icons/react'
+import { MagnifyingGlass, Sparkle, SpinnerGap, Warning } from '@phosphor-icons/react'
+import { PracticeAudioModal } from '@/components/music/PracticeAudioModal'
+import { Button } from '@/components/ui/button'
 import { ExerciseCard } from './ExerciseCard'
 import { ExerciseNotebookTab } from './ExerciseNotebookTab'
 import { ExercisePreviewDialog } from './ExercisePreviewDialog'
@@ -95,7 +97,8 @@ export function ExerciseTab() {
     }
   }, [activeSubTab, instrument, isNotebookTab, level, search])
 
-  const { exercises, count, loading, error, remove, duplicate } = useExerciseLibrary(filters)
+  const { exercises, count, loading, error, remove, duplicate, refetch } = useExerciseLibrary(filters)
+  const [audioOpen, setAudioOpen] = useState(false)
 
   const handleDelete = async (id: string) => {
     try {
@@ -225,15 +228,21 @@ export function ExerciseTab() {
                 </Select>
               </div>
 
-              <div className="text-[12px] text-text3 ml-auto">
-                {loading ? (
-                  <span className="flex items-center gap-1.5">
-                    <SpinnerGap size={14} className="animate-spin" />
-                    Carregando...
-                  </span>
-                ) : (
-                  <span>{count} exercício{count !== 1 ? 's' : ''}</span>
-                )}
+              <div className="flex items-center gap-3 ml-auto">
+                <Button size="sm" className="h-9" onClick={() => setAudioOpen(true)}>
+                  <Sparkle size={14} weight="fill" />
+                  Gerar áudio
+                </Button>
+                <div className="text-[12px] text-text3">
+                  {loading ? (
+                    <span className="flex items-center gap-1.5">
+                      <SpinnerGap size={14} className="animate-spin" />
+                      Carregando...
+                    </span>
+                  ) : (
+                    <span>{count} exercício{count !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -276,6 +285,13 @@ export function ExerciseTab() {
           ))}
         </div>
       )}
+
+      <PracticeAudioModal
+        open={audioOpen}
+        onOpenChange={setAudioOpen}
+        schoolId={school?.id}
+        onSaved={() => { void refetch() }}
+      />
 
       {!isNotebookTab && (
         <ExercisePreviewDialog

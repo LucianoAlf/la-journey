@@ -14,6 +14,9 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
+      watch: {
+        ignored: ['**/.worktrees/**', '**/.superpowers/**', '**/tmp/**'],
+      },
       fs: {
         // Worktree node_modules is a junction to the repo root. Vite follows the
         // real path and, with strict:true, blocks alphaTab.worker.mjs.

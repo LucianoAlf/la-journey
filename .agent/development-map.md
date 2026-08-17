@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-17 — Estudo C1+C2+B sobe pra produção  
+Atualizado: 2026-08-17 — áudio corte 1 sobe  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** smoke em produção (`https://la-journey.vercel.app/estudo`): hover sem verde, Imprimir deitado, Baixar PDF A4 landscape pelo `generate-pdf`. Não misturar Suno.
+**Próximo corte:** Áudio didático corte 2 — upload MP3/WAV + stems Music.AI. Escrita avançada adiada.
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B** sobe em `feat/estudo-playalong` (PR 22 → main). Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). **Áudio didático corte 1** sobe no PR 23 (`feat/audio-didatico`). Fila: corte 2 (upload + stems). Escrita avançada adiada.
 - Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
@@ -27,7 +27,7 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 - Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
 - Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
 - Spec lead sheet A: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
-- Áudio didático corte 1 está em `feat/audio-didatico` (Suno V5.5 + Lyria fallback + Music.AI). **Não** misturar neste PR. Smoke no Chrome ainda falta.
+- Áudio didático corte 1: Suno V5.5 + cifra limpa no modal (`C | F | G`). Music.AI lê tom/BPM. **Não** misturar image-gen.
 - Spec áudio: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
 - Plano áudio: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
 - Stash local `wip-not-audio-didatico` tem image-gen/Recraft. Não dar pop nesta branch.
@@ -88,7 +88,11 @@ Suno V5.5 é o generate. Vocalize com “ah” no Suno (instrumental off) acerto
 
 ### Áudio didático corte 1 — código + Edges (16/08)
 
-Branch `feat/audio-didatico`. Modal de receita, `practice_audio` (migration aplicada), libs + testes, service, botões em Exercícios e na ficha. Edges `lyria-generate` e `musicai-transcribe` deployadas. Aba Enviar visível e inerte. Smoke no Chrome ainda falta.
+Branch `feat/audio-didatico`. Modal de receita, `practice_audio` (migration aplicada, `source` aceita `suno`), libs + testes, service, botões em Exercícios e na ficha. Edges `suno-generate`, `lyria-generate` e `musicai-transcribe` no ar.
+
+### Áudio didático corte 1 — smoke local (17/08)
+
+Biblioteca → Exercícios → Gerar áudio → vocalize C, 30s. Player em ~82s, motor Suno V5.5, cifra Music.AI em linha (`C | F | G | C`), reconhecido **C major**. Pedido no vocalize mostra o tom, não `—`. Aba Enviar visível e desligada.
 
 ### Lead sheet corte A — cifra no beat + escrita na pauta (16/08, noite)
 
@@ -384,15 +388,14 @@ Edição:
 
 ---
 
-## Radar (ordem combinada em 16/08, noite)
+## Radar (reordenado 17/08 — áudio na frente; escrita avançada adiada)
 
-1. Confirmar Baixar PDF deitado em produção (Edge `generate-pdf` já deployada; Vercel no ar após o push).
-2. Escrita avançada na pauta: ligadura, articulação, dinâmica, letra, voz 2, copiar/colar, seleção.
-3. **Estudo — depois do C1** (subproduto; não misturar no PR do playalong): aluno na mesma sala; filtro de tipo (leitura / rudimento / loop); loops e trading; rudimento com nota acendendo; metrônomo Smart; GarageBand de aula (blocos + bateria/piano Vera); synth de qualidade (GeneralUser GS / SF3) só como fallback sem faixa.
-4. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa” — hoje grava Ebm e `capo=0`.
-5. **Áudio didático corte 1 → produção** — código em `feat/audio-didatico`. Smoke no Chrome ainda falta. Pode **alimentar** o MP3 do C1 depois, noutro PR.
-6. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems (sem bateria/baixo/voz) + pitch/tempo. Motor já ligado (`MUSIC_AI_API_KEY`, `musicai-transcribe`). Slugs confirmados nesta conta: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`. Job na nuvem (segundos), não Moises Live. Mixer local depois da 1ª separação.
-7. **Soundslice (fase 3)** — player de partitura + vídeo/MP3 sincronizado (playhead, loop, slowdown). **Não** substitui o C1 nem o Music.AI. Embed exige plano **Licensing** (~US$ 100/mês, 200 users). Doc: https://www.soundslice.com/help/data-api/
+1. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems + pitch/tempo. Slugs: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`.
+2. **MP3 → partitura (melodia)** — radar. Do MP3 hoje só cifra + pulso; Score não é a voz. Prova: Music.AI `isolate-vocals` + `vocal-pitch-tracker`, comparar com Klangio Sing2Notes (20s). Sem Demucs no backend. Canvas: `canvases/mp3-to-score-viability.canvas.tsx`.
+3. **Estudo — depois do C1**: aluno na sala, loops, rudimento, metrônomo.
+4. Escrita avançada na pauta (adiada): ligadura, articulação, dinâmica, letra, voz 2, copiar/colar.
+5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa”.
+6. **Soundslice (fase 3)** — embed Licensing ~US$ 100/mês. Não substitui Music.AI.
 
 ---
 
@@ -456,7 +459,7 @@ Não entrar no PR de repertório/Cifra Club:
 | Songsterr edges | só no Supabase: `songsterr-search`, `songsterr-import`, `songsterr-enrich`, `songsterr-gp-download` |
 | AlphaTab | `src/components/music/AlphaTabPlayer.tsx`, `src/lib/songsterr-converter/` |
 | Áudio didático | `src/lib/practiceAudio.ts`, `practiceAudioRecipe.ts`, `PracticeAudioModal.tsx`, `practiceAudioService.ts` |
-| Edges áudio | `supabase/functions/lyria-generate`, `musicai-transcribe` |
+| Edges áudio | `supabase/functions/suno-generate`, `lyria-generate`, `musicai-transcribe` |
 
 Supabase: `rkfszavfqplhorvfpkcq`. Print de apostila ainda aponta `APP_URL` de produção.
 
