@@ -1,23 +1,31 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, SpinnerGap } from '@phosphor-icons/react'
+import { ArrowLeft, Pause, Play, SpinnerGap, Trash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
+import { StudyTitleField } from '@/components/estudo/StudyTitleField'
 import { Button } from '@/components/ui/button'
 import { StudyPlayalongSurface, type StudyPlayalongSurfaceHandle } from '@/components/music/StudyPlayalongSurface'
-import { useMaterials, useMaterialWithBlocks } from '@/hooks/useMaterials'
+import { useEstudoMaterials } from '@/hooks/useEstudoMaterials'
+import { useMaterialWithBlocks } from '@/hooks/useMaterials'
 import { useSchool } from '@/hooks/useSchool'
 import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSyncPoint } from '@/lib/playalong'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
-import { updateMaterial, type GeneratedMaterial, type MaterialListItem, type MaterialWithBlocks } from '@/services/materialService'
+import { deleteEstudoMaterial, type EstudoListItem } from '@/services/estudoCatalogService'
+import { updateMaterial, type GeneratedMaterial, type MaterialWithBlocks } from '@/services/materialService'
 import { uploadPlayalongFile } from '@/services/playalongUpload'
 import { createStudyMaterialFromMp3 } from '@/services/studyFromMp3Service'
 
 function EstudoList() {
   const navigate = useNavigate()
   const { data: school } = useSchool()
-  const { data: materials, loading, error } = useMaterials(school?.id)
+  const { data: materials, loading, error } = useEstudoMaterials(school?.id)
+  const [rows, setRows] = useState<EstudoListItem[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
+
+  useEffect(() => {
+    if (materials) setRows(materials)
+  }, [materials])
 
   const onPickMp3 = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -38,6 +46,29 @@ function EstudoList() {
     }
   }
 
+  const rename = async (id: string, title: string) => {
+    const previous = rows
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, title } : row)))
+    try {
+      await updateMaterial(id, { title })
+    } catch (err) {
+      setRows(previous)
+      toast.error(err instanceof Error ? err.message : 'Não deu para renomear')
+    }
+  }
+
+  const remove = async (id: string) => {
+    if (!window.confirm('Apagar esta faixa?')) return
+    const previous = rows
+    setRows((current) => current.filter((row) => row.id !== id))
+    try {
+      await deleteEstudoMaterial(id)
+    } catch (err) {
+      setRows(previous)
+      toast.error(err instanceof Error ? err.message : 'Não deu para apagar')
+    }
+  }
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -46,7 +77,7 @@ function EstudoList() {
             Sala de <em className="not-italic text-accent">Estudo</em>
           </h1>
           <p className="mt-1.5 text-[13.5px] text-text2">
-            Suba um MP3 para nascer a pauta, ou abra um material que já tem grade
+            Suba um MP3 para nascer a pauta
           </p>
         </div>
         <div>
@@ -73,42 +104,62 @@ function EstudoList() {
 
       <div className="card">
         {loading && (
-          <div className="flex items-center justify-center gap-2 py-12 text-text2">
-            <SpinnerGap size={20} className="animate-spin" /> Carregando materiais...
+          <div className="flex items-center gap-2 justify-center py-12 text-text2">
+            <SpinnerGap size={20} className="animate-spin" /> Carregando faixas...
           </div>
         )}
         {error && (
           <div className="rounded-[var(--radius-sm)] bg-vermelho-soft p-4 text-sm text-vermelho">
-            Erro ao carregar materiais: {error}
+            Erro ao carregar faixas: {error}
           </div>
         )}
-        {!loading && !error && (!materials || materials.length === 0) && (
+        {!loading && !error && rows.length === 0 && (
           <div className="py-12 text-center text-sm text-text3">
-            Nenhum material ainda. Use Do MP3 para criar o primeiro.
+            Nenhuma música ainda. Use Do MP3 para criar a primeira.
           </div>
         )}
-        {materials && materials.length > 0 && (
+        {!loading && !error && rows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-border">
                   <th className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[2px] text-text3">Título</th>
-                  <th className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[2px] text-text3">Jornada</th>
-                  <th className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[2px] text-text3">Estação</th>
+                  <th className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[2px] text-text3">Atualizado</th>
+                  <th className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[2px] text-text3" />
                 </tr>
               </thead>
               <tbody>
-                {materials.map((material: MaterialListItem) => (
+                {rows.map((material) => (
                   <tr
                     key={material.id}
                     className="cursor-pointer border-b border-border transition-colors hover:bg-azul-soft/30"
                     onClick={() => navigate(`/estudo/${material.id}`)}
                   >
                     <td className="px-4 py-3">
-                      <div className="text-[13px] font-semibold text-text">{material.title}</div>
+                      <StudyTitleField
+                        value={material.title}
+                        onCommit={(title) => void rename(material.id, title)}
+                        className="w-full bg-transparent text-[13px] font-semibold text-text outline-none"
+                      />
                     </td>
-                    <td className="px-4 py-3 text-[12px] text-text2">{material.journey_name ?? '—'}</td>
-                    <td className="px-4 py-3 text-[12px] text-text2">{material.station_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-[12px] text-text2">
+                      {material.updated_at
+                        ? new Date(material.updated_at).toLocaleDateString('pt-BR')
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Apagar faixa"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void remove(material.id)
+                        }}
+                      >
+                        <Trash size={16} />
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
