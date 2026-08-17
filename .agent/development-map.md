@@ -3,7 +3,7 @@
 Atualizado: 2026-08-17 — spec corte B (sala independente) escrita  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Estudo corte B — catálogo só Do MP3, CRUD, cifra na sala, gravura, folha/print. Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`. Plano ainda não. Não misturar Suno.
+**Próximo corte:** implementar Estudo corte B. Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`. Plano: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`. Não misturar Suno.
 
 ## Como retomar
 
@@ -16,8 +16,9 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2** em `feat/estudo-playalong` (ainda não em produção). Corte B: spec escrita, plano ainda não. Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2** em `feat/estudo-playalong` (ainda não em produção). Corte B: spec + plano escritos, código ainda não. Não misturar com `feat/audio-didatico`.
 - Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
+- Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
 - Plano C2: `docs/superpowers/plans/2026-08-16-estudo-from-mp3.md`
 - Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`

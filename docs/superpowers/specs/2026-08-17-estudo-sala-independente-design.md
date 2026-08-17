@@ -1,7 +1,7 @@
 # Estudo — sala independente (corte B)
 
 Data: 2026-08-17  
-Status: spec desenhada no chat (17/08). Aguardando review do arquivo.  
+Status: spec aprovada (17/08). Plano: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`.  
 Corte: a sala `/estudo` deixa de ser um espelho do caderno. Vira catálogo próprio (só faixa nascida no Estudo), com rename rápido, CRUD, cifra clicável, gravura por modo, folha com marca da escola e impressão.
 
 Depende do C1 (player + `page_config.playalong`) e do C2 (Do MP3). Branch: `feat/estudo-playalong`. **Não** misturar `feat/audio-didatico`.
