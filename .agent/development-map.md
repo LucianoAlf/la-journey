@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-16 (noite) — C2 Do MP3 implementado  
+Atualizado: 2026-08-17 — spec corte B (sala independente) escrita  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** smoke Do MP3 no Chrome (faixa ~30s) + decidir se o C1/C2 sobe no PR 22. Não misturar Suno.
+**Próximo corte:** Estudo corte B — catálogo só Do MP3, CRUD, cifra na sala, gravura, folha/print. Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`. Plano ainda não. Não misturar Suno.
 
 ## Como retomar
 
@@ -16,7 +16,8 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2** em `feat/estudo-playalong` (ainda não em produção). Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2** em `feat/estudo-playalong` (ainda não em produção). Corte B: spec escrita, plano ainda não. Não misturar com `feat/audio-didatico`.
+- Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
 - Plano C2: `docs/superpowers/plans/2026-08-16-estudo-from-mp3.md`
 - Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
