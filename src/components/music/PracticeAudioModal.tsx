@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { chordsToTimedCifra, type PracticeAudioKind, type RecognizedChord } from '@/lib/practiceAudio'
+import { chordsToCifraLine, type PracticeAudioKind, type RecognizedChord } from '@/lib/practiceAudio'
 import {
   defaultRecipe,
+  requestedCifraPreview,
   type PracticeAudioDuration,
   type PracticeAudioRecipe,
 } from '@/lib/practiceAudioRecipe'
@@ -96,10 +97,7 @@ export function PracticeAudioModal({
     })
   }, [open, initialKind, repertoireId, preset?.title, preset?.key, preset?.bpm])
 
-  const requestedLine = useMemo(
-    () => (recipe.requestedChords.length ? recipe.requestedChords.join(' | ') : '—'),
-    [recipe.requestedChords],
-  )
+  const requestedLine = useMemo(() => requestedCifraPreview(recipe), [recipe])
 
   const patch = useCallback((partial: Partial<PracticeAudioRecipe>) => {
     setRecipe((current) => ({ ...current, ...partial }))
@@ -135,7 +133,7 @@ export function PracticeAudioModal({
         recipe: next.recipe || current.recipe,
       }
       setTake(merged)
-      setRecognizedLine(chordsToTimedCifra(merged.recognizedChords ?? []))
+      setRecognizedLine(chordsToCifraLine(merged.recognizedChords ?? []))
       if (next.status === 'transcribe_failed') {
         toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
       }
@@ -157,7 +155,7 @@ export function PracticeAudioModal({
     try {
       const next = await generateAndVerifyPracticeAudio(recipe, repertoireId)
       setTake(next)
-      setRecognizedLine(chordsToTimedCifra(next.recognizedChords ?? []))
+      setRecognizedLine(chordsToCifraLine(next.recognizedChords ?? []))
       if (next.status === 'transcribe_failed') {
         toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
       } else if (next.keyMatched === false) {
@@ -177,8 +175,8 @@ export function PracticeAudioModal({
     if (!take) return
     const names = recognizedLine.split('|').map((item) => item.trim().replace(/^\d+:\d+\s+/, '')).filter(Boolean)
     const chords: RecognizedChord[] = names.map((chord, index) => ({
-      start: index,
-      end: index + 1,
+      start: take.recognizedChords?.[index]?.start ?? index,
+      end: take.recognizedChords?.[index]?.end ?? index + 1,
       chord,
     }))
     try {
@@ -187,7 +185,6 @@ export function PracticeAudioModal({
         key: take.recognizedKey,
       })
       setTake({ ...take, recognizedChords: chords })
-      toast.success('Cifra reconhecida atualizada')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não gravou a cifra')
     }
@@ -200,10 +197,24 @@ export function PracticeAudioModal({
     }
     setSaving(true)
     try {
+      const names = recognizedLine.split('|').map((item) => item.trim().replace(/^\d+:\d+\s+/, '')).filter(Boolean)
+      const chords: RecognizedChord[] = names.length
+        ? names.map((chord, index) => ({
+            start: take.recognizedChords?.[index]?.start ?? index,
+            end: take.recognizedChords?.[index]?.end ?? index + 1,
+            chord,
+          }))
+        : (take.recognizedChords ?? [])
+      if (names.length) {
+        await updateRecognizedChords(take.id, chords, {
+          bpm: take.recognizedBpm,
+          key: take.recognizedKey,
+        })
+      }
       await savePracticeAudioToLibrary({
         take: {
           ...take,
-          recognizedChords: take.recognizedChords,
+          recognizedChords: chords,
         },
         schoolId,
         linkRepertoire: linkRepertoire && Boolean(repertoireId),
@@ -459,8 +470,9 @@ export function PracticeAudioModal({
                         value={recognizedLine}
                         onChange={(e) => setRecognizedLine(e.target.value)}
                         onBlur={handleSaveRecognized}
-                        rows={4}
-                        className="text-[12px]"
+                        rows={2}
+                        placeholder="C | F | G | C"
+                        className="text-[13px] font-medium"
                       />
                     )}
                     {take.recognizedBpm || take.recognizedKey ? (

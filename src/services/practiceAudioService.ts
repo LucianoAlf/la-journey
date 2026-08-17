@@ -1,6 +1,5 @@
 import {
   chordsToCifraLine,
-  chordsToTimedCifra,
   recognizedKeyMatchesRequested,
   type PracticeAudioStatus,
   type RecognizedChord,
@@ -177,8 +176,7 @@ export async function savePracticeAudioToLibrary(input: {
   linkRepertoire?: boolean
   repertoireId?: string | null
 }) {
-  const cifra = chordsToTimedCifra(input.take.recognizedChords ?? [])
-    || chordsToCifraLine(input.take.recognizedChords ?? [])
+  const cifra = chordsToCifraLine(input.take.recognizedChords ?? [])
   const audioUrl = input.take.audioUrl
   const blocks = [
     {

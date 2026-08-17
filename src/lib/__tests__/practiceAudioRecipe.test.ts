@@ -7,6 +7,7 @@ import {
   compileSunoMusicRequest,
   defaultRecipe,
   exerciseCategoryForKind,
+  requestedCifraPreview,
   selectLyriaModel,
   selectPracticeAudioEngine,
   type PracticeAudioRecipe,
@@ -130,4 +131,9 @@ test('kind maps to exercise_library category', () => {
   assert.equal(exerciseCategoryForKind('vocalize'), 'scales')
   assert.equal(exerciseCategoryForKind('backing'), 'progression')
   assert.equal(exerciseCategoryForKind('exercise'), 'technique')
+})
+
+test('pedido shows chords or the key, never an empty dash', () => {
+  assert.equal(requestedCifraPreview(defaultRecipe('vocalize')), 'C maior')
+  assert.equal(requestedCifraPreview(defaultRecipe('backing')), 'C | G | D')
 })

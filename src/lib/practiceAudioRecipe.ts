@@ -84,6 +84,18 @@ export function describePracticeKey(recipe: Pick<PracticeAudioRecipe, 'key' | 's
   return scale ? `${key} ${scale}` : key
 }
 
+export function requestedCifraPreview(
+  recipe: Pick<PracticeAudioRecipe, 'requestedChords' | 'key' | 'scale'>,
+): string {
+  if (recipe.requestedChords.length) return recipe.requestedChords.join(' | ')
+  const key = recipe.key?.trim()
+  if (!key) return 'Tom do modelo'
+  const scale = (recipe.scale || '').trim().toLowerCase()
+  if (scale === 'major' || scale === 'maior' || scale === 'maj') return `${key} maior`
+  if (scale === 'minor' || scale === 'menor' || scale === 'min') return `${key} menor`
+  return scale ? `${key} ${recipe.scale?.trim()}` : key
+}
+
 export function compilePracticeAudioPrompt(recipe: PracticeAudioRecipe): string {
   const seconds = recipe.durationSeconds
   const keyName = describePracticeKey(recipe)

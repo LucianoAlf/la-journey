@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-17 — PR áudio corte 1  
+Atualizado: 2026-08-17 — áudio corte 1 sobe  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Merge do PR de áudio didático corte 1. Escrita avançada adiada.
+**Próximo corte:** Áudio didático corte 2 — upload MP3/WAV + stems Music.AI. Escrita avançada adiada.
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). Fila: PR de áudio didático corte 1 (`feat/audio-didatico`). Escrita avançada adiada.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). **Áudio didático corte 1** sobe no PR 23 (`feat/audio-didatico`). Fila: corte 2 (upload + stems). Escrita avançada adiada.
 - Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
@@ -27,7 +27,7 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 - Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
 - Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
 - Spec lead sheet A: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
-- Áudio didático corte 1: smoke local ok (vocalize C 30s → Suno V5.5, cifra C major). **Não** misturar image-gen neste PR.
+- Áudio didático corte 1: Suno V5.5 + cifra limpa no modal (`C | F | G`). Music.AI lê tom/BPM. **Não** misturar image-gen.
 - Spec áudio: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
 - Plano áudio: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
 - Stash local `wip-not-audio-didatico` tem image-gen/Recraft. Não dar pop nesta branch.
@@ -92,7 +92,7 @@ Branch `feat/audio-didatico`. Modal de receita, `practice_audio` (migration apli
 
 ### Áudio didático corte 1 — smoke local (17/08)
 
-Biblioteca → Exercícios → Gerar áudio → vocalize C, 30s. Player em ~82s, motor Suno V5.5, cifra Music.AI, reconhecido **C major**. Toast “Áudio pronto no tom pedido.” Aba Enviar visível e desligada.
+Biblioteca → Exercícios → Gerar áudio → vocalize C, 30s. Player em ~82s, motor Suno V5.5, cifra Music.AI em linha (`C | F | G | C`), reconhecido **C major**. Pedido no vocalize mostra o tom, não `—`. Aba Enviar visível e desligada.
 
 ### Lead sheet corte A — cifra no beat + escrita na pauta (16/08, noite)
 
@@ -390,13 +390,12 @@ Edição:
 
 ## Radar (reordenado 17/08 — áudio na frente; escrita avançada adiada)
 
-1. **Áudio didático corte 1 → produção** — smoke local ok. PR aberto. Suno V5.5 gera; Music.AI cifra; Lyria fallback.
-2. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems + pitch/tempo. Slugs: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`.
-3. **MP3 → partitura (melodia)** — radar. Do MP3 hoje só cifra + pulso; Score não é a voz. Prova: Music.AI `isolate-vocals` + `vocal-pitch-tracker`, comparar com Klangio Sing2Notes (20s). Sem Demucs no backend. Canvas: `canvases/mp3-to-score-viability.canvas.tsx`.
-4. **Estudo — depois do C1**: aluno na sala, loops, rudimento, metrônomo.
-5. Escrita avançada na pauta (adiada): ligadura, articulação, dinâmica, letra, voz 2, copiar/colar.
-6. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa”.
-7. **Soundslice (fase 3)** — embed Licensing ~US$ 100/mês. Não substitui Music.AI.
+1. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems + pitch/tempo. Slugs: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`.
+2. **MP3 → partitura (melodia)** — radar. Do MP3 hoje só cifra + pulso; Score não é a voz. Prova: Music.AI `isolate-vocals` + `vocal-pitch-tracker`, comparar com Klangio Sing2Notes (20s). Sem Demucs no backend. Canvas: `canvases/mp3-to-score-viability.canvas.tsx`.
+3. **Estudo — depois do C1**: aluno na sala, loops, rudimento, metrônomo.
+4. Escrita avançada na pauta (adiada): ligadura, articulação, dinâmica, letra, voz 2, copiar/colar.
+5. Tom/capo no PDF: Cifra Club “Tom: Ebm (com forma de Dm) + Capotraste 1ª casa”.
+6. **Soundslice (fase 3)** — embed Licensing ~US$ 100/mês. Não substitui Music.AI.
 
 ---
 
