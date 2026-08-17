@@ -1,4 +1,5 @@
 import {
+  assertPracticeUploadFile,
   chordsToCifraLine,
   recognizedKeyMatchesRequested,
   type PracticeAudioStatus,
@@ -51,7 +52,9 @@ function takeFromGenerate(data: Record<string, unknown>, recipe: PracticeAudioRe
     audioPath: (data.audioPath as string | null) ?? null,
     recipe: (data.recipe as PracticeAudioRecipe) ?? recipe,
     lyriaModel: data.lyriaModel as string | undefined,
-    source: data.source === 'suno' ? 'suno' : 'lyria',
+    source: data.source === 'suno' || data.source === 'upload' || data.source === 'lyria'
+      ? data.source
+      : 'lyria',
     status: (data.status as PracticeAudioStatus) ?? 'generated',
   }
 }
@@ -96,6 +99,37 @@ export async function generatePracticeAudio(
   const engine = selectPracticeAudioEngine(recipe)
   if (engine === 'lyria') return generateWithLyria(recipe, repertoireId)
   return generateWithSuno(recipe, repertoireId)
+}
+
+export async function uploadPracticeAudio(
+  file: File,
+  recipe: PracticeAudioRecipe,
+  repertoireId?: string | null,
+): Promise<PracticeAudioTake> {
+  assertPracticeUploadFile(file)
+  const { data: sessionData } = await supabase.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new Error('Faça login para enviar o áudio')
+
+  const form = new FormData()
+  form.append('file', file)
+  form.append('recipe', JSON.stringify(recipe))
+  if (repertoireId) form.append('repertoireId', repertoireId)
+
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/practice-audio-upload`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: form,
+  })
+  const data = await response.json().catch(() => null) as Record<string, unknown> | null
+  if (!response.ok || data?.error) {
+    throw new Error(typeof data?.error === 'string' ? data.error : 'Não foi possível enviar o áudio')
+  }
+  if (!data?.id) throw new Error('Upload não devolveu o take')
+  return takeFromGenerate(data, recipe)
 }
 
 export async function generateAndVerifyPracticeAudio(
@@ -203,7 +237,7 @@ export async function savePracticeAudioToLibrary(input: {
     category: exerciseCategoryForKind(input.take.recipe.kind),
     instrument: 'universal',
     difficulty_level: 'foundation',
-    tags: ['audio', input.take.recipe.kind, input.take.source === 'suno' ? 'suno' : 'lyria'],
+    tags: ['audio', input.take.recipe.kind, input.take.source ?? 'suno'],
     blocks,
     preview_data: {},
     thumbnail_url: null,

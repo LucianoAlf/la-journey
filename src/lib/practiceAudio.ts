@@ -222,3 +222,11 @@ export function chordsToCifraLine(chords: Array<{ chord: string }>): string {
   }
   return unique.join(' | ')
 }
+
+const PRACTICE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024
+
+export function assertPracticeUploadFile(file: { name: string; type: string; size: number }): void {
+  const typeOk = /audio\/(mpeg|mp3|wav|x-wav|wave)/i.test(file.type) || /\.(mp3|wav)$/i.test(file.name)
+  if (!typeOk) throw new Error('Use MP3 ou WAV')
+  if (file.size > PRACTICE_UPLOAD_MAX_BYTES) throw new Error('Áudio no máximo 20MB')
+}

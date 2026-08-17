@@ -12,6 +12,7 @@ import {
   parseMusicaiKey,
   preferSimplePopChords,
   recognizedKeyMatchesRequested,
+  assertPracticeUploadFile,
 } from '../practiceAudio'
 
 function test(name: string, fn: () => void) {
@@ -144,4 +145,11 @@ test('cifra line collapses consecutive repeats', () => {
     ]),
     'C | G | D',
   )
+})
+
+test('practice upload accepts mp3/wav and rejects other types', () => {
+  assert.doesNotThrow(() => assertPracticeUploadFile({ name: 'aula.mp3', type: 'audio/mpeg', size: 1024 }))
+  assert.doesNotThrow(() => assertPracticeUploadFile({ name: 'aula.wav', type: 'audio/wav', size: 1024 }))
+  assert.throws(() => assertPracticeUploadFile({ name: 'aula.txt', type: 'text/plain', size: 10 }), /MP3 ou WAV/)
+  assert.throws(() => assertPracticeUploadFile({ name: 'aula.mp3', type: 'audio/mpeg', size: 21 * 1024 * 1024 }), /20MB/)
 })

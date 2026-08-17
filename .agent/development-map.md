@@ -3,7 +3,7 @@
 Atualizado: 2026-08-17 — áudio corte 1 sobe  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Áudio didático corte 2 — upload MP3/WAV + stems Music.AI. Escrita avançada adiada.
+**Próximo corte:** Áudio didático corte 2 — Enviar MP3/WAV (em `feat/audio-didatico-c2`) + stems. Escrita avançada adiada.
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). **Áudio didático corte 1** sobe no PR 23 (`feat/audio-didatico`). Fila: corte 2 (upload + stems). Escrita avançada adiada.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). **Áudio didático corte 1 em produção** (PR 23). Fila: corte 2 (upload + stems) em `feat/audio-didatico-c2`. Escrita avançada adiada.
 - Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`

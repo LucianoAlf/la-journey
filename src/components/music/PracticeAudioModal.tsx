@@ -19,6 +19,7 @@ import {
   savePracticeAudioToLibrary,
   transcribePracticeAudio,
   updateRecognizedChords,
+  uploadPracticeAudio,
   type PracticeAudioTake,
 } from '@/services/practiceAudioService'
 
@@ -80,6 +81,7 @@ export function PracticeAudioModal({
   const [take, setTake] = useState<PracticeAudioTake | null>(null)
   const [recognizedLine, setRecognizedLine] = useState('')
   const [linkRepertoire, setLinkRepertoire] = useState(Boolean(repertoireId))
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -89,6 +91,7 @@ export function PracticeAudioModal({
     setGenerating(false)
     setTranscribing(false)
     setSaving(false)
+    setUploadFile(null)
     setLinkRepertoire(Boolean(repertoireId))
     setRecipe({
       ...defaultRecipe(initialKind),
@@ -171,6 +174,45 @@ export function PracticeAudioModal({
     }
   }
 
+  const handleUpload = async () => {
+    if (!uploadFile) {
+      toast.error('Escolha um MP3 ou WAV')
+      return
+    }
+    const title = recipe.title.trim() || uploadFile.name.replace(/\.[^.]+$/, '')
+    if (!title) {
+      toast.error('Informe um título')
+      return
+    }
+    setGenerating(true)
+    setTranscribing(true)
+    try {
+      const uploaded = await uploadPracticeAudio(uploadFile, { ...recipe, title }, repertoireId)
+      const next = await transcribePracticeAudio(uploaded.id)
+      const merged = {
+        ...uploaded,
+        ...next,
+        audioUrl: next.audioUrl || uploaded.audioUrl,
+        audioPath: next.audioPath || uploaded.audioPath,
+        recipe: next.recipe || uploaded.recipe,
+        source: uploaded.source,
+      }
+      setTake(merged)
+      setRecognizedLine(chordsToCifraLine(merged.recognizedChords ?? []))
+      setTab('generate')
+      if (next.status === 'transcribe_failed') {
+        toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
+      } else {
+        toast.success('Áudio enviado. Cifra pronta.')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao enviar o áudio')
+    } finally {
+      setGenerating(false)
+      setTranscribing(false)
+    }
+  }
+
   const handleSaveRecognized = async () => {
     if (!take) return
     const names = recognizedLine.split('|').map((item) => item.trim().replace(/^\d+:\d+\s+/, '')).filter(Boolean)
@@ -242,17 +284,54 @@ export function PracticeAudioModal({
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="generate">Gerar</TabsTrigger>
-            <TabsTrigger value="upload" disabled>
-              Enviar
-            </TabsTrigger>
+            <TabsTrigger value="upload">Enviar</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="upload" className="pt-4">
-            <div className="rounded-[14px] border border-dashed border-border p-8 text-center text-text3">
-              <UploadSimple size={28} className="mx-auto mb-2 opacity-60" />
-              <p className="text-[14px] text-text2">Upload de MP3 em breve</p>
-              <p className="text-[12px] mt-1">Neste corte o áudio nasce no Suno (instrumental). Enviar arquivo entra no corte 2.</p>
+          <TabsContent value="upload" className="space-y-4 pt-4">
+            <div className="flex flex-wrap gap-2">
+              {KINDS.map((kind) => (
+                <button
+                  key={kind.id}
+                  type="button"
+                  disabled={lockKind && recipe.kind !== kind.id}
+                  onClick={() => handleKind(kind.id)}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${
+                    recipe.kind === kind.id
+                      ? 'bg-accent text-accent-foreground border-accent'
+                      : 'bg-transparent text-text3 border-border hover:border-text3/40'
+                  }`}
+                >
+                  {kind.label}
+                </button>
+              ))}
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase tracking-[1.5px] text-text3">Título</Label>
+              <Input
+                value={recipe.title}
+                onChange={(e) => patch({ title: e.target.value })}
+                placeholder="Nome do exercício"
+              />
+            </div>
+            <label className="flex flex-col items-center justify-center gap-2 rounded-[14px] border border-dashed border-border p-8 text-center cursor-pointer hover:border-accent/40">
+              <UploadSimple size={28} className="opacity-60" />
+              <p className="text-[14px] text-text2">
+                {uploadFile ? uploadFile.name : 'Solte um MP3 ou WAV, ou clique para escolher'}
+              </p>
+              <p className="text-[12px] text-text3">Máximo 20MB. Music.AI lê a cifra depois do envio.</p>
+              <input
+                type="file"
+                accept=".mp3,.wav,audio/mpeg,audio/wav"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null
+                  setUploadFile(file)
+                  if (file && !recipe.title.trim()) {
+                    patch({ title: file.name.replace(/\.[^.]+$/, '') })
+                  }
+                }}
+              />
+            </label>
           </TabsContent>
 
           <TabsContent value="generate" className="space-y-5 pt-4">
@@ -445,7 +524,7 @@ export function PracticeAudioModal({
               <div className="space-y-3 rounded-[14px] border border-border p-4">
                 <audio controls className="w-full" src={take.audioUrl} preload="metadata" />
                 <div className="text-[11px] text-text3">
-                  Motor: {take.source === 'lyria' ? 'Lyria (fallback)' : 'Suno V5.5'}
+                  Motor: {take.source === 'upload' ? 'Arquivo enviado' : take.source === 'lyria' ? 'Lyria (fallback)' : 'Suno V5.5'}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
                   <div>
@@ -514,10 +593,18 @@ export function PracticeAudioModal({
               Salvar na biblioteca
             </Button>
           )}
-          <Button onClick={handleGenerate} disabled={generating || tab !== 'generate'}>
-            {generating ? <CircleNotch size={16} className="animate-spin" /> : <Sparkle size={16} weight="fill" />}
-            {generating ? 'Gerando…' : 'Gerar'}
-          </Button>
+          {tab === 'generate' && (
+            <Button onClick={handleGenerate} disabled={generating}>
+              {generating ? <CircleNotch size={16} className="animate-spin" /> : <Sparkle size={16} weight="fill" />}
+              {generating ? 'Gerando…' : 'Gerar'}
+            </Button>
+          )}
+          {tab === 'upload' && (
+            <Button onClick={handleUpload} disabled={generating}>
+              {generating ? <CircleNotch size={16} className="animate-spin" /> : <UploadSimple size={16} />}
+              {generating ? 'Enviando…' : 'Enviar'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
