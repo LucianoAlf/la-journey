@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { chordsToCifraLine, type PracticeAudioKind, type RecognizedChord } from '@/lib/practiceAudio'
+import { chordsToCifraLine, recipeFieldsFromRecognizedKey, type PracticeAudioKind, type RecognizedChord } from '@/lib/practiceAudio'
 import {
   defaultRecipe,
   requestedCifraPreview,
@@ -134,8 +134,25 @@ export function PracticeAudioModal({
         audioUrl: next.audioUrl || current.audioUrl,
         audioPath: next.audioPath || current.audioPath,
         recipe: next.recipe || current.recipe,
+        source: current.source,
       }
-      setTake(merged)
+      if (current.source === 'upload' && next.status !== 'transcribe_failed') {
+        const fields = recipeFieldsFromRecognizedKey(merged.recognizedKey)
+        const nextRecipe = {
+          ...recipe,
+          ...(fields ?? {}),
+          bpm: merged.recognizedBpm ?? recipe.bpm,
+        }
+        setRecipe(nextRecipe)
+        setTake({ ...merged, recipe: nextRecipe })
+        await updateRecognizedChords(merged.id, merged.recognizedChords ?? [], {
+          bpm: merged.recognizedBpm,
+          key: merged.recognizedKey,
+          recipe: nextRecipe,
+        })
+      } else {
+        setTake(merged)
+      }
       setRecognizedLine(chordsToCifraLine(merged.recognizedChords ?? []))
       if (next.status === 'transcribe_failed') {
         toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
@@ -197,9 +214,24 @@ export function PracticeAudioModal({
         recipe: next.recipe || uploaded.recipe,
         source: uploaded.source,
       }
-      setTake(merged)
+      const fields = recipeFieldsFromRecognizedKey(merged.recognizedKey)
+      const nextRecipe = {
+        ...recipe,
+        title,
+        ...(fields ?? {}),
+        bpm: merged.recognizedBpm ?? recipe.bpm,
+      }
+      setRecipe(nextRecipe)
+      setTake({ ...merged, recipe: nextRecipe })
       setRecognizedLine(chordsToCifraLine(merged.recognizedChords ?? []))
       setTab('generate')
+      if (next.status !== 'transcribe_failed') {
+        await updateRecognizedChords(merged.id, merged.recognizedChords ?? [], {
+          bpm: merged.recognizedBpm,
+          key: merged.recognizedKey,
+          recipe: nextRecipe,
+        })
+      }
       if (next.status === 'transcribe_failed') {
         toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
       } else {

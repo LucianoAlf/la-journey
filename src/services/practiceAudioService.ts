@@ -190,16 +190,18 @@ export async function transcribePracticeAudio(practiceAudioId: string): Promise<
 export async function updateRecognizedChords(
   practiceAudioId: string,
   chords: RecognizedChord[],
-  extras?: { bpm?: number | null; key?: string | null },
+  extras?: { bpm?: number | null; key?: string | null; recipe?: PracticeAudioRecipe },
 ) {
+  const patch: Record<string, unknown> = {
+    recognized_chords: chords,
+    recognized_bpm: extras?.bpm ?? undefined,
+    recognized_key: extras?.key ?? undefined,
+    updated_at: new Date().toISOString(),
+  }
+  if (extras?.recipe) patch.recipe = extras.recipe
   const { error } = await db
     .from('practice_audio')
-    .update({
-      recognized_chords: chords,
-      recognized_bpm: extras?.bpm ?? undefined,
-      recognized_key: extras?.key ?? undefined,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', practiceAudioId)
   if (error) throw new Error(error.message)
 }

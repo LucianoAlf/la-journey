@@ -193,6 +193,15 @@ export function recognizedKeyMatchesRequested(
   return true
 }
 
+export function recipeFieldsFromRecognizedKey(
+  recognized: string | null | undefined,
+): { key: string; scale: 'major' | 'minor' } | null {
+  if (!recognized?.trim()) return null
+  const parts = parseKeyParts(recognized)
+  if (!parts) return null
+  return { key: parts.tonic, scale: parts.minor ? 'minor' : 'major' }
+}
+
 function formatChordClock(seconds: number): string {
   const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0
   const mins = Math.floor(safe / 60)

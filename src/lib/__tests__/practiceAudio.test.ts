@@ -12,6 +12,7 @@ import {
   parseMusicaiKey,
   preferSimplePopChords,
   recognizedKeyMatchesRequested,
+  recipeFieldsFromRecognizedKey,
   assertPracticeUploadFile,
 } from '../practiceAudio'
 
@@ -152,4 +153,11 @@ test('practice upload accepts mp3/wav and rejects other types', () => {
   assert.doesNotThrow(() => assertPracticeUploadFile({ name: 'aula.wav', type: 'audio/wav', size: 1024 }))
   assert.throws(() => assertPracticeUploadFile({ name: 'aula.txt', type: 'text/plain', size: 10 }), /MP3 ou WAV/)
   assert.throws(() => assertPracticeUploadFile({ name: 'aula.mp3', type: 'audio/mpeg', size: 21 * 1024 * 1024 }), /20MB/)
+})
+
+test('recognized key fills the recipe tom and scale', () => {
+  assert.deepEqual(recipeFieldsFromRecognizedKey('F major'), { key: 'F', scale: 'major' })
+  assert.deepEqual(recipeFieldsFromRecognizedKey('A minor'), { key: 'A', scale: 'minor' })
+  assert.deepEqual(recipeFieldsFromRecognizedKey('Bb'), { key: 'Bb', scale: 'major' })
+  assert.equal(recipeFieldsFromRecognizedKey(null), null)
 })
