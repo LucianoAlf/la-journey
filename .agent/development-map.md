@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-17 — spec corte B (sala independente) escrita  
+Atualizado: 2026-08-17 — Estudo corte B na branch  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** implementar Estudo corte B. Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`. Plano: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`. Não misturar Suno.
+**Próximo corte:** smoke Chrome da sala independente (`localhost:5202/estudo`) + decidir se C1/C2/B sobe no PR 22. Não misturar Suno.
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2** em `feat/estudo-playalong` (ainda não em produção). Corte B: spec + plano escritos, código ainda não. Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B** em `feat/estudo-playalong` (ainda não em produção). Corte B no código; smoke Chrome da folha/print ainda. Não misturar com `feat/audio-didatico`.
 - Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
@@ -36,6 +36,14 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 ---
 
 ## Feito
+
+### Estudo corte B — sala independente (17/08)
+
+Lista só faixa com `page_config.estudo`. Rename inline, apagar, cifra no clique, quatro gravuras, logo/professor/Alf/print. Crédito alphaTab no rodapé, não no meio da pauta.
+- Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
+- Plano: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
+- Branch: `feat/estudo-playalong`. Dev: `http://localhost:5202/estudo`
+- Testes: `estudoConfig`, `estudoCifra`, `studyNotationTex`, `playalong`, `fromMp3ToStudy` — todos `ok`.
 
 ### Estudo C2 — material a partir do MP3 (16/08, noite)
 
