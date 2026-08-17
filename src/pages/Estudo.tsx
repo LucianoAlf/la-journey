@@ -237,7 +237,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
           />
           <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
             {uploading ? <SpinnerGap size={16} className="animate-spin" /> : null}
-            Carregar playalong
+            Colar faixa nesta pauta
           </Button>
           <Button variant={marking ? 'default' : 'outline'} size="sm" onClick={toggleMarking} disabled={!playalong?.audioUrl}>
             {marking ? 'Parar marcação' : 'Marcar compassos'}
@@ -250,7 +250,9 @@ function EstudoRoom({ materialId }: { materialId: string }) {
       </div>
       {study && (
         <p className="mb-3 text-[12px] text-text2">
-          A pauta é a deste material (os acordes não vêm do MP3). O playalong é só a faixa — use Play ou o controle de áudio.
+          {study.tex.includes('slashed')
+            ? 'Cifra gerada do MP3 (Music.AI). Se algum acorde estiver errado, corrija no Editor.'
+            : 'Esta pauta já existia. Colar faixa não troca os acordes. Para o Music.AI gerar a grade, volte em Materiais e use Do MP3.'}
         </p>
       )}
       {marking && (
