@@ -6,6 +6,16 @@ import { StudyCifraOverlay } from '@/components/estudo/StudyCifraOverlay'
 import { StudySheetFrame } from '@/components/estudo/StudySheetFrame'
 import { StudyTitleField } from '@/components/estudo/StudyTitleField'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { StudyPlayalongSurface, type StudyPlayalongSurfaceHandle } from '@/components/music/StudyPlayalongSurface'
 import { useEstudoMaterials } from '@/hooks/useEstudoMaterials'
 import { useMaterialWithBlocks } from '@/hooks/useMaterials'
@@ -20,6 +30,7 @@ import {
 import { nextCifraBeatIndex } from '@/lib/estudoCifra'
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
 import { normalizeCifraSymbol } from '@/lib/notationCifra'
+import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSyncPoint } from '@/lib/playalong'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
 import { deleteEstudoMaterial, fetchCurrentUserName, type EstudoListItem } from '@/services/estudoCatalogService'
 import { updateMaterial, updateMaterialBlockRpc, type GeneratedMaterial, type MaterialWithBlocks } from '@/services/materialService'
@@ -38,6 +49,7 @@ function EstudoList() {
   const { data: school } = useSchool()
   const { data: materials, loading, error } = useEstudoMaterials(school?.id)
   const [rows, setRows] = useState<EstudoListItem[]>([])
+  const [deleteTarget, setDeleteTarget] = useState<EstudoListItem | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
 
@@ -75,12 +87,12 @@ function EstudoList() {
     }
   }
 
-  const remove = async (id: string) => {
-    if (!window.confirm('Apagar esta faixa?')) return
+  const remove = async (item: EstudoListItem) => {
     const previous = rows
-    setRows((current) => current.filter((row) => row.id !== id))
+    setRows((current) => current.filter((row) => row.id !== item.id))
+    setDeleteTarget(null)
     try {
-      await deleteEstudoMaterial(id)
+      await deleteEstudoMaterial(item.id)
     } catch (err) {
       setRows(previous)
       toast.error(err instanceof Error ? err.message : 'Não deu para apagar')
@@ -172,7 +184,7 @@ function EstudoList() {
                         aria-label="Apagar faixa"
                         onClick={(event) => {
                           event.stopPropagation()
-                          void remove(material.id)
+                          setDeleteTarget(material)
                         }}
                       >
                         <Trash size={16} />
@@ -185,6 +197,28 @@ function EstudoList() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent className="bg-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Você tem certeza que quer apagar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A faixa “{deleteTarget?.title}” sai da sala. Isso não dá para desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-vermelho hover:bg-vermelho/80"
+              onClick={() => {
+                if (deleteTarget) void remove(deleteTarget)
+              }}
+            >
+              Apagar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
