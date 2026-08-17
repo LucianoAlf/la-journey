@@ -15,12 +15,12 @@ const slashBarBlock = {
   content: {
     notation_data: {
       clef: 'treble',
-      keySignature: 'D',
+      keySignature: 'F',
       timeSignature: '4/4',
-      bpm: 108,
+      bpm: 120,
       barsPerSystem: 4,
       beats: [
-        { pitches: [{ pitch: 'B/4' }], duration: 'q', slash: true, cifra: 'D', barAfter: false },
+        { pitches: [{ pitch: 'B/4' }], duration: 'q', slash: true, cifra: 'F', barAfter: false },
         { pitches: [{ pitch: 'B/4' }], duration: 'q', slash: true, barAfter: false },
         { pitches: [{ pitch: 'B/4' }], duration: 'q', slash: true, barAfter: false },
         { pitches: [{ pitch: 'B/4' }], duration: 'q', slash: true, barAfter: true },
@@ -29,12 +29,27 @@ const slashBarBlock = {
   },
 }
 
-test('builds AlphaTex with slashes and cifra from a notation block', () => {
-  const result = studyTexFromBlock(slashBarBlock)
+test('slash-beat omits key signature and keeps slashes', () => {
+  const result = studyTexFromBlock(slashBarBlock, 'slash-beat')
   assert.ok(result)
-  assert.equal(result.barsPerSystem, 4)
   assert.match(result.tex, /slashed/)
-  assert.match(result.tex, /ch "D"/)
+  assert.match(result.tex, /ch "F"/)
+  assert.doesNotMatch(result.tex, /\\ks/)
+  assert.equal(result.indexMap.length, 4)
+})
+
+test('score keeps the F key signature', () => {
+  const result = studyTexFromBlock(slashBarBlock, 'score')
+  assert.ok(result)
+  assert.match(result.tex, /\\ks/)
+})
+
+test('chords hide figures and keep cifra', () => {
+  const result = studyTexFromBlock(slashBarBlock, 'chords')
+  assert.ok(result)
+  assert.match(result.tex, /ch "F"/)
+  assert.doesNotMatch(result.tex, /slashed/)
+  assert.doesNotMatch(result.tex, /\\ks/)
 })
 
 test('returns null without notation beats', () => {
