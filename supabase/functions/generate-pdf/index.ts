@@ -141,8 +141,9 @@ Deno.serve(async (req) => {
 
     const printUrl = `${appUrl.replace(/\/$/, '')}/print/${materialId}?token=${token}`
     const pdfEndpoint = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}&timeout=60000`
-    const pageConfig = (material.page_config ?? {}) as { orientation?: unknown }
+    const pageConfig = (material.page_config ?? {}) as { orientation?: unknown; estudo?: unknown }
     const landscape = pageConfig.orientation === 'landscape'
+      || (pageConfig.estudo != null && typeof pageConfig.estudo === 'object')
 
     console.info('[generate-pdf] request browserless pdf', printUrl, { landscape })
     const pdfResponse = await fetch(pdfEndpoint, {

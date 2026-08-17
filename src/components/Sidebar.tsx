@@ -1,11 +1,11 @@
 import { 
   SquaresFour, MapTrifold, FileText, NotePencil, Books, MusicNotesSimple, 
-  UsersThree, MusicNote, ChalkboardTeacher, GraduationCap, Trophy, 
+  UsersThree, MusicNote, MusicNotes, ChalkboardTeacher, GraduationCap, Trophy, 
   WhatsappLogo, ChartBar, PlugsConnected, GearSix, Plus, Bell, Moon, Sun, CaretLeft, CaretRight
 } from "@phosphor-icons/react";
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { cn } from "../utils";
+import { cn } from '../utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
@@ -45,6 +45,7 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
     { section: "Operacional" },
     { id: "turmas", label: "Turmas", icon: ChalkboardTeacher },
     { id: "professor", label: "Visão Professor", icon: GraduationCap },
+    { id: "estudo", label: "Estudo", icon: MusicNotes },
     { section: "Engajamento" },
     { id: "gamificacao", label: "Gamificação", icon: Trophy },
     { id: "whatsapp", label: "WhatsApp", icon: WhatsappLogo, badge: "4" },
@@ -56,7 +57,7 @@ export function Sidebar({ isCollapsed, toggleSidebar, theme, toggleTheme }: Side
 
   return (
     <nav className={cn(
-      "fixed left-0 top-0 bottom-0 z-50 flex flex-col bg-sidebar-bg border-r border-sidebar-border shadow-[var(--shadow)] transition-all duration-300 overflow-hidden",
+      "fixed left-0 top-0 bottom-0 z-50 flex flex-col bg-sidebar-bg border-r border-sidebar-border shadow-[var(--shadow)] transition-all duration-300 overflow-hidden print:hidden",
       isCollapsed ? "w-[var(--sidebar-w-collapsed)]" : "w-[var(--sidebar-w)]"
     )}>
       <div className="flex items-center gap-2.5 p-4 border-b border-sidebar-border overflow-hidden shrink-0 min-h-[68px]">
