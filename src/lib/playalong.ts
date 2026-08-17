@@ -36,6 +36,15 @@ export function parsePlayalong(raw: unknown): PlayalongConfig | null {
   }
 }
 
+export function playalongPathFromPublicUrl(url: string): string | null {
+  const marker = '/object/public/content-images/'
+  const index = url.indexOf(marker)
+  if (index < 0) return null
+  const path = decodeURIComponent(url.slice(index + marker.length).split('?')[0] ?? '')
+  if (!path.startsWith('playalong/')) return null
+  return path
+}
+
 export function playalongToJson(config: PlayalongConfig): PlayalongConfig {
   return {
     audioUrl: config.audioUrl,

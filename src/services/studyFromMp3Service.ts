@@ -1,3 +1,4 @@
+import { estudoToJson } from '@/lib/estudoConfig'
 import { fromMp3ToStudy, titleFromAudioFilename, type Mp3Chord } from '@/lib/fromMp3ToStudy'
 import { playalongToJson } from '@/lib/playalong'
 import { supabase } from '@/lib/supabase'
@@ -6,6 +7,7 @@ import {
   updateMaterial,
   type GeneratedMaterial,
 } from './materialService'
+import { fetchCurrentUserName } from './estudoCatalogService'
 import { removePlayalongObject, uploadPlayalongInbox } from './playalongUpload'
 
 function invokeErrorMessage(error: { message?: string } | null, data: unknown, fallback: string) {
@@ -71,9 +73,15 @@ export async function createStudyMaterialFromMp3(params: {
       }],
     })
     created = true
+    const curatorName = await fetchCurrentUserName()
     await updateMaterial(materialId, {
       page_config: {
         playalong: playalongToJson(study.playalong),
+        estudo: estudoToJson({
+          origin: 'from-mp3',
+          displayMode: 'slash-beat',
+          curatorName,
+        }),
       } as unknown as GeneratedMaterial['page_config'],
     })
     return materialId

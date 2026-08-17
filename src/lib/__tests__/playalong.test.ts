@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { parsePlayalong, playalongToJson } from '../playalong'
+import { parsePlayalong, playalongPathFromPublicUrl, playalongToJson } from '../playalong'
 
 function test(name: string, fn: () => void) {
   try {
@@ -46,4 +46,14 @@ test('drops invalid sync points, keeps valid ones', () => {
   })
   assert.equal(p?.syncPoints.length, 1)
   assert.equal(p?.syncPoints[0].masterBarIndex, 1)
+})
+
+test('playalongPathFromPublicUrl reads inbox path', () => {
+  const url = 'https://rkfszavfqplhorvfpkcq.supabase.co/storage/v1/object/public/content-images/playalong/inbox/abc.mp3'
+  assert.equal(playalongPathFromPublicUrl(url), 'playalong/inbox/abc.mp3')
+})
+
+test('playalongPathFromPublicUrl rejects other buckets', () => {
+  assert.equal(playalongPathFromPublicUrl('https://x/storage/v1/object/public/other/a.mp3'), null)
+  assert.equal(playalongPathFromPublicUrl('/local.mp3'), null)
 })
