@@ -22,6 +22,7 @@ export interface PrintMaterial {
   title: string
   type: string | null
   schoolName: string | null
+  schoolLogoUrl?: string | null
   schoolPrimaryColor?: string | null
   schoolSecondaryColor?: string | null
   pageConfig: Record<string, unknown>
@@ -54,6 +55,7 @@ export function parsePrintMaterialRows(rows: MaterialWithBlocks[]): {
       title: first.material_title,
       type: first.material_type ?? null,
       schoolName: first.school_name,
+      schoolLogoUrl: first.school_logo_url ?? null,
       schoolPrimaryColor: first.school_primary_color ?? null,
       schoolSecondaryColor: first.school_secondary_color ?? null,
       pageConfig: first.page_config ?? {},

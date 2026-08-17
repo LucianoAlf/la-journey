@@ -1,23 +1,23 @@
-import type { ReactNode } from 'react'
+import { forwardRef, type ReactNode } from 'react'
 import { StudyTitleField } from '@/components/estudo/StudyTitleField'
 
-export function StudySheetFrame({
-  schoolName,
-  logoUrl,
-  title,
-  curatorName,
-  onTitleCommit,
-  children,
-}: {
+export const StudySheetFrame = forwardRef<HTMLDivElement, {
   schoolName: string
   logoUrl: string | null
   title: string
   curatorName: string | null
   onTitleCommit: (next: string) => void
   children: ReactNode
-}) {
+}>(function StudySheetFrame({
+  schoolName,
+  logoUrl,
+  title,
+  curatorName,
+  onTitleCommit,
+  children,
+}, ref) {
   return (
-    <div className="estudo-sheet relative rounded-[var(--radius)] border border-border bg-surface p-4">
+    <div ref={ref} className="estudo-sheet relative rounded-[var(--radius)] border border-border bg-surface p-4">
       {logoUrl && (
         <img
           src={logoUrl}
@@ -49,4 +49,4 @@ export function StudySheetFrame({
       </div>
     </div>
   )
-}
+})

@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-17 — Estudo corte B na branch  
+Atualizado: 2026-08-17 — Estudo C1+C2+B sobe pra produção  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** smoke Chrome da sala independente (`localhost:5202/estudo`) + decidir se C1/C2/B sobe no PR 22. Não misturar Suno.
+**Próximo corte:** smoke em produção (`https://la-journey.vercel.app/estudo`): hover sem verde, Imprimir deitado, Baixar PDF A4 landscape pelo `generate-pdf`. Não misturar Suno.
 
 ## Como retomar
 
@@ -16,7 +16,7 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B** em `feat/estudo-playalong` (ainda não em produção). Corte B no código; smoke Chrome da folha/print ainda. Não misturar com `feat/audio-didatico`.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B** sobe em `feat/estudo-playalong` (PR 22 → main). Não misturar com `feat/audio-didatico`.
 - Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
@@ -39,11 +39,11 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Fo
 
 ### Estudo corte B — sala independente (17/08)
 
-Lista só faixa com `page_config.estudo`. Rename inline, apagar, cifra no clique, quatro gravuras, logo/professor/Alf/print. Crédito alphaTab no rodapé, não no meio da pauta.
+Lista só faixa com `page_config.estudo`. Rename inline, apagar, cifra no clique, quatro gravuras, logo/professor/Alf. Crédito alphaTab no rodapé. Cifra = pauta vazia com barras. Pulso não come a barra de compasso. Hover da pauta não pinta verde (cursor de compasso só no Play). Imprimir = diálogo do navegador. Baixar PDF = `generate-pdf` (Browserless imprime o PrintView da sala em A4 deitada), arquivo `.pdf`, sem caixa de imprimir. Sem jsPDF/html5 (o PDF em pé com a pauta deitada era esse motor).
 - Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
 - Plano: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
 - Branch: `feat/estudo-playalong`. Dev: `http://localhost:5202/estudo`
-- Testes: `estudoConfig`, `estudoCifra`, `studyNotationTex`, `playalong`, `fromMp3ToStudy` — todos `ok`.
+- Testes: `estudoConfig`, `estudoCifra`, `estudoDisplayStyles`, `estudoPdf`, `estudoPrint`, `studyNotationTex`, `playalong`, `fromMp3ToStudy` — todos `ok`.
 
 ### Estudo C2 — material a partir do MP3 (16/08, noite)
 

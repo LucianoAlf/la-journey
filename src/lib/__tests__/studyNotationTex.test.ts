@@ -48,6 +48,8 @@ test('chords hide figures and keep cifra', () => {
   const result = studyTexFromBlock(slashBarBlock, 'chords')
   assert.ok(result)
   assert.match(result.tex, /ch "F"/)
+  assert.match(result.tex, /\br\b/)
+  assert.match(result.tex, /\|/)
   assert.doesNotMatch(result.tex, /slashed/)
   assert.doesNotMatch(result.tex, /\\ks/)
 })

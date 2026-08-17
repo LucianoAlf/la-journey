@@ -60,5 +60,5 @@ export function mergeEstudoPageConfig(
   existing: Record<string, unknown> | null | undefined,
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...(existing ?? {}), ...patch }
+  return { ...(existing ?? {}), ...patch, orientation: 'landscape' }
 }

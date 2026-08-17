@@ -76,6 +76,7 @@ export async function createStudyMaterialFromMp3(params: {
     const curatorName = await fetchCurrentUserName()
     await updateMaterial(materialId, {
       page_config: {
+        orientation: 'landscape',
         playalong: playalongToJson(study.playalong),
         estudo: estudoToJson({
           origin: 'from-mp3',

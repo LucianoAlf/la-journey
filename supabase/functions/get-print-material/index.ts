@@ -58,6 +58,7 @@ async function getPrintMaterialRows(databaseUrl: string, materialId: string) {
           js.name as stage_name,
           jst.name as station_name,
           s.name as school_name,
+          s.logo_url as school_logo_url,
           s.primary_color as school_primary_color,
           s.secondary_color as school_secondary_color,
           gm.generation_config,

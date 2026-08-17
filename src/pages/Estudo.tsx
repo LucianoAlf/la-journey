@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, Printer, SpinnerGap, Trash } from '@phosphor-icons/react'
+import { ArrowLeft, FilePdf, Pause, Play, Printer, SpinnerGap, Trash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { StudyCifraOverlay } from '@/components/estudo/StudyCifraOverlay'
 import { StudySheetFrame } from '@/components/estudo/StudySheetFrame'
@@ -31,6 +31,9 @@ import { nextCifraBeatIndex } from '@/lib/estudoCifra'
 import { hydrateNotationFromBlock, type InlineBeat } from '@/lib/notationInlineHydrate'
 import { normalizeCifraSymbol } from '@/lib/notationCifra'
 import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSyncPoint } from '@/lib/playalong'
+import { type CifraOverlayAnchor } from '@/lib/estudoCifraOverlay'
+import { printEstudoSheet } from '@/lib/estudoPdf'
+import { downloadEstudoPdfWithEditorEngine } from '@/services/estudoPdfService'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
 import { deleteEstudoMaterial, fetchCurrentUserName, type EstudoListItem } from '@/services/estudoCatalogService'
 import { updateMaterial, updateMaterialBlockRpc, type GeneratedMaterial, type MaterialWithBlocks } from '@/services/materialService'
@@ -230,6 +233,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const surfaceRef = useRef<StudyPlayalongSurfaceHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [playing, setPlaying] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [playalongOverride, setPlayalongOverride] = useState<PlayalongConfig | null>(null)
   const [marking, setMarking] = useState(false)
@@ -238,9 +242,11 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const [curatorName, setCuratorName] = useState<string | null>(null)
   const [beats, setBeats] = useState<InlineBeat[] | null>(null)
   const [editingBeat, setEditingBeat] = useState<number | null>(null)
+  const [editingAnchor, setEditingAnchor] = useState<CifraOverlayAnchor | null>(null)
   const dirtyRef = useRef(false)
   const playalongRef = useRef<PlayalongConfig | null>(null)
   const curatorFilledRef = useRef(false)
+  const orientationStampedRef = useRef(false)
 
   const material = rows?.[0] ?? null
   const estudo = parseEstudo(material?.page_config?.estudo)
@@ -300,6 +306,30 @@ function EstudoRoom({ materialId }: { materialId: string }) {
       setCuratorName(name)
     })
   }, [estudo, material, materialId])
+
+  useEffect(() => {
+    if (!material || !estudo || orientationStampedRef.current) return
+    const existing = (material.page_config ?? {}) as Record<string, unknown>
+    if (existing.orientation === 'landscape') {
+      orientationStampedRef.current = true
+      return
+    }
+    orientationStampedRef.current = true
+    void updateMaterial(materialId, {
+      page_config: mergeEstudoPageConfig(existing, {}) as unknown as GeneratedMaterial['page_config'],
+    })
+  }, [estudo, material, materialId])
+
+  useEffect(() => {
+    if (editingBeat === null) {
+      setEditingAnchor(null)
+      return
+    }
+    const frame = window.requestAnimationFrame(() => {
+      setEditingAnchor(surfaceRef.current?.anchorForBeat(editingBeat) ?? null)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [editingBeat])
 
   const persistPlayalong = async (next: PlayalongConfig) => {
     const existing = (material?.page_config ?? {}) as Record<string, unknown>
@@ -393,6 +423,20 @@ function EstudoRoom({ materialId }: { materialId: string }) {
     }
   }
 
+  const downloadPdf = async () => {
+    setEditingBeat(null)
+    setPdfBusy(true)
+    const toastId = toast.loading('Gerando PDF...')
+    try {
+      await downloadEstudoPdfWithEditorEngine(materialId, title)
+      toast.success('PDF baixado', { id: toastId })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não deu para baixar o PDF', { id: toastId })
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   const togglePlayback = () => {
     if (playing) {
       surfaceRef.current?.pause()
@@ -474,9 +518,20 @@ function EstudoRoom({ materialId }: { materialId: string }) {
             {playing ? <Pause size={16} /> : <Play size={16} />}
             {playing ? 'Pausar' : 'Play'}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setEditingBeat(null)
+              printEstudoSheet()
+            }}
+          >
             <Printer size={16} />
             Imprimir
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void downloadPdf()} disabled={pdfBusy || !study}>
+            {pdfBusy ? <SpinnerGap size={16} className="animate-spin" /> : <FilePdf size={16} />}
+            Baixar PDF
           </Button>
         </div>
       </div>
@@ -525,6 +580,7 @@ function EstudoRoom({ materialId }: { materialId: string }) {
           {editingBeat !== null && beats && (
             <StudyCifraOverlay
               value={beats[editingBeat]?.cifra ?? ''}
+              anchor={editingAnchor}
               onCommit={(next) => void commitCifra(editingBeat, next)}
               onCancel={() => setEditingBeat(null)}
               onNext={(current) => void commitCifra(editingBeat, current, true)}

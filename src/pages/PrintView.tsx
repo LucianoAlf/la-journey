@@ -28,6 +28,8 @@ import {
   type PlaceholderContext,
 } from '@/lib/headerFooter'
 import type { FloatingElement } from '@/lib/floatingElements'
+import { EstudoPrintDocument } from '@/components/estudo/EstudoPrintDocument'
+import { estudoPrintModel } from '@/lib/estudoPrint'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://rkfszavfqplhorvfpkcq.supabase.co'
 const GET_PRINT_MATERIAL_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-print-material`
@@ -36,15 +38,20 @@ type WindowWithPrintStatus = Window & typeof globalThis & {
   status: string
 }
 
-function setPrintReadyMarker() {
+function setPrintReadyMarker(autoprint = false) {
   const win = window as WindowWithPrintStatus
   win.status = 'ready-for-pdf'
 
-  if (!document.querySelector('.print-ready')) {
+  const already = !!document.querySelector('.print-ready')
+  if (!already) {
     const marker = document.createElement('div')
     marker.className = 'print-ready'
     marker.setAttribute('aria-hidden', 'true')
     document.body.appendChild(marker)
+  }
+
+  if (autoprint && !already) {
+    window.setTimeout(() => window.print(), 400)
   }
 }
 
@@ -107,6 +114,10 @@ export function PrintView() {
   const location = useLocation()
   const token = useMemo(
     () => new URLSearchParams(location.search).get('token'),
+    [location.search],
+  )
+  const autoprint = useMemo(
+    () => new URLSearchParams(location.search).get('autoprint') === '1',
     [location.search],
   )
   const [data, setData] = useState<MaterialWithBlocks[] | null>(null)
@@ -186,6 +197,10 @@ export function PrintView() {
       pages: paginatePrintBlocks(parsed.blocks, parsed.material?.type, orientation),
     }
   }, [data])
+  const estudoModel = useMemo(
+    () => estudoPrintModel(material, blocks),
+    [blocks, material],
+  )
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
   const printFontSources = useMemo(
     () => material ? [...blocks, { render_data: material.pageConfig }] : blocks,
@@ -200,7 +215,14 @@ export function PrintView() {
   }, [id])
 
   useEffect(() => {
-    if (loading || error || !material || canvasPages.length === 0) return
+    if (loading || error || !estudoModel) return
+    const maxTimer = window.setTimeout(() => setPrintReadyMarker(autoprint), 8000)
+    return () => window.clearTimeout(maxTimer)
+  }, [autoprint, error, estudoModel, loading])
+
+  useEffect(() => {
+    if (loading || error || !material || estudoModel) return
+    if (canvasPages.length === 0) return
 
     const win = window as WindowWithPrintStatus
     win.status = 'rendering-print'
@@ -241,7 +263,7 @@ export function PrintView() {
       window.clearTimeout(readyTimer)
       window.clearTimeout(maxTimer)
     }
-  }, [canvasPages.length, error, loading, material, usedFontFamilies, usedFontKey])
+  }, [canvasPages.length, error, estudoModel, loading, material, usedFontFamilies, usedFontKey])
 
   if (loading) {
     return (
@@ -260,11 +282,24 @@ export function PrintView() {
     )
   }
 
-  if (!material || blocks.length === 0) {
+  if (!material || (blocks.length === 0 && !estudoModel)) {
     return (
       <div className="print-view-loading">
         Material nao encontrado.
       </div>
+    )
+  }
+
+  if (estudoModel) {
+    return (
+      <EstudoPrintDocument
+        model={estudoModel}
+        onRendered={() => {
+          void waitForGoogleFonts(usedFontFamilies).then(() => {
+            window.setTimeout(() => setPrintReadyMarker(autoprint), 400)
+          })
+        }}
+      />
     )
   }
 

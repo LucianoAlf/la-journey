@@ -14,7 +14,7 @@ O professor sobe um MP3 e quer estudar **aqui**. Hoje a lista mistura Intervalos
 
 ## Norte (radar, não este corte)
 
-Escrita completa tipo MuseScore na sala: acrescentar compasso, ligadura, acento, ritmo fino, partitura de verdade. Biblioteca de MP3 à parte. Visão do aluno sem login. PDF gerado no servidor (Browserless). Subir logo da escola pela própria sala.
+Escrita completa tipo MuseScore na sala: acrescentar compasso, ligadura, acento, ritmo fino, partitura de verdade. Biblioteca de MP3 à parte. Visão do aluno sem login. Subir logo da escola pela própria sala.
 
 ## Decisões travadas
 
@@ -34,7 +34,7 @@ Escrita completa tipo MuseScore na sala: acrescentar compasso, ligadura, acento,
 | Cabeçalho | Logo da escola (`schools.logo_url`) + título editável + nome do professor que curadorou |
 | Marca d'água | Logo da escola, opacidade baixa, atrás da pauta, sem interceptar clique |
 | Rodapé | Marca **Alf** (wordmark do produto) + linha alphaTab |
-| Impressão | Botão **Imprimir** → diálogo do navegador (`@media print`). Sem PDF no servidor |
+| Impressão | Botão **Imprimir** → diálogo do navegador (`window.print`, mesmo motor do editor). Botão **Baixar PDF** → Edge `generate-pdf` (Browserless imprime `/print/:id`). PrintView detecta `page_config.estudo` e desenha a folha da sala (logo, gravura atual, Alf), não html2canvas da pauta viva |
 | Branch | `feat/estudo-playalong`. Não misturar Suno/Lyria |
 
 ## O que o professor faz
@@ -57,9 +57,9 @@ Cabeçalho da folha (tela e print):
                  Alf     Pauta: alphaTab
 ```
 
-Controles da sala (não imprimem): voltar, Do MP3 não entra aqui, **Colar faixa** continua (C1), gravura (4 modos), Play/Pausar, **Imprimir**.
+Controles da sala (não imprimem): voltar, Do MP3 não entra aqui, **Colar faixa** continua (C1), gravura (4 modos), Play/Pausar, **Imprimir**, **Baixar PDF**.
 
-Cifra: play pode estar rolando. Clique no acorde → campo + chips. Escreve `Bb7` ou toca **maj7**. Espaço vai ao próximo beat que tem cifra (volta ao primeiro no fim). Enter / clique fora / chip aplica e grava no bloco `notation` (`Beat.cifra`). Overlay HTML por cima da pauta — não é o K do Editor. A sala **não** diz mais “corrija no Editor”.
+Cifra: play pode estar rolando. Clique no acorde → campo + chips, **acima do beat clicado** (não no meio da folha). Clique fora fecha (grava só se o texto mudou). Espaço = próximo acorde. Enter grava `Beat.cifra`. Overlay HTML por cima da pauta — não é o K do Editor. A sala **não** diz mais “corrija no Editor”.
 
 Gravura: um controle, valor em `estudo.displayMode`. Troca redesenha o AlphaTex; beats, MP3 e sync **não** duplicam.
 
@@ -73,7 +73,7 @@ O bloco guarda os beats do C2 (`slash: true`, cifra, `B/4`). Só o gerador da sa
 |---|---|
 | `slash-beat` (padrão) | Risquinho **sem haste**, linha do meio, **sem** `\ks` — some o bequadro do B/4 em F. Cifra em cima. 4 por linha |
 | `slash-rhythm` | Mesmos slashes **com** haste / duração |
-| `chords` | Sem figura: clave + barras + cifra. Sem cabeça, sem haste |
+| `chords` | Sem figura: clave + barras + cifra. Pausas/cabeças invisíveis (glyph transparente). Sem haste |
 | `score` | Tex atual (`sessionToAlphaTex`), com armadura e alturas como estão no bloco |
 
 `slash-beat` é o que mata o bequadro. Não muda o pitch gravado; omite a armadura neste modo.
@@ -133,7 +133,9 @@ Campo inline (lista e `<h1>` da sala). Estado local imediato. Persistência: `up
 - Alf no rodapé: wordmark de texto **Alf** no tipo serif/accent do app. Sem asset novo.
 - `Pauta: alphaTab` à direita do Alf, link `https://alphatab.net/`, `rel="noopener"`. Não some: a pauta é o produto; o autor do AlphaTab pede crédito visível. Só sai do SVG.
 - Hide do crédito no SVG: o mesmo cleanup já usado em `AlphaTabViewer` (`rendered by alphaTab` / último filho de `.at-surface`). Aplicar em `StudyPlayalongSurface`.
-- **Imprimir**: `window.print()`. `@media print` esconde Play, Colar faixa, Marcar compassos, chips, file input, sidebar, botão voltar. Mostra cabeçalho, pauta, marca d'água (mais suave), Alf, alphaTab. Folha A4 retrato. Sem `generate-pdf` / Browserless.
+- **Imprimir**: `window.print()` da folha da sala (A4 deitada). Diálogo do navegador.
+- **Papel**: a sala imprime e exporta **deitada** (297×210 mm). `page_config.orientation = landscape`.
+- **Baixar PDF**: Edge `generate-pdf` — o mesmo motor da apostila do editor. Browserless imprime `/print/:id`. PrintView detecta `page_config.estudo` e desenha a folha da sala (logo, gravura atual, Alf) em **A4 deitada**. O botão baixa o arquivo `.pdf` (blob da URL do storage). Não abre o diálogo de imprimir. Sem html2canvas, sem jsPDF, sem `core.engine = html5`.
 
 ## Cifra na sala
 
@@ -154,7 +156,7 @@ Espaço com o campo aberto: grava o atual (se mudou) e foca o próximo acorde. S
 
 ## Fora
 
-Escrita MuseScore (compasso, ligadura, acento, 2/4, 7x); embed do Editor; tabela `estudo_tracks`; PDF servidor; upload de logo na sala; duplicar faixa; aluno deslogado; Soundslice; Suno/Lyria; stretch/tom; esconder o crédito do AlphaTab **sem** linha no rodapé.
+Escrita MuseScore (compasso, ligadura, acento, 2/4, 7x); embed do Editor; tabela `estudo_tracks`; html2canvas/jsPDF da pauta viva; upload de logo na sala; duplicar faixa; aluno deslogado; Soundslice; Suno/Lyria; stretch/tom; esconder o crédito do AlphaTab **sem** linha no rodapé.
 
 ## Testes
 

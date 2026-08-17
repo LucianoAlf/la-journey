@@ -1,20 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyEstudoCifraChip, ESTUDO_CIFRA_CHIPS, type EstudoCifraChipId } from '@/lib/estudoCifra'
+import { cifraOverlayFixedStyle, type CifraOverlayAnchor } from '@/lib/estudoCifraOverlay'
 import { CIFRA_MAX_LENGTH } from '@/lib/notationCifra'
 
 export function StudyCifraOverlay({
   value,
+  anchor,
   onCommit,
   onCancel,
   onNext,
 }: {
   value: string
+  anchor: CifraOverlayAnchor | null
   onCommit: (next: string) => void
   onCancel: () => void
   onNext: (current: string) => void
 }) {
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const draftRef = useRef(draft)
+  const valueRef = useRef(value)
+  const onCommitRef = useRef(onCommit)
+  const onCancelRef = useRef(onCancel)
 
   useEffect(() => {
     setDraft(value)
@@ -22,9 +30,27 @@ export function StudyCifraOverlay({
     inputRef.current?.select()
   }, [value])
 
+  draftRef.current = draft
+  valueRef.current = value
+  onCommitRef.current = onCommit
+  onCancelRef.current = onCancel
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const root = rootRef.current
+      if (root && event.target instanceof Node && root.contains(event.target)) return
+      if (draftRef.current === valueRef.current) onCancelRef.current()
+      else onCommitRef.current(draftRef.current)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
+
   return (
     <div
-      className="estudo-no-print absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg border border-border bg-surface p-2 shadow print:hidden"
+      ref={rootRef}
+      className="estudo-no-print rounded-lg border border-border bg-surface p-2 shadow print:hidden"
+      style={anchor ? cifraOverlayFixedStyle(anchor) : { position: 'fixed', left: 24, top: 96, zIndex: 40 }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <input

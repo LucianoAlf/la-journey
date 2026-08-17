@@ -690,6 +690,14 @@
   min-height:210mm!important;
   max-height:210mm!important;
 }
+.print-page.estudo-print-page,
+.print-page.estudo-print-page.a4-page--landscape{
+  width:297mm!important;
+  height:auto!important;
+  min-height:210mm!important;
+  max-height:none!important;
+  overflow:visible!important;
+}
 .print-page-header{
   display:flex;
   justify-content:space-between;
@@ -849,6 +857,10 @@
   .a4-page:last-child { page-break-after:auto; break-after:auto }
   .a4-page.a4-page--landscape,
   .print-page.a4-page--landscape { width:297mm !important; height:210mm !important; min-height:210mm !important; max-height:210mm !important }
+  .estudo-print-page.a4-page,
+  .estudo-print-page.print-page,
+  .estudo-print-page.a4-page--landscape { width:297mm !important; height:auto !important; min-height:210mm !important; max-height:none !important; overflow:visible !important }
+  .estudo-print-page .a4-page-content { overflow:visible !important; height:auto !important; max-height:none !important; flex:none !important }
   /* Capa: transparent + sem padding — o .block-cover tem o background real e preenche 100% */
   .a4-page--cover { background:transparent !important; height:297mm !important; min-height:297mm !important; page-break-before:auto !important; break-before:auto !important; padding:0 !important; margin:0 !important }
   .a4-page--landscape.a4-page--cover { height:210mm !important; min-height:210mm !important }
@@ -946,4 +958,54 @@
   #print-container .cover-overlay { background:rgba(0,0,0,.45) !important }
 
   @page { size:A4 portrait; margin:0 }
+}
+
+.at-study-playalong .at-cursor-bar,
+.at-study-playalong .at-cursor-beat,
+.at-study-playalong .at-selection,
+.at-study-playalong .at-highlight {
+  display: none !important;
+}
+.at-study-playalong.estudo-playing .at-cursor-bar {
+  display: block !important;
+}
+
+.estudo-print-view {
+  width: 297mm;
+  min-height: 210mm;
+  margin: 0 auto;
+  background: #fff;
+}
+
+.estudo-print-view .estudo-sheet {
+  border: none;
+  box-shadow: none;
+  background: #fff;
+}
+
+@media print {
+  .estudo-room,
+  .estudo-sheet,
+  .estudo-room .at-study-playalong,
+  .estudo-room .at-surface,
+  .estudo-print-view,
+  .estudo-print-view .estudo-sheet,
+  .estudo-print-view .at-study-playalong,
+  .estudo-print-view .at-surface {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  .estudo-sheet svg {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  .at-cursor-bar,
+  .at-cursor-beat,
+  .at-selection,
+  .at-highlight {
+    display: none !important;
+  }
 }

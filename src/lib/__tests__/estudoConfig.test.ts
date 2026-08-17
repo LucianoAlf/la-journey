@@ -4,6 +4,7 @@ import {
   parseEstudo,
   sanitizeEstudoTitle,
   estudoToJson,
+  mergeEstudoPageConfig,
 } from '../estudoConfig'
 
 function test(name: string, fn: () => void) {
@@ -70,4 +71,12 @@ test('empty rename is rejected; trim and cap at 120', () => {
   assert.equal(sanitizeEstudoTitle('  ', 'Faixa'), null)
   assert.equal(sanitizeEstudoTitle('   Blues  ', 'Faixa'), 'Blues')
   assert.equal(sanitizeEstudoTitle('A'.repeat(130), 'Faixa')?.length, 120)
+})
+
+test('estudo page_config is stamped landscape for print/PDF', () => {
+  const next = mergeEstudoPageConfig({ playalong: { audioUrl: 'https://x/a.mp3' } }, {
+    estudo: { origin: 'from-mp3', displayMode: 'slash-rhythm', curatorName: 'Alf' },
+  })
+  assert.equal(next.orientation, 'landscape')
+  assert.equal((next.estudo as { displayMode: string }).displayMode, 'slash-rhythm')
 })
