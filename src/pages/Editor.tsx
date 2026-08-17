@@ -93,6 +93,7 @@ import { PageMinimap } from "@/components/editor/PageMinimap";
 import { PaginationDebugPanel, type PaginationDebugPage } from "@/components/editor/debug/PaginationDebugPanel";
 import { isUsableMusicSnapshotHtml } from "@/lib/musicSnapshotValidation";
 import { isNotationInlineEnabled } from "@/lib/notationInline";
+import { parseAlphaTexEffects, tieToNextFromDestination } from "@/lib/beatsToAlphaTex";
 import { buildSidebarPageGroups, buildSidebarPagePreviewItems, reorderSidebarBlocks } from "@/lib/editorSidebar";
 import { collectUsedGoogleFontFamilies, getGoogleFontLinkTags } from "@/lib/fontLoader";
 import { MaterialTemplatesDialog } from "@/components/editor/MaterialTemplatesDialog";
@@ -125,6 +126,8 @@ import { DEFAULT_TITLE_TEMPLATE_ID, TITLE_TEMPLATE_PRESETS, type TitleTemplateId
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { parsePageOrientation, pageSize, type PageOrientation } from "@/lib/a4Preview";
+import { parsePlayalong, type PlayalongConfig } from "@/lib/playalong";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -179,7 +182,7 @@ import {
   shouldNudgeFloatingElementFromKey,
 } from "@/lib/editorCanvasInteraction";
 import {
-  A4_CONTENT_HEIGHT,
+  a4ContentHeight,
   canSplitBlockForPagination,
   describePaginationPolicy,
   getBlockPaginationPolicy,
@@ -232,6 +235,8 @@ interface PageConfig {
   floating_elements?: FloatingElement[]
   margins?: PageMargins
   guides?: PageGuide[]
+  orientation?: PageOrientation
+  playalong?: PlayalongConfig
 }
 
 const DEFAULT_PAGE_CONFIG: PageConfig = {
@@ -268,6 +273,8 @@ function migratePageConfig(raw: Record<string, unknown>): PageConfig {
     footer: footer && isLegacyFormat(footer)
       ? migrateLegacyFooter(footer as { enabled: boolean; leftText: string; centerText: string; rightText: string; showPageNumber: boolean; pageNumberPosition: 'left' | 'center' | 'right' })
       : (pc.footer ?? DEFAULT_FOOTER),
+    orientation: parsePageOrientation(raw.orientation),
+    playalong: parsePlayalong(raw.playalong) ?? undefined,
   }
 }
 
@@ -1019,12 +1026,14 @@ function useEditorPagination({
   canvasScrollRef,
   musicRendererSnapshotCacheRef,
   selectedBlockId,
+  contentHeight,
 }: {
   blocks: EditorBlock[]
   blocksRef: React.MutableRefObject<EditorBlock[]>
   canvasScrollRef: React.RefObject<HTMLDivElement | null>
   musicRendererSnapshotCacheRef: React.MutableRefObject<Map<string, MusicSnapshotCacheEntry>>
   selectedBlockId: string | null
+  contentHeight: number
 }) {
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({})
   const blockHeightCacheRef = useRef<Map<string, number>>(new Map())
@@ -1055,7 +1064,8 @@ function useEditorPagination({
   const paginationResult = useMemo(() => paginateBlocks(
     blocks,
     block => blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block),
-  ), [blocks, blockHeights])
+    contentHeight,
+  ), [blocks, blockHeights, contentHeight])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -1979,6 +1989,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   // Configuração de cabeçalho/rodapé da página
   const [pageConfig, setPageConfig] = useState<PageConfig>(DEFAULT_PAGE_CONFIG)
+  const pageOrientation = parsePageOrientation(pageConfig.orientation)
+  const contentHeight = a4ContentHeight(pageOrientation)
 
   // Sidebar retrátil
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => {
@@ -2212,8 +2224,8 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     if (isSongbookMaterial(materialMeta?.material_type, blocks)) {
       return paginateSongbookBlocks(blocks, getHeight)
     }
-    return paginateBlocks(blocks, getHeight)
-  }, [blocks, blockHeights, materialMeta?.material_type])
+    return paginateBlocks(blocks, getHeight, contentHeight)
+  }, [blocks, blockHeights, materialMeta?.material_type, contentHeight])
   const pages = paginationResult.pages
   const paginationBreakReasons = paginationResult.breakReasons
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
@@ -2239,7 +2251,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       }
 
       const h = blockHeights[block.id] ?? getEstimatedBlockHeightForPagination(block)
-      if (currentHeight + h > A4_CONTENT_HEIGHT && result[result.length - 1].length > 0) {
+      if (currentHeight + h > contentHeight && result[result.length - 1].length > 0) {
         result.push([])
         currentHeight = 0
       }
@@ -2342,7 +2354,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
     return pages.map((pageBlocks, pageIndex) => {
       const debugBlocks = pageBlocks.map(getBlockDetail)
       const usedHeight = debugBlocks.reduce((sum, block) => sum + block.usedHeight, 0)
-      const freeHeight = Math.max(0, A4_CONTENT_HEIGHT - usedHeight)
+      const freeHeight = Math.max(0, contentHeight - usedHeight)
       const nextFirstBlock = pages[pageIndex + 1]?.[0]
       const hasEstimatedBlock = pageBlocks.some(block => getHeightCacheEntry(block).source === 'estimated')
       const nextFirstBlockEstimated = nextFirstBlock ? getHeightCacheEntry(nextFirstBlock).source === 'estimated' : false
@@ -2389,7 +2401,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
           }
         }
 
-        if (freeHeight > A4_CONTENT_HEIGHT * 0.3) {
+        if (freeHeight > contentHeight * 0.3) {
           const nextPolicy = getBlockPaginationPolicy(nextFirstBlock)
           const canSplitNext = canSplitBlockForPagination(nextFirstBlock, nextPolicy)
           if (breakReason === 'manual') {
@@ -2417,10 +2429,10 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
       return {
         pageNumber: pageIndex + 1,
-        totalHeight: A4_CONTENT_HEIGHT,
+        totalHeight: contentHeight,
         usedHeight,
         freeHeight,
-        freePercent: (freeHeight / A4_CONTENT_HEIGHT) * 100,
+        freePercent: (freeHeight / contentHeight) * 100,
         breakReason,
         breakDetail,
         opportunity,
@@ -2431,7 +2443,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         blocks: debugBlocks,
       }
     })
-  }, [blocks, blockHeights, pages, paginationBreakReasons])
+  }, [blocks, blockHeights, pages, paginationBreakReasons, contentHeight])
 
   const [currentVisiblePage, setCurrentVisiblePage] = useState(0)
   const [forceAllPagesActive, setForceAllPagesActive] = useState(false)
@@ -5842,6 +5854,9 @@ Regras:
     }
 
     const beats: any[] = []
+    // `{-}` marca o beat que RECEBE a ligadura; guardamos por beat e convertemos
+    // para `tieToNext` (origem) num segundo passe, com a lista de beats já pronta.
+    const tieDestinations: boolean[] = []
     const measures = body.split('|').map((measure) => measure.trim()).filter(Boolean)
     let currentDuration = '4'
 
@@ -5865,18 +5880,23 @@ Regras:
             ? []
             : [noteToPitch(noteToken)].filter(Boolean)
 
-        const modifiers = modifierToken ?? ''
+        const effects = parseAlphaTexEffects(modifierToken)
 
+        tieDestinations.push(effects.includes('-'))
         beats.push({
           pitches: chordTokens,
           duration,
           isRest,
-          dotted: modifiers.includes('{d}') && !modifiers.includes('{dd}'),
-          doubleDotted: modifiers.includes('{dd}'),
-          tieToNext: modifiers.includes('{-}'),
+          dotted: effects.includes('d'),
+          doubleDotted: effects.includes('dd'),
+          tieToNext: false,
           ...(tokenIndex === entries.length - 1 && measureIndex < measures.length - 1 ? { barAfter: true } : {}),
         })
       }
+    }
+
+    for (let index = 0; index < beats.length; index++) {
+      beats[index].tieToNext = tieToNextFromDestination(tieDestinations, index)
     }
 
     if (beats.length === 0) return null
@@ -6355,19 +6375,21 @@ Regras:
 
   const handlePrint = useCallback(async () => {
     await activateAllCanvasPages()
-    // Forçar tema light para notações SVG (remove filter:invert do dark mode)
     const currentTheme = document.documentElement.getAttribute('data-theme')
     document.documentElement.setAttribute('data-theme', 'light')
+    const printStyle = document.createElement('style')
+    printStyle.setAttribute('data-a4-print-orientation', 'true')
+    printStyle.textContent = `@page { size: A4 ${pageOrientation}; margin: 0; }`
+    document.head.appendChild(printStyle)
 
-    // Aguardar re-render, imprimir, restaurar tema
-    // O @media print CSS cuida de TUDO: esconde sidebar/nav, reseta containers, dimensiona páginas A4
     setTimeout(() => {
       window.print()
+      printStyle.remove()
       if (currentTheme) document.documentElement.setAttribute('data-theme', currentTheme)
       else document.documentElement.removeAttribute('data-theme')
       setForceAllPagesActive(false)
     }, 150)
-  }, [activateAllCanvasPages])
+  }, [activateAllCanvasPages, pageOrientation])
 
   const handleExportHTML = useCallback(async () => {
     await activateAllCanvasPages()
@@ -6497,7 +6519,9 @@ Regras:
 
       // Page break entre páginas (exceto a última)
       const pageBreak = i < pagesEl.length - 1 ? 'page-break-after:always;' : ''
-      const coverStyle = isCover ? 'min-height:297mm;background:transparent;' : ''
+      const coverStyle = isCover
+        ? `min-height:${pageOrientation === 'landscape' ? 210 : 297}mm;background:transparent;`
+        : ''
       pagesHtmlParts.push(`<div class="${clone.className}" style="margin-bottom:40px;${coverStyle}${pageBreak}">${clone.innerHTML}</div>`)
     }
     const pagesHtml = pagesHtmlParts.join('\n')
@@ -6506,6 +6530,13 @@ Regras:
       ...blocks,
       { render_data: pageConfig },
     ]))
+    const { width: pageW, height: pageH } = pageSize(pageOrientation)
+    const landscapePageCss = pageOrientation === 'landscape'
+      ? `.a4-page--landscape{width:${pageW}px;height:${pageH}px}
+.a4-page--landscape.a4-page--cover,.a4-page--landscape .block-cover{min-height:${pageH}px}
+.a4-page--landscape.a4-page--cover .block-cover--with-image{background-size:contain!important;background-repeat:no-repeat;background-position:center;background-color:#000}`
+      : ''
+    const printPageSize = pageOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -6520,15 +6551,16 @@ h1,h2,h3{font-family:'DM Sans',sans-serif;font-weight:700;margin:0 0 12px}
 h1{font-size:28px} h2{font-size:22px} h3{font-size:18px}
 strong{font-weight:600}
 p{margin:0 0 12px}
-.a4-page{max-width:794px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:1123px;display:flex;flex-direction:column}
-.a4-page--cover{background:transparent;min-height:1123px;border-radius:0;margin:0 auto 24px;box-shadow:none;overflow:hidden}
+.a4-page{max-width:${pageW}px;margin:0 auto 24px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);border-radius:4px;overflow:hidden;min-height:${pageH}px;${pageOrientation === 'landscape' ? `width:${pageW}px;height:${pageH}px;` : ''}display:flex;flex-direction:column}
+.a4-page--cover{background:transparent;min-height:${pageH}px;border-radius:0;margin:0 auto 24px;box-shadow:none;overflow:hidden}
 .a4-page--cover .a4-page-content{padding:0;overflow:hidden}
 .a4-page--cover .canvas-block{padding:0;margin:0}
+${landscapePageCss}
 .a4-page-header{padding:20px 60px 8px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;flex-shrink:0}
 .a4-page-content{padding:12px 60px;flex:1;overflow:hidden}
 .a4-page-footer{padding:14px 56px 28px;font-size:10px;color:#64748b;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;flex-shrink:0;min-height:56px}
 .canvas-block{padding:10px 16px;margin-bottom:4px}
-.block-cover{position:relative;width:100%;min-height:1123px;display:flex;align-items:center;justify-content:center}
+.block-cover{position:relative;width:100%;min-height:${pageH}px;display:flex;align-items:center;justify-content:center}
 .block-cover--with-image{background-size:cover!important;background-position:center!important;color:#fff}
 .cover-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45)}
 .cover-content,.cover-footer,.cover-logo{position:absolute;z-index:1}
@@ -6561,7 +6593,7 @@ svg{max-width:100%}
   .canvas-block,.notation-container,.block-tip,.block-exercise,.mb-4,img,svg,table,pre,figure{page-break-inside:avoid!important;break-inside:avoid!important}
   h1,h2,h3,h4{page-break-after:avoid!important;break-after:avoid!important}
   [class*="bg-dourado-soft"],[class*="bg-advance"]{page-break-inside:avoid!important;break-inside:avoid!important}
-  @page{size:A4 portrait;margin:0}
+  @page{size:${printPageSize};margin:0}
 }
 </style>
 </head>
@@ -6575,7 +6607,7 @@ ${pagesHtml}
     window.open(url, '_blank')
     toast.success('HTML exportado em nova aba')
     setForceAllPagesActive(false)
-  }, [activateAllCanvasPages, blocks, materialTitle, pageConfig])
+  }, [activateAllCanvasPages, blocks, materialTitle, pageConfig, pageOrientation])
 
   const handleDownloadPDF = useCallback(async () => {
     const isSongbook = isSongbookMaterial(materialMeta?.material_type, blocks)
@@ -7024,8 +7056,9 @@ ${pagesHtml}
       ? activeTablatureRenderData.tab.split('\n')
       : []
   const canvasRulerGutter = showRulers ? 28 : 0
-  const canvasBaseWidth = 794 + canvasRulerGutter
-  const canvasBaseHeight = (canvasPages.length * 1123)
+  const { width: pageWidthPx, height: pageHeightPx } = pageSize(pageOrientation)
+  const canvasBaseWidth = pageWidthPx + canvasRulerGutter
+  const canvasBaseHeight = (canvasPages.length * pageHeightPx)
     + (Math.max(canvasPages.length - 1, 0) * 32)
     + canvasRulerGutter
     + 48
@@ -7674,6 +7707,8 @@ ${pagesHtml}
                   guides={pageConfig.guides}
                   onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
                   orientation="horizontal"
+                  pageWidthMm={pageOrientation === 'landscape' ? 297 : 210}
+                  pageHeightMm={pageOrientation === 'landscape' ? 210 : 297}
                 />
               </div>
             )}
@@ -7688,6 +7723,8 @@ ${pagesHtml}
                   guides={pageConfig.guides}
                   onGuidesChange={(guides) => setPageConfig(prev => ({ ...prev, guides }))}
                   orientation="vertical"
+                  pageWidthMm={pageOrientation === 'landscape' ? 297 : 210}
+                  pageHeightMm={pageOrientation === 'landscape' ? 210 : 297}
                 />
               </div>
             )}
@@ -7726,7 +7763,7 @@ ${pagesHtml}
                   <div
                     key={pageIdx}
                     ref={el => { pageRefs.current[pageIdx] = el }}
-                    className="a4-page a4-page--placeholder"
+                    className={`a4-page a4-page--placeholder ${pageOrientation === 'landscape' ? 'a4-page--landscape' : ''}`}
                     data-page-index={pageIdx}
                     data-editor-page-active="false"
                     style={{ position: 'relative', backgroundColor: '#ffffff' }}
@@ -7767,7 +7804,7 @@ ${pagesHtml}
               <div
                 key={pageIdx}
                 ref={el => { pageRefs.current[pageIdx] = el }}
-                className={`a4-page ${isCoverPage ? 'a4-page--cover' : ''}`}
+                className={`a4-page ${pageOrientation === 'landscape' ? 'a4-page--landscape' : ''} ${isCoverPage ? 'a4-page--cover' : ''}`}
                 data-page-index={pageIdx}
                 data-editor-page-active="true"
                 onMouseDownCapture={handleCanvasPageMouseDownCapture}
@@ -8234,6 +8271,32 @@ ${pagesHtml}
                 As alterações aparecem na folha em tempo real.
               </p>
 
+              <div className="space-y-2 border-t border-border pt-3">
+                <Label className="text-[11px] text-text3 uppercase tracking-wider">Orientação</Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    className={cn(
+                      'h-8 rounded-md border text-[11px]',
+                      pageOrientation === 'portrait' ? 'border-accent ring-1 ring-accent/40' : 'border-border',
+                    )}
+                    onClick={() => setPageConfig(prev => ({ ...prev, orientation: 'portrait' }))}
+                  >
+                    Retrato
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'h-8 rounded-md border text-[11px]',
+                      pageOrientation === 'landscape' ? 'border-accent ring-1 ring-accent/40' : 'border-border',
+                    )}
+                    onClick={() => setPageConfig(prev => ({ ...prev, orientation: 'landscape' }))}
+                  >
+                    Deitada
+                  </button>
+                </div>
+              </div>
+
               {/* === CABEÇALHO E RODAPÉ === */}
               <div className="space-y-3 border-t border-border pt-3">
                 <Label className="text-[11px] text-text3 uppercase tracking-wider">
@@ -8391,6 +8454,17 @@ ${pagesHtml}
                 cifraOpen={inlineNotationSession.cifraEditing}
                 cifraValue={inlineNotationSession.cifraValue}
                 onOpenCifra={inlineNotationSession.onOpenCifra}
+                barNumber={inlineNotationSession.barNumber}
+                barEnabled={inlineNotationSession.barEnabled}
+                simileLocked={inlineNotationSession.simileLocked}
+                sectionMarker={inlineNotationSession.sectionMarker}
+                sectionText={inlineNotationSession.sectionText}
+                repeatOpen={inlineNotationSession.repeatOpen}
+                repeatClose={inlineNotationSession.repeatClose}
+                simile={inlineNotationSession.simile}
+                barTimeSignature={inlineNotationSession.barTimeSignature}
+                jumpFine={inlineNotationSession.jumpFine}
+                onApplyBarFact={inlineNotationSession.onApplyBarFact}
               />
               <Separator />
               <div className="prop-section">

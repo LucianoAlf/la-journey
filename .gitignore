@@ -22,6 +22,9 @@ docs/audit-assets/
 # Git worktrees (isolated feature checkouts)
 .worktrees/
 
+# Brainstorm visual companion (mockups locais)
+.superpowers/
+
 # MCP config (contém tokens)
 .mcp.json
 

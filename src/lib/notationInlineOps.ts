@@ -1,10 +1,12 @@
 import {
   beatsToAlphaTexWithMap,
+  SLASH_NEUTRAL_PITCH,
+  toTieDestinations,
   type Beat as AlphaTexBeat,
   type BeatsToAlphaTexResult,
 } from './beatsToAlphaTex.ts'
 import type { InlineBeat } from './notationInlineHydrate.ts'
-import { clampBarsPerSystem, computeBarlineIndices } from './notationLayout.ts'
+import { barStartIndexForBeat, clampBarsPerSystem, computeBarlineIndices } from './notationLayout.ts'
 import { normalizeCifraSymbol } from './notationCifra.ts'
 
 type Staff = 'treble' | 'bass'
@@ -27,6 +29,7 @@ export interface InsertNoteInput {
   staff?: Staff
   explicitTimeSlot?: number
   activeStaff?: Staff
+  slash?: boolean
 }
 
 export function insertNote(input: InsertNoteInput): SessionOperationResult {
@@ -43,6 +46,7 @@ export function insertNote(input: InsertNoteInput): SessionOperationResult {
     staff,
     explicitTimeSlot,
     activeStaff = 'treble',
+    slash = false,
   } = input
   const effectiveStaff = staff ?? activeStaff
   let nextTimeSlot = 0
@@ -69,13 +73,16 @@ export function insertNote(input: InsertNoteInput): SessionOperationResult {
   }
 
   const newBeat: InlineBeat = {
-    pitches: [{ pitch, accidental: accidental || undefined }],
+    pitches: slash
+      ? [{ pitch: SLASH_NEUTRAL_PITCH.pitch }]
+      : [{ pitch, accidental: accidental || undefined }],
     duration,
     isRest: false,
     dotted,
     doubleDotted,
     staff: grandStaff ? effectiveStaff : undefined,
     timeSlot: grandStaff ? nextTimeSlot : undefined,
+    slash: slash || undefined,
   }
   const nextBeats = [...beats]
 
@@ -125,6 +132,48 @@ export function replaceNote(input: {
     isRest: false,
   }
   return { beats }
+}
+
+export type BarFactPatch = {
+  sectionStart?: { marker: string; text: string } | null
+  repeatOpen?: boolean | null
+  repeatClose?: number | null
+  simile?: InlineBeat['simile'] | null
+  timeSignature?: string | null
+  jump?: 'fine' | null
+}
+
+export function applyBarFact(
+  beats: InlineBeat[],
+  selectedBeatIdx: number,
+  fact: BarFactPatch,
+  timeSignature = 'free',
+  grandStaff = false,
+): InlineBeat[] {
+  if (selectedBeatIdx < 0 || !beats[selectedBeatIdx]) return beats
+  const start = barStartIndexForBeat(beats, selectedBeatIdx, timeSignature, grandStaff)
+  const next = [...beats]
+  const current = { ...next[start] }
+  for (const [key, value] of Object.entries(fact) as [keyof BarFactPatch, BarFactPatch[keyof BarFactPatch]][]) {
+    if (value === null || value === undefined || value === false) {
+      delete current[key]
+    } else {
+      ;(current as Record<string, unknown>)[key] = value
+    }
+  }
+  next[start] = current
+  return next
+}
+
+export function isSimileBar(
+  beats: InlineBeat[],
+  selectedBeatIdx: number,
+  timeSignature = 'free',
+  grandStaff = false,
+): boolean {
+  if (selectedBeatIdx < 0 || !beats[selectedBeatIdx]) return false
+  const start = barStartIndexForBeat(beats, selectedBeatIdx, timeSignature, grandStaff)
+  return Boolean(beats[start]?.simile)
 }
 
 export function resolveDeleteBeatIndex(selectedBeatIdx: number, beatCount: number): number {
@@ -185,16 +234,24 @@ export function sessionToAlphaTex(input: {
 }): BeatsToAlphaTexResult {
   const computedBarlines = computeBarlines(input.beats, input.timeSignature, input.grandStaff)
   const barlineSlots = new Set(computedBarlines.map(index => input.beats[index]?.timeSlot ?? index))
+  const tieDestinations = toTieDestinations(input.beats)
   const beats: AlphaTexBeat[] = input.beats.map((beat, index) => ({
     pitches: beat.pitches.map(pitch => ({ pitch: pitch.pitch, accidental: pitch.accidental ?? null })),
     duration: beat.duration,
-    tie: beat.tieToNext ?? false,
+    tie: tieDestinations[index],
     isRest: beat.isRest,
     dotted: beat.dotted ?? false,
     doubleDotted: beat.doubleDotted,
     articulations: beat.articulations,
     tuplet: beat.tuplet,
     cifra: normalizeCifraSymbol(beat.cifra),
+    slash: beat.slash,
+    sectionStart: beat.sectionStart,
+    repeatOpen: beat.repeatOpen,
+    repeatClose: beat.repeatClose,
+    simile: beat.simile,
+    timeSignature: beat.timeSignature,
+    jump: beat.jump,
     annotation: null,
     lyric: null,
     staff: beat.staff,

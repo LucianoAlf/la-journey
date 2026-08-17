@@ -1,5 +1,6 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import { jsPdfA4Orientation } from '@/lib/a4Preview'
 
 /**
  * Converte todas as propriedades CSS com oklab()/oklch() para rgb()
@@ -131,8 +132,8 @@ export async function exportMaterialToPDF(
   document.documentElement.setAttribute('data-theme', 'light')
   await new Promise(r => setTimeout(r, 300))
 
-  // A4 em mm: 210 × 297 | proporção ~0.7071
-  const pdf = new jsPDF('portrait', 'mm', 'a4')
+  const landscape = pages.some(page => page.classList.contains('a4-page--landscape'))
+  const pdf = new jsPDF(jsPdfA4Orientation(landscape ? 'landscape' : 'portrait'), 'mm', 'a4')
   const pdfWidth = pdf.internal.pageSize.getWidth()   // 210
   const pdfHeight = pdf.internal.pageSize.getHeight()  // 297
 
@@ -172,7 +173,6 @@ export async function exportMaterialToPDF(
       //    (cobre classes Tailwind v4 que geram oklab inline)
       const restoreColors = convertOklabColors(page)
 
-      // Usar SEMPRE offsetWidth/offsetHeight (área visível fixa: 794×1123)
       const captureWidth = page.offsetWidth
       const captureHeight = page.offsetHeight
 

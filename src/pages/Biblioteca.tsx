@@ -38,18 +38,19 @@ import { useNotations, useTablatures } from "@/hooks/useNotations";
 import { ImageGeneratorModal } from "@/components/music/ImageGeneratorModal";
 import { ImageGallery } from "@/components/music/ImageGallery";
 import type { ImageLibraryItem } from "@/services/imageGenerationService";
-import { beatsToAlphaTex } from "@/lib/beatsToAlphaTex";
+import { beatsToAlphaTex, toTieDestinations } from "@/lib/beatsToAlphaTex";
 import { normalizeTimeSignature } from "@/lib/timeSignature";
 import { ExerciseTab } from "@/components/content/ExerciseTab";
 import { useExerciseCounts } from "@/hooks/useExerciseLibrary";
 
 function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
-  return rawBeats
+  const normalized = rawBeats
     .map((rawBeat) => {
       if (!rawBeat || typeof rawBeat !== 'object') return null
 
       if (Array.isArray(rawBeat.pitches)) {
-        return rawBeat
+        // Colapsa o alias legado aqui para o resto do fluxo só conhecer `tieToNext`.
+        return { ...rawBeat, tieToNext: Boolean(rawBeat.tieToNext ?? rawBeat.tie) }
       }
 
       const notes = Array.isArray(rawBeat.notes) ? rawBeat.notes : []
@@ -77,12 +78,17 @@ function normalizeNotationBeatsForPreview(rawBeats: any[]): any[] {
         isRest: Boolean(rawBeat.isRest) || String(rawBeat.duration ?? rawDuration ?? '').includes('r') || pitches.length === 0,
         dotted: Boolean(rawBeat.dotted) || String(rawBeat.duration ?? rawDuration ?? '').includes('d'),
         doubleDotted: Boolean(rawBeat.doubleDotted) || String(rawBeat.duration ?? rawDuration ?? '').includes('dd'),
-        tie: Boolean(rawBeat.tieToNext ?? rawBeat.tie),
+        tieToNext: Boolean(rawBeat.tieToNext ?? rawBeat.tie),
         staff: rawBeat.staff,
         timeSlot: rawBeat.timeSlot,
       }
     })
     .filter((b) => b !== null)
+
+  // O gerador espera `tie` no beat que RECEBE a ligadura, e os beats já salvos guardam
+  // na origem. A conversão só vale depois do filter, com os índices finais.
+  const destinations = toTieDestinations(normalized)
+  return normalized.map((beat, index) => ({ ...beat, tie: destinations[index] }))
 }
 
 /** Traduz family do banco para texto em pt-BR */

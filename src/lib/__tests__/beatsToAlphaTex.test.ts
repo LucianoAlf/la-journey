@@ -4,7 +4,15 @@
  * Executar via: npx tsx src/lib/__tests__/beatsToAlphaTex.test.ts
  */
 
-import { beatsToAlphaTex, pitchToAlphaTex, beatsToAlphaTexNotes } from '../beatsToAlphaTex'
+import {
+  beatsToAlphaTex,
+  pitchToAlphaTex,
+  beatsToAlphaTexNotes,
+  isTieDestination,
+  toTieDestinations,
+  tieToNextFromDestination,
+  parseAlphaTexEffects,
+} from '../beatsToAlphaTex'
 import type { Beat, BeatsToAlphaTexOptions, PitchData } from '../beatsToAlphaTex'
 
 // ─── Helpers de teste ───
@@ -280,6 +288,204 @@ const invalidTex = beatsToAlphaTex(
 )
 assertNotContains(invalidTex, '\\ts', 'Ignora formula de compasso invalida')
 assertNotContains(invalidTex, 'undefined', 'Nao emite fragmento invalido com compasso invalido')
+
+// 21. Ligadura: origem (nosso modelo) ↔ destino (AlphaTex)
+console.log('\n--- Ligadura: origem ↔ destino ---')
+
+const tieModel = [{ tieToNext: true }, { tieToNext: false }, { tieToNext: false }]
+const modelDestinations = toTieDestinations(tieModel)
+assert(
+  modelDestinations.join(',') === 'false,true,false',
+  'toTieDestinations move a marca da origem para o beat seguinte',
+)
+assert(
+  tieModel.every((_, index) => isTieDestination(tieModel, index) === modelDestinations[index]),
+  'isTieDestination bate com o array de destinos',
+)
+
+// Grande pauta: treble e bass intercalados. Ligadura fica na mesma pauta.
+const interleaved = [
+  { tieToNext: true, staff: 'treble' as const },
+  { tieToNext: false, staff: 'bass' as const },
+  { tieToNext: false, staff: 'treble' as const },
+]
+assert(
+  toTieDestinations(interleaved).join(',') === 'false,false,true',
+  'ligadura da treble cai no proximo treble, nao no bass do meio',
+)
+assert(
+  tieModel.map((_, index) => tieToNextFromDestination(modelDestinations, index)).join(',')
+    === tieModel.map(beat => beat.tieToNext).join(','),
+  'ida e volta entre os dois helpers recupera o tieToNext original',
+)
+
+// ─── Leitura de volta ───
+// O parser de colagem mora dentro do Editor.tsx e nao e importavel, entao nada aqui
+// o chama. O que estes casos cobrem e a leitura de efeitos (parseAlphaTexEffects, a
+// MESMA funcao que o parser usa) sobre o AlphaTex que o gerador realmente emitiu.
+// A tokenizacao de beats do Editor.tsx segue sem cobertura.
+
+/** Efeitos de cada beat do tex, na ordem. Tolera acorde: `(c3 e3){-}` e um beat so. */
+function beatEffectsFromTex(tex: string): string[][] {
+  const beatTokens = tex.match(/(?:\([^)]+\)|r|[a-gA-G][#bn]?\d)(?:\{[^}]+\})?/g) ?? []
+  return beatTokens.map(token => parseAlphaTexEffects(token.match(/\{[^}]+\}$/)?.[0]))
+}
+
+function tieToNextFromTex(tex: string): boolean[] {
+  const destinations = beatEffectsFromTex(tex).map(effects => effects.includes('-'))
+  return destinations.map((_, index) => tieToNextFromDestination(destinations, index))
+}
+
+// Sincope da musica-alvo: seminima pontuada ligada a uma colcheia.
+const syncopeModel = [{ tieToNext: true }, { tieToNext: false }]
+const syncopeTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4')], dotted: true, tie: isTieDestination(syncopeModel, 0) }),
+  makeBeat({ pitches: [makeNote('C/4')], duration: '8', tie: isTieDestination(syncopeModel, 1) }),
+]).tex
+assert(
+  beatEffectsFromTex(syncopeTex).map(effects => effects.includes('-')).join(',') === 'false,true',
+  'AlphaTex leva a marca no beat destino',
+)
+assert(
+  tieToNextFromTex(syncopeTex).join(',') === syncopeModel.map(beat => beat.tieToNext).join(','),
+  'reler o AlphaTex gerado devolve tieToNext no beat de origem',
+)
+
+// Casos que a leitura por substring errava: o destino tem mais de um efeito na chave.
+const dottedDestinationTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4')], duration: '8' }),
+  makeBeat({ pitches: [makeNote('C/4')], dotted: true, tie: true }),
+]).tex
+assertContains(dottedDestinationTex, '{d -}', 'Destino pontuado junta os dois efeitos numa chave so')
+assert(
+  tieToNextFromTex(dottedDestinationTex).join(',') === 'true,false',
+  'Destino pontuado ({d -}) nao perde a ligadura na releitura',
+)
+
+const cifraDestinationTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('D/4')], duration: '8' }),
+  makeBeat({ pitches: [makeNote('D/4')], tie: true, cifra: 'D' }),
+]).tex
+assert(
+  tieToNextFromTex(cifraDestinationTex).join(',') === 'true,false',
+  'Destino com cifra ({- ch "D"}) nao perde a ligadura na releitura',
+)
+assert(
+  !beatEffectsFromTex(cifraDestinationTex)[1].includes('d'),
+  'O "D" da cifra nao e confundido com ponto de aumento',
+)
+
+const dottedCifraDestinationTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('D/4')], duration: '8' }),
+  makeBeat({ pitches: [makeNote('D/4')], dotted: true, tie: true, cifra: 'D' }),
+]).tex
+const dottedCifraEffects = beatEffectsFromTex(dottedCifraDestinationTex)[1]
+assert(
+  dottedCifraEffects.includes('d') && dottedCifraEffects.includes('-') && dottedCifraEffects.includes('ch'),
+  'Chave com tres efeitos ({d - ch "D"}) e lida atomo a atomo',
+)
+
+// `dd` e um atomo proprio: ponto duplo nao pode virar ponto simples na releitura.
+const doubleDottedEffects = beatEffectsFromTex(
+  beatsToAlphaTexNotes([makeBeat({ pitches: [makeNote('C/4')], doubleDotted: true })]).tex,
+)[0]
+assert(
+  doubleDottedEffects.includes('dd') && !doubleDottedEffects.includes('d'),
+  'Ponto duplo e o atomo dd, nunca d',
+)
+
+// Acorde: a extracao por beat nao pode quebrar no espaco de dentro dos parenteses.
+const chordTieTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4'), makeNote('E/4')] }),
+  makeBeat({ pitches: [makeNote('C/4'), makeNote('E/4')], tie: true }),
+]).tex
+assert(
+  tieToNextFromTex(chordTieTex).join(',') === 'true,false',
+  'Acorde ligado conta como um beat so na releitura',
+)
+
+console.log('\n--- Barra ritmica (slash) ---')
+const slashTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, dotted: true }),
+]).tex
+assertContains(slashTex, '{slashed}', 'beat com slash emite {slashed}')
+assertContains(slashTex, '{d slashed}', 'ponto e slash saem na mesma chave')
+assertContains(slashTex, 'b3', 'B/4 do modelo sai como b3 no tex')
+
+const semSlashTex = beatsToAlphaTexNotes([makeBeat({ pitches: [makeNote('B/4')] })]).tex
+assertNotContains(semSlashTex, 'slashed', 'beat sem slash nao emite {slashed}')
+
+const slashSemAlturaTex = beatsToAlphaTexNotes([makeBeat({ slash: true, isRest: false })]).tex
+assertContains(slashSemAlturaTex, 'b3{slashed}', 'slash sem pitch cai na altura neutra b3')
+
+const slashCifraTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, cifra: 'D' }),
+]).tex
+assertContains(slashCifraTex, 'b3{slashed ch "D"}', 'slash e cifra saem na mesma chave')
+
+console.log('\n--- Cabecalho de compasso ---')
+const cabecalhoTex = beatsToAlphaTexNotes([
+  makeBeat({
+    pitches: [makeNote('B/4')], slash: true, cifra: 'D',
+    sectionStart: { marker: 'A', text: 'Violao, piano e vocal' },
+    repeatOpen: true, timeSignature: '4/4', barAfter: true,
+  }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, timeSignature: '2/4', barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, repeatClose: 7, jump: 'fine' }),
+]).tex
+
+assertContains(cabecalhoTex, '\\section "A" ""', 'secao emite marcador em caixa, sem o texto longo')
+assertNotContains(cabecalhoTex, 'Violao', 'texto longo da secao nao vai para a pauta')
+assertContains(cabecalhoTex, '\\ts 4 4 \\section', 'metrica antes da secao')
+assertContains(cabecalhoTex, '\\section "A" "" \\ro', 'secao antes do repeat open')
+assertContains(cabecalhoTex, '\\ts 2 4', 'metrica muda no compasso do meio')
+assertContains(cabecalhoTex, '\\rc 7', 'repeat close com numero de voltas')
+assertContains(cabecalhoTex, '\\jump fine', 'Fine no ultimo compasso')
+assert(cabecalhoTex.split('\\ts 2 4').length === 2, 'metrica nao repete no compasso seguinte')
+
+const simileResult = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, simile: 'simple', barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true }),
+])
+assertContains(simileResult.tex, '\\simile simple', 'compasso de simile emite a tag')
+assert(
+  (simileResult.tex.match(/slashed/g) ?? []).length === 2,
+  `simile nao emite os beats do compasso, tex=${simileResult.tex}`,
+)
+assert(
+  simileResult.indexMap.length === 3,
+  `simile reserva um indice AlphaTab, mapa=${simileResult.indexMap.join(',')}`,
+)
+
+console.log('\n--- Material legado (melodia sem fatos de compasso) ---')
+const legadoTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('C/4')] }),
+  makeBeat({ pitches: [makeNote('E/4')] }),
+  makeBeat({ pitches: [makeNote('G/4')], barAfter: true }),
+]).tex
+assertNotContains(legadoTex, 'slashed', 'melodia nao emite {slashed}')
+assertNotContains(legadoTex, '\\section', 'melodia nao emite secao')
+assertNotContains(legadoTex, '\\ro', 'melodia nao emite repeat open')
+assertNotContains(legadoTex, '\\simile', 'melodia nao emite simile')
+assertNotContains(legadoTex, '\\jump', 'melodia nao emite Fine')
+assertContains(legadoTex, ':4 c3 e3 g3 |', 'melodia continua com notas e barra pedagogica')
+
+console.log('\n--- Forma (secao, repeat, simile, Fine) ---')
+const formaTex = beatsToAlphaTexNotes([
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, sectionStart: { marker: "A'", text: 'Banda' }, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, sectionStart: { marker: 'B', text: '' }, repeatOpen: true, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, simile: 'simple', barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, repeatClose: 7, barAfter: true }),
+  makeBeat({ pitches: [makeNote('B/4')], slash: true, duration: 'w', jump: 'fine', cifra: 'D' }),
+]).tex
+assertContains(formaTex, '\\section "A\'" ""', 'marcador A\' em caixa')
+assertContains(formaTex, '\\section "B" "" \\ro', 'B abre repeticao')
+assertContains(formaTex, '\\simile simple', 'interludio com %')
+assertContains(formaTex, '\\rc 7', 'solo com 7 voltas')
+assertContains(formaTex, '\\jump fine', 'Fine no ultimo')
+assertContains(formaTex, ':1 b3{slashed ch "D"}', 'Fine em semibreve slashed (losango)')
 
 // ─── Resultado ───
 

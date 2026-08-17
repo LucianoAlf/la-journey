@@ -42,6 +42,7 @@ export interface MaterialWithBlocks {
   stage_name: string | null
   station_name: string | null
   school_name: string | null
+  school_logo_url?: string | null
   school_primary_color?: string | null
   school_secondary_color?: string | null
   generation_config: Record<string, unknown> | null
@@ -148,7 +149,7 @@ export async function getMaterialWithBlocks(materialId: string): Promise<Materia
 
   const { data: schoolBrand } = await supabase
     .from('schools')
-    .select('primary_color, secondary_color')
+    .select('primary_color, secondary_color, logo_url')
     .eq('id', schoolId)
     .maybeSingle()
 
@@ -156,6 +157,7 @@ export async function getMaterialWithBlocks(materialId: string): Promise<Materia
     ...row,
     school_primary_color: schoolBrand?.primary_color ?? null,
     school_secondary_color: schoolBrand?.secondary_color ?? null,
+    school_logo_url: schoolBrand?.logo_url ?? null,
   }))
 }
 

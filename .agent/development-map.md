@@ -1,9 +1,9 @@
 # LA Journey — mapa de desenvolvimento
 
-Atualizado: 2026-08-17 — smoke áudio corte 1 ok  
+Atualizado: 2026-08-17 — PR áudio corte 1  
 Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só o estado.
 
-**Próximo corte:** Merge `origin/main` (Estudo PR 22) em `feat/audio-didatico` e abrir PR / subir. Escrita avançada adiada.
+**Próximo corte:** Merge do PR de áudio didático corte 1. Escrita avançada adiada.
 
 ## Como retomar
 
@@ -16,9 +16,18 @@ Quem atualiza: o agente, no fim de cada corte. Não duplicar specs aqui — só 
 
 ## Agora
 
-Lead sheet corte A **em produção**. Ovelha slash **em produção**. Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). Fila: áudio didático nesta branch (`feat/audio-didatico`). Escrita avançada adiada.
+Lead sheet corte A **em produção**. Ovelha slash **em produção** (PR 21). Folha deitada **em produção**. **Estudo C1+C2+B em produção** (PR 22). Fila: PR de áudio didático corte 1 (`feat/audio-didatico`). Escrita avançada adiada.
+- Spec corte B: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
+- Plano corte B: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
+- Spec C2: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
+- Plano C2: `docs/superpowers/plans/2026-08-16-estudo-from-mp3.md`
+- Spec C1: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
+- Plano C1: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
+- Spec folha deitada: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
+- Spec Ovelha slash: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
+- Plano Ovelha corte 1: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
 - Spec lead sheet A: `docs/superpowers/specs/2026-08-16-lead-sheet-cifra-pauta-design.md`
-- Áudio didático corte 1 está em `feat/audio-didatico` (Suno V5.5 + Lyria fallback + Music.AI). **Não** misturar image-gen neste PR. Smoke local ok (vocalize C 30s → Suno V5.5, cifra C major). Falta merge `origin/main` + PR.
+- Áudio didático corte 1: smoke local ok (vocalize C 30s → Suno V5.5, cifra C major). **Não** misturar image-gen neste PR.
 - Spec áudio: `docs/superpowers/specs/2026-08-15-audio-didatico-lyria-musicai-design.md`
 - Plano áudio: `docs/superpowers/plans/2026-08-15-audio-didatico-lyria-musicai.md`
 - Stash local `wip-not-audio-didatico` tem image-gen/Recraft. Não dar pop nesta branch.
@@ -27,6 +36,45 @@ Lead sheet corte A **em produção**. Ovelha slash **em produção**. Folha deit
 ---
 
 ## Feito
+
+### Estudo corte B — sala independente (17/08)
+
+Lista só faixa com `page_config.estudo`. Rename inline, apagar, cifra no clique, quatro gravuras, logo/professor/Alf. Crédito alphaTab no rodapé. Cifra = pauta vazia com barras. Pulso não come a barra de compasso. Hover da pauta não pinta verde (cursor de compasso só no Play). Imprimir = diálogo do navegador. Baixar PDF = `generate-pdf` (Browserless imprime o PrintView da sala em A4 deitada), arquivo `.pdf`, sem caixa de imprimir. Sem jsPDF/html5 (o PDF em pé com a pauta deitada era esse motor).
+- Spec: `docs/superpowers/specs/2026-08-17-estudo-sala-independente-design.md`
+- Plano: `docs/superpowers/plans/2026-08-17-estudo-sala-independente.md`
+- Branch: `feat/estudo-playalong`. Dev: `http://localhost:5202/estudo`
+- Testes: `estudoConfig`, `estudoCifra`, `estudoDisplayStyles`, `estudoPdf`, `estudoPrint`, `studyNotationTex`, `playalong`, `fromMp3ToStudy` — todos `ok`.
+
+### Estudo C2 — material a partir do MP3 (16/08, noite)
+
+Lista `/estudo` → **Do MP3** → Music.AI `chords-and-beat-mapping` → material **novo** (slash 4/4 + cifra + `page_config.playalong`). Inbox em `content-images/playalong/inbox/`. Sem `practice_audio`. Sem Suno. Falha não cria material.
+- Spec: `docs/superpowers/specs/2026-08-16-estudo-from-mp3-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-estudo-from-mp3.md`
+- Testes: `fromMp3ToStudy` + C1 — todos `ok`. Smoke Chrome ainda falta.
+
+### Player de estudo C1 — playalong na grade (16/08, noite)
+
+Sala `/estudo` + `/estudo/:id` no Operacional (depois de Visão Professor). Propósito `study-playalong` é o único com player + cursor de **compasso** (`EnabledBackingTrack`, sem soundfont, sem beat animado). Áudio = MP3/OGG em `page_config.playalong` (sem coluna nova). Tex vem do bloco de notação que já existe. Editor continua mudo. Sync = tap (Espaço/clique → `api.timePosition` + master bar), não `currentTime / BPM`.
+- Spec: `docs/superpowers/specs/2026-08-16-player-estudo-playalong-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-player-estudo-playalong.md`
+- Branch: `feat/estudo-playalong` (worktree `.worktrees/estudo-playalong`). Dev: `http://localhost:5202/estudo`
+- Smoke: lista + pauta desenham (Intervalos Melódicos). Editor do mesmo material sem cursor/som. Material titulado Ovelha **não** está no banco — a prova 2/4 + Solo 7x + MP3 fica no professor (Carregar playalong + Marcar compassos).
+- Áudio: `EnabledExternalMedia` + `<audio>` próprio (o backing-track do AlphaTab marcava Play/cursor sem sair som).
+- Testes: `playalong`, `alphaTabSettings`, `studyNotationTex` — todos `ok`.
+
+### Folha deitada — orientação A4 por material (16/08, noite)
+
+Toggle Retrato/Deitada em Configuração da Página. `page_config.orientation`, default retrato. Folha 1123×794, pauta mais larga, Por linha na mão. PrintView + `generate-pdf` (Browserless `landscape`) + jsPDF do canvas seguem o papel. PDF de repertório intocado. **Em produção** (main `cd51c76`+).
+- Spec: `docs/superpowers/specs/2026-08-16-folha-deitada-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-folha-deitada.md`
+- Branch: `feat/folha-deitada`
+
+### Ovelha corte 1 — barras rítmicas na pauta (16/08, tarde)
+
+Sonda aprovada. `{slashed}` na pauta de 5 linhas, `[A]` só na caixa (texto longo no Drawer — senão cobre o D), `\ts` no meio, `\ro`/`\rc`, `%` em compasso vazio, Fine em losango. Fileira **Ritmo** (altura neutra `B/4`) e Drawer **Compasso**. Branch `feat/ovelha-slash`.
+- Spec: `docs/superpowers/specs/2026-08-16-ovelha-negra-slash-notation-design.md`
+- Plano: `docs/superpowers/plans/2026-08-16-ovelha-negra-slash-notation.md`
+- **45 compassos** do vídeo no gerador (`src/lib/ovelhaNegraBeats.ts`) e na sonda: 4 telas, 12 `%`, três `2/4`, Solo `7x`, Fine em losango. Ritmo interno (levada, vocalize) sai do mapeamento das telas. Página de fixtures é DEV — professor em produção usa Ritmo/Drawer na A4.
 
 ### Áudio didático — pesquisa e credenciais (15/08)
 
@@ -44,7 +92,7 @@ Branch `feat/audio-didatico`. Modal de receita, `practice_audio` (migration apli
 
 ### Áudio didático corte 1 — smoke local (17/08)
 
-Biblioteca → Exercícios → Gerar áudio → vocalize C, 30s. Player em ~82s, motor Suno V5.5, cifra Music.AI, reconhecido **C major**. Toast “Áudio pronto no tom pedido.” Aba Enviar visível e desligada. Não está em produção — branch ainda atrás do Estudo em `main`.
+Biblioteca → Exercícios → Gerar áudio → vocalize C, 30s. Player em ~82s, motor Suno V5.5, cifra Music.AI, reconhecido **C major**. Toast “Áudio pronto no tom pedido.” Aba Enviar visível e desligada.
 
 ### Lead sheet corte A — cifra no beat + escrita na pauta (16/08, noite)
 
@@ -342,7 +390,7 @@ Edição:
 
 ## Radar (reordenado 17/08 — áudio na frente; escrita avançada adiada)
 
-1. **Áudio didático corte 1 → produção** — smoke local ok. Merge `origin/main` + PR. Suno V5.5 gera; Music.AI cifra; Lyria fallback.
+1. **Áudio didático corte 1 → produção** — smoke local ok. PR aberto. Suno V5.5 gera; Music.AI cifra; Lyria fallback.
 2. **Áudio didático corte 2 (Music.AI)** — upload MP3/WAV + stems + pitch/tempo. Slugs: `stem-separation-suite`, `stems-vocals-accompaniment`, `isolate-drums`, `isolate-bass`, `isolate-piano`, `isolate-vocals`, `pitch-shift`, `tempo-shift`.
 3. **MP3 → partitura (melodia)** — radar. Do MP3 hoje só cifra + pulso; Score não é a voz. Prova: Music.AI `isolate-vocals` + `vocal-pitch-tracker`, comparar com Klangio Sing2Notes (20s). Sem Demucs no backend. Canvas: `canvases/mp3-to-score-viability.canvas.tsx`.
 4. **Estudo — depois do C1**: aluno na sala, loops, rudimento, metrônomo.

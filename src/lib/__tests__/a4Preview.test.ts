@@ -4,6 +4,10 @@ import {
   A4_PAGE_WIDTH_PX,
   EXERCISE_PREVIEW_DIALOG_CLASS,
   getA4PreviewScale,
+  jsPdfA4Orientation,
+  pageSize,
+  parsePageOrientation,
+  browserlessA4PdfOptions,
 } from '../a4Preview'
 
 function test(name: string, fn: () => void) {
@@ -34,4 +38,35 @@ test('scales the sheet to fit a shorter viewport without stretching', () => {
   assert.ok(scale < 1)
   assert.ok(scale * A4_PAGE_HEIGHT_PX <= 800 - 140)
   assert.ok(scale * A4_PAGE_WIDTH_PX <= 900 - 48)
+})
+
+test('parsePageOrientation defaults to portrait', () => {
+  assert.equal(parsePageOrientation(undefined), 'portrait')
+  assert.equal(parsePageOrientation(null), 'portrait')
+  assert.equal(parsePageOrientation('sideways'), 'portrait')
+  assert.equal(parsePageOrientation('landscape'), 'landscape')
+  assert.equal(parsePageOrientation('portrait'), 'portrait')
+})
+
+test('landscape swaps the portrait pixel size', () => {
+  assert.deepEqual(pageSize('portrait'), { width: 794, height: 1123 })
+  assert.deepEqual(pageSize('landscape'), { width: 1123, height: 794 })
+})
+
+test('preview scale uses the oriented page', () => {
+  const scale = getA4PreviewScale(900, 800, 140, 'landscape')
+  assert.ok(scale < 1)
+  assert.ok(scale * 1123 <= 900 - 48)
+  assert.ok(scale * 794 <= 800 - 140)
+})
+
+test('jsPDF orientation follows the page', () => {
+  assert.equal(jsPdfA4Orientation('portrait'), 'portrait')
+  assert.equal(jsPdfA4Orientation('landscape'), 'landscape')
+})
+
+test('browserless A4 uses landscape paper when the page is landscape', () => {
+  assert.equal(browserlessA4PdfOptions('portrait').landscape, false)
+  assert.equal(browserlessA4PdfOptions('landscape').landscape, true)
+  assert.equal(browserlessA4PdfOptions('landscape').format, 'A4')
 })

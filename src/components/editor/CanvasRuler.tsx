@@ -9,6 +9,8 @@ interface CanvasRulerProps {
   guides?: PageGuide[]
   onGuidesChange?: (guides: PageGuide[]) => void
   orientation?: 'horizontal' | 'vertical'
+  pageWidthMm?: number
+  pageHeightMm?: number
 }
 
 // A4 em mm
@@ -43,10 +45,12 @@ export function CanvasRuler({
   guides = [],
   onGuidesChange,
   orientation = 'horizontal',
+  pageWidthMm = A4_W,
+  pageHeightMm = A4_H,
 }: CanvasRulerProps) {
   const pxMm = PX_MM * zoom
   const isH = orientation === 'horizontal'
-  const totalMm = isH ? A4_W : A4_H
+  const totalMm = isH ? pageWidthMm : pageHeightMm
   const totalPx = totalMm * pxMm
 
   const [dragging, setDragging] = useState<string | null>(null)
@@ -68,13 +72,13 @@ export function CanvasRuler({
     const r: { pos: number; side: string }[] = []
     if (isH) {
       r.push({ pos: margins.left / PX_MM, side: 'left' })
-      r.push({ pos: A4_W - margins.right / PX_MM, side: 'right' })
+      r.push({ pos: pageWidthMm - margins.right / PX_MM, side: 'right' })
     } else {
       r.push({ pos: margins.top / PX_MM, side: 'top' })
-      r.push({ pos: A4_H - margins.bottom / PX_MM, side: 'bottom' })
+      r.push({ pos: pageHeightMm - margins.bottom / PX_MM, side: 'bottom' })
     }
     return r
-  }, [margins, isH])
+  }, [margins, isH, pageWidthMm, pageHeightMm])
 
   // Duplo-clique na régua → criar guia
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {

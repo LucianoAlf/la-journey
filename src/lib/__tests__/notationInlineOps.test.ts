@@ -7,9 +7,13 @@ import {
   replaceNote,
   sessionToAlphaTex,
   applySessionToRenderData,
+  applyBarFact,
+  isSimileBar,
 } from '../notationInlineOps.ts'
+import { barStartIndexForBeat } from '../notationLayout.ts'
 import { beatsToAlphaTex } from '../beatsToAlphaTex.ts'
 import type { InlineBeat } from '../notationInlineHydrate.ts'
+import { hydrateNotationFromBlock } from '../notationInlineHydrate.ts'
 
 function test(name: string, fn: () => void) {
   try {
@@ -153,6 +157,79 @@ test('sessionToAlphaTex puts chord names on the beats that carry cifra', () => {
   assert.match(tex, /\{ch "G"\}/)
 })
 
+test('sessionToAlphaTex marks the tie on the destination beat', () => {
+  // tieToNext no beat N liga N ao N+1; o {-} do AlphaTex marca quem recebe a ligadura.
+  const { tex } = sessionToAlphaTex({
+    beats: [
+      { pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false, tieToNext: true },
+      { pitches: [{ pitch: 'C/4' }], duration: 'q', isRest: false },
+    ],
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: 'free',
+    bpm: 120,
+    grandStaff: false,
+  })
+  const tokens = tex.split('\n').at(-1)!.trim().split(/\s+/)
+  const comTie = tokens.filter(token => token.includes('{-}'))
+  assert.equal(comTie.length, 1, `ligadura deve sair em exatamente um beat, veio: ${tex}`)
+  assert.equal(
+    tokens.indexOf(comTie[0]),
+    tokens.length - 1,
+    `ligadura deve sair no beat destino (o segundo), veio: ${tex}`,
+  )
+})
+
+test('sessionToAlphaTex emits slashed on slash beats', () => {
+  const { tex } = sessionToAlphaTex({
+    beats: [
+      { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, cifra: 'D' },
+      { pitches: [], duration: 'q', isRest: false, slash: true },
+    ],
+    clef: 'treble',
+    keySignature: 'C',
+    timeSignature: 'free',
+    bpm: 120,
+    grandStaff: false,
+  })
+  assert.ok(tex.includes('b3{slashed ch "D"}'), `slash e cifra na mesma chave, veio: ${tex}`)
+  assert.ok(tex.includes('b3{slashed}'), `slash sem pitch cai em b3, veio: ${tex}`)
+})
+
+test('hydrateNotationFromBlock preserves bar-level facts on beats', () => {
+  const beats = [
+    {
+      pitches: [{ pitch: 'B/4' }],
+      duration: 'q' as const,
+      isRest: false,
+      slash: true,
+      sectionStart: { marker: 'A', text: 'Violao, piano e vocal' },
+      repeatOpen: true,
+      timeSignature: '2/4',
+      barAfter: true,
+    },
+    {
+      pitches: [{ pitch: 'B/4' }],
+      duration: 'q' as const,
+      isRest: false,
+      slash: true,
+      repeatClose: 7,
+      simile: 'simple' as const,
+      jump: 'fine' as const,
+    },
+  ]
+  const hidratado = hydrateNotationFromBlock({ render_data: { notation_data: { beats } } })
+  const b0 = hidratado.beats[0]
+  const b1 = hidratado.beats[1]
+  assert.equal(b0.slash, true, 'slash sobrevive')
+  assert.equal(b0.sectionStart?.marker, 'A', 'marcador de secao sobrevive')
+  assert.equal(b0.repeatOpen, true, 'repeatOpen sobrevive')
+  assert.equal(b0.timeSignature, '2/4', 'metrica do compasso sobrevive')
+  assert.equal(b1.repeatClose, 7, 'repeatClose sobrevive')
+  assert.equal(b1.simile, 'simple', 'simile sobrevive')
+  assert.equal(b1.jump, 'fine', 'jump sobrevive')
+})
+
 test('replaceNote keeps cifra; insertNote does not copy it', () => {
   const withCifra: InlineBeat = { pitches: [{ pitch: 'D/4' }], duration: 'q', isRest: false, cifra: 'D' }
   const replaced = replaceNote({ beats: [withCifra], atIdx: 0, pitch: 'F/4', accidental: null })
@@ -168,4 +245,72 @@ test('replaceNote keeps cifra; insertNote does not copy it', () => {
     doubleDotted: false,
   })
   assert.equal(inserted.beats[1].cifra, undefined)
+})
+
+test('insertNote with slash writes a rhythmic slash at the neutral pitch', () => {
+  const next = insertNote({
+    beats: [c4],
+    selectedBeatIdx: 0,
+    pitch: 'E/5',
+    afterIdx: 0,
+    duration: 'q',
+    accidental: '#',
+    dotted: false,
+    doubleDotted: false,
+    slash: true,
+  })
+  const slashBeat = next.beats[1]
+  assert.equal(slashBeat.slash, true, 'beat novo sai como barra ritmica')
+  assert.equal(slashBeat.pitches[0].pitch, 'B/4', 'professor nao escolhe altura: sempre B/4')
+  assert.equal(slashBeat.pitches[0].accidental, undefined, 'slash nao carrega acidente do clique')
+  assert.equal(slashBeat.isRest, false)
+})
+
+test('insertNote without slash keeps the clicked pitch', () => {
+  const next = insertNote({
+    beats: [c4],
+    selectedBeatIdx: 0,
+    pitch: 'E/5',
+    afterIdx: 0,
+    duration: 'q',
+    accidental: null,
+    dotted: false,
+    doubleDotted: false,
+  })
+  assert.equal(next.beats[1].slash, undefined)
+  assert.equal(next.beats[1].pitches[0].pitch, 'E/5')
+})
+
+const bar1: InlineBeat[] = [
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, barAfter: true },
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true },
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true },
+  { pitches: [{ pitch: 'B/4' }], duration: 'q', isRest: false, slash: true, barAfter: true },
+]
+
+test('barStartIndexForBeat finds the beat that opens the selected bar', () => {
+  assert.equal(barStartIndexForBeat(bar1, 0), 0)
+  assert.equal(barStartIndexForBeat(bar1, 2), 1)
+  assert.equal(barStartIndexForBeat(bar1, 3), 1)
+})
+
+test('applyBarFact writes on the opening beat, not the selected one', () => {
+  const next = applyBarFact(bar1, 3, { sectionStart: { marker: 'A', text: 'Violao, piano e vocal' } })
+  assert.equal(next[3].sectionStart, undefined, 'beat do meio do compasso nao leva o fato')
+  assert.equal(next[1].sectionStart?.marker, 'A')
+  assert.equal(next[1].sectionStart?.text, 'Violao, piano e vocal')
+})
+
+test('applyBarFact marks simile without deleting the stored beats', () => {
+  const marked = applyBarFact(bar1, 2, { simile: 'simple' })
+  assert.equal(marked[1].simile, 'simple')
+  assert.equal(marked.length, 4, 'beats do compasso continuam no modelo')
+  assert.equal(marked[2].pitches[0].pitch, 'B/4')
+  assert.equal(isSimileBar(marked, 3), true)
+  assert.equal(isSimileBar(marked, 0), false)
+
+  const unmarked = applyBarFact(marked, 3, { simile: null })
+  assert.equal(unmarked[1].simile, undefined)
+  assert.equal(unmarked[2].pitches[0].pitch, 'B/4', 'conteudo volta ao desmarcar')
+  assert.equal(isSimileBar(unmarked, 3), false)
 })

@@ -8,6 +8,7 @@ import {
   canvasPageLayerToCSS,
   hasCanvasBlockLayoutOffset,
 } from '@/lib/canvasBlockLayout'
+import { parsePageOrientation, type PageOrientation } from '@/lib/a4Preview'
 import {
   paginatePrintBlocks,
   parsePrintMaterialRows,
@@ -27,6 +28,8 @@ import {
   type PlaceholderContext,
 } from '@/lib/headerFooter'
 import type { FloatingElement } from '@/lib/floatingElements'
+import { EstudoPrintDocument } from '@/components/estudo/EstudoPrintDocument'
+import { estudoPrintModel } from '@/lib/estudoPrint'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://rkfszavfqplhorvfpkcq.supabase.co'
 const GET_PRINT_MATERIAL_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-print-material`
@@ -35,15 +38,20 @@ type WindowWithPrintStatus = Window & typeof globalThis & {
   status: string
 }
 
-function setPrintReadyMarker() {
+function setPrintReadyMarker(autoprint = false) {
   const win = window as WindowWithPrintStatus
   win.status = 'ready-for-pdf'
 
-  if (!document.querySelector('.print-ready')) {
+  const already = !!document.querySelector('.print-ready')
+  if (!already) {
     const marker = document.createElement('div')
     marker.className = 'print-ready'
     marker.setAttribute('aria-hidden', 'true')
     document.body.appendChild(marker)
+  }
+
+  if (autoprint && !already) {
+    window.setTimeout(() => window.print(), 400)
   }
 }
 
@@ -79,6 +87,7 @@ interface PrintPageConfig {
   header: HeaderFooterConfig
   footer: HeaderFooterConfig
   floatingElements: FloatingElement[]
+  orientation: PageOrientation
 }
 
 function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefined): PrintPageConfig {
@@ -96,6 +105,7 @@ function normalizePrintPageConfig(raw: Record<string, unknown> | null | undefine
     floatingElements: Array.isArray(pageConfig.floating_elements)
       ? pageConfig.floating_elements as FloatingElement[]
       : [],
+    orientation: parsePageOrientation(pageConfig.orientation),
   }
 }
 
@@ -104,6 +114,10 @@ export function PrintView() {
   const location = useLocation()
   const token = useMemo(
     () => new URLSearchParams(location.search).get('token'),
+    [location.search],
+  )
+  const autoprint = useMemo(
+    () => new URLSearchParams(location.search).get('autoprint') === '1',
     [location.search],
   )
   const [data, setData] = useState<MaterialWithBlocks[] | null>(null)
@@ -177,11 +191,16 @@ export function PrintView() {
 
   const { material, blocks, pages } = useMemo(() => {
     const parsed = parsePrintMaterialRows(data ?? [])
+    const orientation = parsePageOrientation(parsed.material?.pageConfig?.orientation)
     return {
       ...parsed,
-      pages: paginatePrintBlocks(parsed.blocks, parsed.material?.type),
+      pages: paginatePrintBlocks(parsed.blocks, parsed.material?.type, orientation),
     }
   }, [data])
+  const estudoModel = useMemo(
+    () => estudoPrintModel(material, blocks),
+    [blocks, material],
+  )
   const canvasPages = useMemo(() => applyCanvasLayoutPageOffsets(pages), [pages])
   const printFontSources = useMemo(
     () => material ? [...blocks, { render_data: material.pageConfig }] : blocks,
@@ -196,7 +215,14 @@ export function PrintView() {
   }, [id])
 
   useEffect(() => {
-    if (loading || error || !material || canvasPages.length === 0) return
+    if (loading || error || !estudoModel) return
+    const maxTimer = window.setTimeout(() => setPrintReadyMarker(autoprint), 8000)
+    return () => window.clearTimeout(maxTimer)
+  }, [autoprint, error, estudoModel, loading])
+
+  useEffect(() => {
+    if (loading || error || !material || estudoModel) return
+    if (canvasPages.length === 0) return
 
     const win = window as WindowWithPrintStatus
     win.status = 'rendering-print'
@@ -237,7 +263,7 @@ export function PrintView() {
       window.clearTimeout(readyTimer)
       window.clearTimeout(maxTimer)
     }
-  }, [canvasPages.length, error, loading, material, usedFontFamilies, usedFontKey])
+  }, [canvasPages.length, error, estudoModel, loading, material, usedFontFamilies, usedFontKey])
 
   if (loading) {
     return (
@@ -256,11 +282,24 @@ export function PrintView() {
     )
   }
 
-  if (!material || blocks.length === 0) {
+  if (!material || (blocks.length === 0 && !estudoModel)) {
     return (
       <div className="print-view-loading">
         Material nao encontrado.
       </div>
+    )
+  }
+
+  if (estudoModel) {
+    return (
+      <EstudoPrintDocument
+        model={estudoModel}
+        onRendered={() => {
+          void waitForGoogleFonts(usedFontFamilies).then(() => {
+            window.setTimeout(() => setPrintReadyMarker(autoprint), 400)
+          })
+        }}
+      />
     )
   }
 
@@ -269,7 +308,10 @@ export function PrintView() {
   const coverRenderData = (blocks.find((block) => block.block_type === 'cover')?.render_data ?? {}) as Record<string, unknown>
 
   return (
-    <main className="print-view" data-print-root>
+    <main className="print-view" data-print-root data-page-orientation={pageConfig.orientation}>
+      {pageConfig.orientation === 'landscape' && (
+        <style>{'@page { size: A4 landscape; margin: 0; }'}</style>
+      )}
       {canvasPages.map((pageBlocks, pageIndex) => {
         const isCoverPage = pageBlocks.some(block => block.block_type === 'cover')
         const pageHasShiftedBlock = pageBlocks.some(block => hasCanvasBlockLayoutOffset(block.render_data))
@@ -293,7 +335,7 @@ export function PrintView() {
         return (
           <section
             key={pageIndex}
-            className={`a4-page print-page ${isCoverPage ? 'a4-page--cover print-page--cover' : ''}`}
+            className={`a4-page print-page ${pageConfig.orientation === 'landscape' ? 'a4-page--landscape' : ''} ${isCoverPage ? 'a4-page--cover print-page--cover' : ''}`}
             data-print-page={pageIndex + 1}
             style={pageLayerStyle}
           >

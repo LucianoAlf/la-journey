@@ -360,6 +360,21 @@
   color:#1E293B;
   font-family:'DM Sans',sans-serif;
 }
+.a4-page--landscape{
+  width:1123px;
+  height:794px;
+}
+.a4-page--landscape.a4-page--cover,
+.a4-page--landscape .block-cover{
+  min-height:794px;
+}
+.a4-page--landscape.a4-page--cover .block-cover--with-image{
+  background-size:contain!important;
+  background-repeat:no-repeat;
+  background-position:center;
+  background-color:#000;
+  min-height:794px!important;
+}
 .a4-page-header{
   padding:16px 60px 8px;
   border-bottom:1px solid #e2e8f0;
@@ -669,6 +684,20 @@
   break-after:page;
 }
 .print-page:last-child{page-break-after:auto;break-after:auto}
+.print-page.a4-page--landscape{
+  width:297mm!important;
+  height:210mm!important;
+  min-height:210mm!important;
+  max-height:210mm!important;
+}
+.print-page.estudo-print-page,
+.print-page.estudo-print-page.a4-page--landscape{
+  width:297mm!important;
+  height:auto!important;
+  min-height:210mm!important;
+  max-height:none!important;
+  overflow:visible!important;
+}
 .print-page-header{
   display:flex;
   justify-content:space-between;
@@ -826,10 +855,18 @@
   /* 4. Páginas A4: manter flex column com height fixo para header/footer funcionar */
   .a4-page { width:210mm !important; height:297mm !important; min-height:297mm !important; max-height:297mm !important; overflow:hidden !important; box-shadow:none !important; border-radius:0 !important; display:flex !important; flex-direction:column !important; position:relative !important; page-break-after:always; break-after:page; background:white !important; margin:0 !important; padding:0 0 8mm !important; box-sizing:border-box !important; color:#1a1a1a !important }
   .a4-page:last-child { page-break-after:auto; break-after:auto }
+  .a4-page.a4-page--landscape,
+  .print-page.a4-page--landscape { width:297mm !important; height:210mm !important; min-height:210mm !important; max-height:210mm !important }
+  .estudo-print-page.a4-page,
+  .estudo-print-page.print-page,
+  .estudo-print-page.a4-page--landscape { width:297mm !important; height:auto !important; min-height:210mm !important; max-height:none !important; overflow:visible !important }
+  .estudo-print-page .a4-page-content { overflow:visible !important; height:auto !important; max-height:none !important; flex:none !important }
   /* Capa: transparent + sem padding — o .block-cover tem o background real e preenche 100% */
   .a4-page--cover { background:transparent !important; height:297mm !important; min-height:297mm !important; page-break-before:auto !important; break-before:auto !important; padding:0 !important; margin:0 !important }
+  .a4-page--landscape.a4-page--cover { height:210mm !important; min-height:210mm !important }
   .a4-page--cover .a4-page-content { padding:0 !important; overflow:hidden !important }
   .a4-page--cover .block-cover { min-height:297mm !important; width:100% !important; height:100% !important }
+  .a4-page--landscape.a4-page--cover .block-cover { min-height:210mm !important }
   .a4-page-header { flex-shrink:0 !important; box-sizing:border-box !important }
   .a4-page-content { padding:12px 40px !important; flex:1 !important; overflow:hidden !important; color:#1a1a1a !important }
   .songbook-cifra [data-cifra="chord"],
@@ -921,4 +958,54 @@
   #print-container .cover-overlay { background:rgba(0,0,0,.45) !important }
 
   @page { size:A4 portrait; margin:0 }
+}
+
+.at-study-playalong .at-cursor-bar,
+.at-study-playalong .at-cursor-beat,
+.at-study-playalong .at-selection,
+.at-study-playalong .at-highlight {
+  display: none !important;
+}
+.at-study-playalong.estudo-playing .at-cursor-bar {
+  display: block !important;
+}
+
+.estudo-print-view {
+  width: 297mm;
+  min-height: 210mm;
+  margin: 0 auto;
+  background: #fff;
+}
+
+.estudo-print-view .estudo-sheet {
+  border: none;
+  box-shadow: none;
+  background: #fff;
+}
+
+@media print {
+  .estudo-room,
+  .estudo-sheet,
+  .estudo-room .at-study-playalong,
+  .estudo-room .at-surface,
+  .estudo-print-view,
+  .estudo-print-view .estudo-sheet,
+  .estudo-print-view .at-study-playalong,
+  .estudo-print-view .at-surface {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  .estudo-sheet svg {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  .at-cursor-bar,
+  .at-cursor-beat,
+  .at-selection,
+  .at-highlight {
+    display: none !important;
+  }
 }
