@@ -1,8 +1,9 @@
-# Áudio didático — Lyria 3 + Music.AI
+# Áudio didático — Suno V5.5 + Music.AI (Lyria fallback)
 
 Data: 2026-08-15  
-Status: aprovada — corte 1 em implementação (`feat/audio-didatico`)  
-Corte: gerar áudio (Lyria 3) + cifrar (Music.AI). Upload/stems depois.
+Atualizado: 2026-08-16  
+Status: corte 1 no ar; motor de generate passou a Suno Music V5.5 instrumental  
+Corte: gerar áudio (Suno) + cifrar (Music.AI). Lyria fica de fallback. Upload/stems depois.
 
 ## Problema
 
@@ -14,12 +15,13 @@ Lyria 3.5 (Flow Music / assinatura Gemini) não tem model ID de API. No app usam
 
 | Tema | Escolha |
 |---|---|
-| Motores | Lyria 3 gera. Music.AI cifra + BPM. Não são intercambiáveis |
-| API Lyria | `lyria-3-clip-preview` (30s, US$ 0,04) e `lyria-3-pro-preview` (até ~3 min, US$ 0,08). Interactions API, paid. Chave só na Edge |
+| Motores | Suno Music V5.5 gera (instrumental, tom no `style`). Music.AI cifra + BPM. Lyria 3 só se Suno não estiver configurado |
+| API Suno | `POST /api/v1/generate` em api.sunoapi.org. `customMode` + `instrumental` + `model=V5_5`. Chave `SUNO_API_KEY` só na Edge. Probe 16/08: C e Fá 4/4 no tom. Sounds/dropdown não trava |
+| API Lyria | Fallback. `lyria-3-clip-preview` / `lyria-3-pro-preview`. Não trava tom (Fá saiu Lá menor no probe) |
 | API Music.AI | Job assíncrono `POST /v1/job`. Corte 1: `music-ai/chords-and-beat-mapping` (o slug `generate-chords` da doc/SDK **não existe** nesta conta). Chave só na Edge |
 | Cifra na ficha | Opção B: mostra **pedido** e **reconhecido**. Reconhecido é editável. Não é MIDI travado |
 | Escopo A/B/D | Vocalize, base, exercício. Música completa “de catálogo” (C) fora |
-| Edges | Duas desde o corte 1: `lyria-generate` e `musicai-transcribe`. Upload do corte 2 reusa a segunda |
+| Edges | `suno-generate` (principal), `lyria-generate` (fallback), `musicai-transcribe`. Client encadeia generate → cifra → retry se o tom não bater (máx. 2) |
 | Orquestração | Client encadeia. Sem terceira Edge |
 | UX do take | Player assim que o Lyria volta. Cifra entra depois. Falha de cifra não apaga áudio |
 | Persistência | Tabela `practice_audio` (um take = uma linha). Regenerar cria linha nova |
@@ -39,7 +41,8 @@ Não bloqueia escrever o plano nem o código das Edges. Bloqueia o **primeiro ge
 | `VITE_GOOGLE_AI_KEY` / `GEMINI_API_KEY` | `.env` local (mesma chave) | Presente. Serve texto/imagem hoje no browser |
 | `GEMINI_API_KEY` | Secret da Edge (Supabase) | **Já existe** (secret `GEMINI_API_KEY`, 13/08). `MUSIC_AI_API_KEY` na Edge desde 16/08 |
 | Billing Gemini / Lyria | [Google AI Studio](https://aistudio.google.com/) | Generate ao vivo **ok** em 15/08. Clip 200 / 17s / 742 KB MP3. Pro 200 / 30s / 2.1 MB MP3. Áudio vem em `steps[].content[]` (`type=audio`), não em `output_audio` |
-| `MUSIC_AI_API_KEY` | Só Edge + `.env` local (nunca `VITE_`) | **No `.env` local (15/08).** Conta PAYG, e-mail verificado, US$ 20 crédito, auto-refill OFF. Secret da Edge ainda falta (na hora do deploy) |
+| `MUSIC_AI_API_KEY` | Só Edge + `.env` local (nunca `VITE_`) | No `.env` e na Edge desde 16/08 |
+| `SUNO_API_KEY` | Só Edge + `.env` local (nunca `VITE_`) | Conta sunoapi.org da escola. Generate Music V5.5. Nunca no browser |
 | Bucket | Storage | Já existe `audio-tracks` (privado, Fase A2). Usar este, não criar `practice-audio` |
 
 Plano velho (`docs/FASE5-PLANO-MASTER.md` Fase C): “API key Music AI: Alf precisa contratar”. Continua verdadeiro. Sem essa chave, `musicai-transcribe` só passa no mock.

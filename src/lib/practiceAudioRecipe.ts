@@ -50,6 +50,12 @@ export function defaultRecipe(kind: PracticeAudioKind): PracticeAudioRecipe {
   }
 }
 
+export type PracticeAudioEngine = 'suno' | 'lyria'
+
+export function selectPracticeAudioEngine(_recipe: Pick<PracticeAudioRecipe, 'wordlessGuide'>): PracticeAudioEngine {
+  return 'suno'
+}
+
 export function selectLyriaModel(durationSeconds: number): LyriaModelId {
   return durationSeconds <= 30 ? 'lyria-3-clip-preview' : 'lyria-3-pro-preview'
 }
@@ -122,4 +128,66 @@ export function compilePracticeAudioPrompt(recipe: PracticeAudioRecipe): string 
   if (note) parts.push(note)
 
   return parts.join(' ')
+}
+
+export type SunoMusicRequest = {
+  customMode: true
+  instrumental: boolean
+  model: 'V5_5'
+  title: string
+  style: string
+  duration: number
+  prompt?: string
+}
+
+export function compileSunoMusicRequest(recipe: PracticeAudioRecipe): SunoMusicRequest {
+  const keyName = describePracticeKey(recipe)
+  const vocalize = recipe.wordlessGuide
+  const styleParts: string[] = []
+  if (vocalize) {
+    styleParts.push(
+      keyName
+        ? `Classroom vocalise for singing students in ${keyName}. Solo piano accompaniment. Female wordless guide vocals singing only ah. Ascending and descending ${keyName} scale. Stay in ${keyName}. Do not modulate.`
+        : 'Classroom vocalise for singing students. Solo piano accompaniment. Wordless guide vocals singing only ah.',
+    )
+  } else if (keyName) {
+    styleParts.push(`Solo instrumental classroom practice in ${keyName}. Stay in ${keyName}. Do not modulate.`)
+  } else {
+    styleParts.push('Solo instrumental classroom practice.')
+  }
+  if (recipe.bpm && recipe.bpm > 0) styleParts.push(`${recipe.bpm} BPM.`)
+  if (recipe.style) styleParts.push(`Style: ${recipe.style}.`)
+  if (recipe.instruments.length) styleParts.push(`Instruments: ${joinList(recipe.instruments)}.`)
+  if (recipe.requestedChords.length) {
+    const inKey = keyName ? ` in ${keyName}` : ''
+    styleParts.push(`Only these chords${inKey}: ${joinList(recipe.requestedChords)}.`)
+  }
+  if (vocalize) {
+    styleParts.push('No drums. No lyrics with words. No artist name, no copyrighted melody.')
+  } else {
+    styleParts.push('Instrumental only. No vocals. No sung lyrics. No artist name, no copyrighted melody.')
+  }
+  for (const exclusion of recipe.exclude) {
+    const normalized = exclusion.trim().toLowerCase()
+    if (!normalized) continue
+    if (normalized === 'drums' || normalized === 'bateria') styleParts.push('No drums.')
+    else if (normalized === 'lyric vocals' || normalized === 'voz com letra') continue
+    else styleParts.push(`No ${normalized}.`)
+  }
+  const note = recipe.note?.trim()
+  if (note) styleParts.push(note)
+
+  const title = recipe.title.trim().slice(0, 100) || 'Classroom piano'
+  const request: SunoMusicRequest = {
+    customMode: true,
+    instrumental: !vocalize,
+    model: 'V5_5',
+    title,
+    style: styleParts.join(' ').slice(0, 1000),
+    duration: recipe.durationSeconds,
+  }
+  if (vocalize) {
+    request.prompt = '[Verse]\nAh ah ah ah ah ah ah ah\nAh ah ah ah ah ah ah ah\n[Verse]\nAh ah ah ah ah ah ah ah\nAh ah ah ah ah ah ah'
+  }
+  return request
 }

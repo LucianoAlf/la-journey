@@ -2,7 +2,7 @@ export type PracticeAudioStatus = 'generated' | 'transcribing' | 'transcribed' |
 
 export type PracticeAudioKind = 'vocalize' | 'backing' | 'exercise'
 
-export type PracticeAudioSource = 'lyria' | 'upload'
+export type PracticeAudioSource = 'lyria' | 'upload' | 'suno'
 
 export type PracticeAudioEvent =
   | { type: 'transcribe_start' }
@@ -154,6 +154,62 @@ export function parseMusicaiBpm(result: unknown): number | null {
     if (nested != null) return nested
   }
   return null
+}
+
+function normalizeTonic(value: string): string {
+  return value.trim().replace('♯', '#').replace('♭', 'b').replace(/^[a-g]/, (letter) => letter.toUpperCase())
+}
+
+function parseKeyParts(value: string): { tonic: string; minor: boolean } | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const match = trimmed.match(/^([A-Ga-g](?:#|b|♯|♭)?)\s*(major|minor|maior|menor|maj|min)?/i)
+  if (!match) return null
+  const tonic = normalizeTonic(match[1])
+  const scale = (match[2] || '').toLowerCase()
+  const minor = scale === 'minor' || scale === 'menor' || scale === 'min'
+  return { tonic, minor }
+}
+
+export function recognizedKeyMatchesRequested(
+  requested: { key?: string; scale?: string },
+  recognized: string | null | undefined,
+): boolean {
+  const wanted = requested.key?.trim()
+  if (!wanted) return true
+  if (!recognized?.trim()) return false
+
+  const requestedParts = parseKeyParts(
+    /\b(major|minor|maior|menor|maj|min)\b/i.test(wanted)
+      ? wanted
+      : `${wanted} ${requested.scale || ''}`.trim(),
+  )
+  const recognizedParts = parseKeyParts(recognized)
+  if (!requestedParts || !recognizedParts) return false
+  if (requestedParts.tonic !== recognizedParts.tonic) return false
+  if (/\b(major|minor|maior|menor|maj|min)\b/i.test(wanted) || requested.scale) {
+    return requestedParts.minor === recognizedParts.minor
+  }
+  return true
+}
+
+function formatChordClock(seconds: number): string {
+  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0
+  const mins = Math.floor(safe / 60)
+  const secs = Math.floor(safe % 60)
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+export function chordsToTimedCifra(chords: Array<{ chord: string; start?: number }>): string {
+  return chords
+    .map((item) => {
+      const name = item.chord.trim()
+      if (!name || name === 'N') return ''
+      const start = typeof item.start === 'number' ? item.start : 0
+      return `${formatChordClock(start)} ${name}`
+    })
+    .filter(Boolean)
+    .join(' | ')
 }
 
 export function chordsToCifraLine(chords: Array<{ chord: string }>): string {

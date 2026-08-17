@@ -76,10 +76,11 @@
 
 ### Task 5: Verificar
 
-- [ ] `npx tsx` nos testes novos + um existente.
+- [x] `npx tsx` nos testes novos + um existente.
 - [ ] `npx tsc --noEmit` se o tempo permitir.
-- [ ] Atualizar mapa e status da spec.
-- [ ] Não commitar `.env`. Não deployar Edges sem pedido.
+- [x] Atualizar mapa e status da spec.
+- [x] Smoke local: Exercícios → Gerar áudio → vocalize C 30s → Suno V5.5 + cifra C major (17/08).
+- [ ] Não commitar `.env`. Não deployar Edges sem pedido. (`suno-generate` já estava no ar; migration `source=suno` aplicada.)
 
 ## Como verifica no ar (depois do deploy)
 

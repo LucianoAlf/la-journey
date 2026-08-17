@@ -179,6 +179,57 @@ export function parseMusicaiBpm(result: unknown): number | null {
   return null
 }
 
+function normalizeTonic(value: string): string {
+  return value.trim().replace("♯", "#").replace("♭", "b").replace(/^[a-g]/, (letter) => letter.toUpperCase())
+}
+
+function parseKeyParts(value: string): { tonic: string; minor: boolean } | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const match = trimmed.match(/^([A-Ga-g](?:#|b|♯|♭)?)\s*(major|minor|maior|menor|maj|min)?/i)
+  if (!match) return null
+  const scale = (match[2] || "").toLowerCase()
+  return {
+    tonic: normalizeTonic(match[1]),
+    minor: scale === "minor" || scale === "menor" || scale === "min",
+  }
+}
+
+export function recognizedKeyMatchesRequested(
+  requested: { key?: string; scale?: string },
+  recognized: string | null | undefined,
+): boolean {
+  const wanted = requested.key?.trim()
+  if (!wanted) return true
+  if (!recognized?.trim()) return false
+  const requestedParts = parseKeyParts(
+    /\b(major|minor|maior|menor|maj|min)\b/i.test(wanted)
+      ? wanted
+      : `${wanted} ${requested.scale || ""}`.trim(),
+  )
+  const recognizedParts = parseKeyParts(recognized)
+  if (!requestedParts || !recognizedParts) return false
+  if (requestedParts.tonic !== recognizedParts.tonic) return false
+  if (/\b(major|minor|maior|menor|maj|min)\b/i.test(wanted) || requested.scale) {
+    return requestedParts.minor === recognizedParts.minor
+  }
+  return true
+}
+
+export function chordsToTimedCifra(chords: Array<{ chord: string; start?: number }>): string {
+  return chords
+    .map((item) => {
+      const name = item.chord.trim()
+      if (!name || name === "N") return ""
+      const start = typeof item.start === "number" && item.start > 0 ? item.start : 0
+      const mins = Math.floor(start / 60)
+      const secs = Math.floor(start % 60)
+      return `${mins}:${String(secs).padStart(2, "0")} ${name}`
+    })
+    .filter(Boolean)
+    .join(" | ")
+}
+
 export function lyriaUserMessage(status: number, payload: unknown): string {
   const text = typeof payload === "object" && payload
     ? JSON.stringify(payload)

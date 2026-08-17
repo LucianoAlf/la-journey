@@ -5,11 +5,13 @@ import assert from 'node:assert/strict'
 import {
   applyPracticeAudioEvent,
   chordsToCifraLine,
+  chordsToTimedCifra,
   extractLyriaAudio,
   parseMusicaiBpm,
   parseMusicaiChords,
   parseMusicaiKey,
   preferSimplePopChords,
+  recognizedKeyMatchesRequested,
 } from '../practiceAudio'
 
 function test(name: string, fn: () => void) {
@@ -108,6 +110,28 @@ test('parses root key from Music.AI job result', () => {
   assert.equal(parseMusicaiKey({ 'root key': 'Eb major' }), 'Eb major')
   assert.equal(parseMusicaiKey({ key: 'C' }), 'C')
   assert.equal(parseMusicaiKey({}), null)
+})
+
+test('recognized key matches requested tonic and scale', () => {
+  assert.equal(recognizedKeyMatchesRequested({ key: 'C', scale: 'major' }, 'C major'), true)
+  assert.equal(recognizedKeyMatchesRequested({ key: 'C', scale: 'major' }, 'C'), true)
+  assert.equal(recognizedKeyMatchesRequested({ key: 'F', scale: 'major' }, 'F major'), true)
+  assert.equal(recognizedKeyMatchesRequested({ key: 'F', scale: 'major' }, 'A minor'), false)
+  assert.equal(recognizedKeyMatchesRequested({ key: 'C', scale: 'major' }, 'C minor'), false)
+  assert.equal(recognizedKeyMatchesRequested({ key: 'C', scale: 'major' }, 'F major'), false)
+  assert.equal(recognizedKeyMatchesRequested({ key: '' }, 'C major'), true)
+})
+
+test('timed cifra keeps every change with start time', () => {
+  assert.equal(
+    chordsToTimedCifra([
+      { start: 0, end: 2, chord: 'F' },
+      { start: 2, end: 4, chord: 'F' },
+      { start: 4.2, end: 8, chord: 'G' },
+      { start: 20, end: 24, chord: 'C' },
+    ]),
+    '0:00 F | 0:02 F | 0:04 G | 0:20 C',
+  )
 })
 
 test('cifra line collapses consecutive repeats', () => {

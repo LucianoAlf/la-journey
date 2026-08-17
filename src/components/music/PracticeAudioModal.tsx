@@ -7,14 +7,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { chordsToCifraLine, type PracticeAudioKind, type RecognizedChord } from '@/lib/practiceAudio'
+import { chordsToTimedCifra, type PracticeAudioKind, type RecognizedChord } from '@/lib/practiceAudio'
 import {
   defaultRecipe,
   type PracticeAudioDuration,
   type PracticeAudioRecipe,
 } from '@/lib/practiceAudioRecipe'
 import {
-  generatePracticeAudio,
+  generateAndVerifyPracticeAudio,
   savePracticeAudioToLibrary,
   transcribePracticeAudio,
   updateRecognizedChords,
@@ -135,7 +135,7 @@ export function PracticeAudioModal({
         recipe: next.recipe || current.recipe,
       }
       setTake(merged)
-      setRecognizedLine(chordsToCifraLine(merged.recognizedChords ?? []))
+      setRecognizedLine(chordsToTimedCifra(merged.recognizedChords ?? []))
       if (next.status === 'transcribe_failed') {
         toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
       }
@@ -153,21 +153,29 @@ export function PracticeAudioModal({
       return
     }
     setGenerating(true)
+    setTranscribing(true)
     try {
-      const generated = await generatePracticeAudio(recipe, repertoireId)
-      setTake(generated)
-      toast.success('Áudio pronto. Reconhecendo a cifra…')
-      await runTranscribe(generated.id, generated)
+      const next = await generateAndVerifyPracticeAudio(recipe, repertoireId)
+      setTake(next)
+      setRecognizedLine(chordsToTimedCifra(next.recognizedChords ?? []))
+      if (next.status === 'transcribe_failed') {
+        toast.error('Áudio ok, cifra falhou. Pode reconhecer de novo.')
+      } else if (next.keyMatched === false) {
+        toast.error(`Pedido ${recipe.key}, reconhecido ${next.recognizedKey || 'outro tom'}. Gere de novo se precisar.`)
+      } else {
+        toast.success('Áudio pronto no tom pedido.')
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o áudio')
     } finally {
       setGenerating(false)
+      setTranscribing(false)
     }
   }
 
   const handleSaveRecognized = async () => {
     if (!take) return
-    const names = recognizedLine.split('|').map((item) => item.trim()).filter(Boolean)
+    const names = recognizedLine.split('|').map((item) => item.trim().replace(/^\d+:\d+\s+/, '')).filter(Boolean)
     const chords: RecognizedChord[] = names.map((chord, index) => ({
       start: index,
       end: index + 1,
@@ -223,14 +231,16 @@ export function PracticeAudioModal({
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="generate">Gerar</TabsTrigger>
-            <TabsTrigger value="upload">Enviar</TabsTrigger>
+            <TabsTrigger value="upload" disabled>
+              Enviar
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="upload" className="pt-4">
             <div className="rounded-[14px] border border-dashed border-border p-8 text-center text-text3">
               <UploadSimple size={28} className="mx-auto mb-2 opacity-60" />
               <p className="text-[14px] text-text2">Upload de MP3 em breve</p>
-              <p className="text-[12px] mt-1">Neste corte o áudio nasce no Lyria. Enviar arquivo entra no corte 2.</p>
+              <p className="text-[12px] mt-1">Neste corte o áudio nasce no Suno (instrumental). Enviar arquivo entra no corte 2.</p>
             </div>
           </TabsContent>
 
@@ -392,13 +402,21 @@ export function PracticeAudioModal({
               </div>
             )}
 
-            <label className="flex items-center gap-2 text-[13px] text-text2">
+            <label className="flex items-start gap-2 text-[13px] text-text2">
               <input
                 type="checkbox"
+                className="mt-0.5"
                 checked={recipe.wordlessGuide}
                 onChange={(e) => patch({ wordlessGuide: e.target.checked })}
               />
-              Voz guia sem letra (“ah”)
+              <span>
+                Voz guia sem letra (“ah”)
+                <span className="block text-[11px] text-text3 mt-0.5">
+                  {recipe.wordlessGuide
+                    ? 'Suno V5.5 com voz guia no “ah”. Tom no estilo.'
+                    : 'Suno V5.5 instrumental. Melhor no tom. Sem voz guia.'}
+                </span>
+              </span>
             </label>
 
             {recipe.kind === 'exercise' && (
@@ -415,6 +433,9 @@ export function PracticeAudioModal({
             {take?.audioUrl && (
               <div className="space-y-3 rounded-[14px] border border-border p-4">
                 <audio controls className="w-full" src={take.audioUrl} preload="metadata" />
+                <div className="text-[11px] text-text3">
+                  Motor: {take.source === 'lyria' ? 'Lyria (fallback)' : 'Suno V5.5'}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
                   <div>
                     <div className="uppercase tracking-[1.5px] text-text3 text-[10px] mb-1">Pedido</div>
@@ -434,11 +455,18 @@ export function PracticeAudioModal({
                         <Warning size={14} /> Cifra falhou. O áudio ficou.
                       </p>
                     ) : (
-                      <Input value={recognizedLine} onChange={(e) => setRecognizedLine(e.target.value)} onBlur={handleSaveRecognized} />
+                      <Textarea
+                        value={recognizedLine}
+                        onChange={(e) => setRecognizedLine(e.target.value)}
+                        onBlur={handleSaveRecognized}
+                        rows={4}
+                        className="text-[12px]"
+                      />
                     )}
                     {take.recognizedBpm || take.recognizedKey ? (
-                      <div className="text-text3 mt-1">
+                      <div className={`mt-1 ${take.keyMatched === false ? 'text-amber-400' : 'text-text3'}`}>
                         {take.recognizedKey || '—'} · {take.recognizedBpm ? `${take.recognizedBpm} BPM` : ''}
+                        {take.keyMatched === false ? ' · tom diferente do pedido' : ''}
                       </div>
                     ) : null}
                   </div>

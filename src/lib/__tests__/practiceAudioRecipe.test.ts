@@ -4,9 +4,11 @@
 import assert from 'node:assert/strict'
 import {
   compilePracticeAudioPrompt,
+  compileSunoMusicRequest,
   defaultRecipe,
   exerciseCategoryForKind,
   selectLyriaModel,
+  selectPracticeAudioEngine,
   type PracticeAudioRecipe,
 } from '../practiceAudioRecipe'
 
@@ -83,6 +85,45 @@ test('free note appends and does not replace the recipe', () => {
   assert.match(prompt, /só braço 1/)
   assert.match(prompt, /C/)
   assert.match(prompt, /exercise|classroom/i)
+})
+
+test('Suno music request is instrumental V5.5 with the key in style', () => {
+  const recipe: PracticeAudioRecipe = {
+    ...defaultRecipe('backing'),
+    title: 'Base piano',
+    key: 'F',
+    scale: 'major',
+    bpm: 90,
+    durationSeconds: 30,
+    instruments: ['piano'],
+    exclude: ['drums', 'lyric vocals'],
+    wordlessGuide: false,
+  }
+  const request = compileSunoMusicRequest(recipe)
+  assert.equal(request.customMode, true)
+  assert.equal(request.instrumental, true)
+  assert.equal(request.model, 'V5_5')
+  assert.equal(request.duration, 30)
+  assert.match(request.title, /Base piano/i)
+  assert.match(request.style, /F major/i)
+  assert.match(request.style, /piano/i)
+  assert.match(request.style, /90/)
+  assert.match(request.style, /no vocals|no sung lyrics|instrumental/i)
+})
+
+test('wordless guide still uses Suno, with ah lyrics and instrumental off', () => {
+  assert.equal(selectPracticeAudioEngine({ ...defaultRecipe('vocalize'), wordlessGuide: true }), 'suno')
+  assert.equal(selectPracticeAudioEngine({ ...defaultRecipe('backing'), wordlessGuide: false }), 'suno')
+  const request = compileSunoMusicRequest({
+    ...defaultRecipe('vocalize'),
+    key: 'C',
+    scale: 'major',
+    wordlessGuide: true,
+    instruments: ['piano'],
+  })
+  assert.equal(request.instrumental, false)
+  assert.match(request.prompt ?? '', /\bah\b/i)
+  assert.match(request.style, /C major/i)
 })
 
 test('kind maps to exercise_library category', () => {
