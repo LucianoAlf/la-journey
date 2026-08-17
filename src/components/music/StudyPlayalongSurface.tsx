@@ -10,7 +10,9 @@ import * as alphaTabModule from '@coderline/alphatab'
 import { SpinnerGap } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { buildAlphaTabSettings, NOTATION_DIDACTIC_SCALE } from '@/lib/alphaTabSettings'
+import type { EstudoDisplayMode } from '@/lib/estudoConfig'
 import type { PlayalongSyncPoint } from '@/lib/playalong'
+import { cn } from '@/lib/utils'
 
 export interface StudyPlayalongSurfaceProps {
   tex: string
@@ -18,8 +20,11 @@ export interface StudyPlayalongSurfaceProps {
   audioUrl: string | null
   syncPoints: PlayalongSyncPoint[]
   marking: boolean
+  displayMode?: EstudoDisplayMode
+  indexMap?: number[]
   onMarkBar?: (point: PlayalongSyncPoint) => void
   onPlayingChange?: (playing: boolean) => void
+  onSelectBeat?: (ourBeatIndex: number) => void
 }
 
 export interface StudyPlayalongSurfaceHandle {
@@ -30,6 +35,7 @@ export interface StudyPlayalongSurfaceHandle {
 
 const STUDY_CURSOR_CSS = `
   .at-study-playalong .at-cursor-beat { display: none !important; }
+  .at-study-playalong .at-surface > div:last-child { display: none !important; }
 `
 
 type ExternalMediaOutput = {
@@ -79,6 +85,38 @@ function masterBarIndexAtTick(score: alphaTabModule.model.Score | null, tick: nu
   return index
 }
 
+function hideAlphaTabCredit(container: HTMLElement | null) {
+  if (!container) return
+  const surface = container.querySelector('.at-surface')
+  if (!surface) return
+  for (const child of Array.from(surface.children) as HTMLElement[]) {
+    if (child.textContent?.includes('rendered by alphaTab')) child.style.display = 'none'
+  }
+}
+
+function hideSlashStems(container: HTMLElement | null) {
+  if (!container) return
+  container.querySelectorAll('svg line, svg rect').forEach((el) => {
+    try {
+      const box = (el as SVGGraphicsElement).getBBox()
+      if (box.height > box.width * 2 && box.width < 4) {
+        ;(el as HTMLElement).style.display = 'none'
+      }
+    } catch {
+      /* detached svg */
+    }
+  })
+}
+
+function flattenVoiceBeats(score: alphaTabModule.model.Score | null) {
+  const beats: alphaTabModule.model.Beat[] = []
+  const bars = score?.tracks?.[0]?.staves?.[0]?.bars ?? []
+  for (const bar of bars) {
+    for (const beat of bar.voices?.[0]?.beats ?? []) beats.push(beat)
+  }
+  return beats
+}
+
 function externalOutput(api: alphaTabModule.AlphaTabApi | null): ExternalMediaOutput | null {
   const output = api?.player?.output as unknown as ExternalMediaOutput | undefined
   if (!output || typeof output.updatePosition !== 'function') return null
@@ -92,8 +130,11 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
     audioUrl,
     syncPoints,
     marking,
+    displayMode = 'slash-beat',
+    indexMap = [],
     onMarkBar,
     onPlayingChange,
+    onSelectBeat,
   }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null)
     const hostRef = useRef<HTMLDivElement>(null)
@@ -105,6 +146,9 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
     const markingRef = useRef(marking)
     const audioUrlRef = useRef(audioUrl)
     const onPlayingChangeRef = useRef(onPlayingChange)
+    const onSelectBeatRef = useRef(onSelectBeat)
+    const indexMapRef = useRef(indexMap)
+    const displayModeRef = useRef(displayMode)
     const positionTimerRef = useRef<number>(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -114,6 +158,9 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
     markingRef.current = marking
     audioUrlRef.current = audioUrl
     onPlayingChangeRef.current = onPlayingChange
+    onSelectBeatRef.current = onSelectBeat
+    indexMapRef.current = indexMap
+    displayModeRef.current = displayMode
 
     const pushPosition = useCallback(() => {
       const audio = mediaRef.current
@@ -237,7 +284,7 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
         showTimeSignature: true,
         barsPerRow,
       })
-      settings.player.enableUserInteraction = false
+      settings.player.enableUserInteraction = true
       settings.player.enableElementHighlighting = false
       settings.player.scrollMode = alphaTabModule.ScrollMode.Continuous
       settings.player.scrollOffsetY = -24
@@ -260,7 +307,19 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
       })
 
       api.renderFinished.on(() => {
+        hideAlphaTabCredit(hostRef.current)
+        if (displayModeRef.current === 'slash-beat' || displayModeRef.current === 'chords') {
+          hideSlashStems(hostRef.current)
+        }
         setLoading(false)
+      })
+
+      api.beatMouseDown.on((beat) => {
+        if (markingRef.current) return
+        const ordinal = flattenVoiceBeats(api.score).indexOf(beat)
+        if (ordinal < 0) return
+        const ourIndex = indexMapRef.current[ordinal] ?? ordinal
+        onSelectBeatRef.current?.(ourIndex)
       })
 
       api.playedBeatChanged.on((beat) => {
@@ -368,12 +427,16 @@ export const StudyPlayalongSurface = forwardRef<StudyPlayalongSurfaceHandle, Stu
             src={audioUrl}
             preload="auto"
             controls
-            className="h-10 w-full"
+            className="estudo-no-print h-10 w-full print:hidden"
           />
         )}
         <div
           ref={scrollRef}
-          className="at-study-playalong relative overflow-auto rounded-[var(--radius)] border border-border bg-surface"
+          className={cn(
+            'at-study-playalong relative overflow-auto rounded-[var(--radius)] border border-border bg-surface',
+            displayMode === 'slash-beat' && 'estudo-slash-beat',
+            displayMode === 'chords' && 'estudo-chords',
+          )}
           style={{ minHeight: 280, maxHeight: 'calc(100vh - 220px)' }}
         >
           {loading && (

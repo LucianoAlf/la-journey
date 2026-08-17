@@ -1,19 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, SpinnerGap, Trash } from '@phosphor-icons/react'
+import { ArrowLeft, Pause, Play, Printer, SpinnerGap, Trash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
+import { StudySheetFrame } from '@/components/estudo/StudySheetFrame'
 import { StudyTitleField } from '@/components/estudo/StudyTitleField'
 import { Button } from '@/components/ui/button'
 import { StudyPlayalongSurface, type StudyPlayalongSurfaceHandle } from '@/components/music/StudyPlayalongSurface'
 import { useEstudoMaterials } from '@/hooks/useEstudoMaterials'
 import { useMaterialWithBlocks } from '@/hooks/useMaterials'
 import { useSchool } from '@/hooks/useSchool'
+import {
+  ESTUDO_DISPLAY_MODES,
+  estudoToJson,
+  mergeEstudoPageConfig,
+  parseEstudo,
+  type EstudoDisplayMode,
+} from '@/lib/estudoConfig'
 import { parsePlayalong, playalongToJson, type PlayalongConfig, type PlayalongSyncPoint } from '@/lib/playalong'
 import { studyTexFromBlock } from '@/lib/studyNotationTex'
-import { deleteEstudoMaterial, type EstudoListItem } from '@/services/estudoCatalogService'
+import { deleteEstudoMaterial, fetchCurrentUserName, type EstudoListItem } from '@/services/estudoCatalogService'
 import { updateMaterial, type GeneratedMaterial, type MaterialWithBlocks } from '@/services/materialService'
 import { uploadPlayalongFile } from '@/services/playalongUpload'
 import { createStudyMaterialFromMp3 } from '@/services/studyFromMp3Service'
+
+const GRAVURA_LABEL: Record<EstudoDisplayMode, string> = {
+  'slash-beat': 'Pulso',
+  'slash-rhythm': 'Ritmo',
+  chords: 'Cifra',
+  score: 'Score',
+}
 
 function EstudoList() {
   const navigate = useNavigate()
@@ -173,6 +188,7 @@ function EstudoList() {
 
 function EstudoRoom({ materialId }: { materialId: string }) {
   const navigate = useNavigate()
+  const { data: school } = useSchool()
   const { data: rows, loading, error, refetch } = useMaterialWithBlocks(materialId)
   const surfaceRef = useRef<StudyPlayalongSurfaceHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -180,16 +196,49 @@ function EstudoRoom({ materialId }: { materialId: string }) {
   const [uploading, setUploading] = useState(false)
   const [playalongOverride, setPlayalongOverride] = useState<PlayalongConfig | null>(null)
   const [marking, setMarking] = useState(false)
+  const [displayMode, setDisplayMode] = useState<EstudoDisplayMode>('slash-beat')
+  const [title, setTitle] = useState('Estudo')
+  const [curatorName, setCuratorName] = useState<string | null>(null)
   const dirtyRef = useRef(false)
   const playalongRef = useRef<PlayalongConfig | null>(null)
+  const curatorFilledRef = useRef(false)
 
   const material = rows?.[0] ?? null
+  const estudo = parseEstudo(material?.page_config?.estudo)
   const notation = useMemo(() => pickNotationBlock(rows), [rows])
   const study = notation
-    ? studyTexFromBlock({ content: notation.block_content, render_data: notation.block_render_data })
+    ? studyTexFromBlock(
+      { content: notation.block_content, render_data: notation.block_render_data },
+      displayMode,
+    )
     : null
   const playalong = playalongOverride ?? parsePlayalong(material?.page_config?.playalong)
   playalongRef.current = playalong
+
+  useEffect(() => {
+    if (!material) return
+    const parsed = parseEstudo(material.page_config?.estudo)
+    if (parsed) {
+      setDisplayMode(parsed.displayMode)
+      setCuratorName(parsed.curatorName)
+    }
+    setTitle(material.material_title ?? 'Estudo')
+  }, [material])
+
+  useEffect(() => {
+    if (!material || !estudo || estudo.curatorName || curatorFilledRef.current) return
+    curatorFilledRef.current = true
+    void fetchCurrentUserName().then(async (name) => {
+      if (!name) return
+      const existing = (material.page_config ?? {}) as Record<string, unknown>
+      await updateMaterial(materialId, {
+        page_config: mergeEstudoPageConfig(existing, {
+          estudo: estudoToJson({ ...estudo, curatorName: name }),
+        }) as unknown as GeneratedMaterial['page_config'],
+      })
+      setCuratorName(name)
+    })
+  }, [estudo, material, materialId])
 
   const persistPlayalong = async (next: PlayalongConfig) => {
     const existing = (material?.page_config ?? {}) as Record<string, unknown>
@@ -200,6 +249,32 @@ function EstudoRoom({ materialId }: { materialId: string }) {
       } as unknown as GeneratedMaterial['page_config'],
     })
     setPlayalongOverride(next)
+  }
+
+  const persistDisplayMode = async (next: EstudoDisplayMode) => {
+    setDisplayMode(next)
+    const existing = (material?.page_config ?? {}) as Record<string, unknown>
+    const current = parseEstudo(existing.estudo) ?? {
+      origin: 'from-mp3' as const,
+      displayMode: next,
+      curatorName,
+    }
+    await updateMaterial(materialId, {
+      page_config: mergeEstudoPageConfig(existing, {
+        estudo: estudoToJson({ ...current, displayMode: next, curatorName: current.curatorName ?? curatorName }),
+      }) as unknown as GeneratedMaterial['page_config'],
+    })
+  }
+
+  const renameTitle = async (next: string) => {
+    const previous = title
+    setTitle(next)
+    try {
+      await updateMaterial(materialId, { title: next })
+    } catch (err) {
+      setTitle(previous)
+      toast.error(err instanceof Error ? err.message : 'Não deu para renomear')
+    }
   }
 
   const flushMarks = async () => {
@@ -264,21 +339,36 @@ function EstudoRoom({ materialId }: { materialId: string }) {
     setPlayalongOverride(next)
   }
 
+  if (!loading && !error && material && !estudo) {
+    return (
+      <div className="card py-12 text-center text-sm text-text3">
+        <p className="mb-4">Esta faixa não é da sala de Estudo</p>
+        <Button variant="outline" size="sm" onClick={() => navigate('/estudo')}>
+          <ArrowLeft size={16} /> Voltar
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="estudo-room animate-in fade-in slide-in-from-bottom-4 print:bg-white duration-300">
+      <div className="estudo-no-print mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate('/estudo')}>
             <ArrowLeft size={16} /> Materiais
           </Button>
-          <div>
-            <h1 className="font-serif text-[22px] leading-[1.2] text-text">
-              {material?.material_title ?? 'Estudo'}
-            </h1>
-            <p className="text-[12px] text-text2">Playalong na grade — cursor no compasso</p>
-          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {ESTUDO_DISPLAY_MODES.map((mode) => (
+            <Button
+              key={mode}
+              variant={displayMode === mode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => void persistDisplayMode(mode)}
+            >
+              {GRAVURA_LABEL[mode]}
+            </Button>
+          ))}
           <input
             ref={fileInputRef}
             type="file"
@@ -297,17 +387,14 @@ function EstudoRoom({ materialId }: { materialId: string }) {
             {playing ? <Pause size={16} /> : <Play size={16} />}
             {playing ? 'Pausar' : 'Play'}
           </Button>
+          <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Printer size={16} />
+            Imprimir
+          </Button>
         </div>
       </div>
-      {study && (
-        <p className="mb-3 text-[12px] text-text2">
-          {study.tex.includes('slashed')
-            ? 'Cifra gerada do MP3 (Music.AI). Se algum acorde estiver errado, corrija no Editor.'
-            : 'Esta pauta já existia. Colar faixa não troca os acordes. Para o Music.AI gerar a grade, volte em Materiais e use Do MP3.'}
-        </p>
-      )}
       {marking && (
-        <p className="mb-3 text-[12px] text-text2">
+        <p className="estudo-no-print mb-3 text-[12px] text-text2 print:hidden">
           Espaço ou clique na pauta marca o tempo 1 do compasso. {playalong?.syncPoints.length ?? 0} ponto(s).
         </p>
       )}
@@ -328,16 +415,26 @@ function EstudoRoom({ materialId }: { materialId: string }) {
         </div>
       )}
       {study && (
-        <StudyPlayalongSurface
-          ref={surfaceRef}
-          tex={study.tex}
-          barsPerRow={study.barsPerSystem}
-          audioUrl={playalong?.audioUrl ?? null}
-          syncPoints={playalong?.syncPoints ?? []}
-          marking={marking}
-          onMarkBar={onMarkBar}
-          onPlayingChange={setPlaying}
-        />
+        <StudySheetFrame
+          schoolName={school?.name ?? ''}
+          logoUrl={school?.logo_url ?? null}
+          title={title}
+          curatorName={curatorName}
+          onTitleCommit={(next) => void renameTitle(next)}
+        >
+          <StudyPlayalongSurface
+            ref={surfaceRef}
+            tex={study.tex}
+            barsPerRow={study.barsPerSystem}
+            indexMap={study.indexMap}
+            displayMode={displayMode}
+            audioUrl={playalong?.audioUrl ?? null}
+            syncPoints={playalong?.syncPoints ?? []}
+            marking={marking}
+            onMarkBar={onMarkBar}
+            onPlayingChange={setPlaying}
+          />
+        </StudySheetFrame>
       )}
     </div>
   )

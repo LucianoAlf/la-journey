@@ -36,8 +36,8 @@ export function AppLayout() {
         theme={theme}
         toggleTheme={toggleTheme}
       />
-      <main className={`transition-all duration-300 ${isSidebarCollapsed ? 'ml-[64px]' : 'ml-[240px]'}`}>
-        <div className={isMaterialEditor ? 'h-screen overflow-hidden p-0' : 'h-screen overflow-y-auto p-7'}>
+      <main className={`transition-all duration-300 print:ml-0 ${isSidebarCollapsed ? 'ml-[64px]' : 'ml-[240px]'}`}>
+        <div className={isMaterialEditor ? 'h-screen overflow-hidden p-0' : 'h-screen overflow-y-auto p-7 print:p-0'}>
           <Outlet />
         </div>
       </main>
